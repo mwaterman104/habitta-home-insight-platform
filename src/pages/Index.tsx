@@ -24,10 +24,16 @@ const Index = () => {
       <header className="border-b bg-card/50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
-            <Building2 className="w-8 h-8 text-primary" />
+            <div className="relative">
+              <div className="w-10 h-10 border-4 border-primary rounded-lg flex items-center justify-center bg-background">
+                <div className="w-6 h-4 border-b-2 border-l-2 border-r-2 border-primary rounded-b-md">
+                  <div className="w-2 h-3 mx-auto border-2 border-primary rounded-t-full bg-background -mt-1"></div>
+                </div>
+              </div>
+            </div>
             <div>
-              <h1 className="text-2xl font-bold">Habitta</h1>
-              <p className="text-sm text-muted-foreground">Property Management Dashboard</p>
+              <h1 className="text-3xl font-bold text-primary">Habitta</h1>
+              <p className="text-sm text-muted-foreground">Your Home Ownership Companion</p>
             </div>
           </div>
         </div>

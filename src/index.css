@@ -6,8 +6,8 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 45 30% 96%;
+    --foreground: 150 65% 20%;
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
@@ -15,16 +15,16 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 210 100% 50%;
+    --primary: 150 65% 35%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 200 20% 96%;
-    --secondary-foreground: 210 40% 8%;
+    --secondary: 45 25% 92%;
+    --secondary-foreground: 150 65% 35%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 45 25% 96%;
+    --muted-foreground: 150 20% 40%;
 
-    --accent: 200 95% 45%;
+    --accent: 150 50% 45%;
     --accent-foreground: 0 0% 100%;
 
     /* Property status colors */
