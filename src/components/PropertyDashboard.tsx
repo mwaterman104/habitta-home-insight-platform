@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PropertyHistory } from '@/lib/propertyAPI';
 import { getPermits, getCodeViolations, Permit, CodeViolation } from '@/lib/permitAPI';
 import { getWeatherHistory, computeWearIndex } from '@/lib/weatherAPI';
@@ -14,8 +15,17 @@ import {
   CheckCircle, 
   CloudRain,
   Wrench,
-  FileText
+  FileText,
+  Shield,
+  Zap,
+  TrendingUp,
+  Users,
+  Clock
 } from 'lucide-react';
+import PropertyRiskAssessment from './PropertyRiskAssessment';
+import OwnershipTimeline from './OwnershipTimeline';
+import EnergyEfficiencyCard from './EnergyEfficiencyCard';
+import PropertyValueTrends from './PropertyValueTrends';
 
 interface RoofScore {
   yearReplaced: number | null;
@@ -105,7 +115,7 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-success';
     if (score >= 60) return 'text-warning';
-    return 'text-danger';
+    return 'text-destructive';
   };
 
   const getViolationBadgeVariant = (severity: string) => {
@@ -116,9 +126,27 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
     }
   };
 
+  const calculatePropertyAge = () => {
+    return new Date().getFullYear() - propertyData.propertyDetails.yearBuilt;
+  };
+
+  const calculateComplianceScore = () => {
+    const activeViolations = violations.filter(v => v.status !== 'resolved').length;
+    const totalPermits = permits.length;
+    const recentPermits = permits.filter(p => 
+      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 5
+    ).length;
+    
+    let score = 100;
+    score -= activeViolations * 15; // Deduct for active violations
+    if (totalPermits > 0) score += Math.min(recentPermits * 5, 20); // Bonus for recent permits
+    
+    return Math.max(0, Math.min(100, score));
+  };
+
   return (
     <div className="space-y-6">
-      {/* Property Overview */}
+      {/* Enhanced Property Overview */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -127,10 +155,11 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Year Built</p>
               <p className="text-lg font-semibold">{propertyData.propertyDetails.yearBuilt}</p>
+              <p className="text-xs text-muted-foreground">{calculatePropertyAge()} years old</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Square Feet</p>
@@ -144,141 +173,185 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
               <p className="text-sm text-muted-foreground">Bathrooms</p>
               <p className="text-lg font-semibold">{propertyData.propertyDetails.bathrooms}</p>
             </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Compliance Score</p>
+              <p className={`text-lg font-semibold ${getScoreColor(calculateComplianceScore())}`}>
+                {calculateComplianceScore()}/100
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Total Permits</p>
+              <p className="text-lg font-semibold">{permits.length}</p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Roof Health Score */}
-      {roofScore && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CloudRain className="w-5 h-5" />
-              Roof Health Score
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-3xl font-bold ${getScoreColor(roofScore.score)}`}>
-                  {roofScore.score}/100
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Age: {roofScore.age} years | Weather Factor: {roofScore.wearFactor}/10
-                </p>
-                {roofScore.yearReplaced && (
-                  <p className="text-sm text-muted-foreground">
-                    Last Replaced: {roofScore.yearReplaced}
-                  </p>
-                )}
-              </div>
-              <div className="text-right">
-                <Button variant="outline" size="sm">
-                  <Wrench className="w-4 h-4 mr-2" />
-                  Schedule Inspection
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Enhanced Analysis Tabs */}
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="risks">Risk Assessment</TabsTrigger>
+          <TabsTrigger value="efficiency">Energy & Value</TabsTrigger>
+          <TabsTrigger value="history">Ownership History</TabsTrigger>
+          <TabsTrigger value="permits">Permits & Violations</TabsTrigger>
+        </TabsList>
 
-      {/* Permits & Violations */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Recent Permits ({permits.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {permits.slice(0, 5).map((permit) => (
-                <div key={permit.id} className="flex justify-between items-start">
+        <TabsContent value="overview" className="space-y-6">
+          {/* Roof Health Score */}
+          {roofScore && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CloudRain className="w-5 h-5" />
+                  Roof Health Score
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">{permit.type}</p>
-                    <p className="text-sm text-muted-foreground">{permit.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(permit.dateIssued).toLocaleDateString()}
+                    <p className={`text-3xl font-bold ${getScoreColor(roofScore.score)}`}>
+                      {roofScore.score}/100
                     </p>
-                  </div>
-                  <Badge variant={permit.status === 'active' ? 'default' : 'secondary'}>
-                    {permit.status}
-                  </Badge>
-                </div>
-              ))}
-              {permits.length === 0 && (
-                <p className="text-muted-foreground">No permits found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Code Violations ({violations.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {violations.slice(0, 5).map((violation) => (
-                <div key={violation.id} className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium">{violation.type}</p>
-                    <p className="text-sm text-muted-foreground">{violation.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(violation.dateReported).toLocaleDateString()}
+                    <p className="text-sm text-muted-foreground">
+                      Age: {roofScore.age} years | Weather Factor: {roofScore.wearFactor.toFixed(1)}/10
                     </p>
+                    {roofScore.yearReplaced && (
+                      <p className="text-sm text-muted-foreground">
+                        Last Replaced: {roofScore.yearReplaced}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <Badge variant={getViolationBadgeVariant(violation.severity)}>
-                      {violation.severity}
-                    </Badge>
-                    <Badge variant={violation.status === 'resolved' ? 'default' : 'secondary'}>
-                      {violation.status}
-                    </Badge>
+                  <div className="text-right">
+                    <Button variant="outline" size="sm">
+                      <Wrench className="w-4 h-4 mr-2" />
+                      Schedule Inspection
+                    </Button>
                   </div>
                 </div>
-              ))}
-              {violations.length === 0 && (
-                <div className="flex items-center gap-2 text-success">
-                  <CheckCircle className="w-4 h-4" />
-                  <p>No active violations</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Sales History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5" />
-            Sales History
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {propertyData.saleHistory.map((sale, index) => (
-              <div key={index} className="flex justify-between items-center">
-                <div>
-                  <p className="font-medium">${sale.price.toLocaleString()}</p>
-                  <p className="text-sm text-muted-foreground">{sale.type}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-muted-foreground" />
-                  <p className="text-sm">{new Date(sale.date).toLocaleDateString()}</p>
-                </div>
+          {/* Sales History */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5" />
+                Sales History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {propertyData.saleHistory.map((sale, index) => (
+                  <div key={index} className="flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">${sale.price.toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">{sale.type}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
+                      <p className="text-sm">{new Date(sale.date).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="risks">
+          <PropertyRiskAssessment 
+            propertyData={propertyData} 
+            permits={permits} 
+            violations={violations}
+            roofScore={roofScore}
+          />
+        </TabsContent>
+
+        <TabsContent value="efficiency">
+          <div className="grid md:grid-cols-2 gap-6">
+            <EnergyEfficiencyCard propertyData={propertyData} permits={permits} />
+            <PropertyValueTrends propertyData={propertyData} />
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="history">
+          <OwnershipTimeline propertyData={propertyData} permits={permits} />
+        </TabsContent>
+
+        <TabsContent value="permits">
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Recent Permits ({permits.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {permits.slice(0, 8).map((permit) => (
+                    <div key={permit.id} className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{permit.type}</p>
+                        <p className="text-sm text-muted-foreground">{permit.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(permit.dateIssued).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge variant={permit.status === 'active' ? 'default' : 'secondary'}>
+                        {permit.status}
+                      </Badge>
+                    </div>
+                  ))}
+                  {permits.length === 0 && (
+                    <p className="text-muted-foreground">No permits found</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  Code Violations ({violations.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {violations.slice(0, 8).map((violation) => (
+                    <div key={violation.id} className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{violation.type}</p>
+                        <p className="text-sm text-muted-foreground">{violation.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(violation.dateReported).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant={getViolationBadgeVariant(violation.severity)}>
+                          {violation.severity}
+                        </Badge>
+                        <Badge variant={violation.status === 'resolved' ? 'default' : 'secondary'}>
+                          {violation.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {violations.length === 0 && (
+                    <div className="flex items-center gap-2 text-success">
+                      <CheckCircle className="w-4 h-4" />
+                      <p>No active violations</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
