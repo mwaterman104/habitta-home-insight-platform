@@ -34,6 +34,7 @@ import PropertyRiskAssessment from './PropertyRiskAssessment';
 import OwnershipTimeline from './OwnershipTimeline';
 import EnergyEfficiencyCard from './EnergyEfficiencyCard';
 import PropertyValueTrends from './PropertyValueTrends';
+import WebScraper from './WebScraper';
 
 interface RoofScore {
   yearReplaced: number | null;
@@ -197,12 +198,13 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
 
       {/* Enhanced Analysis Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="risks">Risk Assessment</TabsTrigger>
           <TabsTrigger value="efficiency">Energy & Value</TabsTrigger>
           <TabsTrigger value="history">Ownership History</TabsTrigger>
           <TabsTrigger value="permits">Permits & Violations</TabsTrigger>
+          <TabsTrigger value="scraper">Web Scraper</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -503,6 +505,24 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="scraper">
+          <WebScraper 
+            suggestedUrls={[
+              `https://pbcgov.org/pzb/building/permits`, // Palm Beach County permits
+              `https://www.pbcgov.org/publicsafety/codeenforcement/search-violations.htm`, // Code violations
+              `https://www.pbpao.gov/apps/PropertySearch/`, // Property assessment
+              `https://www.wellington.fl.us/`, // Wellington city site
+            ]}
+            onDataExtracted={(data) => {
+              console.log('Scraped data for property research:', data);
+              toast({
+                title: "Data Extracted",
+                description: `Successfully scraped ${data.title || 'website'} for property research`,
+              });
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
