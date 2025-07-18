@@ -247,6 +247,43 @@ serve(async (req) => {
           bathrooms: property.building?.rooms?.bathstotal || property.building?.rooms?.bathsTotal || 0,
           propertyType: property.summary?.propertyType || property.building?.summary?.bldgType || 'Unknown'
         },
+        // Enhanced property details
+        extendedDetails: {
+          lot: {
+            sizeAcres: property.lot?.lotsize1 || 0,
+            sizeSqFt: property.lot?.lotsize2 || 0,
+            hasPool: property.lot?.poolind === 'YES'
+          },
+          building: {
+            condition: property.building?.construction?.condition || 'Unknown',
+            quality: property.building?.summary?.quality || 'Unknown',
+            constructionType: property.building?.construction?.constructiontype || 'Unknown',
+            roofMaterial: property.building?.construction?.roofcover || 'Unknown',
+            wallType: property.building?.construction?.wallType || 'Unknown',
+            levels: property.building?.summary?.levels || 0,
+            garageSize: property.building?.parking?.prkgSize || 0
+          },
+          utilities: {
+            cooling: property.utilities?.coolingtype || 'Unknown',
+            heatingFuel: property.utilities?.heatingfuel || 'Unknown',
+            heatingType: property.utilities?.heatingtype || 'Unknown'
+          },
+          location: {
+            latitude: parseFloat(property.location?.latitude) || 0,
+            longitude: parseFloat(property.location?.longitude) || 0,
+            subdivision: property.area?.subdname || '',
+            municipality: property.area?.munname || ''
+          },
+          ownership: {
+            ownerOccupied: property.summary?.absenteeInd === 'OWNER OCCUPIED',
+            propertyClass: property.summary?.propclass || 'Unknown',
+            landUse: property.summary?.propLandUse || 'Unknown'
+          },
+          assessment: {
+            apn: property.identifier?.apn || '',
+            taxCode: property.area?.taxcodearea || ''
+          }
+        },
         lastUpdated: property.vintage?.lastModified || new Date().toISOString(),
         // Include raw Attom data for additional details
         _attomData: property

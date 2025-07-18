@@ -15,6 +15,42 @@ export interface PropertyHistory {
     bathrooms: number;
     propertyType: string;
   };
+  extendedDetails?: {
+    lot: {
+      sizeAcres: number;
+      sizeSqFt: number;
+      hasPool: boolean;
+    };
+    building: {
+      condition: string;
+      quality: string;
+      constructionType: string;
+      roofMaterial: string;
+      wallType: string;
+      levels: number;
+      garageSize: number;
+    };
+    utilities: {
+      cooling: string;
+      heatingFuel: string;
+      heatingType: string;
+    };
+    location: {
+      latitude: number;
+      longitude: number;
+      subdivision: string;
+      municipality: string;
+    };
+    ownership: {
+      ownerOccupied: boolean;
+      propertyClass: string;
+      landUse: string;
+    };
+    assessment: {
+      apn: string;
+      taxCode: string;
+    };
+  };
   lastUpdated: string;
   _attomData?: any; // Raw Attom API data for additional details
 }

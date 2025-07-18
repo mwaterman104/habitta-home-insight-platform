@@ -20,7 +20,15 @@ import {
   Zap,
   TrendingUp,
   Users,
-  Clock
+  Clock,
+  MapPin,
+  Droplets,
+  Hammer,
+  Building,
+  Car,
+  Thermometer,
+  Info,
+  CheckSquare
 } from 'lucide-react';
 import PropertyRiskAssessment from './PropertyRiskAssessment';
 import OwnershipTimeline from './OwnershipTimeline';
@@ -198,6 +206,151 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* Enhanced Property Details Grid */}
+          {propertyData.extendedDetails && (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Lot & Location Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5" />
+                    Lot & Location
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Lot Size</span>
+                    <span className="font-medium">
+                      {propertyData.extendedDetails.lot.sizeAcres.toFixed(2)} acres 
+                      ({propertyData.extendedDetails.lot.sizeSqFt.toLocaleString()} sq ft)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Pool</span>
+                    <span className="font-medium flex items-center gap-1">
+                      {propertyData.extendedDetails.lot.hasPool ? (
+                        <>
+                          <Droplets className="w-4 h-4 text-blue-500" />
+                          Yes
+                        </>
+                      ) : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Subdivision</span>
+                    <span className="font-medium">{propertyData.extendedDetails.location.subdivision || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Municipality</span>
+                    <span className="font-medium">{propertyData.extendedDetails.location.municipality || 'N/A'}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Building Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building className="w-5 h-5" />
+                    Building Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Construction</span>
+                    <span className="font-medium">{propertyData.extendedDetails.building.constructionType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Roof Material</span>
+                    <span className="font-medium">{propertyData.extendedDetails.building.roofMaterial}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Wall Type</span>
+                    <span className="font-medium">{propertyData.extendedDetails.building.wallType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Levels</span>
+                    <span className="font-medium">{propertyData.extendedDetails.building.levels}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Condition</span>
+                    <Badge variant={propertyData.extendedDetails.building.condition === 'EXCELLENT' ? 'default' : 'secondary'}>
+                      {propertyData.extendedDetails.building.condition}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Utilities & Systems */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Thermometer className="w-5 h-5" />
+                    Utilities & Systems
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Cooling</span>
+                    <span className="font-medium">{propertyData.extendedDetails.utilities.cooling}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Heating Type</span>
+                    <span className="font-medium">{propertyData.extendedDetails.utilities.heatingType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Heating Fuel</span>
+                    <span className="font-medium">{propertyData.extendedDetails.utilities.heatingFuel}</span>
+                  </div>
+                  {propertyData.extendedDetails.building.garageSize > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Garage</span>
+                      <span className="font-medium flex items-center gap-1">
+                        <Car className="w-4 h-4" />
+                        {propertyData.extendedDetails.building.garageSize} sq ft
+                      </span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Ownership & Assessment */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CheckSquare className="w-5 h-5" />
+                    Ownership & Assessment
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Owner Occupied</span>
+                    <span className="font-medium flex items-center gap-1">
+                      {propertyData.extendedDetails.ownership.ownerOccupied ? (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                          Yes
+                        </>
+                      ) : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Property Class</span>
+                    <span className="font-medium">{propertyData.extendedDetails.ownership.propertyClass}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Land Use</span>
+                    <span className="font-medium">{propertyData.extendedDetails.ownership.landUse}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">APN</span>
+                    <span className="font-medium text-xs">{propertyData.extendedDetails.assessment.apn || 'N/A'}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Roof Health Score */}
           {roofScore && (
             <Card>
