@@ -66,7 +66,7 @@ const AddressLookup: React.FC<AddressLookupProps> = ({ onSelect }) => {
         <div className="space-y-2">
           <Input
             type="text"
-            placeholder="Enter property address..."
+            placeholder="Enter full address (e.g., 123 Main St, Springfield, IL 62704)"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             onKeyPress={handleKeyPress}

@@ -131,12 +131,63 @@ serve(async (req) => {
     console.log(`Making Attom API request for address: ${address}`);
     
     // Parse address into components
-    // Split address into street address and city/state/zip
+    // For Attom API: address1 = street, address2 = city state zip
     const addressParts = address.split(',').map(part => part.trim());
-    const address1 = addressParts[0] || address; // Street address
-    const address2 = addressParts.slice(1).join(', ') || ''; // City, State, Zip
     
-    console.log(`Parsed address - Address1: ${address1}, Address2: ${address2}`);
+    let address1, address2;
+    
+    if (addressParts.length >= 2) {
+      // Full address with commas: "123 Main St, City, State Zip"
+      address1 = addressParts[0];
+      address2 = addressParts.slice(1).join(', ');
+    } else {
+      // Single string - try to parse by common patterns
+      const addressStr = address.trim();
+      const stateZipMatch = addressStr.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+      const cityStateMatch = addressStr.match(/^(.+?)\s+(.+?)\s+([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/i);
+      
+      if (stateZipMatch) {
+        // Pattern: "123 Main St City State Zip"
+        const parts = stateZipMatch[1].split(' ');
+        const cityStartIndex = parts.findIndex(part => 
+          part.toLowerCase() !== 'st' && 
+          part.toLowerCase() !== 'ave' && 
+          part.toLowerCase() !== 'rd' && 
+          part.toLowerCase() !== 'dr' &&
+          part.toLowerCase() !== 'ln' &&
+          part.toLowerCase() !== 'blvd' &&
+          /^[A-Z]/i.test(part)
+        );
+        
+        if (cityStartIndex > 0) {
+          address1 = parts.slice(0, cityStartIndex).join(' ');
+          address2 = `${parts.slice(cityStartIndex).join(' ')} ${stateZipMatch[2]} ${stateZipMatch[3]}`;
+        } else {
+          address1 = addressStr;
+          address2 = '';
+        }
+      } else {
+        // Fallback: treat entire string as address1
+        address1 = addressStr;
+        address2 = '';
+      }
+    }
+    
+    console.log(`Parsed address - Address1: "${address1}", Address2: "${address2}"`);
+    
+    // Validate that we have meaningful address components
+    if (!address1 || address1.length < 3) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid address format. Please provide a complete address with street, city, state, and zip code.',
+          example: 'Example: 123 Main St, Springfield, IL 62704'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     // Construct URL with query parameters
     const searchParams = new URLSearchParams({
