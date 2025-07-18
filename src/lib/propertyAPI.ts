@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { supabase } from '@/integrations/supabase/client';
 
 // Property history API service
 export interface PropertyHistory {
@@ -16,26 +16,31 @@ export interface PropertyHistory {
     propertyType: string;
   };
   lastUpdated: string;
+  _attomData?: any; // Raw Attom API data for additional details
 }
 
 export const getPropertyHistory = async (address: string): Promise<PropertyHistory> => {
   try {
-    const baseURL = process.env.VITE_PROPERTY_API_URL || 'https://api.propertydata.com';
-    const apiKey = process.env.VITE_PROPERTY_API_KEY;
+    console.log('Fetching property data for:', address);
     
-    const response = await axios.get(`${baseURL}/property-history`, {
-      params: { address },
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
+    const { data, error } = await supabase.functions.invoke('attom-property', {
+      body: { address }
     });
-    
-    return response.data;
+
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(`Property API Error: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error('No data returned from property API');
+    }
+
+    return data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(`Property API Error: ${error.response?.status} - ${error.message}`);
+    console.error('Error fetching property history:', error);
+    if (error instanceof Error) {
+      throw new Error(`Property API Error: ${error.message}`);
     }
     throw new Error('Failed to fetch property history');
   }
