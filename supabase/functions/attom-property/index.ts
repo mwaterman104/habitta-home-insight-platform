@@ -130,9 +130,18 @@ serve(async (req) => {
 
     console.log(`Making Attom API request for address: ${address}`);
     
+    // Parse address into components
+    // Split address into street address and city/state/zip
+    const addressParts = address.split(',').map(part => part.trim());
+    const address1 = addressParts[0] || address; // Street address
+    const address2 = addressParts.slice(1).join(', ') || ''; // City, State, Zip
+    
+    console.log(`Parsed address - Address1: ${address1}, Address2: ${address2}`);
+    
     // Construct URL with query parameters
     const searchParams = new URLSearchParams({
-      address1: address,
+      address1: address1,
+      address2: address2,
     });
     
     const attomResponse = await fetch(`https://search.onboard-apis.com/propertyapi/v1.0.0/${endpoint}?${searchParams}`, {
