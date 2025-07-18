@@ -130,16 +130,18 @@ serve(async (req) => {
 
     console.log(`Making Attom API request for address: ${address}`);
     
-    const attomResponse = await fetch(`https://search.onboard-apis.com/propertyapi/v1.0.0/${endpoint}`, {
+    // Construct URL with query parameters
+    const searchParams = new URLSearchParams({
+      address1: address,
+      orderby: 'areadescr',
+    });
+    
+    const attomResponse = await fetch(`https://search.onboard-apis.com/propertyapi/v1.0.0/${endpoint}?${searchParams}`, {
       method: 'GET',
       headers: {
         'accept': 'application/json',
         'apikey': attomApiKey,
       },
-      params: new URLSearchParams({
-        address1: address,
-        orderby': 'areadescr',
-      }),
     });
 
     if (!attomResponse.ok) {
