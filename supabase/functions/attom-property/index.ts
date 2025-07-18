@@ -241,11 +241,11 @@ serve(async (req) => {
           type: property.sale.amount?.saleTransType || 'Unknown'
         }] : [],
         propertyDetails: {
-          yearBuilt: property.building?.summary?.yearBuilt || 0,
-          sqft: property.building?.size?.livingSize || property.building?.size?.bldgSize || 0,
+          yearBuilt: property.summary?.yearbuilt || property.building?.summary?.yearBuilt || 0,
+          sqft: property.building?.size?.livingsize || property.building?.size?.bldgsize || property.building?.size?.bldgSize || 0,
           bedrooms: property.building?.rooms?.beds || 0,
-          bathrooms: property.building?.rooms?.bathsTotal || 0,
-          propertyType: property.building?.summary?.bldgType || 'Unknown'
+          bathrooms: property.building?.rooms?.bathstotal || property.building?.rooms?.bathsTotal || 0,
+          propertyType: property.summary?.propertyType || property.building?.summary?.bldgType || 'Unknown'
         },
         lastUpdated: property.vintage?.lastModified || new Date().toISOString(),
         // Include raw Attom data for additional details
