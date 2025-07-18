@@ -227,6 +227,8 @@ serve(async (req) => {
       code: attomData.status?.code || 'unknown'
     });
 
+    console.log('Raw property data sample:', JSON.stringify(attomData.property?.[0], null, 2));
+
     // Transform Attom data to match our PropertyHistory interface
     if (attomData.property && attomData.property.length > 0) {
       const property = attomData.property[0];
