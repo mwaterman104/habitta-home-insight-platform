@@ -133,7 +133,6 @@ serve(async (req) => {
     // Construct URL with query parameters
     const searchParams = new URLSearchParams({
       address1: address,
-      orderby: 'areadescr',
     });
     
     const attomResponse = await fetch(`https://search.onboard-apis.com/propertyapi/v1.0.0/${endpoint}?${searchParams}`, {
