@@ -43,6 +43,15 @@ const TemplateSelection = () => {
 
   const createProjectFromTemplate = async (template: ProjectTemplate) => {
     try {
+      // Check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        // Sign in anonymously if not authenticated
+        const { error: authError } = await supabase.auth.signInAnonymously();
+        if (authError) throw authError;
+      }
+
       // Create the project
       const { data: project, error: projectError } = await supabase
         .from('projects')
