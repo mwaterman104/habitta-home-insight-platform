@@ -33,7 +33,7 @@ const TemplateSelection = () => {
         .order('name');
 
       if (error) throw error;
-      setTemplates((data || []) as ProjectTemplate[]);
+      setTemplates((data || []) as unknown as ProjectTemplate[]);
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
