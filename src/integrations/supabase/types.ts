@@ -14,7 +14,334 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          messages: Json
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          messages?: Json
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          messages?: Json
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materials: {
+        Row: {
+          actual_cost: number | null
+          created_at: string
+          estimated_cost: number | null
+          id: string
+          is_purchased: boolean | null
+          name: string
+          notes: string | null
+          project_id: string
+          quantity: number
+          supplier_name: string | null
+          supplier_url: string | null
+          unit: string | null
+        }
+        Insert: {
+          actual_cost?: number | null
+          created_at?: string
+          estimated_cost?: number | null
+          id?: string
+          is_purchased?: boolean | null
+          name: string
+          notes?: string | null
+          project_id: string
+          quantity?: number
+          supplier_name?: string | null
+          supplier_url?: string | null
+          unit?: string | null
+        }
+        Update: {
+          actual_cost?: number | null
+          created_at?: string
+          estimated_cost?: number | null
+          id?: string
+          is_purchased?: boolean | null
+          name?: string
+          notes?: string | null
+          project_id?: string
+          quantity?: number
+          supplier_name?: string | null
+          supplier_url?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_budgets: {
+        Row: {
+          actual_amount: number
+          category: string
+          created_at: string
+          estimated_amount: number
+          id: string
+          project_id: string
+        }
+        Insert: {
+          actual_amount?: number
+          category: string
+          created_at?: string
+          estimated_amount?: number
+          id?: string
+          project_id: string
+        }
+        Update: {
+          actual_amount?: number
+          category?: string
+          created_at?: string
+          estimated_amount?: number
+          id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_budgets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_phases: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_completed: boolean | null
+          name: string
+          order_index: number
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean | null
+          name: string
+          order_index: number
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_completed?: boolean | null
+          name?: string
+          order_index?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_phases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_templates: {
+        Row: {
+          created_at: string
+          default_materials: Json | null
+          default_phases: Json | null
+          description: string | null
+          estimated_budget_range: Json | null
+          id: string
+          name: string
+          room_type: string
+        }
+        Insert: {
+          created_at?: string
+          default_materials?: Json | null
+          default_phases?: Json | null
+          description?: string | null
+          estimated_budget_range?: Json | null
+          id?: string
+          name: string
+          room_type: string
+        }
+        Update: {
+          created_at?: string
+          default_materials?: Json | null
+          default_phases?: Json | null
+          description?: string | null
+          estimated_budget_range?: Json | null
+          id?: string
+          name?: string
+          room_type?: string
+        }
+        Relationships: []
+      }
+      project_timelines: {
+        Row: {
+          actual_date: string | null
+          created_at: string
+          id: string
+          is_completed: boolean | null
+          milestone_name: string
+          notes: string | null
+          project_id: string
+          target_date: string | null
+        }
+        Insert: {
+          actual_date?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean | null
+          milestone_name: string
+          notes?: string | null
+          project_id: string
+          target_date?: string | null
+        }
+        Update: {
+          actual_date?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean | null
+          milestone_name?: string
+          notes?: string | null
+          project_id?: string
+          target_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_timelines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          room_type: string
+          status: string
+          template_id: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          room_type: string
+          status?: string
+          template_id?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          room_type?: string
+          status?: string
+          template_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          actual_hours: number | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          estimated_hours: number | null
+          id: string
+          is_completed: boolean | null
+          order_index: number
+          phase_id: string | null
+          project_id: string
+          title: string
+        }
+        Insert: {
+          actual_hours?: number | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_hours?: number | null
+          id?: string
+          is_completed?: boolean | null
+          order_index: number
+          phase_id?: string | null
+          project_id: string
+          title: string
+        }
+        Update: {
+          actual_hours?: number | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_hours?: number | null
+          id?: string
+          is_completed?: boolean | null
+          order_index?: number
+          phase_id?: string | null
+          project_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "project_phases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
