@@ -43,13 +43,36 @@ const TemplateSelection = () => {
 
   const createProjectFromTemplate = async (template: ProjectTemplate) => {
     try {
+      console.log('Starting project creation...');
+      
       // Check if user is authenticated
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: getUserError } = await supabase.auth.getUser();
+      console.log('Current user:', user);
+      
+      if (getUserError) {
+        console.error('Error getting user:', getUserError);
+      }
       
       if (!user) {
-        // Sign in anonymously if not authenticated
-        const { error: authError } = await supabase.auth.signInAnonymously();
-        if (authError) throw authError;
+        console.log('No user found, signing in anonymously...');
+        const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+        console.log('Anonymous signin result:', { authData, authError });
+        
+        if (authError) {
+          console.error('Anonymous signin error:', authError);
+          throw authError;
+        }
+        
+        // Wait a moment for auth state to update
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Get user again after potential signin
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      console.log('User after auth check:', currentUser);
+
+      if (!currentUser) {
+        throw new Error('Failed to authenticate user');
       }
 
       // Create the project
@@ -60,7 +83,7 @@ const TemplateSelection = () => {
           room_type: template.room_type,
           description: template.description,
           template_id: template.id,
-          user_id: (await supabase.auth.getUser()).data.user?.id
+          user_id: currentUser.id
         })
         .select()
         .single();
