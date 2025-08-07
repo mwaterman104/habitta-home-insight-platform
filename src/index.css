@@ -2,103 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Habitta Design System - Property Management App */
-
 @layer base {
   :root {
-    --background: 45 30% 96%;
-    --foreground: 150 65% 20%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 150 65% 35%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 45 25% 92%;
-    --secondary-foreground: 150 65% 35%;
-
-    --muted: 45 25% 96%;
-    --muted-foreground: 150 20% 40%;
-
-    --accent: 150 50% 45%;
-    --accent-foreground: 0 0% 100%;
-
-    /* Property status colors */
-    --success: 142 76% 36%;
-    --success-foreground: 0 0% 100%;
+    /* Habitta Brand Colors */
+    --habitta-green: 45 36 61; /* #2d5a3d */
+    --habitta-dark-green: 26 52 38; /* #1a3426 */
+    --habitta-light-green: 58 122 90; /* #3a7a5a */
     
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    /* Neutral Colors */
+    --cream-white: 250 248 245; /* #faf8f5 */
+    --pure-white: 255 255 255; /* #ffffff */
+    --charcoal: 26 26 26; /* #1a1a1a */
+    --gray-dark: 74 74 74; /* #4a4a4a */
+    --gray-medium: 122 122 122; /* #7a7a7a */
+    --gray-light: 232 232 232; /* #e8e8e8 */
     
-    --danger: 0 84% 60%;
-    --danger-foreground: 0 0% 100%;
+    /* Accent Colors */
+    --chatdiy-yellow: 255 191 0; /* #ffbf00 */
+    --success-green: 16 185 129; /* #10b981 */
+    --error-red: 239 68 68; /* #ef4444 */
+    --info-blue: 59 130 246; /* #3b82f6 */
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Design System Variables */
+    --background: var(--cream-white);
+    --foreground: var(--charcoal);
+    --card: var(--pure-white);
+    --card-foreground: var(--charcoal);
+    --popover: var(--pure-white);
+    --popover-foreground: var(--charcoal);
+    --primary: var(--habitta-green);
+    --primary-foreground: var(--pure-white);
+    --secondary: var(--gray-light);
+    --secondary-foreground: var(--charcoal);
+    --muted: var(--gray-light);
+    --muted-foreground: var(--gray-medium);
+    --accent: var(--chatdiy-yellow);
+    --accent-foreground: var(--charcoal);
+    --destructive: var(--error-red);
+    --destructive-foreground: var(--pure-white);
+    --border: var(--gray-light);
+    --input: var(--gray-light);
+    --ring: var(--habitta-green);
+    --radius: 0.75rem;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --radius: 0.5rem;
-
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: var(--pure-white);
+    --sidebar-foreground: var(--charcoal);
+    --sidebar-primary: var(--habitta-green);
+    --sidebar-primary-foreground: var(--pure-white);
+    --sidebar-accent: var(--gray-light);
+    --sidebar-accent-foreground: var(--charcoal);
+    --sidebar-border: var(--gray-light);
+    --sidebar-ring: var(--habitta-green);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: var(--charcoal);
+    --foreground: var(--pure-white);
+    --card: var(--gray-dark);
+    --card-foreground: var(--pure-white);
+    --popover: var(--gray-dark);
+    --popover-foreground: var(--pure-white);
+    --primary: var(--habitta-light-green);
+    --primary-foreground: var(--pure-white);
+    --secondary: var(--gray-dark);
+    --secondary-foreground: var(--pure-white);
+    --muted: var(--gray-dark);
+    --muted-foreground: var(--gray-medium);
+    --accent: var(--chatdiy-yellow);
+    --accent-foreground: var(--charcoal);
+    --destructive: var(--error-red);
+    --destructive-foreground: var(--pure-white);
+    --border: var(--gray-dark);
+    --input: var(--gray-dark);
+    --ring: var(--habitta-light-green);
+    
+    --sidebar-background: var(--gray-dark);
+    --sidebar-foreground: var(--pure-white);
+    --sidebar-primary: var(--habitta-light-green);
+    --sidebar-primary-foreground: var(--pure-white);
+    --sidebar-accent: var(--gray-dark);
+    --sidebar-accent-foreground: var(--pure-white);
+    --sidebar-border: var(--gray-dark);
+    --sidebar-ring: var(--habitta-light-green);
   }
 }
 
@@ -106,8 +91,7 @@
   * {
     @apply border-border;
   }
-
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-nunito;
   }
 }

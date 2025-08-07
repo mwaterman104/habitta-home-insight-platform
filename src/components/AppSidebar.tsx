@@ -33,12 +33,13 @@ const navigation = [
 ];
 
 const AppSidebar = () => {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
+  const isCollapsed = state === 'collapsed';
 
   const handleSignOut = async () => {
     await signOut();
@@ -46,20 +47,20 @@ const AppSidebar = () => {
   };
 
   return (
-    <Sidebar className={collapsed ? 'w-14' : 'w-64'} collapsible>
+    <Sidebar collapsible="icon">
       <SidebarContent className="p-4">
         {/* Logo */}
         <div className="mb-8">
           <Link to="/dashboard" className="flex items-center gap-3">
             <Logo size="md" />
-            {!collapsed && (
+            {!isCollapsed && (
               <span className="text-xl font-bold text-primary">Habitta</span>
             )}
           </Link>
         </div>
 
         {/* User Info */}
-        {!collapsed && (
+        {!isCollapsed && (
           <div className="mb-6 p-3 bg-muted/50 rounded-lg">
             <p className="font-medium text-sm">
               {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
@@ -84,7 +85,7 @@ const AppSidebar = () => {
                       }`}
                     >
                       <item.icon className="w-5 h-5" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!isCollapsed && <span>{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -101,7 +102,7 @@ const AppSidebar = () => {
             className="w-full justify-start gap-3"
           >
             <LogOut className="w-5 h-5" />
-            {!collapsed && <span>Sign Out</span>}
+            {!isCollapsed && <span>Sign Out</span>}
           </Button>
         </div>
       </SidebarContent>

@@ -48,7 +48,7 @@ const AuthPage = () => {
       const redirectUrl = 'https://habitta.app/dashboard';
       
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
             emailRedirectTo: redirectUrl,
@@ -172,7 +172,7 @@ const AuthPage = () => {
                   <Checkbox
                     id="terms"
                     checked={acceptTerms}
-                    onCheckedChange={setAcceptTerms}
+                    onCheckedChange={(checked) => setAcceptTerms(checked === true)}
                     disabled={loading}
                   />
                   <Label htmlFor="terms" className="text-sm">
