@@ -4,24 +4,24 @@
 
 @layer base {
   :root {
-    /* Habitta Brand Colors */
-    --habitta-green: 45 36 61; /* #2d5a3d */
-    --habitta-dark-green: 26 52 38; /* #1a3426 */
-    --habitta-light-green: 58 122 90; /* #3a7a5a */
+    /* Habitta Brand Colors - Proper HSL Values */
+    --habitta-green: 150 33% 27%; /* #2d5a3d */
+    --habitta-dark-green: 150 33% 16%; /* #1a3426 */
+    --habitta-light-green: 150 33% 35%; /* #3a7a5a */
     
-    /* Neutral Colors */
-    --cream-white: 250 248 245; /* #faf8f5 */
-    --pure-white: 255 255 255; /* #ffffff */
-    --charcoal: 26 26 26; /* #1a1a1a */
-    --gray-dark: 74 74 74; /* #4a4a4a */
-    --gray-medium: 122 122 122; /* #7a7a7a */
-    --gray-light: 232 232 232; /* #e8e8e8 */
+    /* Neutral Colors - Proper HSL Values */
+    --cream-white: 45 43% 97%; /* #faf8f5 */
+    --pure-white: 0 0% 100%; /* #ffffff */
+    --charcoal: 0 0% 10%; /* #1a1a1a */
+    --gray-dark: 0 0% 29%; /* #4a4a4a */
+    --gray-medium: 0 0% 48%; /* #7a7a7a */
+    --gray-light: 0 0% 91%; /* #e8e8e8 */
     
-    /* Accent Colors */
-    --chatdiy-yellow: 255 191 0; /* #ffbf00 */
-    --success-green: 16 185 129; /* #10b981 */
-    --error-red: 239 68 68; /* #ef4444 */
-    --info-blue: 59 130 246; /* #3b82f6 */
+    /* Accent Colors - Proper HSL Values */
+    --chatdiy-yellow: 45 100% 50%; /* #ffbf00 */
+    --success-green: 160 84% 39%; /* #10b981 */
+    --error-red: 0 84% 60%; /* #ef4444 */
+    --info-blue: 221 91% 60%; /* #3b82f6 */
 
     /* Design System Variables */
     --background: var(--cream-white);
