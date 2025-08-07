@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, DollarSign, Clock, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/components/ui/use-toast';
 
 interface ProjectTemplate {
   id: string;
@@ -19,7 +20,9 @@ interface ProjectTemplate {
 const TemplateSelection = () => {
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creatingId, setCreatingId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchTemplates();
@@ -41,37 +44,47 @@ const TemplateSelection = () => {
     }
   };
 
-  const createProjectFromTemplate = async (template: ProjectTemplate) => {
+const createProjectFromTemplate = async (template: ProjectTemplate) => {
+    setCreatingId(template.id);
     try {
       console.log('Starting project creation...');
       
       // Check if user is authenticated
       const { data: { user }, error: getUserError } = await supabase.auth.getUser();
       console.log('Current user:', user);
-      
       if (getUserError) {
         console.error('Error getting user:', getUserError);
       }
-      
+
       if (!user) {
         console.log('No user found, signing in anonymously...');
         const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
         console.log('Anonymous signin result:', { authData, authError });
-        
         if (authError) {
           console.error('Anonymous signin error:', authError);
+          const isDisabled = String(authError.message || '').toLowerCase().includes('disabled');
+          toast({
+            title: isDisabled ? 'Sign-in required' : 'Authentication error',
+            description: isDisabled
+              ? 'Anonymous sign-in is disabled on this project. Please log in to continue.'
+              : 'We could not authenticate you. Please try again.',
+            variant: 'destructive',
+          });
           throw authError;
         }
-        
         // Wait a moment for auth state to update
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       // Get user again after potential signin
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       console.log('User after auth check:', currentUser);
-
       if (!currentUser) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please sign in to create a project.',
+          variant: 'destructive',
+        });
         throw new Error('Failed to authenticate user');
       }
 
@@ -83,12 +96,20 @@ const TemplateSelection = () => {
           room_type: template.room_type,
           description: template.description,
           template_id: template.id,
-          user_id: currentUser.id
+          user_id: currentUser.id,
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (projectError) throw projectError;
+      if (projectError || !project) {
+        console.error('Project insert error:', projectError);
+        toast({
+          title: 'Could not create project',
+          description: 'Please make sure you are signed in and try again.',
+          variant: 'destructive',
+        });
+        throw projectError || new Error('No project returned');
+      }
 
       // Create project phases
       if (template.default_phases && template.default_phases.length > 0) {
@@ -96,13 +117,9 @@ const TemplateSelection = () => {
           project_id: project.id,
           name: phase.name,
           description: phase.description,
-          order_index: phase.order_index
+          order_index: phase.order_index,
         }));
-
-        const { error: phasesError } = await supabase
-          .from('project_phases')
-          .insert(phases);
-
+        const { error: phasesError } = await supabase.from('project_phases').insert(phases);
         if (phasesError) throw phasesError;
       }
 
@@ -113,13 +130,9 @@ const TemplateSelection = () => {
           name: material.name,
           quantity: material.quantity,
           unit: material.unit,
-          estimated_cost: material.estimated_cost
+          estimated_cost: material.estimated_cost,
         }));
-
-        const { error: materialsError } = await supabase
-          .from('materials')
-          .insert(materials);
-
+        const { error: materialsError } = await supabase.from('materials').insert(materials);
         if (materialsError) throw materialsError;
       }
 
@@ -127,24 +140,19 @@ const TemplateSelection = () => {
       const budgetCategories = [
         { category: 'Materials', estimated_amount: template.estimated_budget_range.min * 0.6 },
         { category: 'Labor', estimated_amount: template.estimated_budget_range.min * 0.3 },
-        { category: 'Tools & Equipment', estimated_amount: template.estimated_budget_range.min * 0.1 }
+        { category: 'Tools & Equipment', estimated_amount: template.estimated_budget_range.min * 0.1 },
       ];
-
-      const budgets = budgetCategories.map(budget => ({
-        project_id: project.id,
-        ...budget
-      }));
-
-      const { error: budgetError } = await supabase
-        .from('project_budgets')
-        .insert(budgets);
-
+      const budgets = budgetCategories.map((budget) => ({ project_id: project.id, ...budget }));
+      const { error: budgetError } = await supabase.from('project_budgets').insert(budgets);
       if (budgetError) throw budgetError;
 
+      toast({ title: 'Project created', description: 'Redirecting to your project...' });
       // Navigate to the new project
       navigate(`/project/${project.id}`);
     } catch (error) {
       console.error('Error creating project from template:', error);
+    } finally {
+      setCreatingId(null);
     }
   };
 
@@ -246,11 +254,12 @@ const TemplateSelection = () => {
                 </ul>
               </div>
 
-              <Button 
-                className="w-full" 
+              <Button
+                className="w-full"
                 onClick={() => createProjectFromTemplate(template)}
+                disabled={creatingId === template.id}
               >
-                Start This Project
+                {creatingId === template.id ? 'Starting…' : 'Start This Project'}
               </Button>
             </CardContent>
           </Card>
