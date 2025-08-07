@@ -49,6 +49,222 @@ export type Database = {
           },
         ]
       }
+      diagnoses: {
+        Row: {
+          ai_diagnosis: string | null
+          created_at: string
+          diy_instructions: Json | null
+          diy_possible: boolean | null
+          estimated_cost_max: number | null
+          estimated_cost_min: number | null
+          home_id: string
+          id: string
+          issue_description: string | null
+          photo_url: string
+          pro_recommended: boolean | null
+          severity: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_diagnosis?: string | null
+          created_at?: string
+          diy_instructions?: Json | null
+          diy_possible?: boolean | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          home_id: string
+          id?: string
+          issue_description?: string | null
+          photo_url: string
+          pro_recommended?: boolean | null
+          severity?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_diagnosis?: string | null
+          created_at?: string
+          diy_instructions?: Json | null
+          diy_possible?: boolean | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          home_id?: string
+          id?: string
+          issue_description?: string | null
+          photo_url?: string
+          pro_recommended?: boolean | null
+          severity?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diagnoses_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          created_at: string
+          expiry_date: string | null
+          file_size: number | null
+          file_url: string
+          home_id: string
+          id: string
+          name: string
+          notes: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expiry_date?: string | null
+          file_size?: number | null
+          file_url: string
+          home_id: string
+          id?: string
+          name: string
+          notes?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expiry_date?: string | null
+          file_size?: number | null
+          file_url?: string
+          home_id?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homes: {
+        Row: {
+          address: string
+          bathrooms: number | null
+          bedrooms: number | null
+          city: string
+          created_at: string
+          id: string
+          photo_url: string | null
+          property_type: string | null
+          square_feet: number | null
+          state: string
+          updated_at: string
+          user_id: string
+          year_built: number | null
+          zip_code: string
+        }
+        Insert: {
+          address: string
+          bathrooms?: number | null
+          bedrooms?: number | null
+          city: string
+          created_at?: string
+          id?: string
+          photo_url?: string | null
+          property_type?: string | null
+          square_feet?: number | null
+          state: string
+          updated_at?: string
+          user_id: string
+          year_built?: number | null
+          zip_code: string
+        }
+        Update: {
+          address?: string
+          bathrooms?: number | null
+          bedrooms?: number | null
+          city?: string
+          created_at?: string
+          id?: string
+          photo_url?: string | null
+          property_type?: string | null
+          square_feet?: number | null
+          state?: string
+          updated_at?: string
+          user_id?: string
+          year_built?: number | null
+          zip_code?: string
+        }
+        Relationships: []
+      }
+      maintenance_tasks: {
+        Row: {
+          category: string | null
+          completed_date: string | null
+          cost: number | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          home_id: string
+          id: string
+          priority: string | null
+          recurrence_interval: string | null
+          recurring: boolean | null
+          status: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          completed_date?: string | null
+          cost?: number | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          home_id: string
+          id?: string
+          priority?: string | null
+          recurrence_interval?: string | null
+          recurring?: boolean | null
+          status?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          completed_date?: string | null
+          cost?: number | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          home_id?: string
+          id?: string
+          priority?: string | null
+          recurrence_interval?: string | null
+          recurring?: boolean | null
+          status?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_tasks_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materials: {
         Row: {
           actual_cost: number | null
