@@ -136,14 +136,14 @@ const Dashboard = () => {
         .from('maintenance_signals')
         .select('*')
         .eq('property_id', propertyId)
-        .order('asof_date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       // Get renovation items
       const { data: renovations } = await supabase
         .from('renovation_items')
         .select('*')
         .eq('property_id', propertyId)
-        .order('asof_date', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(10);
 
       // Process signals into a map
