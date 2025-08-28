@@ -22,8 +22,8 @@ const HomeRedirectHandler = () => {
         if (error) throw error;
 
         if (!homes || homes.length === 0) {
-          // No homes - show onboarding/landing page
-          setChecking(false);
+          // No homes - redirect to add home page
+          navigate('/home/new', { replace: true });
         } else if (homes.length === 1) {
           // Exactly one home - redirect to home profile
           navigate(`/home/${homes[0].id}`, { replace: true });

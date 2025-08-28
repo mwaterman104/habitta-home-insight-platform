@@ -21,7 +21,7 @@ import {
   Activity,
   CheckCircle
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface HomeData {
   id: string;
@@ -55,6 +55,7 @@ interface PropertyData {
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [home, setHome] = useState<HomeData | null>(null);
   const [propertyData, setPropertyData] = useState<PropertyData>({});
   const [loading, setLoading] = useState(true);
@@ -322,7 +323,7 @@ const Dashboard = () => {
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Welcome to Habitta</h1>
           <p className="text-muted-foreground mb-4">No homes found. Please add a home to get started.</p>
-          <Button onClick={() => window.location.href = '/home'}>
+          <Button onClick={() => navigate('/home/new')}>
             <Plus className="w-4 h-4 mr-2" />
             Add Your First Home
           </Button>

@@ -10,6 +10,7 @@ import LandingPage from "@/pages/LandingPage";
 import AuthPage from "@/pages/AuthPage";
 import Dashboard from "@/pages/Dashboard";
 import HomeProfilePage from "@/pages/HomeProfilePage";
+import AddHomePage from "@/pages/AddHomePage";
 import HomeRedirectHandler from "@/components/HomeRedirectHandler";
 import NotFound from "@/pages/NotFound";
 import AppSidebar from "@/components/AppSidebar";
@@ -44,6 +45,23 @@ const App = () => (
 
             {/* Landing page for unauthenticated users */}
             <Route path="/landing" element={<LandingPage />} />
+            
+            {/* Add New Home */}
+            <Route 
+              path="/home/new" 
+              element={
+                <ProtectedRoute>
+                  <SidebarProvider>
+                    <div className="min-h-screen flex w-full">
+                      <AppSidebar />
+                      <main className="flex-1 bg-background p-6">
+                        <AddHomePage />
+                      </main>
+                    </div>
+                  </SidebarProvider>
+                </ProtectedRoute>
+              } 
+            />
             
             {/* Home Profile */}
             <Route 
