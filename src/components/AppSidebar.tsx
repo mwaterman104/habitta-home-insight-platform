@@ -24,8 +24,7 @@ import {
 } from 'lucide-react';
 
 const navigation = [
-  { title: 'Dashboard', url: '/dashboard', icon: Home },
-  { title: 'My Home', url: '/home', icon: House },
+  { title: 'Home', url: '/', icon: Home },
   { title: 'Tasks', url: '/tasks', icon: CheckSquare },
   { title: 'Documents', url: '/documents', icon: FolderOpen },
   { title: 'AI Diagnosis', url: '/diagnosis', icon: Camera },
@@ -51,7 +50,7 @@ const AppSidebar = () => {
       <SidebarContent className="p-4">
         {/* Logo */}
         <div className="mb-8">
-          <Link to="/dashboard" className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <Logo size="md" />
             {!isCollapsed && (
               <span className="text-xl font-bold text-primary">Habitta</span>
