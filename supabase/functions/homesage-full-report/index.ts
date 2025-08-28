@@ -114,21 +114,19 @@ serve(async (req) => {
       sha256 
     });
 
-    // Upsert property record
+    // Upsert (insert) property record with correct schema columns
     const p = report.property ?? {};
     const { data: propRow } = await admin
       .from("properties")
-      .upsert({ 
-        address_std: p.address ?? address, 
+      .insert({ 
+        address: p.address ?? address,
+        address_std: p.address ?? address,
         zipcode: zipcode ?? null, 
         apn: p.apn ?? null, 
         year_built: p.year_built ?? null, 
-        sqft: p.sqft ?? null, 
-        beds: p.beds ?? null, 
-        baths: p.baths ?? null, 
-        source_latest: "homesage", 
-        updated_at: new Date().toISOString() 
-      }, { onConflict: "address_std,zipcode" })
+        square_footage: p.sqft ?? null, 
+        source_latest: "homesage"
+      })
       .select()
       .single();
 
