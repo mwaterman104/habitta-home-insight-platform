@@ -1,0 +1,58 @@
+[
+  {
+    "id": "lc-1",
+    "name": "HVAC System",
+    "installed_year": 2018,
+    "lifespan_years": 15,
+    "replacement_cost": 8500
+  },
+  {
+    "id": "lc-2",
+    "name": "Water Heater",
+    "installed_year": 2020,
+    "lifespan_years": 12,
+    "replacement_cost": 1800
+  },
+  {
+    "id": "lc-3",
+    "name": "Roof Shingles",
+    "installed_year": 2015,
+    "lifespan_years": 25,
+    "replacement_cost": 12000
+  },
+  {
+    "id": "lc-4",
+    "name": "Flooring (Hardwood)",
+    "installed_year": 2019,
+    "lifespan_years": 30,
+    "replacement_cost": 8000
+  },
+  {
+    "id": "lc-5",
+    "name": "Kitchen Appliances",
+    "installed_year": 2021,
+    "lifespan_years": 10,
+    "replacement_cost": 5500
+  },
+  {
+    "id": "lc-6",
+    "name": "Windows",
+    "installed_year": 2017,
+    "lifespan_years": 20,
+    "replacement_cost": 15000
+  },
+  {
+    "id": "lc-7",
+    "name": "Exterior Paint",
+    "installed_year": 2022,
+    "lifespan_years": 8,
+    "replacement_cost": 4500
+  },
+  {
+    "id": "lc-8",
+    "name": "Garage Door",
+    "installed_year": 2019,
+    "lifespan_years": 15,
+    "replacement_cost": 2200
+  }
+]

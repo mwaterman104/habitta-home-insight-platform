@@ -1,0 +1,82 @@
+[
+  {
+    "id": "task-1",
+    "title": "Clean HVAC filters",
+    "due_date": "2025-01-15",
+    "category": "HVAC",
+    "priority": "medium",
+    "cost": 45,
+    "labels": ["routine", "hvac"],
+    "status": "pending"
+  },
+  {
+    "id": "task-2", 
+    "title": "Inspect roof gutters",
+    "due_date": "2025-01-20",
+    "category": "Exterior",
+    "priority": "high",
+    "cost": 120,
+    "labels": ["inspection", "exterior"],
+    "status": "pending"
+  },
+  {
+    "id": "task-3",
+    "title": "Test smoke detectors",
+    "due_date": "2025-01-25",
+    "category": "Safety",
+    "priority": "high",
+    "cost": 25,
+    "labels": ["safety", "electrical"],
+    "status": "pending"
+  },
+  {
+    "id": "task-4",
+    "title": "Service water heater",
+    "due_date": "2025-02-01",
+    "category": "Plumbing",
+    "priority": "medium",
+    "cost": 180,
+    "labels": ["plumbing", "routine"],
+    "status": "pending"
+  },
+  {
+    "id": "task-5",
+    "title": "Deep clean carpets",
+    "due_date": "2025-02-10",
+    "category": "Interior",
+    "priority": "low",
+    "cost": 250,
+    "labels": ["cleaning", "interior"],
+    "status": "pending"
+  },
+  {
+    "id": "task-6",
+    "title": "Trim trees near power lines",
+    "due_date": "2025-02-15",
+    "category": "Landscaping",
+    "priority": "high",
+    "cost": 350,
+    "labels": ["safety", "exterior", "landscaping"],
+    "status": "pending"
+  },
+  {
+    "id": "task-7",
+    "title": "Check weatherstripping",
+    "due_date": "2025-03-01",
+    "category": "Energy Efficiency",
+    "priority": "medium",
+    "cost": 80,
+    "labels": ["energy", "weatherization"],
+    "status": "pending"
+  },
+  {
+    "id": "task-8",
+    "title": "Clean dryer vents",
+    "due_date": "2025-03-10",
+    "category": "Appliances",
+    "priority": "medium",
+    "cost": 95,
+    "labels": ["safety", "appliances"],
+    "status": "pending"
+  }
+]

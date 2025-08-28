@@ -1,0 +1,14 @@
+[
+  { "month": "2024-01", "yours": 1200, "neighborhood_avg": 1450 },
+  { "month": "2024-02", "yours": 1100, "neighborhood_avg": 1380 },
+  { "month": "2024-03", "yours": 950, "neighborhood_avg": 1200 },
+  { "month": "2024-04", "yours": 800, "neighborhood_avg": 980 },
+  { "month": "2024-05", "yours": 650, "neighborhood_avg": 750 },
+  { "month": "2024-06", "yours": 550, "neighborhood_avg": 680 },
+  { "month": "2024-07", "yours": 480, "neighborhood_avg": 620 },
+  { "month": "2024-08", "yours": 520, "neighborhood_avg": 650 },
+  { "month": "2024-09", "yours": 680, "neighborhood_avg": 820 },
+  { "month": "2024-10", "yours": 850, "neighborhood_avg": 1050 },
+  { "month": "2024-11", "yours": 1050, "neighborhood_avg": 1280 },
+  { "month": "2024-12", "yours": 1180, "neighborhood_avg": 1420 }
+]

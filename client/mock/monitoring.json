@@ -1,0 +1,72 @@
+[
+  {
+    "id": "mon-1",
+    "name": "Check air conditioning filters",
+    "category": "Energy",
+    "season": "Summer",
+    "notes": "Replace or clean every 30 days during peak usage"
+  },
+  {
+    "id": "mon-2", 
+    "name": "Inspect heating system",
+    "category": "Maintenance",
+    "season": "Fall",
+    "notes": "Schedule professional inspection before winter"
+  },
+  {
+    "id": "mon-3",
+    "name": "Test smoke and carbon monoxide detectors",
+    "category": "Safety",
+    "season": "Spring",
+    "notes": "Replace batteries and test monthly"
+  },
+  {
+    "id": "mon-4",
+    "name": "Clean gutters and downspouts", 
+    "category": "Maintenance",
+    "season": "Fall",
+    "notes": "Remove leaves and debris to prevent ice dams"
+  },
+  {
+    "id": "mon-5",
+    "name": "Seal windows and doors",
+    "category": "Energy",
+    "season": "Fall",
+    "notes": "Check weatherstripping and caulking"
+  },
+  {
+    "id": "mon-6",
+    "name": "Inspect roof for winter damage",
+    "category": "Maintenance", 
+    "season": "Spring",
+    "notes": "Look for loose or damaged shingles"
+  },
+  {
+    "id": "mon-7",
+    "name": "Service lawn equipment",
+    "category": "Maintenance",
+    "season": "Spring",
+    "notes": "Change oil, replace spark plugs, sharpen blades"
+  },
+  {
+    "id": "mon-8",
+    "name": "Check exterior lighting",
+    "category": "Safety",
+    "season": "Winter",
+    "notes": "Ensure all outdoor lights are working for safety"
+  },
+  {
+    "id": "mon-9",
+    "name": "Clean dryer vents",
+    "category": "Safety",
+    "season": "Fall",
+    "notes": "Remove lint buildup to prevent fires"
+  },
+  {
+    "id": "mon-10",
+    "name": "Flush water heater",
+    "category": "Maintenance",
+    "season": "Spring",
+    "notes": "Remove sediment buildup for efficiency"
+  }
+]
