@@ -7,13 +7,54 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
   public: {
     Tables: {
+      appliances: {
+        Row: {
+          age: number | null
+          brand: string | null
+          created_at: string | null
+          health_score: number | null
+          id: string
+          model_number: string | null
+          property_id: string | null
+          serial_number: string
+        }
+        Insert: {
+          age?: number | null
+          brand?: string | null
+          created_at?: string | null
+          health_score?: number | null
+          id?: string
+          model_number?: string | null
+          property_id?: string | null
+          serial_number: string
+        }
+        Update: {
+          age?: number | null
+          brand?: string | null
+          created_at?: string | null
+          health_score?: number | null
+          id?: string
+          model_number?: string | null
+          property_id?: string | null
+          serial_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appliances_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_sessions: {
         Row: {
           created_at: string
@@ -161,6 +202,7 @@ export type Database = {
           created_at: string
           id: string
           photo_url: string | null
+          property_id: string | null
           property_type: string | null
           square_feet: number | null
           state: string
@@ -177,6 +219,7 @@ export type Database = {
           created_at?: string
           id?: string
           photo_url?: string | null
+          property_id?: string | null
           property_type?: string | null
           square_feet?: number | null
           state: string
@@ -193,6 +236,7 @@ export type Database = {
           created_at?: string
           id?: string
           photo_url?: string | null
+          property_id?: string | null
           property_type?: string | null
           square_feet?: number | null
           state?: string
@@ -200,6 +244,44 @@ export type Database = {
           user_id?: string
           year_built?: number | null
           zip_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homes_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_signals: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          last_updated: string
+          property_id: string
+          signal: string
+          value: number
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          last_updated?: string
+          property_id: string
+          signal: string
+          value: number
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          last_updated?: string
+          property_id?: string
+          signal?: string
+          value?: number
         }
         Relationships: []
       }
@@ -501,6 +583,83 @@ export type Database = {
         }
         Relationships: []
       }
+      properties: {
+        Row: {
+          address: string
+          created_at: string | null
+          health_score: number | null
+          id: string
+          square_footage: number | null
+          year_built: number | null
+        }
+        Insert: {
+          address: string
+          created_at?: string | null
+          health_score?: number | null
+          id?: string
+          square_footage?: number | null
+          year_built?: number | null
+        }
+        Update: {
+          address?: string
+          created_at?: string | null
+          health_score?: number | null
+          id?: string
+          square_footage?: number | null
+          year_built?: number | null
+        }
+        Relationships: []
+      }
+      renovation_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          estimated_cost: number | null
+          id: string
+          item_name: string
+          last_service_date: string | null
+          next_service_due: string | null
+          priority: string | null
+          property_id: string
+          system: string
+          urgency: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          item_name: string
+          last_service_date?: string | null
+          next_service_due?: string | null
+          priority?: string | null
+          property_id: string
+          system: string
+          urgency?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          item_name?: string
+          last_service_date?: string | null
+          next_service_due?: string | null
+          priority?: string | null
+          property_id?: string
+          system?: string
+          urgency?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renovation_items_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           actual_hours: number | null
@@ -554,6 +713,50 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      valuations: {
+        Row: {
+          avm_high: number | null
+          avm_low: number | null
+          avm_value: number
+          confidence: number | null
+          created_at: string
+          forecast_12mo: number | null
+          id: string
+          property_id: string
+          valuation_date: string
+        }
+        Insert: {
+          avm_high?: number | null
+          avm_low?: number | null
+          avm_value: number
+          confidence?: number | null
+          created_at?: string
+          forecast_12mo?: number | null
+          id?: string
+          property_id: string
+          valuation_date?: string
+        }
+        Update: {
+          avm_high?: number | null
+          avm_low?: number | null
+          avm_value?: number
+          confidence?: number | null
+          created_at?: string
+          forecast_12mo?: number | null
+          id?: string
+          property_id?: string
+          valuation_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "valuations_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
         ]
