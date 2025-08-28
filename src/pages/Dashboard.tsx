@@ -322,7 +322,7 @@ const Dashboard = () => {
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Welcome to Habitta</h1>
           <p className="text-muted-foreground mb-4">No homes found. Please add a home to get started.</p>
-          <Button>
+          <Button onClick={() => window.location.href = '/home'}>
             <Plus className="w-4 h-4 mr-2" />
             Add Your First Home
           </Button>
