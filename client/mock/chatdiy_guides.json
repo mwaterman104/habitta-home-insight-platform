@@ -1,0 +1,77 @@
+[
+  {
+    "id": "guide-hvac-filter",
+    "topic": "HVAC",
+    "match": { "category": "HVAC", "labels": ["hvac", "filter"] },
+    "title": "Replace HVAC Filter",
+    "safety": ["Turn off the HVAC system before replacing the filter", "Wear a dust mask to avoid inhaling particles"],
+    "tools": ["Screwdriver (if needed)", "Measuring tape"],
+    "parts": ["16x25x1 MERV 11 filter (or appropriate size)", "Disposable gloves"],
+    "steps": [
+      "Turn off your HVAC system at the thermostat",
+      "Locate the return air grille (usually on a wall or ceiling)",
+      "Remove the grille cover by lifting or unscrewing",
+      "Note the direction of airflow arrows on the old filter",
+      "Remove the old filter and dispose of it properly",
+      "Insert the new filter with airflow arrows pointing toward the unit",
+      "Replace the grille cover",
+      "Turn your HVAC system back on"
+    ]
+  },
+  {
+    "id": "guide-gutter-cleaning",
+    "topic": "Exterior",
+    "match": { "category": "Exterior", "labels": ["gutter", "cleaning"] },
+    "title": "Clean Gutters and Downspouts",
+    "safety": ["Use a sturdy ladder with a spotter", "Never lean too far - move the ladder instead", "Wear non-slip shoes", "Check weather conditions - avoid windy or wet days"],
+    "tools": ["Sturdy ladder", "Garden hose", "Gutter scoop or trowel", "Work gloves", "Safety glasses"],
+    "parts": ["Trash bags", "Bucket for debris"],
+    "steps": [
+      "Set up ladder on level ground with a spotter",
+      "Remove large debris by hand or with gutter scoop",
+      "Work from downspout toward corners",
+      "Flush gutters with garden hose to check for proper drainage",
+      "Clear any clogs in downspouts with hose pressure",
+      "Inspect for loose brackets or damaged sections",
+      "Clean up debris from ground around house"
+    ]
+  },
+  {
+    "id": "guide-smoke-detector",
+    "topic": "Safety",
+    "match": { "category": "Safety", "labels": ["smoke", "detector", "battery"] },
+    "title": "Replace Smoke Detector Batteries",
+    "safety": ["Test detector after battery replacement", "Replace all batteries in home at same time"],
+    "tools": ["Step ladder or chair", "Battery tester (optional)"],
+    "parts": ["9V batteries (alkaline recommended)", "Fresh batteries for all detectors"],
+    "steps": [
+      "Press the test button to identify which detector is chirping",
+      "Carefully remove detector from ceiling mount by twisting counterclockwise",
+      "Remove old battery and note correct orientation",
+      "Insert new battery ensuring proper positive/negative alignment",
+      "Reattach detector to ceiling mount",
+      "Press and hold test button for 2-3 seconds to verify operation",
+      "Repeat for all detectors in home"
+    ]
+  },
+  {
+    "id": "guide-water-heater",
+    "topic": "Plumbing",
+    "match": { "category": "Plumbing", "labels": ["water", "heater", "maintenance"] },
+    "title": "Flush Water Heater Tank",
+    "safety": ["Turn off power/gas before starting", "Be careful of hot water", "Ensure proper ventilation for gas units"],
+    "tools": ["Garden hose", "Adjustable wrench", "Screwdriver"],
+    "parts": ["None required for basic flush"],
+    "steps": [
+      "Turn off power (electric) or set gas control to pilot",
+      "Turn off cold water supply valve to the heater",
+      "Connect garden hose to drain valve at bottom of tank",
+      "Run hose to floor drain or outside",
+      "Open drain valve and let water flow until clear",
+      "Close drain valve and remove hose",
+      "Turn cold water supply back on",
+      "Turn power/gas back on",
+      "Wait for tank to refill and reheat"
+    ]
+  }
+]

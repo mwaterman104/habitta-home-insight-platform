@@ -1,0 +1,42 @@
+[
+  {
+    "metric": "Roof Condition Score",
+    "yours": 82,
+    "neighborhood_avg": 76,
+    "unit": "score",
+    "lower_is_better": false,
+    "description": "Overall roof condition based on age, materials, and maintenance"
+  },
+  {
+    "metric": "HVAC Age",
+    "yours": 7,
+    "neighborhood_avg": 11,
+    "unit": "years",
+    "lower_is_better": true,
+    "description": "Age of primary heating and cooling system"
+  },
+  {
+    "metric": "Monthly Energy Cost",
+    "yours": 118,
+    "neighborhood_avg": 142,
+    "unit": "usd",
+    "lower_is_better": true,
+    "description": "Average monthly utility costs for similar homes"
+  },
+  {
+    "metric": "Maintenance Score",
+    "yours": 89,
+    "neighborhood_avg": 71,
+    "unit": "score", 
+    "lower_is_better": false,
+    "description": "Proactive maintenance rating based on completed tasks"
+  },
+  {
+    "metric": "Water Usage",
+    "yours": 3200,
+    "neighborhood_avg": 3800,
+    "unit": "gallons",
+    "lower_is_better": true,
+    "description": "Average monthly water consumption"
+  }
+]
