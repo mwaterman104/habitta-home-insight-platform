@@ -255,6 +255,36 @@ export type Database = {
           },
         ]
       }
+      homesage_raw: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          payload: Json
+          property_key: string
+          sha256: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          payload: Json
+          property_key: string
+          sha256: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          payload?: Json
+          property_key?: string
+          sha256?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       maintenance_signals: {
         Row: {
           confidence: number | null
@@ -586,27 +616,39 @@ export type Database = {
       properties: {
         Row: {
           address: string
+          address_std: string | null
+          apn: string | null
           created_at: string | null
           health_score: number | null
           id: string
+          source_latest: string | null
           square_footage: number | null
           year_built: number | null
+          zipcode: string | null
         }
         Insert: {
           address: string
+          address_std?: string | null
+          apn?: string | null
           created_at?: string | null
           health_score?: number | null
           id?: string
+          source_latest?: string | null
           square_footage?: number | null
           year_built?: number | null
+          zipcode?: string | null
         }
         Update: {
           address?: string
+          address_std?: string | null
+          apn?: string | null
           created_at?: string | null
           health_score?: number | null
           id?: string
+          source_latest?: string | null
           square_footage?: number | null
           year_built?: number | null
+          zipcode?: string | null
         }
         Relationships: []
       }

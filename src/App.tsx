@@ -62,6 +62,23 @@ const App = () => (
               } 
             />
 
+            {/* Home Profile (single home Dashboard) */}
+            <Route 
+              path="/home" 
+              element={
+                <ProtectedRoute>
+                  <SidebarProvider>
+                    <div className="min-h-screen flex w-full">
+                      <AppSidebar />
+                      <main className="flex-1 bg-background p-6">
+                        <Dashboard />
+                      </main>
+                    </div>
+                  </SidebarProvider>
+                </ProtectedRoute>
+              } 
+            />
+
             {/* Portfolio Dashboard (multi-home) */}
             <Route 
               path="/dashboard" 
