@@ -174,12 +174,10 @@ const AddHomePage = () => {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="single-family">Single Family Home</SelectItem>
+                          <SelectItem value="single_family">Single Family Home</SelectItem>
                           <SelectItem value="condo">Condominium</SelectItem>
                           <SelectItem value="townhouse">Townhouse</SelectItem>
-                          <SelectItem value="duplex">Duplex</SelectItem>
-                          <SelectItem value="apartment">Apartment</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
+                          <SelectItem value="multi_family">Multi Family</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
