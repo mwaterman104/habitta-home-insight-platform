@@ -14,6 +14,7 @@ import { Loader2 } from 'lucide-react';
 const AuthPage = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,7 +23,7 @@ const AuthPage = () => {
   const location = useLocation();
   const { user } = useAuth();
 
-  const from = location.state?.from?.pathname || '/dashboard';
+  const from = location.state?.from?.pathname || '/home';
 
   React.useEffect(() => {
     if (user) {
@@ -30,7 +31,7 @@ const AuthPage = () => {
     }
   }, [user, navigate, from]);
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (isSignUp && !acceptTerms) {
@@ -45,13 +46,12 @@ const AuthPage = () => {
     setLoading(true);
 
     try {
-      const redirectUrl = 'https://habitta.app/dashboard';
-      
       if (isSignUp) {
-        const { error } = await supabase.auth.signInWithOtp({
+        const { error } = await supabase.auth.signUp({
           email,
+          password,
           options: {
-            emailRedirectTo: redirectUrl,
+            emailRedirectTo: `${window.location.origin}/home`,
             data: {
               full_name: fullName,
             }
@@ -61,29 +61,41 @@ const AuthPage = () => {
         if (error) throw error;
 
         toast({
-          title: 'Check your email',
-          description: 'We sent you a magic link to sign up! Click the link in your email to continue.',
+          title: 'Account created successfully!',
+          description: 'You can now sign in with your credentials.',
         });
+        
+        // Switch to sign in mode after successful signup
+        setIsSignUp(false);
+        setPassword('');
       } else {
-        const { error } = await supabase.auth.signInWithOtp({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
-          options: {
-            emailRedirectTo: redirectUrl
-          }
+          password,
         });
 
         if (error) throw error;
 
         toast({
-          title: 'Check your email',
-          description: 'We sent you a magic link to sign in! Click the link in your email to continue.',
+          title: 'Welcome back!',
+          description: 'You have been signed in successfully.',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Auth error:', error);
+      let errorMessage = 'An error occurred. Please try again.';
+      
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please check your credentials.';
+      } else if (error.message.includes('User already registered')) {
+        errorMessage = 'An account with this email already exists. Try signing in instead.';
+      } else if (error.message.includes('Password should be at least 6 characters')) {
+        errorMessage = 'Password must be at least 6 characters long.';
+      }
+      
       toast({
         title: 'Error',
-        description: error.message || 'An error occurred. Please try again.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -138,7 +150,7 @@ const AuthPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <form onSubmit={handleMagicLink} className="space-y-4">
+            <form onSubmit={handleAuth} className="space-y-4">
               {isSignUp && (
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
@@ -164,6 +176,20 @@ const AuthPage = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  minLength={6}
                 />
               </div>
 
@@ -194,7 +220,7 @@ const AuthPage = () => {
                 disabled={loading || (isSignUp && !acceptTerms)}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSignUp ? 'Get Started' : 'Send Magic Link'}
+                {isSignUp ? 'Create Account' : 'Sign In'}
               </Button>
             </form>
 
