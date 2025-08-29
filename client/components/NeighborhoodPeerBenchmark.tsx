@@ -34,10 +34,10 @@ export default function NeighborhoodPeerBenchmark() {
   return (
     <Card className="rounded-2xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          Neighborhood Benchmark
-        </CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Neighborhood Benchmark <span className="text-sm font-normal text-muted-foreground">(estimated)</span>
+          </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-80">

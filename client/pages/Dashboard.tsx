@@ -1,3 +1,9 @@
+import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import TodaysPriorities from "../components/TodaysPriorities";
+import MoneyImpact from "../components/MoneyImpact";
+import SystemHealthStrip from "../components/SystemHealthStrip";
+import ThisWeekChecklist from "../components/ThisWeekChecklist";
 import UpcomingTasksCard from "../components/UpcomingTasksCard";
 import ReplacementPlannerTable from "../components/ReplacementPlannerTable";
 import GenerateSeasonalPlanButton from "../components/GenerateSeasonalPlanButton";
@@ -8,45 +14,101 @@ import PropertySummaryCards from "../components/PropertySummaryCards";
 import NeighborhoodPeerBenchmark from "../components/NeighborhoodPeerBenchmark";
 import CostImpactModel from "../components/CostImpactModel";
 import MaintenanceHistory from "../components/MaintenanceHistory";
+import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary } from "../hooks/useHabittaLocal";
 
 export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState("overview");
+  const alerts = useAlerts();
+  const systemHealth = useSystemHealth();
+  const moneySavings = useMoneySavings();
+  const tasksSummary = useTasksSummary();
+
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Home Intelligence Dashboard</h1>
         <p className="text-muted-foreground mt-1">
-          Predictive maintenance and smart home insights
+          What needs attention today • Smart recommendations • Preventive insights
         </p>
       </div>
-      
-      {/* Top Summary Row */}
-      <div className="grid md:grid-cols-3 gap-4 mb-6 print:hidden">
-        <div className="md:col-span-2">
-          <PropertySummaryCards />
-        </div>
-        <div>
-          <CompletedStats />
-        </div>
-      </div>
-      
-      {/* Main Content Grid */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Left Column */}
-        <div className="space-y-6">
-          <UpcomingTasksCard />
-          <TasksList />
-          <ReplacementPlannerTable />
-        </div>
-        
-        {/* Right Column */}
-        <div className="space-y-6">
-          <GenerateSeasonalPlanButton />
-          <NeighborhoodComparison />
-          <NeighborhoodPeerBenchmark />
-          <CostImpactModel />
-          <MaintenanceHistory />
-        </div>
-      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5 rounded-2xl">
+          <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
+          <TabsTrigger value="plan" className="rounded-xl">Plan</TabsTrigger>
+          <TabsTrigger value="energy" className="rounded-xl">Energy</TabsTrigger>
+          <TabsTrigger value="history" className="rounded-xl">History</TabsTrigger>
+          <TabsTrigger value="property" className="rounded-xl">Property</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          {/* Primary Alert-Driven View */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <TodaysPriorities alerts={alerts} />
+            </div>
+            <div>
+              <MoneyImpact 
+                monthlySavings={moneySavings.monthlySavings} 
+                avoidedSurprise={moneySavings.avoidedSurprise}
+                tasksCount={tasksSummary.pending}
+              />
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div>
+              <ThisWeekChecklist alerts={alerts} />
+            </div>
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-muted/30 rounded-2xl p-4">
+                <h3 className="font-semibold mb-3">System Health</h3>
+                <SystemHealthStrip systems={systemHealth} />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <PropertySummaryCards />
+                <CompletedStats />
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="plan" className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <UpcomingTasksCard />
+              <ReplacementPlannerTable />
+            </div>
+            <div className="space-y-6">
+              <GenerateSeasonalPlanButton />
+              <CostImpactModel />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="energy" className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            <NeighborhoodComparison />
+            <NeighborhoodPeerBenchmark />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            <MaintenanceHistory />
+            <TasksList />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="property" className="space-y-6">
+          <div className="text-center py-12">
+            <h3 className="text-lg font-semibold mb-2">Property Intelligence</h3>
+            <p className="text-muted-foreground">
+              Satellite monitoring, permits, and property details coming soon
+            </p>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

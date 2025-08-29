@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { Task, LifecycleItem, NeighborhoodPoint, SeasonalChecklistItem, Season } from "../types/habitta";
+import { Alert, SystemHealthStatus, SystemKey } from "../types/alerts";
+import { generateAlertsFromTasks, calculateMoneySavings } from "../utils/alerts";
 import maintenanceData from "../mock/maintenance_timeline.json";
 import lifecycleData from "../mock/lifecycle.json";
 import neighborhoodData from "../mock/neighborhood_comparison.json";
@@ -140,4 +142,73 @@ export const usePropertySummary = () => {
   return useMemo(() => {
     return propertyData as any;
   }, []);
+};
+
+export const useAlerts = () => {
+  const upcomingTasks = useUpcomingTasks(90); // get 90-day window for alerts
+  
+  return useMemo(() => {
+    return generateAlertsFromTasks(upcomingTasks);
+  }, [upcomingTasks]);
+};
+
+export const useSystemHealth = (): SystemHealthStatus[] => {
+  const alerts = useAlerts();
+  const lifecycle = useLifecycle();
+  const currentYear = new Date().getFullYear();
+  
+  return useMemo(() => {
+    const systems: SystemKey[] = ["hvac", "water", "roof", "electrical", "plumbing", "appliances"];
+    
+    return systems.map(system => {
+      // Check for critical alerts for this system
+      const systemAlerts = alerts.filter(alert => alert.system === system);
+      const highSeverityAlerts = systemAlerts.filter(alert => alert.severity === "high");
+      const mediumSeverityAlerts = systemAlerts.filter(alert => alert.severity === "medium");
+      
+      // Check lifecycle items approaching replacement
+      const systemLifecycle = lifecycle.find(item => {
+        const lowerName = item.name.toLowerCase();
+        return lowerName.includes(system) || 
+               (system === "hvac" && lowerName.includes("hvac")) ||
+               (system === "water" && lowerName.includes("water")) ||
+               (system === "roof" && lowerName.includes("roof")) ||
+               (system === "appliances" && (lowerName.includes("appliance") || lowerName.includes("kitchen")));
+      });
+      
+      let status: "green" | "yellow" | "red" = "green";
+      let issues: string[] = [];
+      let nextService: string | undefined;
+      
+      // Determine status based on alerts and lifecycle
+      if (highSeverityAlerts.length > 0) {
+        status = "red";
+        issues = highSeverityAlerts.map(alert => alert.title);
+      } else if (mediumSeverityAlerts.length > 0) {
+        status = "yellow";
+        issues = mediumSeverityAlerts.map(alert => alert.title);
+      } else if (systemLifecycle && systemLifecycle.nextReplacementYear <= currentYear + 2) {
+        status = "yellow";
+        nextService = `Replace ${systemLifecycle.nextReplacementYear}`;
+      } else if (systemLifecycle && systemLifecycle.nextReplacementYear <= currentYear + 5) {
+        nextService = `Next service ${systemLifecycle.nextReplacementYear}`;
+      }
+      
+      return {
+        system,
+        status,
+        label: system.charAt(0).toUpperCase() + system.slice(1),
+        nextService,
+        issues: issues.length > 0 ? issues : undefined
+      };
+    });
+  }, [alerts, lifecycle, currentYear]);
+};
+
+export const useMoneySavings = () => {
+  const alerts = useAlerts();
+  
+  return useMemo(() => {
+    return calculateMoneySavings(alerts);
+  }, [alerts]);
 };

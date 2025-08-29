@@ -34,6 +34,13 @@ export default function ChatDIY() {
     return false;
   }) : null;
 
+  // If no specific task, check for topic fallback
+  const [searchParams2] = useSearchParams();
+  const topic = searchParams2.get("topic");
+  const topicGuide = topic ? guides.find(guide => 
+    guide.topic.toLowerCase() === topic.toLowerCase()
+  ) : null;
+
   const toggleStep = (stepIndex: number) => {
     const newCompleted = new Set(completedSteps);
     if (newCompleted.has(stepIndex)) {
@@ -89,8 +96,11 @@ export default function ChatDIY() {
     );
   }
 
+  // Use matching guide or topic guide
+  const activeGuide = matchingGuide || topicGuide;
+
   // If no matching guide found
-  if (!matchingGuide) {
+  if (!activeGuide) {
     return (
       <div className="p-6">
         <Button
@@ -118,7 +128,7 @@ export default function ChatDIY() {
     );
   }
 
-  const completionRate = (completedSteps.size / matchingGuide.steps.length) * 100;
+  const completionRate = (completedSteps.size / activeGuide.steps.length) * 100;
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -132,9 +142,9 @@ export default function ChatDIY() {
       </Button>
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">{matchingGuide.title}</h1>
+        <h1 className="text-3xl font-bold">{activeGuide.title}</h1>
         <p className="text-muted-foreground mt-1">
-          Step-by-step guide for: {selectedTask.title}
+          {selectedTask ? `Step-by-step guide for: ${selectedTask.title}` : `${activeGuide.topic} maintenance guide`}
         </p>
       </div>
 
@@ -142,7 +152,7 @@ export default function ChatDIY() {
         {/* Main Guide Content */}
         <div className="md:col-span-2 space-y-6">
           {/* Safety Warnings */}
-          {matchingGuide.safety.length > 0 && (
+          {activeGuide.safety.length > 0 && (
             <Card className="rounded-2xl border-red-200 bg-red-50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-red-700">
@@ -152,7 +162,7 @@ export default function ChatDIY() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {matchingGuide.safety.map((warning, index) => (
+                  {activeGuide.safety.map((warning, index) => (
                     <li key={index} className="flex items-start gap-2 text-red-700">
                       <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                       <span className="text-sm">{warning}</span>
@@ -169,7 +179,7 @@ export default function ChatDIY() {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <CheckCircle className="h-5 w-5" />
-                  Steps ({completedSteps.size} of {matchingGuide.steps.length})
+                  Steps ({completedSteps.size} of {activeGuide.steps.length})
                 </span>
                 <span className="text-sm text-muted-foreground">
                   {completionRate.toFixed(0)}% Complete
@@ -184,7 +194,7 @@ export default function ChatDIY() {
                 />
               </div>
               
-              {matchingGuide.steps.map((step, index) => {
+              {activeGuide.steps.map((step, index) => {
                 const isCompleted = completedSteps.has(index);
                 return (
                   <div
@@ -224,7 +234,7 @@ export default function ChatDIY() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
-                {matchingGuide.tools.map((tool, index) => (
+                {activeGuide.tools.map((tool, index) => (
                   <li key={index} className="flex items-center gap-2 text-sm">
                     <div className="w-2 h-2 rounded-full bg-blue-600" />
                     {tool}
@@ -244,7 +254,7 @@ export default function ChatDIY() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
-                {matchingGuide.parts.map((part, index) => (
+                {activeGuide.parts.map((part, index) => (
                   <li key={index} className="flex items-center gap-2 text-sm">
                     <div className="w-2 h-2 rounded-full bg-green-600" />
                     {part}
