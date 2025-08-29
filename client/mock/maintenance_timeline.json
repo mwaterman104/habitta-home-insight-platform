@@ -1,5 +1,75 @@
 [
   {
+    "id": "today-1",
+    "title": "Check water pressure",
+    "due_date": "2025-01-01",
+    "category": "Plumbing",
+    "priority": "high",
+    "cost": 0,
+    "labels": ["inspection", "water"],
+    "status": "pending"
+  },
+  {
+    "id": "today-2",
+    "title": "Test HVAC emergency shutoff",
+    "due_date": "2025-01-02",
+    "category": "HVAC",
+    "priority": "high",
+    "cost": 0,
+    "labels": ["safety", "hvac"],
+    "status": "pending"
+  },
+  {
+    "id": "today-3",
+    "title": "Inspect outdoor faucets for leaks",
+    "due_date": "2025-01-03",
+    "category": "Plumbing",
+    "priority": "medium",
+    "cost": 25,
+    "labels": ["inspection", "water"],
+    "status": "pending"
+  },
+  {
+    "id": "week-1",
+    "title": "Replace air fresheners",
+    "due_date": "2025-01-04",
+    "category": "Interior",
+    "priority": "low",
+    "cost": 15,
+    "labels": ["routine", "interior"],
+    "status": "pending"
+  },
+  {
+    "id": "week-2",
+    "title": "Check garage door sensors",
+    "due_date": "2025-01-05",
+    "category": "Safety",
+    "priority": "medium",
+    "cost": 0,
+    "labels": ["safety", "mechanical"],
+    "status": "pending"
+  },
+  {
+    "id": "week-3",
+    "title": "Clean range hood filter",
+    "due_date": "2025-01-06",
+    "category": "Appliances",
+    "priority": "medium",
+    "cost": 20,
+    "labels": ["cleaning", "appliances"],
+    "status": "pending"
+  },
+  {
+    "id": "week-4",
+    "title": "Test Wi-Fi connected devices",
+    "due_date": "2025-01-07",
+    "category": "Technology",
+    "priority": "low",
+    "cost": 0,
+    "labels": ["technology", "connectivity"],
+    "status": "pending"
+  },
+  {
     "id": "task-1",
     "title": "Clean HVAC filters",
     "due_date": "2025-01-15",
