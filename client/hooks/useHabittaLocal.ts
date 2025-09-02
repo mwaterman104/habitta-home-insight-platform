@@ -16,6 +16,7 @@ import lifestyleMetricsData from "../mock/lifestyle_metrics.json";
 import seasonalExperiencesData from "../mock/seasonal_experiences.json";
 import partnerOffersData from "../mock/partner_offers.json";
 import userProfileData from "../mock/user_profile.json";
+import propertyIntelligenceData from "../mock/property_intelligence.json";
 import { getTasks } from "../utils/tasksMock";
 import { generateSeasonalChecklist } from "../utils/seasonalPlan";
 
@@ -356,11 +357,6 @@ export const useSeasonalHero = () => {
 // Property Intelligence Hook
 export const usePropertyIntelligence = () => {
   return useMemo(() => {
-    try {
-      return require('../mock/property_intelligence.json');
-    } catch (error) {
-      console.error('Failed to load property intelligence data:', error);
-      return null;
-    }
+    return propertyIntelligenceData;
   }, []);
 };
