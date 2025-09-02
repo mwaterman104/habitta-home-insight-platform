@@ -18,35 +18,34 @@ export default function HomeConditionCard() {
   };
 
   return (
-    <Card className="rounded-2xl">
+    <Card className="rounded-2xl h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <div className={`${getConditionBgColor(propertyData.condition_score)} rounded-xl p-2`}>
-            <Home className={`h-5 w-5 ${getConditionColor(propertyData.condition_score)}`} />
+        <CardTitle className="flex items-center gap-2 text-base">
+          <div className="bg-primary/10 rounded-lg p-1.5">
+            <Home className="h-4 w-4 text-primary" />
           </div>
-          Home Condition
+          <span className="text-sm">🏠 Home Condition</span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold">{propertyData.condition_label}</span>
-          <span className="text-lg text-muted-foreground">
-            {propertyData.condition_score}%
-          </span>
+      <CardContent className="space-y-3 flex-1">
+        <div className="text-center">
+          <div className={`text-2xl font-bold ${getConditionColor(propertyData.condition_score)}`}>
+            {propertyData.condition_score}/100
+          </div>
+          <p className="text-xs text-muted-foreground">{propertyData.condition_label}</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-info-blue" />
-            <div>
-              <div className="font-medium">{propertyData.metrics.safety_compliance}%</div>
-              <div className="text-xs text-muted-foreground">Safety</div>
+        
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground whitespace-nowrap">Safety</span>
+            <div className={`px-1.5 py-0.5 rounded text-xs ${getConditionBgColor(propertyData.metrics.safety_compliance)}`}>
+              {propertyData.metrics.safety_compliance}%
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-accent" />
-            <div>
-              <div className="font-medium">{propertyData.metrics.energy_efficiency_rating}</div>
-              <div className="text-xs text-muted-foreground">Efficiency</div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground whitespace-nowrap">Energy</span>
+            <div className={`px-1.5 py-0.5 rounded text-xs bg-accent/10 text-accent`}>
+              {propertyData.metrics.energy_efficiency_rating}
             </div>
           </div>
         </div>

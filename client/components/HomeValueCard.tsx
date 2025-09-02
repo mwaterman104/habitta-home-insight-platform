@@ -15,47 +15,37 @@ export default function HomeValueCard() {
   };
 
   return (
-    <Card className="rounded-2xl">
+    <Card className="rounded-2xl h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <div className="bg-info-blue/10 rounded-xl p-2">
-            <TrendingUp className="h-5 w-5 text-info-blue" />
+        <CardTitle className="flex items-center gap-2 text-base">
+          <div className="bg-primary/10 rounded-lg p-1.5">
+            <TrendingUp className="h-4 w-4 text-primary" />
           </div>
-          Home Value
+          <span className="text-sm">💰 Home Value</span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold">
-            {formatCurrency(propertyData.home_value)}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-success-green text-sm font-medium">
-            +{formatCurrency(propertyData.value_change_1year)}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            (+{propertyData.value_change_percent}%) this year
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-          <div>
-            <div className="font-medium">{propertyData.metrics.maintenance_completion_rate}%</div>
-            <div className="text-xs text-muted-foreground">Maintenance Rate</div>
-          </div>
-          <div>
-            <div className="font-medium">{propertyData.metrics.preventive_maintenance_score}%</div>
-            <div className="text-xs text-muted-foreground">Preventive Score</div>
+      <CardContent className="space-y-3 flex-1">
+        <div className="text-center">
+          <div className="text-2xl font-bold">{formatCurrency(propertyData.home_value)}</div>
+          <div className="flex items-center justify-center gap-1 mt-1">
+            <span className="text-xs text-success-green font-medium">
+              +{formatCurrency(propertyData.value_change_1year)} YoY
+            </span>
           </div>
         </div>
 
-        {/* Lifestyle Investment Section */}
-        <div className="mt-4 pt-4 border-t">
-          <h4 className="text-sm font-semibold mb-2">💡 Your savings unlock:</h4>
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <div>Kitchen refresh fund: $195/month</div>
-            <div>Home gym addition: On track for 2026</div>
-            <div>Energy independence: 87% efficiency rating</div>
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground whitespace-nowrap">Maintenance</span>
+            <div className="text-accent font-bold">
+              {propertyData.metrics.maintenance_completion_rate}%
+            </div>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground whitespace-nowrap">Preventive</span>
+            <div className="text-success-green font-bold">
+              {propertyData.metrics.preventive_maintenance_score}%
+            </div>
           </div>
         </div>
       </CardContent>

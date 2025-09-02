@@ -1,13 +1,13 @@
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { useSeasonalHero, useUserProfile, useCurrentSeason } from "../hooks/useHabittaLocal";
+import { useSeasonalHero, useUserProfile, useCurrentSeason, getSeasonInfo } from "../hooks/useHabittaLocal";
 import { Calendar, Home, MapPin } from "lucide-react";
 
 export default function SeasonalExperienceHero() {
   const hero = useSeasonalHero();
   const userProfile = useUserProfile();
-  const currentSeason = useCurrentSeason();
+  const { current: currentSeason, next: nextSeason } = getSeasonInfo();
 
   if (!hero) {
     return (
@@ -54,7 +54,7 @@ export default function SeasonalExperienceHero() {
           <div className="hidden md:block">
             <div className="w-32 h-24 rounded-xl overflow-hidden bg-muted">
               <img 
-                src={userProfile.photo_url} 
+                src={userProfile.housePhotoUrl} 
                 alt={`${userProfile.name}'s home`}
                 className="w-full h-full object-cover"
               />
@@ -66,9 +66,14 @@ export default function SeasonalExperienceHero() {
             <div className="flex items-center gap-2 mb-2">
               <span className="text-2xl">{getSeasonEmoji(currentSeason)}</span>
               <h2 className="text-xl font-bold">{hero.title}</h2>
-              <Badge variant="outline" className="ml-2 capitalize bg-primary/10 text-primary border-primary/20">
-                {currentSeason} Ready
-              </Badge>
+              <div className="flex gap-2 ml-2">
+                <Badge variant="outline" className="capitalize bg-primary/10 text-primary border-primary/20">
+                  {currentSeason}
+                </Badge>
+                <Badge variant="outline" className="capitalize bg-muted text-muted-foreground border-muted-foreground/20">
+                  {nextSeason} prep
+                </Badge>
+              </div>
             </div>
             
             {/* Address */}

@@ -7,68 +7,57 @@ export default function LifestyleReadinessPanel() {
   const metrics = useLifestyleMetrics();
 
   return (
-    <Card className="rounded-2xl">
+    <Card className="rounded-2xl h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <div className="bg-primary/10 rounded-xl p-2">
-            <Home className="h-5 w-5 text-primary" />
+        <CardTitle className="flex items-center gap-2 text-base">
+          <div className="bg-primary/10 rounded-lg p-1.5">
+            <Home className="h-4 w-4 text-primary" />
           </div>
-          🏡 Lifestyle Readiness
+          <span className="text-sm">🏡 Lifestyle Readiness</span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-accent" />
-              <span className="text-sm font-medium">Energy Wellness</span>
+      <CardContent className="space-y-3 flex-1">
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1">
+              <Zap className="h-3 w-3 text-accent" />
+              <span className="text-xs font-medium whitespace-nowrap">Energy</span>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold">{metrics.energyWellness.score}/100</span>
-              <Badge variant="outline" className="text-xs bg-success-green/10 text-success-green border-success-green/20">
-                Above neighborhood avg
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-bold">{metrics.energyWellness.score}</span>
+              <Badge variant="outline" className="text-xs bg-success-green/10 text-success-green border-success-green/20 px-1">
+                Above avg
               </Badge>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Home className="h-4 w-4 text-info-blue" />
-              <span className="text-sm font-medium">Comfort Index</span>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1">
+              <Home className="h-3 w-3 text-info-blue" />
+              <span className="text-xs font-medium whitespace-nowrap">Comfort</span>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold">{metrics.comfortIndex.rating}</span>
-              <span className="text-xs text-muted-foreground">{metrics.comfortIndex.summary}</span>
-            </div>
+            <span className="text-sm font-bold text-muted-foreground">{metrics.comfortIndex.rating}</span>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <TreePine className="h-4 w-4 text-success-green" />
-              <span className="text-sm font-medium">Outdoor Living</span>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1">
+              <TreePine className="h-3 w-3 text-success-green" />
+              <span className="text-xs font-medium whitespace-nowrap">Outdoor</span>
             </div>
-            <div className="flex items-baseline gap-2">
-              <Badge 
-                variant="outline" 
-                className="bg-success-green/10 text-success-green border-success-green/20"
-              >
-                {metrics.outdoorReadiness.status}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {metrics.outdoorReadiness.seasonalNote}
-              </span>
-            </div>
+            <Badge 
+              variant="outline" 
+              className="bg-success-green/10 text-success-green border-success-green/20 text-xs px-1"
+            >
+              {metrics.outdoorReadiness.status}
+            </Badge>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-success-green" />
-              <span className="text-sm font-medium">Monthly Savings</span>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1">
+              <DollarSign className="h-3 w-3 text-success-green" />
+              <span className="text-xs font-medium whitespace-nowrap">Savings</span>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold">${metrics.energyWellness.monthlySavings}</span>
-              <span className="text-xs text-muted-foreground">vs neighborhood average</span>
-            </div>
+            <span className="text-sm font-bold text-success-green">${metrics.energyWellness.monthlySavings}</span>
           </div>
         </div>
       </CardContent>

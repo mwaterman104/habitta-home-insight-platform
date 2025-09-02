@@ -260,9 +260,21 @@ export const useCurrentSeason = () => {
   }, []);
 };
 
+export function getSeasonInfo(): { current: Season; next: Season } {
+  const month = new Date().getMonth();
+  if (month >= 2 && month <= 4) return { current: "spring", next: "summer" };
+  if (month >= 5 && month <= 7) return { current: "summer", next: "fall" };
+  if (month >= 8 && month <= 10) return { current: "fall", next: "winter" };
+  return { current: "winter", next: "spring" };
+}
+
+export function useCurrentSeason(): Season {
+  return getSeasonInfo().current;
+}
+
 export const useSeasonalHero = () => {
   const allSeasonalExperiences = useSeasonalExperiences();
-  const currentSeason = useCurrentSeason();
+  const { current: currentSeason, next: nextSeason } = getSeasonInfo();
   const lifestyleMetrics = useLifestyleMetrics();
   const propertyData = usePropertySummary();
   const maintenanceHistory = useMaintenanceHistory();
@@ -273,8 +285,8 @@ export const useSeasonalHero = () => {
     }
     
     // Find experiences for current or next season
-    const currentSeasonExperiences = allSeasonalExperiences.filter(exp => 
-      exp.season === currentSeason
+    const relevantExperiences = allSeasonalExperiences.filter(exp => 
+      exp.season === currentSeason || exp.season === nextSeason
     );
     
     // Check trigger conditions for matching
@@ -293,17 +305,21 @@ export const useSeasonalHero = () => {
       outdoor_ready: lifestyleMetrics.outdoorReadiness.status === "Ready"
     };
     
-    // Find best matching experience for current season
-    for (const experience of currentSeasonExperiences) {
-      const triggersMatch = experience.trigger.every(trigger => 
-        triggers[trigger as keyof typeof triggers]
-      );
-      if (triggersMatch) {
-        return experience;
+    // Find best matching experience for current season first
+    for (const experience of relevantExperiences) {
+      if (experience.season === currentSeason) {
+        const triggersMatch = experience.trigger.every(trigger => 
+          triggers[trigger as keyof typeof triggers]
+        );
+        if (triggersMatch) {
+          return experience;
+        }
       }
     }
     
-    // Fallback to first experience for current season or any season
-    return currentSeasonExperiences[0] || allSeasonalExperiences[0];
-  }, [allSeasonalExperiences, currentSeason, lifestyleMetrics, propertyData, maintenanceHistory]);
+    // Fallback to first experience for current season or next season
+    return relevantExperiences.find(exp => exp.season === currentSeason) || 
+           relevantExperiences.find(exp => exp.season === nextSeason) || 
+           allSeasonalExperiences[0];
+  }, [allSeasonalExperiences, currentSeason, nextSeason, lifestyleMetrics, propertyData, maintenanceHistory]);
 };

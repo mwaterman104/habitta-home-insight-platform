@@ -78,7 +78,7 @@ export default function Dashboard() {
               <ThisWeekChecklist alerts={alerts} />
             </div>
             <div className="lg:col-span-2">
-              <div className="grid lg:grid-cols-3 gap-4 mb-4">
+              <div className="grid lg:grid-cols-3 gap-4 mb-4 items-stretch">
                 <HomeConditionCard />
                 <HomeValueCard />
                 <LifestyleReadinessPanel />
