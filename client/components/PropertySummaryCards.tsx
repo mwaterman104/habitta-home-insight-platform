@@ -98,6 +98,16 @@ export default function PropertySummaryCards() {
               <div className="text-xs text-muted-foreground">Preventive Score</div>
             </div>
           </div>
+
+          {/* Lifestyle Investment Section */}
+          <div className="mt-4 pt-4 border-t">
+            <h4 className="text-sm font-semibold mb-2">💡 Your savings unlock:</h4>
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <div>Kitchen refresh fund: $195/month</div>
+              <div>Home gym addition: On track for 2026</div>
+              <div>Energy independence: 87% efficiency rating</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

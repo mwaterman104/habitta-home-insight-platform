@@ -22,24 +22,41 @@ export default function SystemHealthStrip({ systems }: SystemHealthStripProps) {
     }
   };
 
+  const getLifestyleSubtitle = (system: string) => {
+    const subtitles = {
+      hvac: "Climate optimized",
+      water: "Guest ready", 
+      roof: "Weather protected",
+      electrical: "Smart home ready",
+      plumbing: "Full confidence",
+      appliances: "Efficiency maximized"
+    };
+    return subtitles[system as keyof typeof subtitles] || "";
+  };
+
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" data-systems-health>
       {systems.map((system) => (
         <Badge 
           key={system.system}
           variant="outline"
-          className={`rounded-xl px-3 py-2 font-medium ${getStatusColor(system.status)}`}
+          className={`rounded-xl px-3 py-2 font-medium ${getStatusColor(system.status)} flex flex-col items-center text-center`}
         >
-          <span className={`mr-2 ${
-            system.status === 'green' ? 'text-green-600' :
-            system.status === 'yellow' ? 'text-yellow-600' :
-            'text-red-600'
-          }`}>
-            {getStatusIcon(system.status)}
+          <div className="flex items-center gap-2">
+            <span className={`${
+              system.status === 'green' ? 'text-green-600' :
+              system.status === 'yellow' ? 'text-yellow-600' :
+              'text-red-600'
+            }`}>
+              {getStatusIcon(system.status)}
+            </span>
+            <span className="capitalize">{system.system.replace('_', ' ')}</span>
+          </div>
+          <span className="text-xs opacity-70 mt-1">
+            {getLifestyleSubtitle(system.system)}
           </span>
-          <span className="capitalize">{system.system.replace('_', ' ')}</span>
           {system.nextService && (
-            <span className="ml-2 text-xs opacity-70">
+            <span className="text-xs opacity-70 mt-1">
               {system.nextService}
             </span>
           )}

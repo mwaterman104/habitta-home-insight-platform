@@ -14,6 +14,12 @@ import PropertySummaryCards from "../components/PropertySummaryCards";
 import NeighborhoodPeerBenchmark from "../components/NeighborhoodPeerBenchmark";
 import CostImpactModel from "../components/CostImpactModel";
 import MaintenanceHistory from "../components/MaintenanceHistory";
+import SeasonalExperienceHero from "../components/SeasonalExperienceHero";
+import LifestyleReadinessPanel from "../components/LifestyleReadinessPanel";
+import LifestyleEnergyBenefits from "../components/LifestyleEnergyBenefits";
+import SeasonalEnergyReadiness from "../components/SeasonalEnergyReadiness";
+import LifestyleTimeline from "../components/LifestyleTimeline";
+import PartnerOpportunities from "../components/PartnerOpportunities";
 import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary } from "../hooks/useHabittaLocal";
 
 export default function Dashboard() {
@@ -42,6 +48,9 @@ export default function Dashboard() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* Seasonal Experience Hero */}
+          <SeasonalExperienceHero />
+
           {/* Primary Alert-Driven View */}
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
@@ -67,6 +76,9 @@ export default function Dashboard() {
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <PropertySummaryCards />
+                <LifestyleReadinessPanel />
+              </div>
+              <div>
                 <CompletedStats />
               </div>
             </div>
@@ -74,6 +86,7 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="plan" className="space-y-6">
+          <LifestyleTimeline />
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-6">
               <UpcomingTasksCard />
@@ -84,12 +97,17 @@ export default function Dashboard() {
               <CostImpactModel />
             </div>
           </div>
+          <PartnerOpportunities />
         </TabsContent>
 
         <TabsContent value="energy" className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             <NeighborhoodComparison />
             <NeighborhoodPeerBenchmark />
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <LifestyleEnergyBenefits />
+            <SeasonalEnergyReadiness />
           </div>
         </TabsContent>
 

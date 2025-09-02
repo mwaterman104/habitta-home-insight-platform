@@ -32,6 +32,29 @@ export default function MaintenanceHistory() {
     }
   };
 
+  const getLifestyleBenefit = (category: string, title: string) => {
+    const lowerCategory = category.toLowerCase();
+    const lowerTitle = title.toLowerCase();
+    
+    if (lowerTitle.includes('gutter')) {
+      return { icon: "🌿", text: "Outdoor Living: Storm protection + entertaining ready" };
+    }
+    if (lowerCategory.includes('hvac') && lowerTitle.includes('filter')) {
+      return { icon: "💨", text: "Air Quality: Perfect for home workouts + office productivity" };
+    }
+    if (lowerCategory.includes('plumbing') && lowerTitle.includes('water')) {
+      return { icon: "🚿", text: "Guest Confidence: Reliable hot water for hosting" };
+    }
+    if (lowerCategory.includes('safety')) {
+      return { icon: "🔒", text: "Peace of Mind: Full safety confidence" };
+    }
+    if (lowerCategory.includes('exterior')) {
+      return { icon: "🏡", text: "Curb Appeal: Home value protection" };
+    }
+    
+    return { icon: "✨", text: "Home Excellence: System optimized" };
+  };
+
   return (
     <Card className="rounded-2xl">
       <CardHeader>
@@ -91,6 +114,19 @@ export default function MaintenanceHistory() {
                         </span>
                       )}
                     </div>
+                  </div>
+
+                  {/* Lifestyle Benefit */}
+                  <div className="mt-2">
+                    {(() => {
+                      const benefit = getLifestyleBenefit(item.category, item.title);
+                      return (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{benefit.icon}</span>
+                          <span>→ {benefit.text}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

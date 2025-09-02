@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Task, LifecycleItem, NeighborhoodPoint, SeasonalChecklistItem, Season } from "../types/habitta";
 import { Alert, SystemHealthStatus, SystemKey } from "../types/alerts";
+import { HomeSystem, LifestyleMetrics, SeasonalExperience, PartnerOffer } from "../types/lifestyle";
 import { generateAlertsFromTasks, calculateMoneySavings } from "../utils/alerts";
 import maintenanceData from "../mock/maintenance_timeline.json";
 import lifecycleData from "../mock/lifecycle.json";
@@ -10,6 +11,10 @@ import chatdiyGuides from "../mock/chatdiy_guides.json";
 import costModel from "../mock/cost_model.json";
 import neighborhoodBenchmark from "../mock/neighborhood_benchmark.json";
 import propertyData from "../mock/property_summary.json";
+import homeSystemsData from "../mock/home_systems.json";
+import lifestyleMetricsData from "../mock/lifestyle_metrics.json";
+import seasonalExperiencesData from "../mock/seasonal_experiences.json";
+import partnerOffersData from "../mock/partner_offers.json";
 import { getTasks } from "../utils/tasksMock";
 import { generateSeasonalChecklist } from "../utils/seasonalPlan";
 
@@ -211,4 +216,77 @@ export const useMoneySavings = () => {
   return useMemo(() => {
     return calculateMoneySavings(alerts);
   }, [alerts]);
+};
+
+// New lifestyle hooks
+export const useHomeSystems = () => {
+  return useMemo(() => {
+    return homeSystemsData as HomeSystem[];
+  }, []);
+};
+
+export const useLifestyleMetrics = () => {
+  return useMemo(() => {
+    return lifestyleMetricsData as LifestyleMetrics;
+  }, []);
+};
+
+export const useSeasonalExperiences = () => {
+  return useMemo(() => {
+    return seasonalExperiencesData as SeasonalExperience[];
+  }, []);
+};
+
+export const usePartnerOffers = () => {
+  return useMemo(() => {
+    return partnerOffersData as PartnerOffer[];
+  }, []);
+};
+
+export const useSeasonalHero = () => {
+  const seasonalExperiences = useSeasonalExperiences();
+  const lifestyleMetrics = useLifestyleMetrics();
+  const propertyData = usePropertySummary();
+  const maintenanceHistory = useMaintenanceHistory();
+  
+  return useMemo(() => {
+    // Determine current season
+    const now = new Date();
+    const month = now.getMonth(); // 0-11
+    let currentSeason: "spring" | "summer" | "fall" | "winter";
+    
+    if (month >= 2 && month <= 4) currentSeason = "spring";
+    else if (month >= 5 && month <= 7) currentSeason = "summer";
+    else if (month >= 8 && month <= 10) currentSeason = "fall";
+    else currentSeason = "winter";
+    
+    // Check trigger conditions
+    const triggers = {
+      roof_clear: maintenanceHistory.some(item => 
+        item.category?.toLowerCase().includes('exterior') || 
+        item.category?.toLowerCase().includes('roof')
+      ),
+      gutters_clean: maintenanceHistory.some(item => 
+        item.title?.toLowerCase().includes('gutter')
+      ),
+      energy_efficiency_above_avg: lifestyleMetrics.energyWellness.score > lifestyleMetrics.energyWellness.neighborhoodAverage,
+      safety_high: propertyData.metrics.safety_compliance >= 90,
+      heating_optimized: currentSeason === "winter",
+      hvac_optimized: true, // Assume HVAC is optimized based on system health
+      outdoor_ready: lifestyleMetrics.outdoorReadiness.status === "Ready"
+    };
+    
+    // Find best matching experience
+    const seasonalExperiences = seasonalExperiences.filter(exp => exp.season === currentSeason);
+    
+    for (const experience of seasonalExperiences) {
+      const triggersMatch = experience.trigger.every(trigger => triggers[trigger as keyof typeof triggers]);
+      if (triggersMatch) {
+        return experience;
+      }
+    }
+    
+    // Fallback to first seasonal experience for current season
+    return seasonalExperiences[0] || seasonalExperiences[0];
+  }, [seasonalExperiences, lifestyleMetrics, propertyData, maintenanceHistory]);
 };

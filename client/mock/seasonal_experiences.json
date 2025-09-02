@@ -1,0 +1,102 @@
+[
+  {
+    "season": "spring",
+    "trigger": ["roof_clear", "gutters_clean"],
+    "title": "Spring Home Ready!",
+    "message": "Your systems are optimized for outdoor entertaining season",
+    "bullets": [
+      "Roof & gutters: Perfect condition",
+      "HVAC efficiency: 23% above neighborhood", 
+      "Outdoor systems: All green"
+    ],
+    "primaryCta": {
+      "text": "Plan Your First Gathering",
+      "route": "/seasonal"
+    },
+    "secondaryCta": {
+      "text": "View Systems",
+      "action": "view_systems"
+    },
+    "imagery": "spring_entertaining"
+  },
+  {
+    "season": "spring",
+    "trigger": ["energy_efficiency_above_avg"],
+    "title": "Energy Optimized Spring",
+    "message": "Perfect efficiency for the active season ahead",
+    "bullets": [
+      "Cooling costs 30% below average",
+      "Air quality optimized for activities",
+      "Smart systems ready for spring"
+    ],
+    "primaryCta": {
+      "text": "See Energy Insights",
+      "route": "/energy"
+    },
+    "secondaryCta": {
+      "text": "View Savings",
+      "action": "view_savings"
+    },
+    "imagery": "energy_spring"
+  },
+  {
+    "season": "summer",
+    "trigger": ["hvac_optimized"],
+    "title": "Cool Summer Ahead",
+    "message": "HVAC performance ready for peak season",
+    "bullets": [
+      "Cooling efficiency maximized",
+      "Energy costs under control",
+      "Perfect climate for entertaining"
+    ],
+    "primaryCta": {
+      "text": "Summer Prep Checklist",
+      "route": "/seasonal"
+    },
+    "secondaryCta": {
+      "text": "Energy Tips",
+      "action": "energy_tips"
+    },
+    "imagery": "summer_cool"
+  },
+  {
+    "season": "fall",
+    "trigger": ["safety_high"],
+    "title": "Storm Season Protected",
+    "message": "Your home is ready for fall weather challenges",
+    "bullets": [
+      "Roof condition: Excellent",
+      "Drainage systems clear",
+      "Safety systems verified"
+    ],
+    "primaryCta": {
+      "text": "Fall Readiness Plan", 
+      "route": "/seasonal"
+    },
+    "secondaryCta": {
+      "text": "Safety Check",
+      "action": "safety_check"
+    },
+    "imagery": "fall_protected"
+  },
+  {
+    "season": "winter",
+    "trigger": ["heating_optimized"],
+    "title": "Cozy Winter, Lower Bills",
+    "message": "Heating performance is on point — comfort without overspend",
+    "bullets": [
+      "Heating efficiency optimized",
+      "Air quality perfect for indoor time",
+      "Energy costs below neighborhood"
+    ],
+    "primaryCta": {
+      "text": "Winter Comfort Tips",
+      "route": "/seasonal"
+    },
+    "secondaryCta": {
+      "text": "See Savings",
+      "action": "view_savings"
+    },
+    "imagery": "winter_cozy"
+  }
+]
