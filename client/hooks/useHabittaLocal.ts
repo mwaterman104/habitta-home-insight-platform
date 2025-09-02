@@ -268,10 +268,6 @@ export function getSeasonInfo(): { current: Season; next: Season } {
   return { current: "winter", next: "spring" };
 }
 
-export function useCurrentSeason(): Season {
-  return getSeasonInfo().current;
-}
-
 export const useSeasonalHero = () => {
   const allSeasonalExperiences = useSeasonalExperiences();
   const { current: currentSeason, next: nextSeason } = getSeasonInfo();
