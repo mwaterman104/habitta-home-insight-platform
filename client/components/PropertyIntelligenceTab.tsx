@@ -1,26 +1,38 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Slider } from "./ui/slider";
 import { usePropertyIntelligence } from "../hooks/useHabittaLocal";
 import { 
-  Home, 
-  MapPin, 
-  Calendar, 
+  BarChart3, 
+  Brain, 
+  Database, 
   TrendingUp, 
   Shield, 
-  Zap, 
-  Droplets, 
-  TreePine,
-  Building,
-  AlertTriangle,
-  CheckCircle,
+  Target,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
+  Zap,
+  Settings,
+  LineChart,
+  MapPin,
+  Calendar,
+  Home,
   Clock,
-  DollarSign
+  DollarSign,
+  Users,
+  Cpu,
+  FileText,
+  Download,
+  Gauge
 } from "lucide-react";
 
 const PropertyIntelligenceTab = () => {
   const propertyData = usePropertyIntelligence();
+  const [selectedScenario, setSelectedScenario] = useState("current");
 
   if (!propertyData) {
     return (
@@ -32,306 +44,206 @@ const PropertyIntelligenceTab = () => {
     );
   }
 
+  const analytics = propertyData.analyticsEngine;
+
   return (
     <div className="space-y-6">
-      {/* Hero Section */}
+      {/* Hero Section: Model Performance Dashboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Satellite View Mock */}
+        {/* Habitta Model Performance */}
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
-                Property Overview
+                <Brain className="w-6 h-6 text-primary" />
+                Habitta Model Performance
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative bg-muted rounded-lg h-64 flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <Home className="w-12 h-12 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Satellite View</p>
-                  <p className="text-xs text-muted-foreground">Interactive overlays available</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{analytics.modelPerformance.overallAccuracy.last12Months}%</div>
+                  <div className="text-sm text-muted-foreground">Overall Accuracy</div>
+                  <div className="text-xs text-green-600 dark:text-green-400">↗ {analytics.modelPerformance.overallAccuracy.trend}</div>
                 </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">Roof Condition</Button>
-                <Button variant="outline" size="sm">Drainage Flow</Button>
-                <Button variant="outline" size="sm">Vegetation</Button>
-                <Button variant="outline" size="sm">Solar Exposure</Button>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{analytics.modelPerformance.predictionAccuracy.maintenanceTiming}%</div>
+                  <div className="text-sm text-muted-foreground">Maintenance Timing</div>
+                  <div className="text-xs text-muted-foreground">last 12 months</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">±{analytics.modelPerformance.predictionAccuracy.costEstimates}%</div>
+                  <div className="text-sm text-muted-foreground">Cost Variance</div>
+                  <div className="text-xs text-muted-foreground">average estimate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{analytics.modelPerformance.calibrationMetrics.reliabilityScore * 100}%</div>
+                  <div className="text-sm text-muted-foreground">Reliability Score</div>
+                  <div className="text-xs text-muted-foreground">validated model</div>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Property Stats Panel */}
+        {/* Confidence Intervals */}
         <Card>
           <CardHeader>
-            <CardTitle>Property Stats</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Confidence Intervals
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Built:</span>
-                <span className="text-sm font-medium">{propertyData.basicInfo.yearBuilt} ({propertyData.basicInfo.age} years old)</span>
+            {propertyData.predictiveModeling.maintenanceForecasting.majorSystemReplacements.map((system: any, index: number) => (
+              <div key={index} className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">{system.system} Replacement</span>
+                  <Badge variant="outline">{system.confidence}% confidence</Badge>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {system.predictedReplacement} • {system.costProjection}
+                </div>
+                <div className="h-2 bg-muted rounded-full">
+                  <div 
+                    className="h-2 bg-primary rounded-full" 
+                    style={{ width: `${system.confidence}%` }}
+                  ></div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Lot Size:</span>
-                <span className="text-sm font-medium">{propertyData.basicInfo.lotSize}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Structure:</span>
-                <span className="text-sm font-medium">{propertyData.basicInfo.squareFootage} sq ft</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Last Update:</span>
-                <span className="text-sm font-medium">{propertyData.basicInfo.lastMajorUpdate}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Risk Score:</span>
-                <Badge variant="secondary">{propertyData.basicInfo.riskScore}</Badge>
-              </div>
-            </div>
+            ))}
           </CardContent>
         </Card>
       </div>
 
-      {/* Timeline Scrubber */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Property Timeline
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {propertyData.basicInfo.ownershipHistory.map((event: any, index: number) => (
-              <div key={index} className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-primary rounded-full mt-2"></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">{event.event}</p>
-                    <span className="text-sm text-muted-foreground">{event.year}</span>
-                  </div>
-                  {event.price && (
-                    <p className="text-sm text-muted-foreground">${event.price.toLocaleString()}</p>
-                  )}
-                  {event.value && (
-                    <p className="text-sm text-muted-foreground">${event.value.toLocaleString()} investment</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Main Content Grid */}
-      <Tabs defaultValue="structural" className="space-y-6">
+      {/* Analytics Quadrants */}
+      <Tabs defaultValue="data-sources" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="structural">Structural</TabsTrigger>
-          <TabsTrigger value="environmental">Environmental</TabsTrigger>
-          <TabsTrigger value="neighborhood">Neighborhood</TabsTrigger>
-          <TabsTrigger value="predictive">Predictive</TabsTrigger>
+          <TabsTrigger value="data-sources" className="flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            Data & Methodology
+          </TabsTrigger>
+          <TabsTrigger value="prediction-engine" className="flex items-center gap-2">
+            <Cpu className="w-4 h-4" />
+            Prediction Engine
+          </TabsTrigger>
+          <TabsTrigger value="market-intelligence" className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Market Intelligence
+          </TabsTrigger>
+          <TabsTrigger value="validation" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Model Validation
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="structural" className="space-y-6">
+        {/* Data Sources & Methodology */}
+        <TabsContent value="data-sources" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Roof Analysis */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Home className="w-5 h-5" />
-                  Roof Analysis
+                  <Database className="w-5 h-5" />
+                  Input Data Streams
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Material:</span>
-                    <span className="text-sm font-medium">{propertyData.structuralAnalysis.roofCondition.material}</span>
+                {Object.entries(analytics.dataSources).map(([key, source]: [string, any]) => (
+                  <div key={key} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex-1">
+                      <p className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').toLowerCase()}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {source.points && `${source.points} data points`}
+                        {source.historicalYears && `${source.historicalYears} years historical`}
+                        {source.comparableProperties && `${source.comparableProperties.toLocaleString()} properties`}
+                        {source.devices && `${source.devices} IoT devices`}
+                        {source.records && `${source.records} permit records`}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={source.reliability > 0.9 ? "default" : "secondary"}>
+                        {Math.round(source.reliability * 100)}% reliable
+                      </Badge>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {source.coverage || source.connectivity || source.completeness || source.dataQuality}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Age:</span>
-                    <span className="text-sm font-medium">{propertyData.structuralAnalysis.roofCondition.estimatedAge} years</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Condition Score:</span>
-                    <Badge variant={propertyData.structuralAnalysis.roofCondition.conditionScore > 75 ? "default" : "secondary"}>
-                      {propertyData.structuralAnalysis.roofCondition.conditionScore}/100
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Replacement:</span>
-                    <span className="text-sm font-medium">{propertyData.structuralAnalysis.roofCondition.replacementTimeline}</span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <p className="text-xs text-muted-foreground">{propertyData.structuralAnalysis.roofCondition.neighborhoodStatus}</p>
-                </div>
+                ))}
               </CardContent>
             </Card>
 
-            {/* Foundation Health */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Building className="w-5 h-5" />
-                  Foundation Health
+                  <Settings className="w-5 h-5" />
+                  Algorithm Transparency
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Type:</span>
-                    <span className="text-sm font-medium">{propertyData.structuralAnalysis.foundationHealth.type}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Settlement Risk:</span>
-                    <Badge variant="secondary">{propertyData.structuralAnalysis.foundationHealth.settlementRisk}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Drainage Grade:</span>
-                    <Badge variant="default">{propertyData.structuralAnalysis.foundationHealth.drainageGrade}</Badge>
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <p className="text-xs text-muted-foreground">{propertyData.structuralAnalysis.foundationHealth.foundationMovementPrediction}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="environmental" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Climate Impact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  Climate Impact
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm font-medium">Sun Exposure</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.climateImpact.sunExposure}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Wind Protection</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.climateImpact.windExposure}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Weather Risk</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.climateImpact.weatherDamageCorrelation}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Landscape Intelligence */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TreePine className="w-5 h-5" />
-                  Landscape Intelligence
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm font-medium">Tree Health</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.landscapeIntelligence.treeHealth}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Root System Risk</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.landscapeIntelligence.rootSystemRisk}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Seasonal Needs</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.environmentalFactors.landscapeIntelligence.seasonalMaintenanceNeeds}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="neighborhood" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Maintenance Benchmarking */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Maintenance Benchmarking
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm font-medium">Compliance Rate</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.neighborhoodContext.maintenanceBenchmarking.comparableHomeCycles}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Contractor Availability</p>
-                    <p className="text-xs text-muted-foreground">{propertyData.neighborhoodContext.maintenanceBenchmarking.contractorAvailability}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Risk Assessment */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  Risk Assessment
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Natural Disaster</span>
-                    <Badge variant="secondary">Low</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Crime & Safety</span>
-                    <Badge variant="secondary">Very Low</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Insurance Claims</span>
-                    <Badge variant="secondary">Below Average</Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="predictive" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Upcoming Maintenance */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  Maintenance Forecast
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {propertyData.predictiveModeling.maintenanceForecasting.next12Months.map((item: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <p className="font-medium">{item.item}</p>
-                        <p className="text-sm text-muted-foreground">{item.month}</p>
+                <div>
+                  <h4 className="font-medium mb-2">Home Score Weighting</h4>
+                  <div className="space-y-2">
+                    {Object.entries(analytics.modelDetails.homeScoreWeighting).map(([system, weight]: [string, any]) => (
+                      <div key={system} className="flex items-center justify-between">
+                        <span className="text-sm capitalize">{system.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-2 bg-muted rounded-full">
+                            <div 
+                              className="h-2 bg-primary rounded-full" 
+                              style={{ width: `${weight * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{Math.round(weight * 100)}%</span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium">${item.cost}</p>
-                        <Badge variant="outline" className="text-xs">{item.probability}% likely</Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Prediction Methods</h4>
+                  <div className="space-y-1">
+                    {Object.entries(analytics.modelDetails.predictionMethods).map(([method, description]: [string, any]) => (
+                      <div key={method} className="text-sm">
+                        <span className="font-medium capitalize">{method.replace(/([A-Z])/g, ' $1').toLowerCase()}:</span>
+                        <span className="text-muted-foreground ml-1">{description}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Prediction Engine Internals */}
+        <TabsContent value="prediction-engine" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-5 h-5" />
+                  Risk Scoring Breakdown
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  {Object.entries(analytics.modelDetails.homeScoreWeighting).map(([system, weight]: [string, any]) => (
+                    <div key={system} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium capitalize">{system.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
+                        <span className="text-sm text-muted-foreground">{Math.round(weight * 100)}% weight</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-muted rounded-full">
+                          <div 
+                            className="h-2 bg-gradient-to-r from-green-500 to-primary rounded-full" 
+                            style={{ width: `${70 + Math.random() * 30}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(70 + Math.random() * 30)}/100
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -339,36 +251,273 @@ const PropertyIntelligenceTab = () => {
               </CardContent>
             </Card>
 
-            {/* Financial Projections */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5" />
-                  Financial Impact Model
+                  <Gauge className="w-5 h-5" />
+                  Scenario Builder
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-4">
+                  {analytics.scenarioBuilder.availableVariables.slice(0, 2).map((variable: any, index: number) => (
+                    <div key={variable.name} className="space-y-2">
+                      <label className="text-sm font-medium">{variable.label}</label>
+                      {variable.type === "slider" ? (
+                        <div className="space-y-2">
+                          <Slider
+                            defaultValue={[variable.default]}
+                            min={variable.range[0]}
+                            max={variable.range[1]}
+                            step={0.1}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>{variable.range[0]}x</span>
+                            <span>{variable.default}x (current)</span>
+                            <span>{variable.range[1]}x</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <select className="w-full p-2 border rounded-md">
+                          {variable.options.map((option: string) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Preset Scenarios</h4>
+                  <div className="space-y-2">
+                    {analytics.scenarioBuilder.presetScenarios.map((scenario: any, index: number) => (
+                      <Button 
+                        key={scenario.name}
+                        variant={selectedScenario === scenario.name ? "default" : "outline"}
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => setSelectedScenario(scenario.name)}
+                      >
+                        {scenario.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Market Intelligence */}
+        <TabsContent value="market-intelligence" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Benchmarking Methodology
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-xl font-bold">{analytics.dataSources.benchmarkData.comparableProperties.toLocaleString()}</div>
+                    <div className="text-sm text-muted-foreground">Comparable Properties</div>
+                  </div>
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-xl font-bold">{analytics.dataSources.benchmarkData.radius}</div>
+                    <div className="text-sm text-muted-foreground">Analysis Radius</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm">Data Quality Score:</span>
+                    <Badge variant="default">{Math.round(analytics.dataSources.benchmarkData.dataQuality * 100)}/100</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm">Last Refresh:</span>
+                    <span className="text-sm text-muted-foreground">{analytics.dataSources.benchmarkData.lastRefresh}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm">Sample Significance:</span>
+                    <Badge variant="secondary">95% confidence</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LineChart className="w-5 h-5" />
+                  Predictive Modeling
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Regional Factors</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Climate Impact Multiplier:</span>
+                      <span className="font-medium">1.2x</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Market Inflation Rate:</span>
+                      <span className="font-medium">3.1% annually</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Contractor Availability:</span>
+                      <span className="font-medium">High</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Economic Integration</h4>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <p>• Regional labor cost adjustments</p>
+                    <p>• Material price trend analysis</p>
+                    <p>• Insurance risk correlation</p>
+                    <p>• Property value trend modeling</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Model Validation */}
+        <TabsContent value="validation" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Historical Accuracy
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Maintenance Timing</h4>
+                  <div className="space-y-2">
+                    {analytics.validation.historicalAccuracy.maintenanceTimingTrend.map((data: any) => (
+                      <div key={data.year} className="flex items-center justify-between">
+                        <span className="text-sm">{data.year}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-2 bg-muted rounded-full">
+                            <div 
+                              className="h-2 bg-green-500 rounded-full" 
+                              style={{ width: `${data.accuracy}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-medium">{data.accuracy}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Cost Precision</h4>
+                  <div className="space-y-2">
+                    {analytics.validation.historicalAccuracy.costEstimatePrecision.map((data: any) => (
+                      <div key={data.year} className="flex items-center justify-between">
+                        <span className="text-sm">{data.year}</span>
+                        <Badge variant={data.variance < 15 ? "default" : "secondary"}>
+                          ±{data.variance}%
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Stress Testing
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
-                  <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                    <p className="font-medium text-green-700 dark:text-green-300">Proactive Path</p>
-                    <p className="text-sm text-green-600 dark:text-green-400">2030 Value: ${propertyData.predictiveModeling.financialProjections.proactiveScenario.year2030Value.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Net Position: ${propertyData.predictiveModeling.financialProjections.proactiveScenario.netPosition.toLocaleString()}</p>
+                  <div>
+                    <p className="text-sm font-medium">Severe Weather Events</p>
+                    <p className="text-xs text-muted-foreground">{analytics.validation.stressTesting.severeWeatherEvents}</p>
                   </div>
-                  <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                    <p className="font-medium text-red-700 dark:text-red-300">Reactive Path</p>
-                    <p className="text-sm text-red-600 dark:text-red-400">2030 Value: ${propertyData.predictiveModeling.financialProjections.reactiveScenario.year2030Value.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Net Position: ${propertyData.predictiveModeling.financialProjections.reactiveScenario.netPosition.toLocaleString()}</p>
+                  <div>
+                    <p className="text-sm font-medium">Market Volatility</p>
+                    <p className="text-xs text-muted-foreground">{analytics.validation.stressTesting.marketVolatility}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Edge Cases</p>
+                    <p className="text-xs text-muted-foreground">{analytics.validation.stressTesting.edgeCases}</p>
                   </div>
                 </div>
-                <div className="pt-2 border-t">
-                  <p className="text-sm font-medium">Potential Equity Impact</p>
-                  <p className="text-xs text-muted-foreground">Proactive maintenance preserves ${propertyData.predictiveModeling.financialProjections.proactiveScenario.equityPreserved.toLocaleString()} more equity</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5" />
+                  Peer Validation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Third-Party Validation</p>
+                    <p className="text-xs text-muted-foreground">{analytics.validation.peerValidation.thirdPartyValidation}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Industry Benchmarks</p>
+                    <p className="text-xs text-muted-foreground">{analytics.validation.peerValidation.industryBenchmarks}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Certifications</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {analytics.validation.peerValidation.certifications.map((cert: string) => (
+                        <Badge key={cert} variant="outline" className="text-xs">{cert}</Badge>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Legacy Property Overview (Condensed) */}
+      <Card className="bg-muted/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Home className="w-5 h-5" />
+            Property Context
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Built:</span>
+              <span className="ml-2 font-medium">{propertyData.basicInfo.yearBuilt}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Size:</span>
+              <span className="ml-2 font-medium">{propertyData.basicInfo.squareFootage} sq ft</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Lot:</span>
+              <span className="ml-2 font-medium">{propertyData.basicInfo.lotSize}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Risk:</span>
+              <Badge variant="secondary" className="ml-2">{propertyData.basicInfo.riskScore}</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
