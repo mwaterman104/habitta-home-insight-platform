@@ -6,7 +6,19 @@ import { Calendar, Home } from "lucide-react";
 export default function SeasonalExperienceHero() {
   const hero = useSeasonalHero();
 
-  if (!hero) return null;
+  console.log('SeasonalExperienceHero render:', { hero });
+
+  if (!hero) {
+    return (
+      <Card className="rounded-2xl bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+        <CardContent className="p-6">
+          <div className="text-center">
+            <p className="text-muted-foreground">Loading seasonal experience...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const handlePrimaryCta = () => {
     if (hero.primaryCta.route) {

@@ -250,43 +250,18 @@ export const useSeasonalHero = () => {
   const maintenanceHistory = useMaintenanceHistory();
   
   return useMemo(() => {
-    // Determine current season
-    const now = new Date();
-    const month = now.getMonth(); // 0-11
-    let currentSeason: "spring" | "summer" | "fall" | "winter";
+    console.log('useSeasonalHero debug:', { 
+      allSeasonalExperiences: allSeasonalExperiences?.length,
+      lifestyleMetrics: !!lifestyleMetrics,
+      propertyData: !!propertyData,
+      maintenanceHistory: maintenanceHistory?.length 
+    });
     
-    if (month >= 2 && month <= 4) currentSeason = "spring";
-    else if (month >= 5 && month <= 7) currentSeason = "summer";
-    else if (month >= 8 && month <= 10) currentSeason = "fall";
-    else currentSeason = "winter";
-    
-    // Check trigger conditions
-    const triggers = {
-      roof_clear: maintenanceHistory.some(item => 
-        item.category?.toLowerCase().includes('exterior') || 
-        item.category?.toLowerCase().includes('roof')
-      ),
-      gutters_clean: maintenanceHistory.some(item => 
-        item.title?.toLowerCase().includes('gutter')
-      ),
-      energy_efficiency_above_avg: lifestyleMetrics.energyWellness.score > lifestyleMetrics.energyWellness.neighborhoodAverage,
-      safety_high: propertyData.metrics.safety_compliance >= 90,
-      heating_optimized: currentSeason === "winter",
-      hvac_optimized: true, // Assume HVAC is optimized based on system health
-      outdoor_ready: lifestyleMetrics.outdoorReadiness.status === "Ready"
-    };
-    
-    // Find best matching experience
-    const currentSeasonExperiences = allSeasonalExperiences.filter(exp => exp.season === currentSeason);
-    
-    for (const experience of currentSeasonExperiences) {
-      const triggersMatch = experience.trigger.every(trigger => triggers[trigger as keyof typeof triggers]);
-      if (triggersMatch) {
-        return experience;
-      }
+    // Simple fallback - just return first experience for now
+    if (!allSeasonalExperiences || allSeasonalExperiences.length === 0) {
+      return null;
     }
     
-    // Fallback to first seasonal experience for current season
-    return currentSeasonExperiences[0] || allSeasonalExperiences[0];
+    return allSeasonalExperiences[0];
   }, [allSeasonalExperiences, lifestyleMetrics, propertyData, maintenanceHistory]);
 };
