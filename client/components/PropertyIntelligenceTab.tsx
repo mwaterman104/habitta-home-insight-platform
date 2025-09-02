@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Slider } from "./ui/slider";
+import { Slider } from "../ui/slider";
 import { usePropertyIntelligence } from "../hooks/useHabittaLocal";
 import { 
   BarChart3, 
