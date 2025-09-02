@@ -253,20 +253,53 @@ export const useCurrentSeason = () => {
     const now = new Date();
     const month = now.getMonth(); // 0-11
     
-    if (month >= 2 && month <= 4) return "spring";
-    if (month >= 5 && month <= 7) return "summer";  
-    if (month >= 8 && month <= 10) return "fall";
-    return "winter";
+    if (month >= 2 && month <= 4) return "Spring";
+    if (month >= 5 && month <= 7) return "Summer";  
+    if (month >= 8 && month <= 10) return "Fall";
+    return "Winter";
   }, []);
 };
 
 export function getSeasonInfo(): { current: Season; next: Season } {
   const month = new Date().getMonth();
-  if (month >= 2 && month <= 4) return { current: "spring", next: "summer" };
-  if (month >= 5 && month <= 7) return { current: "summer", next: "fall" };
-  if (month >= 8 && month <= 10) return { current: "fall", next: "winter" };
-  return { current: "winter", next: "spring" };
+  if (month >= 2 && month <= 4) return { current: "Spring", next: "Summer" };
+  if (month >= 5 && month <= 7) return { current: "Summer", next: "Fall" };
+  if (month >= 8 && month <= 10) return { current: "Fall", next: "Winter" };
+  return { current: "Winter", next: "Spring" };
 }
+
+export const useRepairReadiness = () => {
+  const lifestyleMetrics = useLifestyleMetrics();
+  const lifecycle = useLifecycle();
+  
+  return useMemo(() => {
+    // Calculate annual reserve from monthly savings
+    const monthlySavings = lifestyleMetrics.energyWellness.monthlySavings;
+    const annualReserve = monthlySavings * 12;
+    
+    // Find next major service cost (most expensive item in next 2 years)
+    const currentYear = new Date().getFullYear();
+    const nextMajorItems = lifecycle.filter(item => 
+      item.nextReplacementYear <= currentYear + 2
+    ).sort((a, b) => b.replacement_cost - a.replacement_cost);
+    
+    const nextMajorService = nextMajorItems.length > 0 ? nextMajorItems[0] : null;
+    const upcomingMajorCost = nextMajorService ? nextMajorService.replacement_cost : 800; // fallback
+    
+    // Determine user path
+    const isEfficiencyAchiever = annualReserve >= upcomingMajorCost;
+    
+    return {
+      userType: isEfficiencyAchiever ? "efficiency_achiever" : "opportunity_identifier",
+      annualReserve,
+      monthlySavings,
+      upcomingMajorCost,
+      nextMajorService: nextMajorService?.name || "HVAC Service",
+      remainingBuffer: Math.max(0, annualReserve - upcomingMajorCost),
+      missedOpportunity: Math.max(0, upcomingMajorCost - annualReserve)
+    };
+  }, [lifestyleMetrics, lifecycle]);
+};
 
 export const useSeasonalHero = () => {
   const allSeasonalExperiences = useSeasonalExperiences();
@@ -282,7 +315,7 @@ export const useSeasonalHero = () => {
     
     // Find experiences for current or next season
     const relevantExperiences = allSeasonalExperiences.filter(exp => 
-      exp.season === currentSeason || exp.season === nextSeason
+      exp.season.toLowerCase() === currentSeason.toLowerCase() || exp.season.toLowerCase() === nextSeason.toLowerCase()
     );
     
     // Check trigger conditions for matching
@@ -296,14 +329,14 @@ export const useSeasonalHero = () => {
       ),
       energy_efficiency_above_avg: lifestyleMetrics.energyWellness.score > lifestyleMetrics.energyWellness.neighborhoodAverage,
       safety_high: propertyData.metrics.safety_compliance >= 90,
-      heating_optimized: currentSeason === "winter",
+      heating_optimized: currentSeason === "Winter",
       hvac_optimized: true, // Assume HVAC is optimized
       outdoor_ready: lifestyleMetrics.outdoorReadiness.status === "Ready"
     };
     
     // Find best matching experience for current season first
     for (const experience of relevantExperiences) {
-      if (experience.season === currentSeason) {
+      if (experience.season.toLowerCase() === currentSeason.toLowerCase()) {
         const triggersMatch = experience.trigger.every(trigger => 
           triggers[trigger as keyof typeof triggers]
         );
@@ -314,8 +347,8 @@ export const useSeasonalHero = () => {
     }
     
     // Fallback to first experience for current season or next season
-    return relevantExperiences.find(exp => exp.season === currentSeason) || 
-           relevantExperiences.find(exp => exp.season === nextSeason) || 
+    return relevantExperiences.find(exp => exp.season.toLowerCase() === currentSeason.toLowerCase()) || 
+           relevantExperiences.find(exp => exp.season.toLowerCase() === nextSeason.toLowerCase()) || 
            allSeasonalExperiences[0];
   }, [allSeasonalExperiences, currentSeason, nextSeason, lifestyleMetrics, propertyData, maintenanceHistory]);
 };

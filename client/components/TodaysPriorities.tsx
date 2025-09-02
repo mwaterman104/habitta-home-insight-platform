@@ -1,9 +1,10 @@
+import { Alert } from "../types/alerts";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { AlertTriangle, DollarSign, Clock, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Wrench, Calendar, DollarSign } from "lucide-react";
-import { Alert } from "../types/alerts";
+import { useLifestyleMetrics } from "../hooks/useHabittaLocal";
 
 interface TodaysPrioritiesProps {
   alerts: Alert[];
@@ -12,8 +13,11 @@ interface TodaysPrioritiesProps {
 export default function TodaysPriorities({ alerts }: TodaysPrioritiesProps) {
   const navigate = useNavigate();
   const topAlerts = alerts.slice(0, 3);
+  const lifestyleMetrics = useLifestyleMetrics();
 
   if (topAlerts.length === 0) {
+    const monthlySavings = lifestyleMetrics.energyWellness.monthlySavings;
+    
     return (
       <Card className="rounded-2xl">
         <CardHeader>
@@ -26,9 +30,9 @@ export default function TodaysPriorities({ alerts }: TodaysPrioritiesProps) {
           <div className="text-green-600 mb-2">
             <AlertTriangle className="h-12 w-12 mx-auto mb-2" />
           </div>
-          <h3 className="font-semibold mb-1">All caught up!</h3>
+          <h3 className="font-semibold mb-1">All Systems Optimal</h3>
           <p className="text-muted-foreground text-sm">
-            No urgent maintenance items right now.
+            Your efficiency is building reserves (${monthlySavings} this month)
           </p>
         </CardContent>
       </Card>
@@ -40,15 +44,21 @@ export default function TodaysPriorities({ alerts }: TodaysPrioritiesProps) {
       case 'high': return 'destructive';
       case 'medium': return 'outline';
       case 'low': return 'secondary';
+      default: return 'outline';
     }
   };
 
   const getSeverityIcon = (severity: Alert['severity']) => {
-    return severity === 'high' ? '🚨' : severity === 'medium' ? '⚠️' : '📋';
+    switch (severity) {
+      case 'high': return '🔴';
+      case 'medium': return '🟡';
+      case 'low': return '🟢';
+      default: return '⚪';
+    }
   };
 
   const handleDiagnose = (alert: Alert) => {
-    navigate(`/chatdiy?taskId=${alert.id.replace('alert-', '')}`);
+    navigate(`/diagnose/${alert.id}`);
   };
 
   return (
@@ -60,58 +70,54 @@ export default function TodaysPriorities({ alerts }: TodaysPrioritiesProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {topAlerts.map((alert) => (
+        {topAlerts.map((alert, index) => (
           <div key={alert.id} className="border rounded-xl p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">{getSeverityIcon(alert.severity)}</span>
-                  <h4 className="font-semibold">{alert.title}</h4>
+                  <h3 className="font-semibold text-sm">{alert.title}</h3>
                   <Badge variant={getSeverityColor(alert.severity)} className="text-xs">
-                    {alert.severity} impact
+                    {alert.severity}
                   </Badge>
                 </div>
-                <p className="text-sm text-muted-foreground mb-2">
+                <p className="text-muted-foreground text-sm mb-2">
                   {alert.consequence}
                 </p>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  {alert.deadline && (
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      Due {new Date(alert.deadline).toLocaleDateString()}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    <span>{alert.deadline}</span>
+                  </div>
                   {alert.cost && (
                     <div className="flex items-center gap-1">
                       <DollarSign className="h-3 w-3" />
-                      ${alert.cost}
+                      <span>${alert.cost}</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            
-            <div className="flex flex-wrap gap-2">
-              {alert.actions.map((action, index) => (
-                <Button 
-                  key={index}
-                  variant={action.type === 'diagnose' ? 'default' : 'outline'}
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => action.type === 'diagnose' && handleDiagnose(alert)}
-                >
-                  {action.type === 'diagnose' && <Wrench className="h-3 w-3 mr-1" />}
-                  {action.label}
-                  {action.duration && (
-                    <span className="text-xs ml-1 opacity-70">
-                      ~{action.duration}
-                    </span>
-                  )}
-                </Button>
-              ))}
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                onClick={() => handleDiagnose(alert)}
+                className="rounded-lg"
+              >
+                <Wrench className="h-3 w-3 mr-1" />
+                Diagnose
+              </Button>
             </div>
           </div>
         ))}
+        
+        {alerts.length > 3 && (
+          <div className="text-center pt-2">
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              View all {alerts.length} priorities
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

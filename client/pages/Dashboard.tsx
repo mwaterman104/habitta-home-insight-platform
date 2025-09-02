@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import TodaysPriorities from "../components/TodaysPriorities";
-import MoneyImpact from "../components/MoneyImpact";
+import RepairReadiness from "../components/RepairReadiness";
 import SystemHealthStrip from "../components/SystemHealthStrip";
 import ThisWeekChecklist from "../components/ThisWeekChecklist";
 import UpcomingTasksCard from "../components/UpcomingTasksCard";
@@ -59,11 +59,7 @@ export default function Dashboard() {
               <TodaysPriorities alerts={alerts} />
             </div>
             <div>
-              <MoneyImpact 
-                monthlySavings={moneySavings.monthlySavings} 
-                avoidedSurprise={moneySavings.avoidedSurprise}
-                tasksCount={tasksSummary.pending}
-              />
+              <RepairReadiness />
             </div>
           </div>
 
