@@ -21,6 +21,7 @@ import LifestyleEnergyBenefits from "../components/LifestyleEnergyBenefits";
 import SeasonalEnergyReadiness from "../components/SeasonalEnergyReadiness";
 import LifestyleTimeline from "../components/LifestyleTimeline";
 import PartnerOpportunities from "../components/PartnerOpportunities";
+import PropertyIntelligenceTab from "../components/PropertyIntelligenceTab";
 import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary, useUserProfile } from "../hooks/useHabittaLocal";
 
 export default function Dashboard() {
@@ -41,12 +42,13 @@ export default function Dashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 rounded-2xl">
+        <TabsList className="grid w-full grid-cols-6 rounded-2xl">
           <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
           <TabsTrigger value="plan" className="rounded-xl">Plan</TabsTrigger>
           <TabsTrigger value="energy" className="rounded-xl">Energy</TabsTrigger>
           <TabsTrigger value="history" className="rounded-xl">History</TabsTrigger>
           <TabsTrigger value="property" className="rounded-xl">Property</TabsTrigger>
+          <TabsTrigger value="intelligence" className="rounded-xl">Intelligence</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -118,12 +120,14 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="property" className="space-y-6">
-          <div className="text-center py-12">
-            <h3 className="text-lg font-semibold mb-2">Property Intelligence</h3>
-            <p className="text-muted-foreground">
-              Satellite monitoring, permits, and property details coming soon
-            </p>
+          <div className="grid md:grid-cols-2 gap-6">
+            <NeighborhoodComparison />
+            <NeighborhoodPeerBenchmark />
           </div>
+        </TabsContent>
+
+        <TabsContent value="intelligence" className="space-y-6">
+          <PropertyIntelligenceTab />
         </TabsContent>
       </Tabs>
     </div>

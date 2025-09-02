@@ -1,0 +1,178 @@
+{
+  "basicInfo": {
+    "yearBuilt": 1987,
+    "age": 37,
+    "squareFootage": 2100,
+    "lotSize": "0.24 acres",
+    "propertyType": "Single Family",
+    "lastMajorUpdate": "Kitchen Renovation (2019)",
+    "riskScore": "Low-Medium",
+    "ownershipHistory": [
+      {"year": 2018, "event": "Current owners purchased", "price": 485000},
+      {"year": 2019, "event": "Kitchen renovation permit", "value": 35000},
+      {"year": 2021, "event": "HVAC replacement permit", "value": 8500}
+    ]
+  },
+  "structuralAnalysis": {
+    "roofCondition": {
+      "material": "Asphalt Shingles",
+      "estimatedAge": 12,
+      "conditionScore": 78,
+      "predictedLifespan": 23,
+      "replacementTimeline": "2030-2032",
+      "confidenceScore": 87,
+      "weatherDamageRisk": "Medium",
+      "regionalBenchmark": "7 years older than TX median",
+      "neighborhoodStatus": "73% of similar homes need roof work by 2031"
+    },
+    "foundationHealth": {
+      "type": "Slab on Grade",
+      "settlementRisk": "Low",
+      "drainageGrade": "Excellent",
+      "moistureRisk": "Low",
+      "soilExpansionRisk": 15,
+      "foundationMovementPrediction": "Minimal risk next 10 years"
+    },
+    "buildingEnvelope": {
+      "exteriorMaterial": "Brick & Vinyl Siding",
+      "windowAge": "Mixed (2015-2019)",
+      "doorAge": "Original (1987)",
+      "insulationEffectiveness": "Good",
+      "airLeakageRisk": "Low-Medium"
+    }
+  },
+  "environmentalFactors": {
+    "climateImpact": {
+      "sunExposure": "Excellent - South-facing orientation",
+      "windExposure": "Protected by mature trees",
+      "microclimateBenefits": "Natural cooling from established landscape",
+      "weatherDamageCorrelation": "Below average for region"
+    },
+    "landscapeIntelligence": {
+      "treeHealth": "Excellent - Well maintained mature oaks",
+      "rootSystemRisk": "Monitor large oak near foundation",
+      "irrigationEfficiency": "Good - Drought-resistant plantings",
+      "seasonalMaintenanceNeeds": "Spring pruning, Fall leaf management"
+    },
+    "soilAndDrainage": {
+      "soilType": "Clay loam",
+      "drainageCharacteristics": "Good - Proper grading maintained",
+      "foundationStabilityFactors": "Stable - Clay well managed",
+      "waterRetention": "Appropriate for regional climate"
+    }
+  },
+  "neighborhoodContext": {
+    "maintenanceBenchmarking": {
+      "comparableHomeCycles": "Your home: 89% compliance vs neighborhood 71%",
+      "contractorAvailability": "High - 12 rated contractors within 5 miles",
+      "seasonalDemandPatterns": "Peak season: March-May, October-November",
+      "regionalRequirements": "No specific building code updates required"
+    },
+    "infrastructureIntelligence": {
+      "utilityReliability": "Above average - Recent infrastructure updates",
+      "municipalServices": "Excellent - City services within 5 minutes",
+      "developmentPatterns": "Stable neighborhood - Low turnover",
+      "valueCorrelation": "Strong correlation with maintenance quality"
+    },
+    "riskAssessment": {
+      "naturalDisasterRisk": "Low - No major historical events",
+      "crimeAndSafety": "Very Low - Well-established neighborhood",
+      "insuranceClaimFrequency": "Below average for ZIP code",
+      "emergencyServices": "Fire station 2.1 miles, Hospital 4.3 miles"
+    }
+  },
+  "predictiveModeling": {
+    "maintenanceForecasting": {
+      "next12Months": [
+        {
+          "month": "March 2025",
+          "item": "HVAC Filter Replacement",
+          "probability": 95,
+          "cost": 45,
+          "triggerFactors": ["Runtime patterns", "Air quality", "Seasonal demand"]
+        },
+        {
+          "month": "June 2025",
+          "item": "Roof Inspection",
+          "probability": 78,
+          "cost": 200,
+          "triggerFactors": ["Spring storm damage check", "Age-based timeline"]
+        },
+        {
+          "month": "September 2025",
+          "item": "Gutter Cleaning",
+          "probability": 85,
+          "cost": 150,
+          "triggerFactors": ["Fall leaves", "Drainage maintenance", "Storm prep"]
+        }
+      ],
+      "majorSystemReplacements": [
+        {
+          "system": "HVAC",
+          "currentAge": 4,
+          "predictedReplacement": "2032-2034",
+          "confidence": 82,
+          "costProjection": "$8,500-12,000",
+          "factorsConsidered": ["Usage patterns", "Efficiency decline", "Regional climate"]
+        },
+        {
+          "system": "Roof",
+          "currentAge": 12,
+          "predictedReplacement": "2030-2032",
+          "confidence": 87,
+          "costProjection": "$15,000-18,000",
+          "factorsConsidered": ["Material degradation", "Weather exposure", "Installation quality"]
+        }
+      ]
+    },
+    "financialProjections": {
+      "currentScenario": {
+        "propertyValue": 650000,
+        "deferredMaintenanceRisk": 12000,
+        "wellMaintainedPremium": 24000
+      },
+      "proactiveScenario": {
+        "year2030Value": 785000,
+        "maintenanceCost": 45000,
+        "netPosition": 740000,
+        "equityPreserved": 31000
+      },
+      "reactiveScenario": {
+        "year2030Value": 720000,
+        "emergencyRepairCost": 67000,
+        "netPosition": 653000,
+        "equityLoss": 87000
+      }
+    },
+    "lifestyleOptimization": {
+      "energyIndependence": {
+        "currentEfficiency": 87,
+        "solarReadiness": "Excellent - South-facing roof, minimal shading",
+        "evChargerCompatibility": "200amp service adequate",
+        "projectedSavings": "$2,400/year with optimization"
+      },
+      "entertainingReadiness": {
+        "outdoorSystemsHealth": 95,
+        "weatherProtection": "Excellent",
+        "seasonalOptimization": "Spring: 100% ready, Summer: 100% ready"
+      }
+    }
+  },
+  "satelliteOverlays": {
+    "roofCondition": {
+      "zones": [
+        {"area": "South-facing slope", "condition": "Good", "score": 82},
+        {"area": "North-facing slope", "condition": "Fair", "score": 68},
+        {"area": "Gutters", "condition": "Excellent", "score": 95}
+      ]
+    },
+    "drainage": {
+      "flowPatterns": ["Away from foundation", "Proper grading", "No standing water zones"],
+      "riskAreas": []
+    },
+    "vegetation": {
+      "healthyZones": 85,
+      "concernAreas": ["Large oak near power lines", "Hedge blocking drainage"]
+    }
+  }
+}

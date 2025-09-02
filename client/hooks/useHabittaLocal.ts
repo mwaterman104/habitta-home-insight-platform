@@ -352,3 +352,15 @@ export const useSeasonalHero = () => {
            allSeasonalExperiences[0];
   }, [allSeasonalExperiences, currentSeason, nextSeason, lifestyleMetrics, propertyData, maintenanceHistory]);
 };
+
+// Property Intelligence Hook
+export const usePropertyIntelligence = () => {
+  return useMemo(() => {
+    try {
+      return require('../mock/property_intelligence.json');
+    } catch (error) {
+      console.error('Failed to load property intelligence data:', error);
+      return null;
+    }
+  }, []);
+};
