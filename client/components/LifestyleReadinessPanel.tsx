@@ -10,8 +10,8 @@ export default function LifestyleReadinessPanel() {
     <Card className="rounded-2xl">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <div className="bg-purple-100 rounded-xl p-2">
-            <Home className="h-5 w-5 text-purple-600" />
+          <div className="bg-primary/10 rounded-xl p-2">
+            <Home className="h-5 w-5 text-primary" />
           </div>
           🏡 Lifestyle Readiness
         </CardTitle>
@@ -20,12 +20,12 @@ export default function LifestyleReadinessPanel() {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-yellow-600" />
+              <Zap className="h-4 w-4 text-accent" />
               <span className="text-sm font-medium">Energy Wellness</span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-bold">{metrics.energyWellness.score}/100</span>
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+              <Badge variant="outline" className="text-xs bg-success-green/10 text-success-green border-success-green/20">
                 Above neighborhood avg
               </Badge>
             </div>
@@ -33,7 +33,7 @@ export default function LifestyleReadinessPanel() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Home className="h-4 w-4 text-blue-600" />
+              <Home className="h-4 w-4 text-info-blue" />
               <span className="text-sm font-medium">Comfort Index</span>
             </div>
             <div className="flex items-baseline gap-2">
@@ -44,13 +44,13 @@ export default function LifestyleReadinessPanel() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <TreePine className="h-4 w-4 text-green-600" />
+              <TreePine className="h-4 w-4 text-success-green" />
               <span className="text-sm font-medium">Outdoor Living</span>
             </div>
             <div className="flex items-baseline gap-2">
               <Badge 
                 variant="outline" 
-                className="bg-green-50 text-green-700 border-green-200"
+                className="bg-success-green/10 text-success-green border-success-green/20"
               >
                 {metrics.outdoorReadiness.status}
               </Badge>
@@ -62,7 +62,7 @@ export default function LifestyleReadinessPanel() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-green-600" />
+              <DollarSign className="h-4 w-4 text-success-green" />
               <span className="text-sm font-medium">Monthly Savings</span>
             </div>
             <div className="flex items-baseline gap-2">

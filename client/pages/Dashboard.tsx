@@ -10,7 +10,8 @@ import GenerateSeasonalPlanButton from "../components/GenerateSeasonalPlanButton
 import NeighborhoodComparison from "../components/NeighborhoodComparison";
 import TasksList from "../components/TasksList";
 import CompletedStats from "../components/CompletedStats";
-import PropertySummaryCards from "../components/PropertySummaryCards";
+import HomeConditionCard from "../components/HomeConditionCard";
+import HomeValueCard from "../components/HomeValueCard";
 import NeighborhoodPeerBenchmark from "../components/NeighborhoodPeerBenchmark";
 import CostImpactModel from "../components/CostImpactModel";
 import MaintenanceHistory from "../components/MaintenanceHistory";
@@ -20,7 +21,7 @@ import LifestyleEnergyBenefits from "../components/LifestyleEnergyBenefits";
 import SeasonalEnergyReadiness from "../components/SeasonalEnergyReadiness";
 import LifestyleTimeline from "../components/LifestyleTimeline";
 import PartnerOpportunities from "../components/PartnerOpportunities";
-import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary } from "../hooks/useHabittaLocal";
+import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary, useUserProfile } from "../hooks/useHabittaLocal";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -28,13 +29,14 @@ export default function Dashboard() {
   const systemHealth = useSystemHealth();
   const moneySavings = useMoneySavings();
   const tasksSummary = useTasksSummary();
+  const userProfile = useUserProfile();
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Home Intelligence Dashboard</h1>
         <p className="text-muted-foreground mt-1">
-          What needs attention today • Smart recommendations • Preventive insights
+          {userProfile.address} • What needs attention today • Smart recommendations • Preventive insights
         </p>
       </div>
 
@@ -65,22 +67,23 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* System Health Strip */}
+          <div className="bg-muted/30 rounded-2xl p-4">
+            <h3 className="font-semibold mb-3">System Health</h3>
+            <SystemHealthStrip systems={systemHealth} />
+          </div>
+
           <div className="grid lg:grid-cols-3 gap-6">
             <div>
               <ThisWeekChecklist alerts={alerts} />
             </div>
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-muted/30 rounded-2xl p-4">
-                <h3 className="font-semibold mb-3">System Health</h3>
-                <SystemHealthStrip systems={systemHealth} />
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <PropertySummaryCards />
+            <div className="lg:col-span-2">
+              <div className="grid lg:grid-cols-3 gap-4 mb-4">
+                <HomeConditionCard />
+                <HomeValueCard />
                 <LifestyleReadinessPanel />
               </div>
-              <div>
-                <CompletedStats />
-              </div>
+              <CompletedStats />
             </div>
           </div>
         </TabsContent>

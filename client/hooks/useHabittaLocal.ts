@@ -15,6 +15,7 @@ import homeSystemsData from "../mock/home_systems.json";
 import lifestyleMetricsData from "../mock/lifestyle_metrics.json";
 import seasonalExperiencesData from "../mock/seasonal_experiences.json";
 import partnerOffersData from "../mock/partner_offers.json";
+import userProfileData from "../mock/user_profile.json";
 import { getTasks } from "../utils/tasksMock";
 import { generateSeasonalChecklist } from "../utils/seasonalPlan";
 
@@ -243,25 +244,66 @@ export const usePartnerOffers = () => {
   }, []);
 };
 
+export const useUserProfile = () => {
+  return useMemo(() => userProfileData, []);
+};
+
+export const useCurrentSeason = () => {
+  return useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-11
+    
+    if (month >= 2 && month <= 4) return "spring";
+    if (month >= 5 && month <= 7) return "summer";  
+    if (month >= 8 && month <= 10) return "fall";
+    return "winter";
+  }, []);
+};
+
 export const useSeasonalHero = () => {
   const allSeasonalExperiences = useSeasonalExperiences();
+  const currentSeason = useCurrentSeason();
   const lifestyleMetrics = useLifestyleMetrics();
   const propertyData = usePropertySummary();
   const maintenanceHistory = useMaintenanceHistory();
   
   return useMemo(() => {
-    console.log('useSeasonalHero debug:', { 
-      allSeasonalExperiences: allSeasonalExperiences?.length,
-      lifestyleMetrics: !!lifestyleMetrics,
-      propertyData: !!propertyData,
-      maintenanceHistory: maintenanceHistory?.length 
-    });
-    
-    // Simple fallback - just return first experience for now
     if (!allSeasonalExperiences || allSeasonalExperiences.length === 0) {
       return null;
     }
     
-    return allSeasonalExperiences[0];
-  }, [allSeasonalExperiences, lifestyleMetrics, propertyData, maintenanceHistory]);
+    // Find experiences for current or next season
+    const currentSeasonExperiences = allSeasonalExperiences.filter(exp => 
+      exp.season === currentSeason
+    );
+    
+    // Check trigger conditions for matching
+    const triggers = {
+      roof_clear: maintenanceHistory.some(item => 
+        item.category?.toLowerCase().includes('exterior') || 
+        item.category?.toLowerCase().includes('roof')
+      ),
+      gutters_clean: maintenanceHistory.some(item => 
+        item.title?.toLowerCase().includes('gutter')
+      ),
+      energy_efficiency_above_avg: lifestyleMetrics.energyWellness.score > lifestyleMetrics.energyWellness.neighborhoodAverage,
+      safety_high: propertyData.metrics.safety_compliance >= 90,
+      heating_optimized: currentSeason === "winter",
+      hvac_optimized: true, // Assume HVAC is optimized
+      outdoor_ready: lifestyleMetrics.outdoorReadiness.status === "Ready"
+    };
+    
+    // Find best matching experience for current season
+    for (const experience of currentSeasonExperiences) {
+      const triggersMatch = experience.trigger.every(trigger => 
+        triggers[trigger as keyof typeof triggers]
+      );
+      if (triggersMatch) {
+        return experience;
+      }
+    }
+    
+    // Fallback to first experience for current season or any season
+    return currentSeasonExperiences[0] || allSeasonalExperiences[0];
+  }, [allSeasonalExperiences, currentSeason, lifestyleMetrics, propertyData, maintenanceHistory]);
 };

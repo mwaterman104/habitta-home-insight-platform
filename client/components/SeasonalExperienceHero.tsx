@@ -1,12 +1,13 @@
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
-import { useSeasonalHero } from "../hooks/useHabittaLocal";
-import { Calendar, Home } from "lucide-react";
+import { Badge } from "./ui/badge";
+import { useSeasonalHero, useUserProfile, useCurrentSeason } from "../hooks/useHabittaLocal";
+import { Calendar, Home, MapPin } from "lucide-react";
 
 export default function SeasonalExperienceHero() {
   const hero = useSeasonalHero();
-
-  console.log('SeasonalExperienceHero render:', { hero });
+  const userProfile = useUserProfile();
+  const currentSeason = useCurrentSeason();
 
   if (!hero) {
     return (
@@ -19,6 +20,16 @@ export default function SeasonalExperienceHero() {
       </Card>
     );
   }
+
+  const getSeasonEmoji = (season: string) => {
+    switch (season) {
+      case "spring": return "🌸";
+      case "summer": return "☀️";
+      case "fall": return "🍂";
+      case "winter": return "❄️";
+      default: return "🏡";
+    }
+  };
 
   const handlePrimaryCta = () => {
     if (hero.primaryCta.route) {
@@ -38,14 +49,37 @@ export default function SeasonalExperienceHero() {
   return (
     <Card className="rounded-2xl bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
       <CardContent className="p-6">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start gap-6">
+          {/* House Photo */}
+          <div className="hidden md:block">
+            <div className="w-32 h-24 rounded-xl overflow-hidden bg-muted">
+              <img 
+                src={userProfile.photo_url} 
+                alt={`${userProfile.name}'s home`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+          
           <div className="flex-1">
+            {/* Header with personalization */}
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">🌸</span>
+              <span className="text-2xl">{getSeasonEmoji(currentSeason)}</span>
               <h2 className="text-xl font-bold">{hero.title}</h2>
+              <Badge variant="outline" className="ml-2 capitalize bg-primary/10 text-primary border-primary/20">
+                {currentSeason} Ready
+              </Badge>
             </div>
             
-            <p className="text-muted-foreground mb-4">{hero.message}</p>
+            {/* Address */}
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">{userProfile.address}</span>
+            </div>
+            
+            <p className="text-muted-foreground mb-4">
+              Hi {userProfile.name}! {hero.message}
+            </p>
             
             <ul className="space-y-2 mb-6">
               {hero.bullets.map((bullet, index) => (
