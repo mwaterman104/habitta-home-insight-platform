@@ -244,7 +244,7 @@ export const usePartnerOffers = () => {
 };
 
 export const useSeasonalHero = () => {
-  const seasonalExperiences = useSeasonalExperiences();
+  const allSeasonalExperiences = useSeasonalExperiences();
   const lifestyleMetrics = useLifestyleMetrics();
   const propertyData = usePropertySummary();
   const maintenanceHistory = useMaintenanceHistory();
@@ -277,9 +277,9 @@ export const useSeasonalHero = () => {
     };
     
     // Find best matching experience
-    const seasonalExperiences = seasonalExperiences.filter(exp => exp.season === currentSeason);
+    const currentSeasonExperiences = allSeasonalExperiences.filter(exp => exp.season === currentSeason);
     
-    for (const experience of seasonalExperiences) {
+    for (const experience of currentSeasonExperiences) {
       const triggersMatch = experience.trigger.every(trigger => triggers[trigger as keyof typeof triggers]);
       if (triggersMatch) {
         return experience;
@@ -287,6 +287,6 @@ export const useSeasonalHero = () => {
     }
     
     // Fallback to first seasonal experience for current season
-    return seasonalExperiences[0] || seasonalExperiences[0];
-  }, [seasonalExperiences, lifestyleMetrics, propertyData, maintenanceHistory]);
+    return currentSeasonExperiences[0] || allSeasonalExperiences[0];
+  }, [allSeasonalExperiences, lifestyleMetrics, propertyData, maintenanceHistory]);
 };
