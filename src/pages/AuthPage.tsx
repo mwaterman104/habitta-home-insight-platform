@@ -34,6 +34,7 @@ const AuthPage = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('handleAuth called', { isSignUp, formData: { email: formData.email, password: '***' } });
     setLoading(true);
 
     try {
@@ -47,6 +48,7 @@ const AuthPage = () => {
           return;
         }
 
+        console.log('Attempting sign up...');
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -59,6 +61,7 @@ const AuthPage = () => {
           }
         });
 
+        console.log('Sign up response:', { error });
         if (error) throw error;
 
         toast({
@@ -66,11 +69,13 @@ const AuthPage = () => {
           description: "Please check your email to verify your account.",
         });
       } else {
+        console.log('Attempting sign in...');
         const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
+        console.log('Sign in response:', { error });
         if (error) throw error;
 
         toast({
@@ -79,6 +84,7 @@ const AuthPage = () => {
         });
       }
     } catch (error: any) {
+      console.error('Authentication error:', error);
       toast({
         title: "Authentication Error",
         description: error.message,
