@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
 const AuthPage = () => {
+  console.log('AuthPage component loaded');
   const [isSignUp, setIsSignUp] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -198,7 +199,10 @@ const AuthPage = () => {
               </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading} onClick={(e) => {
+              console.log('Button clicked directly');
+              // Let the form onSubmit handle it naturally
+            }}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSignUp ? 'Create Account' : 'Sign In'}
             </Button>
