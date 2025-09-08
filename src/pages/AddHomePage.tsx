@@ -95,10 +95,10 @@ const AddHomePage = () => {
       // Update form with standardized data
       setFormData(prev => ({
         ...prev,
-        address: addressData.line1,
-        city: addressData.city,
-        state: addressData.state,
-        zipCode: addressData.postal_code,
+        address: addressData.line1 || suggestion.street_line, // Fallback to original if no standardized address
+        city: addressData.city || suggestion.city,
+        state: addressData.state || suggestion.state,
+        zipCode: addressData.postal_code || suggestion.zipcode,
         isVerified: true,
         precision: geocodeData.precision,
         dpvMatch: addressData.dpv_match,
@@ -120,10 +120,10 @@ const AddHomePage = () => {
       // Still update form with the selected address for manual correction
       setFormData(prev => ({
         ...prev,
-        address: suggestion.street_line || '',
-        city: suggestion.city || '',
-        state: suggestion.state || '',
-        zipCode: suggestion.zipcode || '',
+        address: suggestion.street_line || prev.address,
+        city: suggestion.city || prev.city,
+        state: suggestion.state || prev.state,
+        zipCode: suggestion.zipcode || prev.zipCode,
         isVerified: false,
       }));
     } finally {

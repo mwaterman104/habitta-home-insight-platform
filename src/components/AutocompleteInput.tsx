@@ -35,10 +35,11 @@ export function AutocompleteInput({ onSelect, placeholder = "Enter address...", 
   const debounceRef = useRef<NodeJS.Timeout>();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Update internal query when displayValue changes
+  // Update internal query when displayValue changes (but don't clear it)
   useEffect(() => {
-    if (displayValue !== undefined && displayValue !== query) {
+    if (displayValue !== undefined && displayValue !== query && displayValue.trim() !== '') {
       setQuery(displayValue);
+      setHasSelected(true); // Mark as selected when showing verified address
     }
   }, [displayValue]);
 
