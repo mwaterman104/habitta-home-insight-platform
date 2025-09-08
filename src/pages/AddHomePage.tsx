@@ -9,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Home, ArrowLeft, LogOut, MapPin, Check } from 'lucide-react';
+import { Loader2, Home, ArrowLeft, LogOut, MapPin, Check, AlertCircle } from 'lucide-react';
 import { AutocompleteInput } from '@/components/AutocompleteInput';
-import { smartyStandardizeGeocode, smartyEnrich } from '@/lib/smarty';
+import { smartyStandardizeGeocode, smartyEnrich, computeCanonicalHash } from '@/lib/smarty';
 import { mapStandardized, mapGeocode, mapEnrichment } from '@/adapters/smartyMappers';
 
 interface HomeDetails {
@@ -25,6 +25,8 @@ interface HomeDetails {
   bedrooms: string;
   bathrooms: string;
   isVerified: boolean;
+  precision?: string;
+  dpvMatch?: string;
 }
 
 const AddHomePage = () => {
@@ -39,55 +41,85 @@ const AddHomePage = () => {
     bedrooms: '',
     bathrooms: '',
     isVerified: false,
+    precision: undefined,
+    dpvMatch: undefined,
   });
   const [loading, setLoading] = useState(false);
+  const [verifyingAddress, setVerifyingAddress] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
 
   const handleAddressSelect = async (suggestion: any) => {
-    console.log("Address suggestion selected:", suggestion);
+    const stepId = crypto.randomUUID().slice(0, 8);
+    console.log(`[${stepId}] Address selection:`, suggestion.street_line);
     
-    // Update form with selected address
-    setFormData(prev => ({
-      ...prev,
-      address: suggestion.street_line || '',
-      city: suggestion.city || '',
-      state: suggestion.state || '',
-      zipCode: suggestion.zipcode || '',
-      isVerified: true,
-    }));
-
-    // Auto-enrich with property data
+    setVerifyingAddress(true);
+    
     try {
-      const enrichData = await smartyEnrich({
+      // Update form with selected address
+      setFormData(prev => ({
+        ...prev,
+        address: suggestion.street_line || '',
+        city: suggestion.city || '',
+        state: suggestion.state || '',
+        zipCode: suggestion.zipcode || '',
+        isVerified: false, // Will be set to true after standardization
+      }));
+
+      // Standardize and geocode the selected address
+      console.log(`[${stepId}] Standardizing address...`);
+      const { standardized, geocode } = await smartyStandardizeGeocode({
         street: suggestion.street_line,
         city: suggestion.city,
         state: suggestion.state,
         postal_code: suggestion.zipcode
       });
 
-      const enrichment = mapEnrichment(enrichData);
+      const addressData = mapStandardized(standardized);
+      const geocodeData = mapGeocode(geocode);
       
+      console.log(`[${stepId}] Standardization complete`, {
+        dpvMatch: addressData.dpv_match,
+        precision: geocodeData.precision
+      });
+
+      // Update form with standardized data
       setFormData(prev => ({
         ...prev,
-        yearBuilt: enrichment.attributes.year_built?.toString() || prev.yearBuilt,
-        squareFeet: enrichment.attributes.square_feet?.toString() || prev.squareFeet,
-        bedrooms: enrichment.attributes.beds?.toString() || prev.bedrooms,
-        bathrooms: enrichment.attributes.baths?.toString() || prev.bathrooms,
-        propertyType: enrichment.attributes.property_type || prev.propertyType,
+        address: addressData.line1,
+        city: addressData.city,
+        state: addressData.state,
+        zipCode: addressData.postal_code,
+        isVerified: true,
+        precision: geocodeData.precision,
+        dpvMatch: addressData.dpv_match,
       }));
       
       toast({
         title: "Address Verified",
-        description: "Property data has been enriched automatically.",
+        description: `Address standardized with ${geocodeData.precision || 'standard'} precision.`,
       });
-    } catch (error) {
-      console.error("Error enriching address:", error);
+
+    } catch (error: any) {
+      console.error(`[${stepId}] Address verification failed:`, error);
       toast({
-        title: "Address Verified",
-        description: "Address verified successfully. Some property details may need manual entry.",
+        title: "Address Verification Failed",
+        description: "Could not verify address. You can still proceed with manual entry.",
+        variant: "destructive",
       });
+      
+      // Still update form with the selected address for manual correction
+      setFormData(prev => ({
+        ...prev,
+        address: suggestion.street_line || '',
+        city: suggestion.city || '',
+        state: suggestion.state || '',
+        zipCode: suggestion.zipcode || '',
+        isVerified: false,
+      }));
+    } finally {
+      setVerifyingAddress(false);
     }
   };
 
@@ -104,82 +136,130 @@ const AddHomePage = () => {
       return;
     }
 
+    const stepId = crypto.randomUUID().slice(0, 8);
+    console.log(`[${stepId}] Starting home creation flow`);
     setLoading(true);
 
     try {
-      // Step 1: Standardize and geocode the address
-      const { standardized, geocode } = await smartyStandardizeGeocode({
-        street: formData.address,
-        city: formData.city,
-        state: formData.state,
-        postal_code: formData.zipCode
-      });
+      // Step 1: Compute canonical hash for deduplication
+      const canonicalHash = computeCanonicalHash(
+        formData.address,
+        formData.city, 
+        formData.state,
+        formData.zipCode
+      );
+      console.log(`[${stepId}] Canonical hash:`, canonicalHash);
 
-      const addressData = mapStandardized(standardized);
-      const geocodeData = mapGeocode(geocode);
-
-      // Step 2: Save canonical address
-      const { data: addressRecord, error: addressError } = await supabase
+      // Step 2: Check for existing address
+      let addressRecord;
+      const { data: existingAddress } = await supabase
         .from("addresses")
-        .insert({
-          ...addressData,
-          created_by: user.id
-        })
-        .select()
-        .single();
+        .select("*")
+        .eq("created_by", user.id)
+        .eq("canonical_hash", canonicalHash)
+        .maybeSingle();
 
-      if (addressError) throw addressError;
+      if (existingAddress) {
+        console.log(`[${stepId}] Using existing address:`, existingAddress.id);
+        addressRecord = existingAddress;
+      } else {
+        console.log(`[${stepId}] Creating new address record`);
+        
+        // Re-standardize and geocode for canonical data
+        const { standardized, geocode } = await smartyStandardizeGeocode({
+          street: formData.address,
+          city: formData.city,
+          state: formData.state,
+          postal_code: formData.zipCode
+        });
 
-      // Step 3: Save geocode data
-      if (geocodeData.latitude && geocodeData.longitude) {
-        const { error: geocodeError } = await supabase
-          .from("address_geocode")
-          .insert({
-            address_id: addressRecord.id,
-            ...geocodeData
+        const addressData = mapStandardized(standardized);
+        const geocodeData = mapGeocode(geocode);
+
+        // Compute server-side canonical hash
+        const { data: serverHash } = await supabase
+          .rpc('compute_canonical_hash', {
+            line1: addressData.line1,
+            city: addressData.city,
+            state: addressData.state,
+            postal_code: addressData.postal_code
           });
 
-        if (geocodeError) console.error('Geocode save error:', geocodeError);
+        // Step 3: Insert canonical address
+        const { data: newAddress, error: addressError } = await supabase
+          .from("addresses")
+          .insert({
+            ...addressData,
+            canonical_hash: serverHash,
+            created_by: user.id
+          })
+          .select()
+          .single();
+
+        if (addressError) throw addressError;
+        addressRecord = newAddress;
+
+        // Step 4: Save geocode data
+        if (geocodeData.latitude && geocodeData.longitude) {
+          const { error: geocodeError } = await supabase
+            .from("address_geocode")
+            .insert({
+              address_id: addressRecord.id,
+              ...geocodeData
+            });
+
+          if (geocodeError) console.warn(`[${stepId}] Geocode save failed:`, geocodeError);
+        }
       }
 
-      // Step 4: Get property enrichment
-      let enrichment = { 
+      // Step 5: Best-effort property enrichment
+      let enrichmentData = {
         attributes: {
           year_built: null,
           square_feet: null,
           beds: null,
           baths: null,
           property_type: null,
-          lot_size: null,
-          last_sale_price: null,
-          last_sale_date: null
         },
         raw: null
       };
+
       try {
-        const enrichData = await smartyEnrich({
+        console.log(`[${stepId}] Attempting property enrichment...`);
+        const enrichResponse = await smartyEnrich({
           street: formData.address,
           city: formData.city,
           state: formData.state,
           postal_code: formData.zipCode
         });
-        enrichment = mapEnrichment(enrichData);
 
-        // Step 5: Save enrichment data
-        const { error: enrichError } = await supabase
+        enrichmentData = mapEnrichment(enrichResponse);
+        console.log(`[${stepId}] Enrichment successful`);
+
+        // Check if enrichment record exists
+        const { data: existingEnrichment } = await supabase
           .from("property_enrichment")
-          .insert({
-            address_id: addressRecord.id,
-            attributes: enrichment.attributes,
-            raw: enrichment.raw
-          });
+          .select("id")
+          .eq("address_id", addressRecord.id)
+          .maybeSingle();
 
-        if (enrichError) console.error('Enrichment save error:', enrichError);
+        if (!existingEnrichment) {
+          const { error: enrichError } = await supabase
+            .from("property_enrichment")
+            .insert({
+              address_id: addressRecord.id,
+              attributes: enrichmentData.attributes,
+              raw: enrichmentData.raw
+            });
+
+          if (enrichError) console.warn(`[${stepId}] Enrichment save failed:`, enrichError);
+        }
       } catch (enrichError) {
-        console.error('Enrichment error:', enrichError);
+        console.warn(`[${stepId}] Enrichment failed (non-blocking):`, enrichError);
       }
 
-      // Step 6: Create home record
+      // Step 6: Create home record with form data as primary, enrichment as fallback
+      console.log(`[${stepId}] Creating home record...`);
       const { data: homeRecord, error: homeError } = await supabase
         .from("homes")
         .insert({
@@ -189,27 +269,29 @@ const AddHomePage = () => {
           city: formData.city,
           state: formData.state,
           zip_code: formData.zipCode,
-          latitude: geocodeData.latitude,
-          longitude: geocodeData.longitude,
-          property_type: formData.propertyType || enrichment.attributes.property_type || null,
-          year_built: formData.yearBuilt ? parseInt(formData.yearBuilt) : enrichment.attributes.year_built || null,
-          square_feet: formData.squareFeet ? parseInt(formData.squareFeet) : enrichment.attributes.square_feet || null,
-          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : enrichment.attributes.beds || null,
-          bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : enrichment.attributes.baths || null,
+          latitude: null, // Will be populated by geocode join
+          longitude: null, // Will be populated by geocode join
+          property_type: formData.propertyType || enrichmentData.attributes.property_type || null,
+          year_built: formData.yearBuilt ? parseInt(formData.yearBuilt) : enrichmentData.attributes.year_built || null,
+          square_feet: formData.squareFeet ? parseInt(formData.squareFeet) : enrichmentData.attributes.square_feet || null,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : enrichmentData.attributes.beds || null,
+          bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : enrichmentData.attributes.baths || null,
         })
         .select()
         .single();
 
       if (homeError) throw homeError;
 
+      console.log(`[${stepId}] Home created successfully:`, homeRecord.id);
       toast({
         title: "Home Added Successfully",
         description: "Your home has been verified and added to your profile.",
       });
 
       navigate(`/home/${homeRecord.id}`);
+      
     } catch (error: any) {
-      console.error("Error adding home:", error);
+      console.error(`[${stepId}] Home creation failed:`, error);
       toast({
         title: "Error Adding Home",
         description: error.message || "Failed to add home. Please try again.",
@@ -271,14 +353,42 @@ const AddHomePage = () => {
                       placeholder="Start typing your address..."
                       className="w-full"
                     />
-                    {formData.isVerified && (
-                      <div className="flex items-center text-sm text-muted-foreground">
-                        <Badge variant="secondary" className="mr-2">
-                          <Check className="w-3 h-3 mr-1" />
-                          Verified
-                        </Badge>
-                        Address verified and enriched with property data
+                    {verifyingAddress && (
+                      <div className="flex items-center text-sm text-muted-foreground mt-2">
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        Verifying address...
                       </div>
+                    )}
+                    {formData.isVerified && (
+                      <div className="flex items-center justify-between text-sm mt-2">
+                        <div className="flex items-center">
+                          <Badge variant="secondary" className="mr-2">
+                            <Check className="w-3 h-3 mr-1" />
+                            Verified
+                          </Badge>
+                          {formData.precision && (
+                            <Badge variant="outline" className="mr-2">
+                              {formData.precision} precision
+                            </Badge>
+                          )}
+                          {formData.dpvMatch === 'Y' && (
+                            <Badge variant="outline" className="text-green-600">
+                              Deliverable
+                            </Badge>
+                          )}
+                          {formData.dpvMatch === 'N' && (
+                            <Badge variant="outline" className="text-amber-600">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Not Deliverable
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {formData.isVerified && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Address standardized and geocoded
+                      </p>
                     )}
                   </div>
                   
