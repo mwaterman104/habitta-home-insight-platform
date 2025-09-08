@@ -4,8 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { getPropertyHistory } from '@/lib/propertyAPI';
-import type { PropertyHistory } from '@/lib/propertyAPI';
+import { smartyEnrich } from '@/lib/smarty';
+import { mapEnrichment } from '@/adapters/smartyMappers';
 
 interface PropertyDetailsAutoFillProps {
   formData: {
@@ -34,7 +34,7 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
   verifiedAddress
 }) => {
   const [fetchStatus, setFetchStatus] = useState<FetchStatus>('idle');
-  const [fetchedData, setFetchedData] = useState<PropertyHistory | null>(null);
+  const [fetchedData, setFetchedData] = useState<any | null>(null);
 
   useEffect(() => {
     if (!isAddressVerified || !verifiedAddress) {
@@ -49,28 +49,33 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
       setFetchStatus('loading');
       
       try {
-        const fullAddress = `${verifiedAddress.address}, ${verifiedAddress.city}, ${verifiedAddress.state} ${verifiedAddress.zipCode}`;
-        const propertyData = await getPropertyHistory(fullAddress);
-        
-        console.log(`[${stepId}] Property data fetched successfully`);
-        setFetchedData(propertyData);
+        const enrichResponse = await smartyEnrich({
+          street: verifiedAddress.address,
+          city: verifiedAddress.city,
+          state: verifiedAddress.state,
+          postal_code: verifiedAddress.zipCode
+        });
+
+        const enrichmentData = mapEnrichment(enrichResponse);
+        console.log(`[${stepId}] Smarty enrichment successful:`, enrichmentData.attributes);
+        setFetchedData(enrichmentData);
         setFetchStatus('success');
         
         // Auto-fill empty fields only
         setFormData((prev: any) => ({
           ...prev,
-          propertyType: prev.propertyType || (propertyData.propertyDetails?.propertyType ? 
-            mapPropertyType(propertyData.propertyDetails.propertyType) : ''),
-          yearBuilt: prev.yearBuilt || (propertyData.propertyDetails?.yearBuilt?.toString() || ''),
-          squareFeet: prev.squareFeet || (propertyData.propertyDetails?.sqft?.toString() || ''),
-          bedrooms: prev.bedrooms || (propertyData.propertyDetails?.bedrooms?.toString() || ''),
-          bathrooms: prev.bathrooms || (propertyData.propertyDetails?.bathrooms?.toString() || ''),
+          propertyType: prev.propertyType || (enrichmentData.attributes?.property_type ? 
+            mapPropertyType(enrichmentData.attributes.property_type) : ''),
+          yearBuilt: prev.yearBuilt || (enrichmentData.attributes?.year_built?.toString() || ''),
+          squareFeet: prev.squareFeet || (enrichmentData.attributes?.square_feet?.toString() || ''),
+          bedrooms: prev.bedrooms || (enrichmentData.attributes?.beds?.toString() || ''),
+          bathrooms: prev.bathrooms || (enrichmentData.attributes?.baths?.toString() || ''),
         }));
         
       } catch (error: any) {
-        console.warn(`[${stepId}] Property details fetch failed (non-blocking):`, error);
+        console.warn(`[${stepId}] Smarty enrichment failed (non-blocking):`, error);
         
-        if (error.message?.includes('Property API Error')) {
+        if (error.message?.includes('Enrichment failed')) {
           setFetchStatus('miss');
         } else {
           setFetchStatus('error');
@@ -81,13 +86,13 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
     fetchPropertyDetails();
   }, [isAddressVerified, verifiedAddress, setFormData]);
 
-  // Map ATTOM property types to our form values
-  const mapPropertyType = (attomType: string): string => {
-    const type = attomType?.toLowerCase() || '';
-    if (type.includes('single') || type.includes('family') || type.includes('sfr')) return 'single-family';
+  // Map Smarty property types to our form values
+  const mapPropertyType = (smartyType: string): string => {
+    const type = smartyType?.toLowerCase() || '';
+    if (type.includes('single') || type.includes('family') || type.includes('residential')) return 'single-family';
     if (type.includes('town') || type.includes('townhome')) return 'townhouse';
     if (type.includes('condo') || type.includes('condominium')) return 'condo';
-    if (type.includes('duplex')) return 'duplex';
+    if (type.includes('duplex') || type.includes('multi')) return 'duplex';
     return 'other';
   };
 
@@ -106,14 +111,14 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
         return (
           <div className="flex items-center text-sm text-green-600 mb-4">
             <CheckCircle className="w-3 h-3 mr-1" />
-            Property details auto-filled from public records
+            Property details auto-filled from Smarty enrichment
           </div>
         );
       case 'miss':
         return (
           <div className="flex items-center text-sm text-amber-600 mb-4">
             <AlertCircle className="w-3 h-3 mr-1" />
-            Property details not found in public records
+            Property details not available from Smarty
           </div>
         );
       case 'error':
