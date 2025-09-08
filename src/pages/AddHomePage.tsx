@@ -441,17 +441,29 @@ const AddHomePage = () => {
                   </div>
                 </div>
 
-                <PropertyDetailsAutoFill
-                  formData={formData}
-                  setFormData={setFormData}
-                  isAddressVerified={formData.isVerified}
-                  verifiedAddress={formData.isVerified ? {
-                    address: formData.address,
-                    city: formData.city,
-                    state: formData.state,
-                    zipCode: formData.zipCode
-                  } : undefined}
-                />
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Property Details</h3>
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Optional
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    These details help us provide better maintenance insights. You can skip them and add later.
+                  </p>
+                  
+                  <PropertyDetailsAutoFill
+                    formData={formData}
+                    setFormData={setFormData}
+                    isAddressVerified={formData.isVerified}
+                    verifiedAddress={formData.isVerified ? {
+                      address: formData.address,
+                      city: formData.city,
+                      state: formData.state,
+                      zipCode: formData.zipCode
+                    } : undefined}
+                  />
+                </div>
 
                 <Button 
                   type="submit" 
@@ -461,10 +473,10 @@ const AddHomePage = () => {
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Verifying & Adding Home...
+                      Adding Home...
                     </>
                   ) : (
-                    "Verify & Add Home"
+                    "Add Home"
                   )}
                 </Button>
               </form>
