@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import Dashboard from "./Dashboard";
 import Seasonal from "./Seasonal";
 import TasksNew from "./TasksNew";
@@ -9,8 +9,12 @@ export function AppRoutes() {
     <BrowserRouter>
       <div className="min-h-screen bg-background">
         {/* Top Bar */}
-        <header className="h-12 flex items-center border-b px-6 print:hidden">
-          <h1 className="text-xl font-bold text-primary">Habitta</h1>
+        <header className="h-12 flex items-center justify-between border-b px-6 print:hidden">
+          <Link to="/" className="text-xl font-bold text-primary">Habitta</Link>
+          <nav className="flex items-center gap-3">
+            <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">Exit Demo</Link>
+            <Link to="/auth" className="text-sm font-medium text-primary hover:underline">Sign In</Link>
+          </nav>
         </header>
         
         <Routes>
