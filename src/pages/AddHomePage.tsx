@@ -145,7 +145,7 @@ const AddHomePage = () => {
     }
 
     const stepId = crypto.randomUUID().slice(0, 8);
-    console.log(`[${stepId}] Starting home creation flow`);
+    console.log(`[${stepId}] Starting home creation flow`, formData);
     setLoading(true);
 
     try {
@@ -159,13 +159,19 @@ const AddHomePage = () => {
       console.log(`[${stepId}] Canonical hash:`, canonicalHash);
 
       // Step 2: Check for existing address
+      console.log(`[${stepId}] Checking for existing address...`);
       let addressRecord;
-      const { data: existingAddress } = await supabase
+      const { data: existingAddress, error: existingAddressError } = await supabase
         .from("addresses")
         .select("*")
         .eq("created_by", user.id)
         .eq("canonical_hash", canonicalHash)
         .maybeSingle();
+
+      if (existingAddressError) {
+        console.error(`[${stepId}] Error checking existing address:`, existingAddressError);
+        throw new Error(`Failed to check existing addresses: ${existingAddressError.message}`);
+      }
 
       if (existingAddress) {
         console.log(`[${stepId}] Using existing address:`, existingAddress.id);
@@ -173,20 +179,43 @@ const AddHomePage = () => {
       } else {
         console.log(`[${stepId}] Creating new address record`);
         
-        // Re-standardize and geocode for canonical data
-        const fiveDigitZip = formData.zipCode.split('-')[0];
-        const { standardized, geocode } = await smartyStandardizeGeocode({
-          street: formData.address,
+        // Try to standardize if we have verification, otherwise use form data directly
+        let addressData = {
+          line1: formData.address,
+          line2: '',
           city: formData.city,
           state: formData.state,
-          postal_code: fiveDigitZip
-        });
+          postal_code: formData.zipCode,
+          dpv_match: null,
+          carrier_route: null,
+          congressional_district: null,
+          raw: null
+        };
 
-        const addressData = mapStandardized(standardized);
-        const geocodeData = mapGeocode(geocode);
+        if (formData.isVerified) {
+          try {
+            // Re-standardize for canonical data
+            const fiveDigitZip = formData.zipCode.split('-')[0];
+            const { standardized, geocode } = await smartyStandardizeGeocode({
+              street: formData.address,
+              city: formData.city,
+              state: formData.state,
+              postal_code: fiveDigitZip
+            });
+
+            const mappedAddress = mapStandardized(standardized);
+            const geocodeData = mapGeocode(geocode);
+            
+            console.log(`[${stepId}] Re-standardization successful`);
+            addressData = mappedAddress;
+          } catch (standardizeError) {
+            console.warn(`[${stepId}] Re-standardization failed, using form data:`, standardizeError);
+          }
+        }
 
         // Compute server-side canonical hash
-        const { data: serverHash } = await supabase
+        console.log(`[${stepId}] Computing server canonical hash...`);
+        const { data: serverHash, error: hashError } = await supabase
           .rpc('compute_canonical_hash', {
             line1: addressData.line1,
             city: addressData.city,
@@ -194,7 +223,15 @@ const AddHomePage = () => {
             postal_code: addressData.postal_code
           });
 
+        if (hashError) {
+          console.error(`[${stepId}] Hash computation failed:`, hashError);
+          throw new Error(`Failed to compute canonical hash: ${hashError.message}`);
+        }
+
+        console.log(`[${stepId}] Server hash:`, serverHash);
+
         // Step 3: Insert canonical address
+        console.log(`[${stepId}] Inserting new address...`);
         const { data: newAddress, error: addressError } = await supabase
           .from("addresses")
           .insert({
@@ -205,70 +242,16 @@ const AddHomePage = () => {
           .select()
           .single();
 
-        if (addressError) throw addressError;
+        if (addressError) {
+          console.error(`[${stepId}] Address insertion failed:`, addressError);
+          throw new Error(`Failed to create address: ${addressError.message}`);
+        }
+
+        console.log(`[${stepId}] Address created:`, newAddress.id);
         addressRecord = newAddress;
-
-        // Step 4: Save geocode data
-        if (geocodeData.latitude && geocodeData.longitude) {
-          const { error: geocodeError } = await supabase
-            .from("address_geocode")
-            .insert({
-              address_id: addressRecord.id,
-              ...geocodeData
-            });
-
-          if (geocodeError) console.warn(`[${stepId}] Geocode save failed:`, geocodeError);
-        }
       }
 
-      // Step 5: Best-effort property enrichment
-      let enrichmentData = {
-        attributes: {
-          year_built: null,
-          square_feet: null,
-          beds: null,
-          baths: null,
-          property_type: null,
-        },
-        raw: null
-      };
-
-      try {
-        console.log(`[${stepId}] Attempting property enrichment...`);
-        const fiveDigitZip = formData.zipCode.split('-')[0];
-        const enrichResponse = await smartyEnrich({
-          street: formData.address,
-          city: formData.city,
-          state: formData.state,
-          postal_code: fiveDigitZip
-        });
-
-        enrichmentData = mapEnrichment(enrichResponse);
-        console.log(`[${stepId}] Enrichment successful`);
-
-        // Check if enrichment record exists
-        const { data: existingEnrichment } = await supabase
-          .from("property_enrichment")
-          .select("id")
-          .eq("address_id", addressRecord.id)
-          .maybeSingle();
-
-        if (!existingEnrichment) {
-          const { error: enrichError } = await supabase
-            .from("property_enrichment")
-            .insert({
-              address_id: addressRecord.id,
-              attributes: enrichmentData.attributes,
-              raw: enrichmentData.raw
-            });
-
-          if (enrichError) console.warn(`[${stepId}] Enrichment save failed:`, enrichError);
-        }
-      } catch (enrichError) {
-        console.warn(`[${stepId}] Enrichment failed (non-blocking):`, enrichError);
-      }
-
-      // Step 6: Create home record with form data as primary, enrichment as fallback
+      // Step 4: Create home record
       console.log(`[${stepId}] Creating home record...`);
       const { data: homeRecord, error: homeError } = await supabase
         .from("homes")
@@ -279,25 +262,29 @@ const AddHomePage = () => {
           city: formData.city,
           state: formData.state,
           zip_code: formData.zipCode,
-          latitude: null, // Will be populated by geocode join
-          longitude: null, // Will be populated by geocode join
-          property_type: formData.propertyType || enrichmentData.attributes.property_type || null,
-          year_built: formData.yearBuilt ? parseInt(formData.yearBuilt) : enrichmentData.attributes.year_built || null,
-          square_feet: formData.squareFeet ? parseInt(formData.squareFeet) : enrichmentData.attributes.square_feet || null,
-          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : enrichmentData.attributes.beds || null,
-          bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : enrichmentData.attributes.baths || null,
+          latitude: null, 
+          longitude: null,
+          property_type: formData.propertyType || null,
+          year_built: formData.yearBuilt ? parseInt(formData.yearBuilt) : null,
+          square_feet: formData.squareFeet ? parseInt(formData.squareFeet) : null,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
+          bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : null,
         })
         .select()
         .single();
 
-      if (homeError) throw homeError;
+      if (homeError) {
+        console.error(`[${stepId}] Home creation failed:`, homeError);
+        throw new Error(`Failed to create home: ${homeError.message}`);
+      }
 
       console.log(`[${stepId}] Home created successfully:`, homeRecord.id);
       toast({
         title: "Home Added Successfully",
-        description: "Your home has been verified and added to your profile.",
+        description: "Your home has been added to your profile.",
       });
 
+      console.log(`[${stepId}] Navigating to home:`, homeRecord.id);
       navigate(`/home/${homeRecord.id}`);
       
     } catch (error: any) {
@@ -308,6 +295,7 @@ const AddHomePage = () => {
         variant: "destructive",
       });
     } finally {
+      console.log(`[${stepId}] Setting loading to false`);
       setLoading(false);
     }
   };
