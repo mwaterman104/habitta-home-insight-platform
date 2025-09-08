@@ -13,7 +13,7 @@ export function AppRoutes() {
           <Link to="/" className="text-xl font-bold text-primary">Habitta</Link>
           <nav className="flex items-center gap-3">
             <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">Exit Demo</Link>
-            <Link to="/auth" className="text-sm font-medium text-primary hover:underline">Sign In</Link>
+            <a href="/auth" className="text-sm font-medium text-primary hover:underline">Sign In</a>
           </nav>
         </header>
         
