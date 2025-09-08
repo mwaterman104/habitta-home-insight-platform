@@ -19,7 +19,6 @@ export function AppRoutes() {
       <BrowserRouter>
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<HomeRedirectHandler />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/demo" element={<ClientDashboard />} />
           
@@ -29,6 +28,7 @@ export function AppRoutes() {
               <AuthenticatedLayout />
             </ProtectedRoute>
           }>
+            <Route path="/" element={<HomeRedirectHandler />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/home" element={<Dashboard />} />
             <Route path="/home/new" element={<AddHomePage />} />
