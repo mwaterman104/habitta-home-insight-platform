@@ -135,10 +135,10 @@ const AddHomePage = () => {
     e.preventDefault();
     if (!user) return;
 
-    if (!formData.isVerified) {
+    if (!formData.address.trim() || !formData.city.trim() || !formData.state.trim() || !formData.zipCode.trim()) {
       toast({
-        title: "Address Not Verified",
-        description: "Please select an address from the autocomplete suggestions.",
+        title: "Missing Address Information",
+        description: "Please provide a complete address to add your home.",
         variant: "destructive",
       });
       return;
@@ -468,7 +468,7 @@ const AddHomePage = () => {
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={loading || !formData.isVerified}
+                  disabled={loading || !formData.address.trim() || !formData.city.trim() || !formData.state.trim() || !formData.zipCode.trim()}
                 >
                   {loading ? (
                     <>
