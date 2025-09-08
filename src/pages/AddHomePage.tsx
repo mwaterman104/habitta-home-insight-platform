@@ -102,7 +102,7 @@ const AddHomePage = () => {
             variant="ghost"
             onClick={async () => {
               await signOut();
-              navigate('/');
+              navigate('/auth');
             }}
           >
             <LogOut className="h-4 w-4 mr-2" />

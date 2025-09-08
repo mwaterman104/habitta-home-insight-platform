@@ -59,7 +59,7 @@ const Dashboard = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/');
+      navigate('/auth');
     } catch (error: any) {
       toast({
         title: "Error Signing Out",
