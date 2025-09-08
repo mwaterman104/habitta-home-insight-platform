@@ -28,6 +28,11 @@ export function AppRoutes() {
               <Dashboard />
             </ProtectedRoute>
           } />
+          <Route path="/home" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
           <Route path="/home/new" element={
             <ProtectedRoute>
               <AddHomePage />
