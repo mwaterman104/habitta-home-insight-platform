@@ -11,6 +11,7 @@ const corsHeaders = {
 
 const endpoints = {
   autocomplete: "https://us-autocomplete-pro.api.smarty.com/lookup",
+  autocompleteFallback: "https://us-autocomplete.api.smarty.com/lookup",
   street: "https://us-street.api.smarty.com/street-address",
   rooftop: "https://us-rooftop-geo.api.smarty.com/lookup",
   enrich: "https://us-enrichment.api.smarty.com/lookup",
@@ -58,7 +59,7 @@ serve(async (req) => {
       ).toString();
 
     if (action === "autocomplete") {
-      const url = `${endpoints.autocomplete}?${qs({
+      const proUrl = `${endpoints.autocomplete}?${qs({
         "auth-id": AUTH_ID,
         "auth-token": AUTH_TOKEN,
         search: payload.search,
@@ -68,10 +69,26 @@ serve(async (req) => {
       })}`;
       
       console.log('Calling Smarty autocomplete');
-      const r = await fetch(url);
-      const data = await r.text();
+      const proRes = await fetch(proUrl);
+      const proJson = await proRes.json();
+
+      // If Pro requires subscription, fall back to basic autocomplete
+      if (proJson?.errors?.length) {
+        console.log('Pro autocomplete unavailable, falling back to basic');
+        const basicUrl = `${endpoints.autocompleteFallback}?${qs({
+          "auth-id": AUTH_ID,
+          "auth-token": AUTH_TOKEN,
+          prefix: payload.search,
+          max_results: payload.limit ?? 8,
+        })}`;
+        const basicRes = await fetch(basicUrl);
+        const basicJson = await basicRes.json();
+        return new Response(JSON.stringify(basicJson), { 
+          headers: { ...corsHeaders, "content-type": "application/json" } 
+        });
+      }
       
-      return new Response(data, { 
+      return new Response(JSON.stringify(proJson), { 
         headers: { ...corsHeaders, "content-type": "application/json" } 
       });
     }

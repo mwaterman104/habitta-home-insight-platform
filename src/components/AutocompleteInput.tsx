@@ -29,6 +29,7 @@ export function AutocompleteInput({ onSelect, placeholder = "Enter address...", 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [hasSelected, setHasSelected] = useState(false);
+  const [backendUnavailable, setBackendUnavailable] = useState(false);
   
   const debounceRef = useRef<NodeJS.Timeout>();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,13 +49,22 @@ export function AutocompleteInput({ onSelect, placeholder = "Enter address...", 
       setIsLoading(true);
       try {
         const data = await smartyAutocomplete({ search: query, limit: 8 });
-        const mappedSuggestions = (data?.suggestions || []).map(mapAutocompleteSuggestion);
-        setSuggestions(mappedSuggestions);
-        setShowSuggestions(true);
-        setSelectedIndex(-1);
+        if (data?.errors?.length) {
+          setBackendUnavailable(true);
+          setSuggestions([]);
+          setShowSuggestions(false);
+          setSelectedIndex(-1);
+        } else {
+          setBackendUnavailable(false);
+          const mappedSuggestions = (data?.suggestions || []).map(mapAutocompleteSuggestion);
+          setSuggestions(mappedSuggestions);
+          setShowSuggestions(true);
+          setSelectedIndex(-1);
+        }
       } catch (error) {
         console.error('Autocomplete error:', error);
         setSuggestions([]);
+        setBackendUnavailable(true);
       }
       setIsLoading(false);
     }, 250);
@@ -146,6 +156,12 @@ export function AutocompleteInput({ onSelect, placeholder = "Enter address...", 
           <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
         )}
       </div>
+
+      {backendUnavailable && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Autocomplete is temporarily unavailable. You can still enter your full address; we'll verify it when you add your home.
+        </p>
+      )}
 
       {showSuggestions && suggestions.length > 0 && (
         <Card className="absolute top-full left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto">
