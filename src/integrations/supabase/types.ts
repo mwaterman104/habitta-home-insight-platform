@@ -54,6 +54,7 @@ export type Database = {
       }
       addresses: {
         Row: {
+          canonical_hash: string | null
           carrier_route: string | null
           city: string
           congressional_district: string | null
@@ -70,6 +71,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          canonical_hash?: string | null
           carrier_route?: string | null
           city: string
           congressional_district?: string | null
@@ -86,6 +88,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          canonical_hash?: string | null
           carrier_route?: string | null
           city?: string
           congressional_district?: string | null
@@ -1134,6 +1137,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      compute_canonical_hash: {
+        Args: {
+          city: string
+          line1: string
+          postal_code: string
+          state: string
+        }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
