@@ -46,55 +46,59 @@ const AppSidebar = () => {
   };
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarContent className="p-4">
+    <Sidebar collapsible="icon" className="border-r">
+      <SidebarContent>
         {/* Logo */}
-        <div className="mb-8">
+        <div className="p-4 border-b">
           <Link to="/home" className="flex items-center gap-3">
-            <Logo size="md" />
+            <Logo size="sm" />
             {!isCollapsed && (
-              <span className="text-xl font-bold text-primary">Habitta</span>
+              <span className="text-lg font-bold text-primary">Habitta</span>
             )}
           </Link>
         </div>
 
         {/* User Info */}
-        {!isCollapsed && (
-          <div className="mb-6 p-3 bg-muted/50 rounded-lg">
-            <p className="font-medium text-sm">
-              {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
-            </p>
-            <p className="text-xs text-muted-foreground">{user?.email}</p>
+        {!isCollapsed && user && (
+          <div className="p-4 border-b">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="font-medium text-sm truncate">
+                {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            </div>
           </div>
         )}
 
         {/* Navigation */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navigation.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      to={item.url}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                        isActive(item.url)
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted'
-                      }`}
-                    >
-                      <item.icon className="w-5 h-5" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <div className="flex-1 p-4">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navigation.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <Link
+                        to={item.url}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                          isActive(item.url)
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-muted'
+                        }`}
+                      >
+                        <item.icon className="w-5 h-5" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
 
         {/* Sign Out */}
-        <div className="mt-auto">
+        <div className="p-4 border-t">
           <Button
             variant="ghost"
             onClick={handleSignOut}

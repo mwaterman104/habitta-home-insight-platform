@@ -80,13 +80,13 @@ const Dashboard = () => {
   }
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full">
+    <SidebarProvider defaultOpen={true}>
+      <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         
         <div className="flex-1 flex flex-col">
-          <header className="border-b border-border">
-            <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <header className="border-b border-border bg-background">
+            <div className="px-4 py-4 flex items-center justify-between">
               <div className="flex items-center">
                 <SidebarTrigger className="mr-4" />
                 <Home className="h-6 w-6 mr-2 text-primary" />
@@ -118,121 +118,123 @@ const Dashboard = () => {
             </div>
           </header>
 
-          <main className="flex-1 container mx-auto px-4 py-8">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-2">Your Properties</h2>
-              <p className="text-muted-foreground">
-                Manage your homes and track maintenance insights
-              </p>
-            </div>
-
-            {homes.length === 0 ? (
-              <div className="text-center py-12">
-                <Home className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">No homes added yet</h3>
-                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                  Get started by adding your first property to track maintenance and get AI insights.
+          <main className="flex-1 overflow-auto">
+            <div className="container mx-auto px-4 py-8">
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-2">Your Properties</h2>
+                <p className="text-muted-foreground">
+                  Manage your homes and track maintenance insights
                 </p>
-                <Button 
-                  onClick={() => navigate('/home/new')}
-                  className="inline-flex items-center"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Your First Home
-                </Button>
               </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center space-x-4">
-                    <Badge variant="secondary" className="text-sm">
-                      {homes.length} {homes.length === 1 ? 'Property' : 'Properties'}
-                    </Badge>
-                  </div>
+
+              {homes.length === 0 ? (
+                <div className="text-center py-12">
+                  <Home className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">No homes added yet</h3>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                    Get started by adding your first property to track maintenance and get AI insights.
+                  </p>
                   <Button 
                     onClick={() => navigate('/home/new')}
                     className="inline-flex items-center"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Home
+                    Add Your First Home
                   </Button>
                 </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center space-x-4">
+                      <Badge variant="secondary" className="text-sm">
+                        {homes.length} {homes.length === 1 ? 'Property' : 'Properties'}
+                      </Badge>
+                    </div>
+                    <Button 
+                      onClick={() => navigate('/home/new')}
+                      className="inline-flex items-center"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Home
+                    </Button>
+                  </div>
 
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {homes.map((home) => (
-                    <Card key={home.id} className="hover:shadow-lg transition-shadow">
-                      <CardHeader>
-                        <CardTitle className="flex items-center">
-                          <Home className="h-5 w-5 mr-2 text-primary" />
-                          {home.address}
-                        </CardTitle>
-                        <CardDescription className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {home.city}, {home.state} {home.zip_code}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-muted-foreground">Property Type:</span>
-                            <Badge variant="outline">{home.property_type}</Badge>
-                          </div>
-                          
-                          {home.year_built && (
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {homes.map((home) => (
+                      <Card key={home.id} className="hover:shadow-lg transition-shadow">
+                        <CardHeader>
+                          <CardTitle className="flex items-center">
+                            <Home className="h-5 w-5 mr-2 text-primary" />
+                            {home.address}
+                          </CardTitle>
+                          <CardDescription className="flex items-center">
+                            <MapPin className="h-4 w-4 mr-1" />
+                            {home.city}, {home.state} {home.zip_code}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
                             <div className="flex justify-between items-center text-sm">
-                              <span className="text-muted-foreground">Built:</span>
-                              <span className="flex items-center">
-                                <Calendar className="h-3 w-3 mr-1" />
-                                {home.year_built}
-                              </span>
+                              <span className="text-muted-foreground">Property Type:</span>
+                              <Badge variant="outline">{home.property_type}</Badge>
                             </div>
-                          )}
-                          
-                          {home.square_feet && (
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-muted-foreground">Size:</span>
-                              <span className="flex items-center">
-                                <Square className="h-3 w-3 mr-1" />
-                                {home.square_feet.toLocaleString()} sq ft
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="flex space-x-4 text-sm text-muted-foreground">
-                            {home.bedrooms && (
-                              <div className="flex items-center">
-                                <Bed className="h-3 w-3 mr-1" />
-                                <span>{home.bedrooms} bed</span>
+                            
+                            {home.year_built && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground">Built:</span>
+                                <span className="flex items-center">
+                                  <Calendar className="h-3 w-3 mr-1" />
+                                  {home.year_built}
+                                </span>
                               </div>
                             )}
                             
-                            {home.bathrooms && (
-                              <div className="flex items-center">
-                                <Bath className="h-3 w-3 mr-1" />
-                                <span>{home.bathrooms} bath</span>
+                            {home.square_feet && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground">Size:</span>
+                                <span className="flex items-center">
+                                  <Square className="h-3 w-3 mr-1" />
+                                  {home.square_feet.toLocaleString()} sq ft
+                                </span>
                               </div>
                             )}
-                          </div>
 
-                          <div className="mt-4 flex space-x-2">
-                            <Button 
-                              size="sm" 
-                              onClick={() => navigate(`/home/${home.id}`)}
-                              className="flex-1"
-                            >
-                              View Details
-                            </Button>
-                            <Button variant="outline" size="sm">
-                              <Settings className="h-3 w-3" />
-                            </Button>
+                            <div className="flex space-x-4 text-sm text-muted-foreground">
+                              {home.bedrooms && (
+                                <div className="flex items-center">
+                                  <Bed className="h-3 w-3 mr-1" />
+                                  <span>{home.bedrooms} bed</span>
+                                </div>
+                              )}
+                              
+                              {home.bathrooms && (
+                                <div className="flex items-center">
+                                  <Bath className="h-3 w-3 mr-1" />
+                                  <span>{home.bathrooms} bath</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="mt-4 flex space-x-2">
+                              <Button 
+                                size="sm" 
+                                onClick={() => navigate(`/home/${home.id}`)}
+                                className="flex-1"
+                              >
+                                View Details
+                              </Button>
+                              <Button variant="outline" size="sm">
+                                <Settings className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </main>
         </div>
       </div>
