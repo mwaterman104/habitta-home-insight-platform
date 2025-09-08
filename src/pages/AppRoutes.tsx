@@ -4,7 +4,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthenticatedLayout } from "@/layouts/AuthenticatedLayout";
 import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
-import HomeProfilePage from "./HomeProfilePage";
+import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
@@ -31,7 +31,7 @@ export function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/home" element={<Dashboard />} />
             <Route path="/home/new" element={<AddHomePage />} />
-            <Route path="/home/:homeId" element={<HomeProfilePage />} />
+            <Route path="/home/:homeId" element={<HomeIntelligenceDashboard />} />
             <Route path="/tasks/new" element={<div>Tasks New Page - Coming Soon</div>} />
             <Route path="/admin" element={<AdminPage />} />
           </Route>
