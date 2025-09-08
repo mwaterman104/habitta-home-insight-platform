@@ -1,294 +1,237 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
-
-const addHomeSchema = z.object({
-  address: z.string().min(1, 'Address is required'),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().length(2, 'State must be 2 letters'),
-  zip_code: z.string().min(5, 'Zip code must be at least 5 digits'),
-  property_type: z.string().optional(),
-  bedrooms: z.number().min(0).optional(),
-  bathrooms: z.number().min(0).optional(),
-  square_feet: z.number().min(0).optional(),
-  year_built: z.number().min(1800).max(new Date().getFullYear()).optional(),
-});
-
-type AddHomeFormData = z.infer<typeof addHomeSchema>;
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Home, ArrowLeft } from 'lucide-react';
+import AddressLookup from '@/components/AddressLookup';
 
 const AddHomePage = () => {
+  const [formData, setFormData] = useState({
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    propertyType: '',
+    yearBuilt: '',
+    squareFeet: '',
+    bedrooms: '',
+    bathrooms: ''
+  });
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
 
-  const form = useForm<AddHomeFormData>({
-    resolver: zodResolver(addHomeSchema),
-    defaultValues: {
-      address: '',
-      city: '',
-      state: '',
-      zip_code: '',
-      property_type: '',
-    },
-  });
+  const handleAddressSelect = (addressData: any) => {
+    setFormData(prev => ({
+      ...prev,
+      address: addressData.address || '',
+      city: addressData.city || '',
+      state: addressData.state || '',
+      zipCode: addressData.zipCode || ''
+    }));
+  };
 
-  const onSubmit = async (data: AddHomeFormData) => {
-    if (!user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to add a home',
-        variant: 'destructive',
-      });
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
 
-    setIsSubmitting(true);
-
+    setLoading(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('homes')
         .insert({
           user_id: user.id,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          zip_code: data.zip_code,
-          property_type: data.property_type || null,
-          bedrooms: data.bedrooms || null,
-          bathrooms: data.bathrooms || null,
-          square_feet: data.square_feet || null,
-          year_built: data.year_built || null,
-        });
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          zip_code: formData.zipCode,
+          property_type: formData.propertyType,
+          year_built: formData.yearBuilt ? parseInt(formData.yearBuilt) : null,
+          square_feet: formData.squareFeet ? parseInt(formData.squareFeet) : null,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
+          bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : null
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       toast({
-        title: 'Success',
-        description: 'Home added successfully!',
+        title: "Home Added Successfully",
+        description: "Your home has been added to your profile.",
       });
 
-      navigate('/home');
-    } catch (error) {
-      console.error('Error adding home:', error);
+      navigate(`/home/${data.id}`);
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Failed to add home. Please try again.',
-        variant: 'destructive',
+        title: "Error Adding Home",
+        description: error.message,
+        variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Your Home</CardTitle>
-          <CardDescription>
-            Enter your home details to get started with property management and maintenance tracking.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 gap-4">
-                <FormField
-                  control={form.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="123 Main Street" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border">
+        <div className="container mx-auto px-4 py-4 flex items-center">
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/dashboard')}
+            className="mr-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <div className="flex items-center">
+            <Home className="h-6 w-6 mr-2 text-primary" />
+            <h1 className="text-xl font-bold text-foreground">Add Your Home</h1>
+          </div>
+        </div>
+      </header>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="San Francisco" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="CA" maxLength={2} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+      <main className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Your Property</CardTitle>
+              <CardDescription>
+                Enter your home details to get started with personalized maintenance insights
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Property Address</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Street Address</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="Enter your street address"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        value={formData.city}
+                        onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State</Label>
+                      <Input
+                        id="state"
+                        value={formData.state}
+                        onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="zipCode">ZIP Code</Label>
+                    <Input
+                      id="zipCode"
+                      value={formData.zipCode}
+                      onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))}
+                      required
+                    />
+                  </div>
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="zip_code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Zip Code *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="94102" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="property_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Property Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select property type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="single_family">Single Family Home</SelectItem>
-                          <SelectItem value="condo">Condominium</SelectItem>
-                          <SelectItem value="townhouse">Townhouse</SelectItem>
-                          <SelectItem value="multi_family">Multi Family</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="bedrooms"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bedrooms</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="3" 
-                            min="0"
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="bathrooms"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bathrooms</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            step="0.5"
-                            placeholder="2.5" 
-                            min="0"
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Property Details</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="propertyType">Property Type</Label>
+                    <Select onValueChange={(value) => setFormData(prev => ({ ...prev, propertyType: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select property type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single-family">Single Family Home</SelectItem>
+                        <SelectItem value="townhouse">Townhouse</SelectItem>
+                        <SelectItem value="condo">Condominium</SelectItem>
+                        <SelectItem value="duplex">Duplex</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="yearBuilt">Year Built</Label>
+                      <Input
+                        id="yearBuilt"
+                        type="number"
+                        value={formData.yearBuilt}
+                        onChange={(e) => setFormData(prev => ({ ...prev, yearBuilt: e.target.value }))}
+                        min="1800"
+                        max={new Date().getFullYear()}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="squareFeet">Square Feet</Label>
+                      <Input
+                        id="squareFeet"
+                        type="number"
+                        value={formData.squareFeet}
+                        onChange={(e) => setFormData(prev => ({ ...prev, squareFeet: e.target.value }))}
+                        min="1"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bedrooms">Bedrooms</Label>
+                      <Input
+                        id="bedrooms"
+                        type="number"
+                        value={formData.bedrooms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, bedrooms: e.target.value }))}
+                        min="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="bathrooms">Bathrooms</Label>
+                      <Input
+                        id="bathrooms"
+                        type="number"
+                        step="0.5"
+                        value={formData.bathrooms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, bathrooms: e.target.value }))}
+                        min="0"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="square_feet"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Square Feet</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="2000" 
-                            min="0"
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="year_built"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Year Built</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="1995" 
-                            min="1800"
-                            max={new Date().getFullYear()}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => navigate('/home')}
-                  disabled={isSubmitting}
-                >
-                  Cancel
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Add Home
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Adding Home...' : 'Add Home'}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   );
 };
