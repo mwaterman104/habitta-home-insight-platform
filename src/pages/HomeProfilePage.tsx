@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Home, MapPin, Calendar, Square, Bed, Bath, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Home, MapPin, Calendar, Square, Bed, Bath, AlertTriangle, LogOut } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 
 interface HomeData {
@@ -26,7 +26,7 @@ interface HomeData {
 const HomeProfilePage = () => {
   const { homeId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,6 +101,16 @@ const HomeProfilePage = () => {
               <h1 className="text-xl font-bold text-foreground">Home Profile</h1>
             </div>
           </div>
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              await signOut();
+              navigate('/');
+            }}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
       </header>
 

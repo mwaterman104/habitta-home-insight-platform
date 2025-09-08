@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Home, ArrowLeft } from 'lucide-react';
+import { Loader2, Home, ArrowLeft, LogOut } from 'lucide-react';
 import AddressLookup from '@/components/AddressLookup';
 
 const AddHomePage = () => {
@@ -25,7 +25,7 @@ const AddHomePage = () => {
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { toast } = useToast();
 
   const handleAddressSelect = (addressData: any) => {
@@ -83,19 +83,31 @@ const AddHomePage = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/dashboard')}
+              className="mr-4"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="flex items-center">
+              <Home className="h-6 w-6 mr-2 text-primary" />
+              <h1 className="text-xl font-bold text-foreground">Add Your Home</h1>
+            </div>
+          </div>
           <Button
             variant="ghost"
-            onClick={() => navigate('/dashboard')}
-            className="mr-4"
+            onClick={async () => {
+              await signOut();
+              navigate('/');
+            }}
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
           </Button>
-          <div className="flex items-center">
-            <Home className="h-6 w-6 mr-2 text-primary" />
-            <h1 className="text-xl font-bold text-foreground">Add Your Home</h1>
-          </div>
         </div>
       </header>
 
