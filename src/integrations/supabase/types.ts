@@ -14,6 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      address_geocode: {
+        Row: {
+          address_id: string | null
+          created_at: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          precision: string | null
+          raw: Json | null
+        }
+        Insert: {
+          address_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          precision?: string | null
+          raw?: Json | null
+        }
+        Update: {
+          address_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          precision?: string | null
+          raw?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "address_geocode_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "addresses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      addresses: {
+        Row: {
+          carrier_route: string | null
+          city: string
+          congressional_district: string | null
+          country: string
+          created_at: string | null
+          created_by: string | null
+          dpv_match: string | null
+          id: string
+          line1: string
+          line2: string | null
+          postal_code: string
+          raw: Json | null
+          state: string
+          updated_at: string | null
+        }
+        Insert: {
+          carrier_route?: string | null
+          city: string
+          congressional_district?: string | null
+          country?: string
+          created_at?: string | null
+          created_by?: string | null
+          dpv_match?: string | null
+          id?: string
+          line1: string
+          line2?: string | null
+          postal_code: string
+          raw?: Json | null
+          state: string
+          updated_at?: string | null
+        }
+        Update: {
+          carrier_route?: string | null
+          city?: string
+          congressional_district?: string | null
+          country?: string
+          created_at?: string | null
+          created_by?: string | null
+          dpv_match?: string | null
+          id?: string
+          line1?: string
+          line2?: string | null
+          postal_code?: string
+          raw?: Json | null
+          state?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       appliances: {
         Row: {
           age: number | null
@@ -256,11 +345,14 @@ export type Database = {
       homes: {
         Row: {
           address: string
+          address_id: string | null
           bathrooms: number | null
           bedrooms: number | null
           city: string
           created_at: string
           id: string
+          latitude: number | null
+          longitude: number | null
           photo_url: string | null
           property_id: string | null
           property_type: string | null
@@ -273,11 +365,14 @@ export type Database = {
         }
         Insert: {
           address: string
+          address_id?: string | null
           bathrooms?: number | null
           bedrooms?: number | null
           city: string
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           photo_url?: string | null
           property_id?: string | null
           property_type?: string | null
@@ -290,11 +385,14 @@ export type Database = {
         }
         Update: {
           address?: string
+          address_id?: string | null
           bathrooms?: number | null
           bedrooms?: number | null
           city?: string
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           photo_url?: string | null
           property_id?: string | null
           property_type?: string | null
@@ -306,6 +404,13 @@ export type Database = {
           zip_code?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "homes_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "addresses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "homes_property_id_fkey"
             columns: ["property_id"]
@@ -819,6 +924,38 @@ export type Database = {
           zipcode?: string | null
         }
         Relationships: []
+      }
+      property_enrichment: {
+        Row: {
+          address_id: string | null
+          attributes: Json | null
+          id: string
+          raw: Json | null
+          refreshed_at: string | null
+        }
+        Insert: {
+          address_id?: string | null
+          attributes?: Json | null
+          id?: string
+          raw?: Json | null
+          refreshed_at?: string | null
+        }
+        Update: {
+          address_id?: string | null
+          attributes?: Json | null
+          id?: string
+          raw?: Json | null
+          refreshed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_enrichment_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "addresses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       renovation_items: {
         Row: {
