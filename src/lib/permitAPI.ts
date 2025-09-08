@@ -1,96 +1,89 @@
-import axios from 'axios';
+import { supabase } from "@/integrations/supabase/client";
 
 export interface Permit {
   id: string;
-  type: string;
-  description: string;
-  dateIssued: string;
-  status: 'active' | 'expired' | 'pending';
-  contractor?: string;
+  permit_number?: string;
+  permit_type?: string;
+  work_class?: string;
+  description?: string;
+  status?: string;
+  date_issued?: string;
+  date_finaled?: string;
+  valuation?: number;
+  contractor_name?: string;
+  contractor_license?: string;
+  jurisdiction?: string;
+  source_url?: string;
+  is_energy_related: boolean;
+  system_tags: string[];
+  source: string;
+  raw: any;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CodeViolation {
   id: string;
-  type: string;
-  description: string;
-  dateReported: string;
-  status: 'open' | 'resolved' | 'in_progress';
-  severity: 'low' | 'medium' | 'high';
+  violation_number?: string;
+  violation_type?: string;
+  description?: string;
+  status?: string;
+  severity?: string;
+  date_reported?: string;
+  date_resolved?: string;
+  jurisdiction?: string;
+  source_url?: string;
+  source: string;
+  raw: any;
+  created_at: string;
+  updated_at: string;
 }
 
-// In-memory cache with 5-minute TTL
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-const getCachedData = (key: string) => {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-  cache.delete(key);
-  return null;
-};
-
-const setCachedData = (key: string, data: any) => {
-  cache.set(key, { data, timestamp: Date.now() });
-};
-
-export const getPermits = async (address: string): Promise<Permit[]> => {
-  const normalizedAddress = address.toLowerCase().trim();
-  const cacheKey = `permits_${normalizedAddress}`;
-  
-  const cached = getCachedData(cacheKey);
-  if (cached) return cached;
-
+export const getPermits = async (homeId: string): Promise<Permit[]> => {
   try {
-    const baseURL = process.env.VITE_PERMITS_API_URL || 'https://api.citydata.com';
-    const apiKey = process.env.VITE_PERMITS_API_KEY;
-    
-    const response = await axios.get(`${baseURL}/permits`, {
-      params: { address: normalizedAddress },
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
-    });
-    
-    setCachedData(cacheKey, response.data);
-    return response.data;
+    const { data, error } = await supabase
+      .from('permits')
+      .select('*')
+      .eq('home_id', homeId)
+      .order('date_issued', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(`Permits API Error: ${error.response?.status} - ${error.message}`);
-    }
+    console.error('Error fetching permits:', error);
     throw new Error('Failed to fetch permits');
   }
 };
 
-export const getCodeViolations = async (address: string): Promise<CodeViolation[]> => {
-  const normalizedAddress = address.toLowerCase().trim();
-  const cacheKey = `violations_${normalizedAddress}`;
-  
-  const cached = getCachedData(cacheKey);
-  if (cached) return cached;
-
+export const getCodeViolations = async (homeId: string): Promise<CodeViolation[]> => {
   try {
-    const baseURL = process.env.VITE_PERMITS_API_URL || 'https://api.citydata.com';
-    const apiKey = process.env.VITE_PERMITS_API_KEY;
-    
-    const response = await axios.get(`${baseURL}/violations`, {
-      params: { address: normalizedAddress },
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
+    const { data, error } = await supabase
+      .from('code_violations')
+      .select('*')
+      .eq('home_id', homeId)
+      .order('date_reported', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching code violations:', error);
+    throw new Error('Failed to fetch code violations');
+  }
+};
+
+export const syncPermitsData = async (address: string, homeId: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await supabase.functions.invoke('shovels-permits', {
+      body: { address, homeId }
     });
-    
-    setCachedData(cacheKey, response.data);
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(`Violations API Error: ${error.response?.status} - ${error.message}`);
-    }
-    throw new Error('Failed to fetch code violations');
+    console.error('Error syncing permits data:', error);
+    throw new Error('Failed to sync permits data');
   }
 };

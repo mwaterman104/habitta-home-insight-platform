@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PropertyHistory } from '@/lib/propertyAPI';
-import { getPermits, getCodeViolations, Permit, CodeViolation } from '@/lib/permitAPI';
+import { getPermits, getCodeViolations, syncPermitsData, Permit, CodeViolation } from '@/lib/permitAPI';
 import { getWeatherHistory, computeWearIndex } from '@/lib/weatherAPI';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -61,10 +61,11 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
   const loadAdditionalData = async () => {
     setIsLoading(true);
     try {
-      // Load permits and violations
+      // Load permits and violations from database
+      const homeId = 'temp-home-id'; // TODO: Get actual home ID from context or props
       const [permitsData, violationsData] = await Promise.all([
-        getPermits(propertyData.address),
-        getCodeViolations(propertyData.address)
+        getPermits(homeId),
+        getCodeViolations(homeId)
       ]);
 
       setPermits(permitsData);
@@ -85,15 +86,40 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
     }
   };
 
+  const handleSyncPermits = async () => {
+    setIsLoading(true);
+    try {
+      const homeId = 'temp-home-id'; // TODO: Get actual home ID from context or props
+      const result = await syncPermitsData(propertyData.address, homeId);
+      
+      toast({
+        title: "Sync Complete",
+        description: result.message,
+        variant: "default",
+      });
+
+      // Reload data after sync
+      await loadAdditionalData();
+    } catch (error) {
+      toast({
+        title: "Sync Failed",
+        description: "Could not sync permit data from Shovels.ai",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const calculateRoofScore = async (permits: Permit[]): Promise<RoofScore> => {
     // Find most recent roof replacement
     const roofPermits = permits.filter(p => 
-      p.type.toLowerCase().includes('roof') && 
-      p.description.toLowerCase().includes('replacement')
+      (p.permit_type || '').toLowerCase().includes('roof') && 
+      (p.description || '').toLowerCase().includes('replacement')
     );
 
-    const yearReplaced = roofPermits.length > 0 
-      ? new Date(roofPermits[0].dateIssued).getFullYear()
+    const yearReplaced = roofPermits.length > 0 && roofPermits[0].date_issued
+      ? new Date(roofPermits[0].date_issued).getFullYear()
       : null;
 
     const currentYear = new Date().getFullYear();
@@ -143,7 +169,7 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
     const activeViolations = violations.filter(v => v.status !== 'resolved').length;
     const totalPermits = permits.length;
     const recentPermits = permits.filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 5
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 5
     ).length;
     
     let score = 100;
@@ -436,6 +462,16 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
         </TabsContent>
 
         <TabsContent value="permits">
+          <div className="mb-4">
+            <Button 
+              onClick={handleSyncPermits} 
+              disabled={isLoading}
+              className="flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              {isLoading ? 'Syncing...' : 'Sync Permit Data from Shovels.ai'}
+            </Button>
+          </div>
           <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -449,14 +485,14 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
                   {permits.slice(0, 8).map((permit) => (
                     <div key={permit.id} className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium">{permit.type}</p>
+                        <p className="font-medium">{permit.permit_type || 'General Permit'}</p>
                         <p className="text-sm text-muted-foreground">{permit.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(permit.dateIssued).toLocaleDateString()}
+                          {permit.date_issued ? new Date(permit.date_issued).toLocaleDateString() : 'No date'}
                         </p>
                       </div>
                       <Badge variant={permit.status === 'active' ? 'default' : 'secondary'}>
-                        {permit.status}
+                        {permit.status || 'Unknown'}
                       </Badge>
                     </div>
                   ))}
@@ -479,10 +515,10 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({ propertyData }) =
                   {violations.slice(0, 8).map((violation) => (
                     <div key={violation.id} className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium">{violation.type}</p>
+                        <p className="font-medium">{violation.violation_type || 'General Violation'}</p>
                         <p className="text-sm text-muted-foreground">{violation.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(violation.dateReported).toLocaleDateString()}
+                          {violation.date_reported ? new Date(violation.date_reported).toLocaleDateString() : 'No date'}
                         </p>
                       </div>
                       <div className="flex flex-col gap-1">

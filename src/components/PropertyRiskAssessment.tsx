@@ -53,10 +53,10 @@ const PropertyRiskAssessment: React.FC<PropertyRiskAssessmentProps> = ({
     
     // Recent renovations (reduce risk)
     const recentRenovations = permits.filter(p => 
-      p.type.toLowerCase().includes('renovation') || 
-      p.type.toLowerCase().includes('improvement')
+      (p.permit_type || '').toLowerCase().includes('renovation') || 
+      (p.permit_type || '').toLowerCase().includes('improvement')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 5
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 5
     );
     
     risk -= recentRenovations.length * 5;
@@ -95,13 +95,13 @@ const PropertyRiskAssessment: React.FC<PropertyRiskAssessmentProps> = ({
     
     // Check for electrical permits (good) vs violations (bad)
     const electricalPermits = permits.filter(p => 
-      p.type.toLowerCase().includes('electrical')
+      (p.permit_type || '').toLowerCase().includes('electrical')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 10
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 10
     );
-    
+
     const electricalViolations = violations.filter(v => 
-      v.type.toLowerCase().includes('electrical') && v.status !== 'resolved'
+      (v.violation_type || '').toLowerCase().includes('electrical') && v.status !== 'resolved'
     );
     
     risk -= electricalPermits.length * 5;
@@ -120,16 +120,16 @@ const PropertyRiskAssessment: React.FC<PropertyRiskAssessmentProps> = ({
     
     // Foundation or structural permits are good
     const structuralPermits = permits.filter(p => 
-      p.type.toLowerCase().includes('foundation') ||
-      p.type.toLowerCase().includes('structural') ||
-      p.description.toLowerCase().includes('foundation')
+      (p.permit_type || '').toLowerCase().includes('foundation') ||
+      (p.permit_type || '').toLowerCase().includes('structural') ||
+      (p.description || '').toLowerCase().includes('foundation')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 15
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 15
     );
-    
+
     const structuralViolations = violations.filter(v => 
-      v.type.toLowerCase().includes('structural') ||
-      v.type.toLowerCase().includes('foundation')
+      (v.violation_type || '').toLowerCase().includes('structural') ||
+      (v.violation_type || '').toLowerCase().includes('foundation')
     ).filter(v => v.status !== 'resolved');
     
     risk -= structuralPermits.length * 8;

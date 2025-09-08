@@ -57,8 +57,8 @@ const OwnershipTimeline: React.FC<OwnershipTimelineProps> = ({
     // Add significant permits (major renovations, additions, etc.)
     permits
       .filter(permit => {
-        const desc = permit.description.toLowerCase();
-        const type = permit.type.toLowerCase();
+        const desc = (permit.description || '').toLowerCase();
+        const type = (permit.permit_type || '').toLowerCase();
         return desc.includes('addition') ||
                desc.includes('renovation') ||
                desc.includes('remodel') ||
@@ -68,10 +68,10 @@ const OwnershipTimeline: React.FC<OwnershipTimelineProps> = ({
       })
       .forEach(permit => {
         events.push({
-          date: permit.dateIssued,
+          date: permit.date_issued || '',
           type: 'permit',
-          title: permit.type,
-          description: permit.description,
+          title: permit.permit_type || 'General Permit',
+          description: permit.description || '',
           category: 'Improvement'
         });
       });

@@ -34,8 +34,8 @@ const EnergyEfficiencyCard: React.FC<EnergyEfficiencyCardProps> = ({
     
     // Energy-related improvements
     const energyPermits = permits.filter(p => {
-      const desc = p.description.toLowerCase();
-      const type = p.type.toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const type = (p.permit_type || '').toLowerCase();
       return desc.includes('hvac') || 
              desc.includes('insulation') || 
              desc.includes('windows') ||
@@ -44,35 +44,35 @@ const EnergyEfficiencyCard: React.FC<EnergyEfficiencyCardProps> = ({
              type.includes('mechanical') ||
              type.includes('energy');
     }).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 10
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 10
     );
     
     score += energyPermits.length * 8;
     
     // Solar installations
     const solarPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('solar') ||
-      p.type.toLowerCase().includes('solar')
+      (p.description || '').toLowerCase().includes('solar') ||
+      (p.permit_type || '').toLowerCase().includes('solar')
     );
     
     if (solarPermits.length > 0) score += 25;
     
     // HVAC updates
     const hvacPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('hvac') ||
-      p.description.toLowerCase().includes('heat pump') ||
-      p.type.toLowerCase().includes('mechanical')
+      (p.description || '').toLowerCase().includes('hvac') ||
+      (p.description || '').toLowerCase().includes('heat pump') ||
+      (p.permit_type || '').toLowerCase().includes('mechanical')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 8
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 8
     );
     
     if (hvacPermits.length > 0) score += 15;
     
     // Window replacements
     const windowPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('window')
+      (p.description || '').toLowerCase().includes('window')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= new Date().getFullYear() - 15
+      p.date_issued && new Date(p.date_issued).getFullYear() >= new Date().getFullYear() - 15
     );
     
     if (windowPermits.length > 0) score += 10;
@@ -102,41 +102,41 @@ const EnergyEfficiencyCard: React.FC<EnergyEfficiencyCardProps> = ({
     
     // Recent energy improvements
     const solarPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('solar')
+      (p.description || '').toLowerCase().includes('solar')
     );
-    if (solarPermits.length > 0) {
+    if (solarPermits.length > 0 && solarPermits[0].date_issued) {
       improvements.push({
         type: 'Solar Installation',
-        year: new Date(solarPermits[0].dateIssued).getFullYear(),
+        year: new Date(solarPermits[0].date_issued).getFullYear(),
         icon: Sun,
         impact: 'High'
       });
     }
     
     const hvacPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('hvac') ||
-      p.description.toLowerCase().includes('heat pump')
+      (p.description || '').toLowerCase().includes('hvac') ||
+      (p.description || '').toLowerCase().includes('heat pump')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= currentYear - 10
+      p.date_issued && new Date(p.date_issued).getFullYear() >= currentYear - 10
     );
-    if (hvacPermits.length > 0) {
+    if (hvacPermits.length > 0 && hvacPermits[0].date_issued) {
       improvements.push({
         type: 'HVAC System',
-        year: new Date(hvacPermits[0].dateIssued).getFullYear(),
+        year: new Date(hvacPermits[0].date_issued).getFullYear(),
         icon: Wind,
         impact: 'Medium'
       });
     }
     
     const windowPermits = permits.filter(p => 
-      p.description.toLowerCase().includes('window')
+      (p.description || '').toLowerCase().includes('window')
     ).filter(p => 
-      new Date(p.dateIssued).getFullYear() >= currentYear - 15
+      p.date_issued && new Date(p.date_issued).getFullYear() >= currentYear - 15
     );
-    if (windowPermits.length > 0) {
+    if (windowPermits.length > 0 && windowPermits[0].date_issued) {
       improvements.push({
         type: 'Window Replacement',
-        year: new Date(windowPermits[0].dateIssued).getFullYear(),
+        year: new Date(windowPermits[0].date_issued).getFullYear(),
         icon: Lightbulb,
         impact: 'Medium'
       });
