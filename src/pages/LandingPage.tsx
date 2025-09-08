@@ -34,14 +34,10 @@ const LandingPage = () => {
             </nav>
 
             <div className="flex items-center gap-4">
-              <Link to="/auth">
-                <Button variant="ghost">Sign In</Button>
-              </Link>
-              <Link to="/auth">
-                <Button className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-semibold">
-                  Get Started
-                </Button>
-              </Link>
+              <Button variant="ghost" onClick={() => navigate('/auth')}>Sign In</Button>
+              <Button onClick={() => navigate('/auth')} className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-semibold">
+                Get Started
+              </Button>
             </div>
           </div>
         </div>
@@ -56,11 +52,13 @@ const LandingPage = () => {
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Prevent costly repairs with predictive maintenance, instant AI diagnosis, and smart scheduling
           </p>
-          <Link to="/auth">
-            <Button size="lg" className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-bold text-lg px-8 py-6">
-              Start Free Trial
-            </Button>
-          </Link>
+          <Button
+            size="lg"
+            className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-bold text-lg px-8 py-6"
+            onClick={() => navigate('/auth')}
+          >
+            Start Free Trial
+          </Button>
         </div>
       </section>
 
@@ -167,9 +165,7 @@ const LandingPage = () => {
                     <span>Document storage</span>
                   </li>
                 </ul>
-                <Link to="/auth" className="w-full">
-                  <Button variant="outline" className="w-full">Get Started</Button>
-                </Link>
+                <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>Get Started</Button>
               </CardContent>
             </Card>
             
@@ -202,11 +198,9 @@ const LandingPage = () => {
                     <span>Priority support</span>
                   </li>
                 </ul>
-                <Link to="/auth" className="w-full">
-                  <Button className="w-full bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal">
-                    Start Free Trial
-                  </Button>
-                </Link>
+                <Button className="w-full bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal" onClick={() => navigate('/auth')}>
+                  Start Free Trial
+                </Button>
               </CardContent>
             </Card>
             
@@ -234,9 +228,7 @@ const LandingPage = () => {
                     <span className="text-muted-foreground">Coming soon</span>
                   </li>
                 </ul>
-                <Link to="/auth" className="w-full">
-                  <Button variant="outline" className="w-full">Get Started</Button>
-                </Link>
+                <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>Get Started</Button>
               </CardContent>
             </Card>
           </div>
