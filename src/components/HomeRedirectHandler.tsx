@@ -11,7 +11,13 @@ const HomeRedirectHandler = () => {
 
   useEffect(() => {
     const checkHomes = async () => {
-      if (!user || authLoading) return;
+      if (authLoading) return;
+      
+      if (!user) {
+        // Not authenticated - show landing page
+        setChecking(false);
+        return;
+      }
       
       try {
         const { data: homes, error } = await supabase
@@ -37,14 +43,7 @@ const HomeRedirectHandler = () => {
       }
     };
 
-    if (!authLoading) {
-      if (user) {
-        checkHomes();
-      } else {
-        // Not authenticated - show landing page
-        setChecking(false);
-      }
-    }
+    checkHomes();
   }, [user, authLoading, navigate]);
 
   if (authLoading || checking) {
