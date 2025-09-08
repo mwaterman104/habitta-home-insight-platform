@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Home, ArrowLeft, LogOut, MapPin, Check, AlertCircle } from 'lucide-react';
 import { AutocompleteInput } from '@/components/AutocompleteInput';
+import { PropertyDetailsAutoFill } from '@/components/PropertyDetailsAutoFill';
 import { smartyStandardizeGeocode, smartyEnrich, computeCanonicalHash } from '@/lib/smarty';
 import { mapStandardized, mapGeocode, mapEnrichment } from '@/adapters/smartyMappers';
 
@@ -430,76 +431,17 @@ const AddHomePage = () => {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Property Details</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="propertyType">Property Type</Label>
-                    <Select 
-                      value={formData.propertyType}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, propertyType: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select property type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="single-family">Single Family Home</SelectItem>
-                        <SelectItem value="townhouse">Townhouse</SelectItem>
-                        <SelectItem value="condo">Condominium</SelectItem>
-                        <SelectItem value="duplex">Duplex</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="yearBuilt">Year Built</Label>
-                      <Input
-                        id="yearBuilt"
-                        type="number"
-                        value={formData.yearBuilt}
-                        onChange={(e) => setFormData(prev => ({ ...prev, yearBuilt: e.target.value }))}
-                        min="1800"
-                        max={new Date().getFullYear()}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="squareFeet">Square Feet</Label>
-                      <Input
-                        id="squareFeet"
-                        type="number"
-                        value={formData.squareFeet}
-                        onChange={(e) => setFormData(prev => ({ ...prev, squareFeet: e.target.value }))}
-                        min="1"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bedrooms">Bedrooms</Label>
-                      <Input
-                        id="bedrooms"
-                        type="number"
-                        value={formData.bedrooms}
-                        onChange={(e) => setFormData(prev => ({ ...prev, bedrooms: e.target.value }))}
-                        min="0"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="bathrooms">Bathrooms</Label>
-                      <Input
-                        id="bathrooms"
-                        type="number"
-                        step="0.5"
-                        value={formData.bathrooms}
-                        onChange={(e) => setFormData(prev => ({ ...prev, bathrooms: e.target.value }))}
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                </div>
+                <PropertyDetailsAutoFill
+                  formData={formData}
+                  setFormData={setFormData}
+                  isAddressVerified={formData.isVerified}
+                  verifiedAddress={formData.isVerified ? {
+                    address: formData.address,
+                    city: formData.city,
+                    state: formData.state,
+                    zipCode: formData.zipCode
+                  } : undefined}
+                />
 
                 <Button 
                   type="submit" 

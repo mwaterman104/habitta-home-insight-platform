@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.smarty-autocomplete]
 verify_jwt = false
+
+[functions.attom-property]
+verify_jwt = true
