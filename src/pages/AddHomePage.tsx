@@ -362,7 +362,7 @@ const AddHomePage = () => {
                       onSelect={handleAddressSelect}
                       placeholder="Start typing your address..."
                       className="w-full"
-                      displayValue={formData.isVerified ? formData.address : undefined}
+                      displayValue={formData.address || undefined}
                     />
                     {verifyingAddress && (
                       <div className="flex items-center text-sm text-muted-foreground mt-2">
