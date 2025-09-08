@@ -33,6 +33,7 @@ export function AppRoutes() {
             <Route path="/home" element={<Dashboard />} />
             <Route path="/home/new" element={<AddHomePage />} />
             <Route path="/home/:homeId" element={<HomeProfilePage />} />
+            <Route path="/tasks/new" element={<div>Tasks New Page - Coming Soon</div>} />
             <Route path="/admin" element={<AdminPage />} />
           </Route>
           
