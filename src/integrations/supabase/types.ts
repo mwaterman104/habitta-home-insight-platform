@@ -90,6 +90,66 @@ export type Database = {
           },
         ]
       }
+      code_violations: {
+        Row: {
+          created_at: string
+          date_reported: string | null
+          date_resolved: string | null
+          description: string | null
+          hash: string | null
+          home_id: string
+          id: string
+          jurisdiction: string | null
+          raw: Json
+          severity: string | null
+          source: string
+          source_url: string | null
+          status: string | null
+          updated_at: string
+          user_id: string
+          violation_number: string | null
+          violation_type: string | null
+        }
+        Insert: {
+          created_at?: string
+          date_reported?: string | null
+          date_resolved?: string | null
+          description?: string | null
+          hash?: string | null
+          home_id: string
+          id?: string
+          jurisdiction?: string | null
+          raw: Json
+          severity?: string | null
+          source?: string
+          source_url?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id: string
+          violation_number?: string | null
+          violation_type?: string | null
+        }
+        Update: {
+          created_at?: string
+          date_reported?: string | null
+          date_resolved?: string | null
+          description?: string | null
+          hash?: string | null
+          home_id?: string
+          id?: string
+          jurisdiction?: string | null
+          raw?: Json
+          severity?: string | null
+          source?: string
+          source_url?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+          violation_number?: string | null
+          violation_type?: string | null
+        }
+        Relationships: []
+      }
       diagnoses: {
         Row: {
           ai_diagnosis: string | null
@@ -429,6 +489,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      permits: {
+        Row: {
+          contractor_license: string | null
+          contractor_name: string | null
+          created_at: string
+          date_finaled: string | null
+          date_issued: string | null
+          description: string | null
+          hash: string | null
+          home_id: string
+          id: string
+          is_energy_related: boolean
+          jurisdiction: string | null
+          permit_number: string | null
+          permit_type: string | null
+          raw: Json
+          source: string
+          source_url: string | null
+          status: string | null
+          system_tags: string[] | null
+          trade: string | null
+          updated_at: string
+          user_id: string
+          valuation: number | null
+          work_class: string | null
+        }
+        Insert: {
+          contractor_license?: string | null
+          contractor_name?: string | null
+          created_at?: string
+          date_finaled?: string | null
+          date_issued?: string | null
+          description?: string | null
+          hash?: string | null
+          home_id: string
+          id?: string
+          is_energy_related?: boolean
+          jurisdiction?: string | null
+          permit_number?: string | null
+          permit_type?: string | null
+          raw: Json
+          source?: string
+          source_url?: string | null
+          status?: string | null
+          system_tags?: string[] | null
+          trade?: string | null
+          updated_at?: string
+          user_id: string
+          valuation?: number | null
+          work_class?: string | null
+        }
+        Update: {
+          contractor_license?: string | null
+          contractor_name?: string | null
+          created_at?: string
+          date_finaled?: string | null
+          date_issued?: string | null
+          description?: string | null
+          hash?: string | null
+          home_id?: string
+          id?: string
+          is_energy_related?: boolean
+          jurisdiction?: string | null
+          permit_number?: string | null
+          permit_type?: string | null
+          raw?: Json
+          source?: string
+          source_url?: string | null
+          status?: string | null
+          system_tags?: string[] | null
+          trade?: string | null
+          updated_at?: string
+          user_id?: string
+          valuation?: number | null
+          work_class?: string | null
+        }
+        Relationships: []
       }
       project_budgets: {
         Row: {
