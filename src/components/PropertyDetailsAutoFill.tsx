@@ -49,11 +49,12 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
       setFetchStatus('loading');
       
       try {
+        const fiveDigitZip = verifiedAddress.zipCode.split('-')[0];
         const enrichResponse = await smartyEnrich({
           street: verifiedAddress.address,
           city: verifiedAddress.city,
           state: verifiedAddress.state,
-          postal_code: verifiedAddress.zipCode
+          postal_code: fiveDigitZip
         });
 
         const enrichmentData = mapEnrichment(enrichResponse);

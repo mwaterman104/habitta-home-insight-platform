@@ -20,9 +20,10 @@ interface AutocompleteInputProps {
   onSelect: (suggestion: AutocompleteSuggestion) => void;
   placeholder?: string;
   className?: string;
+  displayValue?: string;
 }
 
-export function AutocompleteInput({ onSelect, placeholder = "Enter address...", className }: AutocompleteInputProps) {
+export function AutocompleteInput({ onSelect, placeholder = "Enter address...", className, displayValue }: AutocompleteInputProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,6 +34,13 @@ export function AutocompleteInput({ onSelect, placeholder = "Enter address...", 
   
   const debounceRef = useRef<NodeJS.Timeout>();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Update internal query when displayValue changes
+  useEffect(() => {
+    if (displayValue !== undefined && displayValue !== query) {
+      setQuery(displayValue);
+    }
+  }, [displayValue]);
 
   useEffect(() => {
     if (query.length < 3 || hasSelected) {

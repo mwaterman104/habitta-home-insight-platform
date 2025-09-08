@@ -70,15 +70,22 @@ const AddHomePage = () => {
 
       // Standardize and geocode the selected address
       console.log(`[${stepId}] Standardizing address...`);
+      const fiveDigitZip = suggestion.zipcode?.split('-')[0] || '';
       const { standardized, geocode } = await smartyStandardizeGeocode({
         street: suggestion.street_line,
         city: suggestion.city,
         state: suggestion.state,
-        postal_code: suggestion.zipcode
+        postal_code: fiveDigitZip
       });
 
       const addressData = mapStandardized(standardized);
       const geocodeData = mapGeocode(geocode);
+
+      // Check if standardization returned empty candidates
+      if (!standardized || (Array.isArray(standardized) && standardized.length === 0)) {
+        console.warn(`[${stepId}] No standardization candidates found`);
+        throw new Error('Address could not be standardized - no matching candidates found');
+      }
       
       console.log(`[${stepId}] Standardization complete`, {
         dpvMatch: addressData.dpv_match,
@@ -167,11 +174,12 @@ const AddHomePage = () => {
         console.log(`[${stepId}] Creating new address record`);
         
         // Re-standardize and geocode for canonical data
+        const fiveDigitZip = formData.zipCode.split('-')[0];
         const { standardized, geocode } = await smartyStandardizeGeocode({
           street: formData.address,
           city: formData.city,
           state: formData.state,
-          postal_code: formData.zipCode
+          postal_code: fiveDigitZip
         });
 
         const addressData = mapStandardized(standardized);
@@ -227,11 +235,12 @@ const AddHomePage = () => {
 
       try {
         console.log(`[${stepId}] Attempting property enrichment...`);
+        const fiveDigitZip = formData.zipCode.split('-')[0];
         const enrichResponse = await smartyEnrich({
           street: formData.address,
           city: formData.city,
           state: formData.state,
-          postal_code: formData.zipCode
+          postal_code: fiveDigitZip
         });
 
         enrichmentData = mapEnrichment(enrichResponse);
@@ -353,6 +362,7 @@ const AddHomePage = () => {
                       onSelect={handleAddressSelect}
                       placeholder="Start typing your address..."
                       className="w-full"
+                      displayValue={formData.isVerified ? formData.address : undefined}
                     />
                     {verifyingAddress && (
                       <div className="flex items-center text-sm text-muted-foreground mt-2">

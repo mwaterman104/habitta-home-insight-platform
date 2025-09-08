@@ -87,6 +87,11 @@ serve(async (req) => {
       }
       const standardized = await stdRes.json();
 
+      // Log if US Street returns empty array (no matches)
+      if (Array.isArray(standardized) && standardized.length === 0) {
+        console.log(`[${stepId}] US Street returned no candidates for address`);
+      }
+
       // 2) Rooftop geocode
       const geoUrl = `${endpoints.rooftop}?${qs({
         "auth-id": AUTH_ID,
