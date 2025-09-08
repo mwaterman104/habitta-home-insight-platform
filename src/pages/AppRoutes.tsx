@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { AuthenticatedLayout } from "@/layouts/AuthenticatedLayout";
 import HomeRedirectHandler from "@/components/HomeRedirectHandler";
 import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
@@ -22,32 +23,18 @@ export function AppRoutes() {
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/demo" element={<ClientDashboard />} />
           
-          {/* Protected routes */}
-          <Route path="/dashboard" element={
+          {/* Protected routes with unified layout */}
+          <Route element={
             <ProtectedRoute>
-              <Dashboard />
+              <AuthenticatedLayout />
             </ProtectedRoute>
-          } />
-          <Route path="/home" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/home/new" element={
-            <ProtectedRoute>
-              <AddHomePage />
-            </ProtectedRoute>
-          } />
-          <Route path="/home/:homeId" element={
-            <ProtectedRoute>
-              <HomeProfilePage />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin" element={
-            <ProtectedRoute>
-              <AdminPage />
-            </ProtectedRoute>
-          } />
+          }>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/home" element={<Dashboard />} />
+            <Route path="/home/new" element={<AddHomePage />} />
+            <Route path="/home/:homeId" element={<HomeProfilePage />} />
+            <Route path="/admin" element={<AdminPage />} />
+          </Route>
           
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
