@@ -32,8 +32,8 @@ import LiveCompletedStats from "../components/live/LiveCompletedStats";
 import LiveHomeConditionCard from "../components/live/LiveHomeConditionCard";
 import LiveHomeValueCard from "../components/live/LiveHomeValueCard";
 
-// Import live hooks
-import { useHabittaLive } from "../hooks/useHabittaLive";
+import { useHabittaLive } from "@/hooks/useHabittaLive";
+import { RefreshPropertyButton } from "@/components/RefreshPropertyButton";
 
 interface HomeData {
   id: string;
@@ -56,6 +56,7 @@ export default function HomeIntelligenceDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [enrichedData, setEnrichedData] = useState<any>(null);
 
   // Get live data using the new hook
   const { alerts, systemHealth, tasksSummary, refreshKey } = useHabittaLive(homeId);
@@ -67,13 +68,24 @@ export default function HomeIntelligenceDashboard() {
       try {
         const { data, error } = await supabase
           .from('homes')
-          .select('*')
+          .select(`
+            *,
+            addresses (
+              *,
+              property_enrichment (*)
+            )
+          `)
           .eq('id', homeId)
           .eq('user_id', user.id)
           .single();
 
         if (error) throw error;
         setHome(data);
+        
+        // Set enriched data if available
+        if (data.addresses?.property_enrichment?.length > 0) {
+          setEnrichedData(data.addresses.property_enrichment[0]);
+        }
       } catch (error: any) {
         toast({
           title: "Error Loading Home",
@@ -88,6 +100,41 @@ export default function HomeIntelligenceDashboard() {
 
     fetchHome();
   }, [user, homeId, navigate, toast]);
+
+  const handleRefreshComplete = () => {
+    // Refetch home data after refresh
+    const fetchHomeData = async () => {
+      if (!user || !homeId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('homes')
+          .select(`
+            *,
+            addresses (
+              *,
+              property_enrichment (*)
+            )
+          `)
+          .eq('id', homeId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) throw error;
+        
+        if (data) {
+          setHome(data);
+          if (data.addresses?.property_enrichment?.length > 0) {
+            setEnrichedData(data.addresses.property_enrichment[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error refreshing home data:', error);
+      }
+    };
+
+    fetchHomeData();
+  };
 
   if (loading) {
     return (
@@ -112,10 +159,57 @@ export default function HomeIntelligenceDashboard() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Home Intelligence Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          {home.address}, {home.city}, {home.state} • What needs attention today • Smart recommendations • Preventive insights
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-3xl font-bold">Home Intelligence Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              {home.address}, {home.city}, {home.state} • What needs attention today • Smart recommendations • Preventive insights
+            </p>
+          </div>
+          {home.address && home.city && home.state && home.zip_code && (
+            <RefreshPropertyButton
+              homeId={homeId!}
+              address={home.address}
+              city={home.city}
+              state={home.state}
+              zipCode={home.zip_code}
+              onRefresh={handleRefreshComplete}
+            />
+          )}
+        </div>
+        
+        {/* Property Details Bar */}
+        <div className="flex flex-wrap gap-4 mb-6 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Built:</span>
+            <span className="text-sm">{home.year_built || enrichedData?.attributes?.year_built || '—'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Size:</span>
+            <span className="text-sm">{home.square_feet || enrichedData?.attributes?.square_feet ? `${home.square_feet || enrichedData.attributes.square_feet} sq ft` : '—'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Beds:</span>
+            <span className="text-sm">{home.bedrooms || enrichedData?.attributes?.beds || '—'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Baths:</span>
+            <span className="text-sm">{home.bathrooms || enrichedData?.attributes?.baths || '—'}</span>
+          </div>
+          {(enrichedData?.attributes?.lot_size) && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Lot:</span>
+              <span className="text-sm">{enrichedData.attributes.lot_size} sq ft</span>
+            </div>
+          )}
+          {enrichedData?.refreshed_at && (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-xs text-muted-foreground">
+                Data refreshed: {new Date(enrichedData.refreshed_at).toLocaleDateString()}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
