@@ -8,6 +8,10 @@ import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
+import OnboardingStart from "./OnboardingStart";
+import OnboardingSnapshot from "./OnboardingSnapshot";
+import OnboardingUnknowns from "./OnboardingUnknowns";
+import OnboardingPersonalization from "./OnboardingPersonalization";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -20,6 +24,28 @@ export function AppRoutes() {
           {/* Public routes */}
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/demo" element={<ClientDashboard />} />
+          
+          {/* Onboarding routes (protected but no sidebar) */}
+          <Route path="/onboarding/start" element={
+            <ProtectedRoute>
+              <OnboardingStart />
+            </ProtectedRoute>
+          } />
+          <Route path="/onboarding/snapshot" element={
+            <ProtectedRoute>
+              <OnboardingSnapshot />
+            </ProtectedRoute>
+          } />
+          <Route path="/onboarding/unknowns" element={
+            <ProtectedRoute>
+              <OnboardingUnknowns />
+            </ProtectedRoute>
+          } />
+          <Route path="/onboarding/personalization" element={
+            <ProtectedRoute>
+              <OnboardingPersonalization />
+            </ProtectedRoute>
+          } />
           
           {/* Protected routes with unified layout */}
           <Route element={

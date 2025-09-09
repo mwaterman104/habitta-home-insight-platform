@@ -352,6 +352,7 @@ export type Database = {
           bathrooms: number | null
           bedrooms: number | null
           city: string
+          confidence: number | null
           created_at: string
           id: string
           latitude: number | null
@@ -361,6 +362,7 @@ export type Database = {
           property_type: string | null
           square_feet: number | null
           state: string
+          status: string | null
           updated_at: string
           user_id: string
           year_built: number | null
@@ -372,6 +374,7 @@ export type Database = {
           bathrooms?: number | null
           bedrooms?: number | null
           city: string
+          confidence?: number | null
           created_at?: string
           id?: string
           latitude?: number | null
@@ -381,6 +384,7 @@ export type Database = {
           property_type?: string | null
           square_feet?: number | null
           state: string
+          status?: string | null
           updated_at?: string
           user_id: string
           year_built?: number | null
@@ -392,6 +396,7 @@ export type Database = {
           bathrooms?: number | null
           bedrooms?: number | null
           city?: string
+          confidence?: number | null
           created_at?: string
           id?: string
           latitude?: number | null
@@ -401,6 +406,7 @@ export type Database = {
           property_type?: string | null
           square_feet?: number | null
           state?: string
+          status?: string | null
           updated_at?: string
           user_id?: string
           year_built?: number | null
@@ -673,6 +679,60 @@ export type Database = {
           user_id?: string
           valuation?: number | null
           work_class?: string | null
+        }
+        Relationships: []
+      }
+      plan_cards: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          estimated_cost_max: number | null
+          estimated_cost_min: number | null
+          home_id: string
+          id: string
+          is_completed: boolean | null
+          priority: string
+          rationale: string | null
+          system_kind: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          home_id: string
+          id?: string
+          is_completed?: boolean | null
+          priority?: string
+          rationale?: string | null
+          system_kind?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          home_id?: string
+          id?: string
+          is_completed?: boolean | null
+          priority?: string
+          rationale?: string | null
+          system_kind?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1009,6 +1069,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      systems: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          home_id: string
+          id: string
+          install_source: string | null
+          install_year: number | null
+          kind: string
+          material: string | null
+          notes: string | null
+          raw_data: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          home_id: string
+          id?: string
+          install_source?: string | null
+          install_year?: number | null
+          kind: string
+          material?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          home_id?: string
+          id?: string
+          install_source?: string | null
+          install_year?: number | null
+          kind?: string
+          material?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       tasks: {
         Row: {

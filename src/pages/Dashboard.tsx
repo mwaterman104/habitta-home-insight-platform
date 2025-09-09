@@ -119,7 +119,7 @@ const Dashboard = () => {
             Get started by adding your first property to track maintenance and get AI insights.
           </p>
           <Button 
-            onClick={() => navigate('/home/new')}
+            onClick={() => navigate('/onboarding/start')}
             className="inline-flex items-center"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -133,7 +133,7 @@ const Dashboard = () => {
               {homes.length} {homes.length === 1 ? 'Property' : 'Properties'}
             </Badge>
             <Button 
-              onClick={() => navigate('/home/new')}
+              onClick={() => navigate('/onboarding/start')}
               className="inline-flex items-center"
             >
               <Plus className="h-4 w-4 mr-2" />
