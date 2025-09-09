@@ -118,9 +118,9 @@ const ProjectWorkspace = () => {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
           <div className="h-8 bg-muted rounded w-64 animate-pulse"></div>
         </div>
         <Card>
@@ -145,7 +145,7 @@ const ProjectWorkspace = () => {
       <div className="flex flex-col items-center justify-center py-12 space-y-4">
         <h3 className="text-lg font-semibold">Project not found</h3>
         <p className="text-muted-foreground">The project you're looking for doesn't exist.</p>
-        <Button onClick={() => navigate('/')}>
+        <Button onClick={() => navigate('/projects')}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Projects
         </Button>
@@ -159,7 +159,7 @@ const ProjectWorkspace = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div className="flex-1">

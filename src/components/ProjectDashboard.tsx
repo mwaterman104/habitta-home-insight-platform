@@ -3,9 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Calendar, DollarSign, CheckCircle, Clock, Hammer } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Calendar, DollarSign, CheckCircle, Clock, Hammer, Eye, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { differenceInDays, format, isBefore } from 'date-fns';
 
 interface Project {
   id: string;
@@ -22,12 +25,15 @@ interface ProjectStats {
   completedTasks: number;
   totalCost: number;
   actualCost: number;
+  dueDate?: string;
+  dueDateStatus?: 'on-time' | 'at-risk' | 'overdue';
 }
 
 const ProjectDashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectStats, setProjectStats] = useState<Record<string, ProjectStats>>({});
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('active');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -73,12 +79,46 @@ const ProjectDashboard = () => {
         .select('estimated_amount, actual_amount')
         .eq('project_id', projectId);
 
+      // Fetch project timeline for due date
+      const { data: timelines } = await supabase
+        .from('project_timelines')
+        .select('target_date')
+        .eq('project_id', projectId)
+        .order('target_date', { ascending: false })
+        .limit(1);
+
       const totalTasks = tasks?.length || 0;
       const completedTasks = tasks?.filter(task => task.is_completed).length || 0;
       const totalCost = budgets?.reduce((sum, budget) => sum + (budget.estimated_amount || 0), 0) || 0;
       const actualCost = budgets?.reduce((sum, budget) => sum + (budget.actual_amount || 0), 0) || 0;
+      
+      // Calculate due date status
+      let dueDate: string | undefined;
+      let dueDateStatus: 'on-time' | 'at-risk' | 'overdue' | undefined;
+      
+      if (timelines && timelines.length > 0 && timelines[0].target_date) {
+        dueDate = timelines[0].target_date;
+        const today = new Date();
+        const targetDate = new Date(dueDate);
+        const daysUntilDue = differenceInDays(targetDate, today);
+        
+        if (isBefore(targetDate, today)) {
+          dueDateStatus = 'overdue';
+        } else if (daysUntilDue <= 7) {
+          dueDateStatus = 'at-risk';
+        } else {
+          dueDateStatus = 'on-time';
+        }
+      }
 
-      return { totalTasks, completedTasks, totalCost, actualCost };
+      return { 
+        totalTasks, 
+        completedTasks, 
+        totalCost, 
+        actualCost, 
+        dueDate,
+        dueDateStatus
+      };
     } catch (error) {
       console.error('Error fetching project stats:', error);
       return { totalTasks: 0, completedTasks: 0, totalCost: 0, actualCost: 0 };
@@ -91,6 +131,23 @@ const ProjectDashboard = () => {
       case 'completed': return 'secondary';
       case 'on_hold': return 'outline';
       default: return 'default';
+    }
+  };
+
+  const getDueDateColor = (dueDateStatus?: string) => {
+    switch (dueDateStatus) {
+      case 'overdue': return 'text-destructive';
+      case 'at-risk': return 'text-warning';
+      case 'on-time': return 'text-success';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const getDueDateIcon = (dueDateStatus?: string) => {
+    switch (dueDateStatus) {
+      case 'overdue': return AlertTriangle;
+      case 'at-risk': return Clock;
+      default: return Calendar;
     }
   };
 
@@ -108,28 +165,56 @@ const ProjectDashboard = () => {
     }).format(amount);
   };
 
+  const filterProjects = (projects: Project[], tab: string) => {
+    switch (tab) {
+      case 'active':
+        return projects.filter(p => p.status === 'active');
+      case 'planned':
+        return projects.filter(p => p.status === 'on_hold');
+      case 'completed':
+        return projects.filter(p => p.status === 'completed');
+      default:
+        return projects;
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">My Projects</h2>
+          <h1 className="text-3xl font-bold">My Projects</h1>
+          <Button onClick={() => navigate('/templates')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Project
+          </Button>
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-6 bg-muted rounded w-3/4"></div>
-                <div className="h-4 bg-muted rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="h-2 bg-muted rounded"></div>
-                  <div className="h-4 bg-muted rounded w-2/3"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="planned">Planned</TabsTrigger>
+            <TabsTrigger value="completed">Completed</TabsTrigger>
+          </TabsList>
+        
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Skeleton className="h-2 w-full" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </Tabs>
       </div>
     );
   }
@@ -138,86 +223,126 @@ const ProjectDashboard = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">My Projects</h2>
+          <h1 className="text-3xl font-bold">My Projects</h1>
           <p className="text-muted-foreground">
             Manage your home improvement projects and track progress
           </p>
         </div>
         <Button onClick={() => navigate('/templates')} className="gap-2">
           <Plus className="w-4 h-4" />
-          New Project
+          Add Project
         </Button>
       </div>
 
-      {projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 space-y-4">
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-            <Hammer className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <div className="text-center space-y-2">
-            <h3 className="text-lg font-semibold">No projects yet</h3>
-            <p className="text-muted-foreground max-w-md">
-              Start your first home improvement project by choosing from our templates
-            </p>
-          </div>
-          <Button onClick={() => navigate('/templates')} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Create Your First Project
-          </Button>
-        </div>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => {
-            const stats = projectStats[project.id] || { totalTasks: 0, completedTasks: 0, totalCost: 0, actualCost: 0 };
-            const progress = getProgressPercentage(stats);
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsTrigger value="active">Active</TabsTrigger>
+          <TabsTrigger value="planned">Planned</TabsTrigger>
+          <TabsTrigger value="completed">Completed</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab}>
+          {(() => {
+            const filteredProjects = filterProjects(projects, activeTab);
+            
+            if (filteredProjects.length === 0) {
+              return (
+                <div className="text-center py-12 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+                    <Hammer className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold">
+                      {activeTab === 'active' && 'No active projects'}
+                      {activeTab === 'planned' && 'No planned projects'}
+                      {activeTab === 'completed' && 'No completed projects'}
+                    </h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      {activeTab === 'active' && 'Start a new project to get organized with your home improvements'}
+                      {activeTab === 'planned' && 'Projects on hold will appear here'}
+                      {activeTab === 'completed' && 'Completed projects will appear here for your records'}
+                    </p>
+                  </div>
+                  {activeTab === 'active' && (
+                    <Button onClick={() => navigate('/templates')} className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      Create Your First Project
+                    </Button>
+                  )}
+                </div>
+              );
+            }
 
             return (
-              <Card 
-                key={project.id} 
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => navigate(`/project/${project.id}`)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <CardTitle className="text-lg">{project.title}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{project.room_type}</p>
-                    </div>
-                    <Badge variant={getStatusBadgeVariant(project.status)}>
-                      {project.status.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Progress</span>
-                      <span>{progress}%</span>
-                    </div>
-                    <Progress value={progress} className="h-2" />
-                  </div>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map((project) => {
+                  const stats = projectStats[project.id] || { totalTasks: 0, completedTasks: 0, totalCost: 0, actualCost: 0 };
+                  const progress = getProgressPercentage(stats);
+                  const DueDateIcon = getDueDateIcon(stats?.dueDateStatus);
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-success" />
-                      <span>{stats.completedTasks}/{stats.totalTasks} tasks</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-primary" />
-                      <span>{formatCurrency(stats.totalCost)}</span>
-                    </div>
-                  </div>
+                  return (
+                    <Card key={project.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <CardTitle className="text-lg">{project.title}</CardTitle>
+                            <p className="text-sm text-muted-foreground">{project.room_type}</p>
+                          </div>
+                          <Badge variant={getStatusBadgeVariant(project.status)}>
+                            {project.status === 'on_hold' ? 'planned' : project.status}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span>Progress</span>
+                            <span>{progress}%</span>
+                          </div>
+                          <Progress value={progress} className="h-2" />
+                        </div>
 
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Calendar className="w-3 h-3" />
-                    <span>Created {new Date(project.created_at).toLocaleDateString()}</span>
-                  </div>
-                </CardContent>
-              </Card>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4 text-primary" />
+                            <span>{stats.completedTasks}/{stats.totalTasks} tasks</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-success" />
+                            <span>{formatCurrency(stats.totalCost)}</span>
+                          </div>
+                        </div>
+
+                        {stats?.dueDate && (
+                          <div className={`flex items-center gap-2 text-sm ${getDueDateColor(stats.dueDateStatus)}`}>
+                            <DueDateIcon className="w-4 h-4" />
+                            <span>Due {format(new Date(stats.dueDate), 'MMM d, yyyy')}</span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between items-center pt-2">
+                          <span className="text-xs text-muted-foreground">
+                            Created {new Date(project.created_at).toLocaleDateString()}
+                          </span>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => navigate(`/project/${project.id}`)}
+                            className="gap-2"
+                          >
+                            <Eye className="w-4 h-4" />
+                            View Details
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             );
-          })}
-        </div>
-      )}
+          })()}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

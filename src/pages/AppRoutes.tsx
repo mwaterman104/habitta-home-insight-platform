@@ -15,6 +15,9 @@ import OnboardingPersonalization from "./OnboardingPersonalization";
 import HomeProfilePage from "./HomeProfilePage";
 import MaintenancePlanner from "./MaintenancePlanner";
 import PropertyIntelligence from "./PropertyIntelligence";
+import ProjectDashboard from "@/components/ProjectDashboard";
+import ProjectWorkspace from "@/components/ProjectWorkspace";
+import TemplateSelection from "@/components/TemplateSelection";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -61,7 +64,9 @@ export function AppRoutes() {
             <Route path="/home-profile" element={<HomeProfilePage />} />
             <Route path="/property-intelligence" element={<PropertyIntelligence />} />
             <Route path="/maintenance-planner" element={<MaintenancePlanner />} />
-            <Route path="/projects" element={<div className="p-6"><h1 className="text-2xl font-bold">Projects - Coming Soon</h1></div>} />
+            <Route path="/projects" element={<ProjectDashboard />} />
+            <Route path="/project/:projectId" element={<ProjectWorkspace />} />
+            <Route path="/templates" element={<TemplateSelection />} />
             <Route path="/marketplace" element={<div className="p-6"><h1 className="text-2xl font-bold">Marketplace - Coming Soon</h1></div>} />
             <Route path="/pro-network" element={<div className="p-6"><h1 className="text-2xl font-bold">Pro Network - Coming Soon</h1></div>} />
             <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant - Coming Soon</h1></div>} />
