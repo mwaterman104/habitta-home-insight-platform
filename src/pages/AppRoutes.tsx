@@ -13,6 +13,7 @@ import OnboardingSnapshot from "./OnboardingSnapshot";
 import OnboardingUnknowns from "./OnboardingUnknowns";
 import OnboardingPersonalization from "./OnboardingPersonalization";
 import HomeProfilePage from "./HomeProfilePage";
+import MaintenancePlanner from "./MaintenancePlanner";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -58,7 +59,7 @@ export function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/home-profile" element={<HomeProfilePage />} />
             <Route path="/property-intelligence" element={<div className="p-6"><h1 className="text-2xl font-bold">Property Intelligence - Coming Soon</h1></div>} />
-            <Route path="/maintenance-planner" element={<div className="p-6"><h1 className="text-2xl font-bold">Maintenance Planner - Coming Soon</h1></div>} />
+            <Route path="/maintenance-planner" element={<MaintenancePlanner />} />
             <Route path="/projects" element={<div className="p-6"><h1 className="text-2xl font-bold">Projects - Coming Soon</h1></div>} />
             <Route path="/marketplace" element={<div className="p-6"><h1 className="text-2xl font-bold">Marketplace - Coming Soon</h1></div>} />
             <Route path="/pro-network" element={<div className="p-6"><h1 className="text-2xl font-bold">Pro Network - Coming Soon</h1></div>} />
