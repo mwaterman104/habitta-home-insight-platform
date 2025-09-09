@@ -42,24 +42,43 @@ const HomeProfilePage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || !homeId) return;
+    if (!user) return;
 
     const fetchHome = async () => {
+      setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('homes')
-          .select('*')
-          .eq('id', homeId)
-          .eq('user_id', user.id)
-          .single();
+        if (homeId) {
+          const { data, error } = await supabase
+            .from('homes')
+            .select('*')
+            .eq('id', homeId)
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        if (error) throw error;
-        setHome(data);
+          if (error) throw error;
+          if (!data) throw new Error('Home not found');
+          setHome(data);
+        } else {
+          // Fallback: load the first home for this user when no homeId is provided
+          const { data, error } = await supabase
+            .from('homes')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (error) throw error;
+          if (!data) {
+            throw new Error('No homes found for this account');
+          }
+          setHome(data);
+        }
       } catch (error: any) {
         toast({
-          title: "Error Loading Home",
+          title: 'Error Loading Home',
           description: error.message,
-          variant: "destructive",
+          variant: 'destructive',
         });
         navigate('/dashboard');
       } finally {
