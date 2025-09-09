@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Home, MapPin, Calendar, Square, Bed, Bath, AlertTriangle, LogOut } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
+
+// Home Profile Components
+import { PropertyHero } from '@/components/HomeProfile/PropertyHero';
+import { KeyMetrics } from '@/components/HomeProfile/KeyMetrics';
+import { PropertyDetails } from '@/components/HomeProfile/PropertyDetails';
+import { SystemsAppliances } from '@/components/HomeProfile/SystemsAppliances';
+import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
+import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
+
+// Mock data
+import homeSystemsData from '@/../../client/mock/home_systems.json';
+import userProfileData from '@/../../client/mock/user_profile.json';
+import maintenanceHistoryData from '@/../../client/mock/maintenance_history.json';
 
 interface HomeData {
   id: string;
@@ -85,156 +95,46 @@ const HomeProfilePage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center">
-            <Button
-              variant="ghost"
-              onClick={() => navigate('/dashboard')}
-              className="mr-4"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
-            <div className="flex items-center">
-              <Home className="h-6 w-6 mr-2 text-primary" />
-              <h1 className="text-xl font-bold text-foreground">Home Profile</h1>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              await signOut();
-              navigate('/auth');
-            }}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
-        </div>
-      </header>
+      <main className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="space-y-8">
+          {/* Property Hero */}
+          <PropertyHero
+            address={home.address}
+            city={home.city}
+            state={home.state}
+            zipCode={home.zip_code}
+            imageUrl={userProfileData.housePhotoUrl}
+          />
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid gap-6">
-          {/* Home Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <MapPin className="h-5 w-5 mr-2" />
-                {home.address}
-              </CardTitle>
-              <CardDescription>
-                {home.city}, {home.state} {home.zip_code}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {home.property_type && (
-                  <div className="text-center">
-                    <Badge variant="secondary" className="mb-2">
-                      {home.property_type.replace('-', ' ').toUpperCase()}
-                    </Badge>
-                    <p className="text-xs text-muted-foreground">Property Type</p>
-                  </div>
-                )}
-                
-                {home.year_built && (
-                  <div className="flex flex-col items-center">
-                    <div className="flex items-center mb-1">
-                      <Calendar className="h-4 w-4 mr-1" />
-                      <span className="font-semibold">{home.year_built}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Year Built</p>
-                  </div>
-                )}
-                
-                {home.square_feet && (
-                  <div className="flex flex-col items-center">
-                    <div className="flex items-center mb-1">
-                      <Square className="h-4 w-4 mr-1" />
-                      <span className="font-semibold">{home.square_feet.toLocaleString()}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Square Feet</p>
-                  </div>
-                )}
-                
-                {(home.bedrooms || home.bathrooms) && (
-                  <div className="flex flex-col items-center">
-                    <div className="flex items-center space-x-2 mb-1">
-                      {home.bedrooms && (
-                        <div className="flex items-center">
-                          <Bed className="h-4 w-4 mr-1" />
-                          <span className="font-semibold">{home.bedrooms}</span>
-                        </div>
-                      )}
-                      {home.bathrooms && (
-                        <div className="flex items-center">
-                          <Bath className="h-4 w-4 mr-1" />
-                          <span className="font-semibold">{home.bathrooms}</span>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Bed/Bath</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Key Metrics */}
+          <KeyMetrics
+            squareFeet={home.square_feet || userProfileData.square_feet}
+            bedrooms={home.bedrooms || userProfileData.bedrooms}
+            bathrooms={home.bathrooms || userProfileData.bathrooms}
+            yearBuilt={home.year_built}
+          />
 
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-2">Maintenance Tasks</h3>
-                <p className="text-sm text-muted-foreground">
-                  View and manage your home maintenance schedule
-                </p>
-              </CardContent>
-            </Card>
+          {/* Property Details */}
+          <PropertyDetails
+            propertyType={home.property_type || userProfileData.property_type}
+          />
 
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <Home className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-2">Property Value</h3>
-                <p className="text-sm text-muted-foreground">
-                  Track your home's estimated value and trends
-                </p>
-              </CardContent>
-            </Card>
+          {/* Systems & Appliances */}
+          <SystemsAppliances systems={homeSystemsData as any} />
 
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <Calendar className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-2">Permits & History</h3>
-                <p className="text-sm text-muted-foreground">
-                  View permits and maintenance history
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Home Documents */}
+          <HomeDocuments />
 
-          {/* Placeholder for future dashboard content */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Dashboard Coming Soon</CardTitle>
-              <CardDescription>
-                Your personalized home dashboard will show maintenance insights, alerts, and recommendations.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                We're working on bringing you personalized insights for your home at {home.address}.
-                Check back soon for maintenance schedules, property analytics, and more.
-              </p>
-            </CardContent>
-          </Card>
+          {/* Property History */}
+          <PropertyHistory 
+            history={maintenanceHistoryData.map(item => ({
+              id: item.id,
+              date: item.date,
+              title: item.title,
+              category: item.category,
+              notes: item.notes
+            }))}
+          />
         </div>
       </main>
     </div>
