@@ -134,15 +134,20 @@ serve(async (req) => {
         roofStatus = roofAge > 22 ? 'EOL' : roofAge > 18 ? 'WATCH' : 'OK'
         roofConfidence = 0.8
       } else {
-        // No roof permit found, assume EOL
+        // No roof permit found, assume EOL for older homes
         roofStatus = 'EOL'
         roofInstallYear = home.year_built
         roofConfidence = 0.4
       }
-    } else if (home.year_built) {
+    } else if (homeAge && homeAge <= 20 && home.year_built) {
+      // Newer home with known year
       roofInstallYear = home.year_built
       roofStatus = 'OK'
       roofConfidence = 0.5
+    } else {
+      // Unknown age or very new, default to unknown status
+      roofStatus = 'UNKNOWN'
+      roofConfidence = 0.3
     }
 
     // Create roof system record
@@ -177,7 +182,7 @@ serve(async (req) => {
         system_kind: 'ROOF',
         estimated_cost_min: 300,
         estimated_cost_max: 500,
-        rationale: `Home is ${homeAge} years old with ${roofInstallSource === 'permit' ? 'last roof work' : 'original roof'} from ${roofInstallYear}`
+        rationale: homeAge ? `Home is ${homeAge} years old with ${roofInstallSource === 'permit' ? 'last roof work' : 'original roof'} from ${roofInstallYear}` : 'Roof may need inspection due to age'
       })
     } else if (roofStatus === 'WATCH') {
       planCards.push({
