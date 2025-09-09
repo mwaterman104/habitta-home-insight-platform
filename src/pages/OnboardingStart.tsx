@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { MapPin, Loader2 } from "lucide-react";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 
 export default function OnboardingStart() {
   const navigate = useNavigate();
@@ -17,6 +17,7 @@ export default function OnboardingStart() {
     zip_code: ""
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isAddressVerified, setIsAddressVerified] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,11 +47,14 @@ export default function OnboardingStart() {
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleAddressSelect = (suggestion: any) => {
+    setFormData({
+      address: suggestion.street_line,
+      city: suggestion.city,
+      state: suggestion.state,
+      zip_code: suggestion.zipcode
+    });
+    setIsAddressVerified(true);
   };
 
   return (
@@ -68,56 +72,23 @@ export default function OnboardingStart() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="address">Street Address</Label>
-              <Input
-                id="address"
-                type="text"
-                placeholder="123 Main St"
-                value={formData.address}
-                onChange={(e) => handleInputChange('address', e.target.value)}
-                required
+              <Label htmlFor="address">Property Address</Label>
+              <AutocompleteInput
+                placeholder="Start typing your address..."
+                onSelect={handleAddressSelect}
+                displayValue={formData.address ? `${formData.address}, ${formData.city}, ${formData.state} ${formData.zip_code}` : ""}
               />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  type="text"
-                  placeholder="City"
-                  value={formData.city}
-                  onChange={(e) => handleInputChange('city', e.target.value)}
-                  required
-                />
+            {isAddressVerified && (
+              <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                <strong>Selected Address:</strong><br />
+                {formData.address}<br />
+                {formData.city}, {formData.state} {formData.zip_code}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="state">State</Label>
-                <Input
-                  id="state"
-                  type="text"
-                  placeholder="CA"
-                  maxLength={2}
-                  value={formData.state}
-                  onChange={(e) => handleInputChange('state', e.target.value.toUpperCase())}
-                  required
-                />
-              </div>
-            </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="zip_code">ZIP Code</Label>
-              <Input
-                id="zip_code"
-                type="text"
-                placeholder="12345"
-                value={formData.zip_code}
-                onChange={(e) => handleInputChange('zip_code', e.target.value)}
-                required
-              />
-            </div>
-
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || !isAddressVerified}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
