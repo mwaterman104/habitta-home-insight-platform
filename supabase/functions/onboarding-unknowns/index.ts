@@ -13,19 +13,22 @@ serve(async (req) => {
   }
 
   try {
+    // Forward the caller's JWT to all Supabase requests (DB + nested functions)
+    const authHeader = req.headers.get('Authorization') || ''
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
+        global: { headers: { Authorization: authHeader } },
         auth: {
           storage: {} as any,
           persistSession: false,
+          autoRefreshToken: false,
         },
       }
     )
 
-    // Get user from JWT
-    const authHeader = req.headers.get('Authorization')!
+    // Get user from JWT (explicitly validate)
     const jwt = authHeader.replace('Bearer ', '')
     const { data: { user } } = await supabase.auth.getUser(jwt)
 
