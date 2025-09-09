@@ -55,10 +55,19 @@ export function AppRoutes() {
           }>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/home-profile" element={<div className="p-6"><h1 className="text-2xl font-bold">Home Profile - Coming Soon</h1></div>} />
+            <Route path="/property-intelligence" element={<div className="p-6"><h1 className="text-2xl font-bold">Property Intelligence - Coming Soon</h1></div>} />
+            <Route path="/maintenance-planner" element={<div className="p-6"><h1 className="text-2xl font-bold">Maintenance Planner - Coming Soon</h1></div>} />
+            <Route path="/projects" element={<div className="p-6"><h1 className="text-2xl font-bold">Projects - Coming Soon</h1></div>} />
+            <Route path="/marketplace" element={<div className="p-6"><h1 className="text-2xl font-bold">Marketplace - Coming Soon</h1></div>} />
+            <Route path="/pro-network" element={<div className="p-6"><h1 className="text-2xl font-bold">Pro Network - Coming Soon</h1></div>} />
+            <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant - Coming Soon</h1></div>} />
+            <Route path="/settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Settings - Coming Soon</h1></div>} />
+            
+            {/* Legacy routes */}
             <Route path="/home" element={<Dashboard />} />
             <Route path="/home/new" element={<AddHomePage />} />
             <Route path="/home/:homeId" element={<HomeIntelligenceDashboard />} />
-            <Route path="/tasks/new" element={<div>Tasks New Page - Coming Soon</div>} />
             <Route path="/admin" element={<AdminPage />} />
           </Route>
           

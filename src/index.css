@@ -2,88 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import fonts - Inter & IBM Plex Sans */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
 @layer base {
   :root {
-    /* Habitta Brand Colors - Proper HSL Values */
-    --habitta-green: 150 33% 27%; /* #2d5a3d */
-    --habitta-dark-green: 150 33% 16%; /* #1a3426 */
-    --habitta-light-green: 150 33% 35%; /* #3a7a5a */
+    /* New Habitta Design System */
+    /* Primary Brand */
+    --primary: 181 69% 35%; /* #1C9C9D */
+    --primary-foreground: 0 0% 100%;
     
-    /* Neutral Colors - Proper HSL Values */
-    --cream-white: 45 43% 97%; /* #faf8f5 */
-    --pure-white: 0 0% 100%; /* #ffffff */
-    --charcoal: 0 0% 10%; /* #1a1a1a */
-    --gray-dark: 0 0% 29%; /* #4a4a4a */
-    --gray-medium: 0 0% 48%; /* #7a7a7a */
-    --gray-light: 0 0% 91%; /* #e8e8e8 */
+    /* Secondary */
+    --secondary: 215 16% 47%; /* #6B7280 */
+    --secondary-foreground: 0 0% 100%;
     
-    /* Accent Colors - Proper HSL Values */
-    --chatdiy-yellow: 45 100% 50%; /* #ffbf00 */
-    --success-green: 160 84% 39%; /* #10b981 */
-    --error-red: 0 84% 60%; /* #ef4444 */
-    --info-blue: 221 91% 60%; /* #3b82f6 */
+    /* Accent Success */
+    --accent: 159 68% 39%; /* #10B981 */
+    --accent-foreground: 0 0% 100%;
+    
+    /* Warning */
+    --warning: 38 92% 50%; /* #F59E0B */
+    --warning-foreground: 0 0% 100%;
+    
+    /* Danger */
+    --danger: 0 72% 51%; /* #DC2626 */
+    --danger-foreground: 0 0% 100%;
+    
+    /* Neutrals */
+    --background: 0 0% 100%;
+    --foreground: 215 28% 17%;
+    --muted: 215 16% 97%;
+    --muted-foreground: 215 16% 47%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    
+    /* Borders & UI */
+    --border: 215 16% 90%; /* #E5E7EB */
+    --input: 215 16% 90%;
+    --ring: 181 69% 35%;
+    --radius: 10px;
 
-    /* Design System Variables */
-    --background: var(--cream-white);
-    --foreground: var(--charcoal);
-    --card: var(--pure-white);
-    --card-foreground: var(--charcoal);
-    --popover: var(--pure-white);
-    --popover-foreground: var(--charcoal);
-    --primary: var(--habitta-green);
-    --primary-foreground: var(--pure-white);
-    --secondary: var(--gray-light);
-    --secondary-foreground: var(--charcoal);
-    --muted: var(--gray-light);
-    --muted-foreground: var(--gray-medium);
-    --accent: var(--chatdiy-yellow);
-    --accent-foreground: var(--charcoal);
-    --destructive: var(--error-red);
-    --destructive-foreground: var(--pure-white);
-    --border: var(--gray-light);
-    --input: var(--gray-light);
-    --ring: var(--habitta-green);
-    --radius: 0.75rem;
-
-    --sidebar-background: var(--pure-white);
-    --sidebar-foreground: var(--charcoal);
-    --sidebar-primary: var(--habitta-green);
-    --sidebar-primary-foreground: var(--pure-white);
-    --sidebar-accent: var(--gray-light);
-    --sidebar-accent-foreground: var(--charcoal);
-    --sidebar-border: var(--gray-light);
-    --sidebar-ring: var(--habitta-green);
+    /* Sidebar colors */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 16% 47%;
+    --sidebar-primary: 181 69% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 16% 97%;
+    --sidebar-accent-foreground: 215 28% 17%;
+    --sidebar-border: 215 16% 90%;
+    --sidebar-ring: 181 69% 35%;
+    
+    /* Destructive mapping */
+    --destructive: var(--danger);
+    --destructive-foreground: var(--danger-foreground);
   }
 
   .dark {
-    --background: var(--charcoal);
-    --foreground: var(--pure-white);
-    --card: var(--gray-dark);
-    --card-foreground: var(--pure-white);
-    --popover: var(--gray-dark);
-    --popover-foreground: var(--pure-white);
-    --primary: var(--habitta-light-green);
-    --primary-foreground: var(--pure-white);
-    --secondary: var(--gray-dark);
-    --secondary-foreground: var(--pure-white);
-    --muted: var(--gray-dark);
-    --muted-foreground: var(--gray-medium);
-    --accent: var(--chatdiy-yellow);
-    --accent-foreground: var(--charcoal);
-    --destructive: var(--error-red);
-    --destructive-foreground: var(--pure-white);
-    --border: var(--gray-dark);
-    --input: var(--gray-dark);
-    --ring: var(--habitta-light-green);
-    
-    --sidebar-background: var(--gray-dark);
-    --sidebar-foreground: var(--pure-white);
-    --sidebar-primary: var(--habitta-light-green);
-    --sidebar-primary-foreground: var(--pure-white);
-    --sidebar-accent: var(--gray-dark);
-    --sidebar-accent-foreground: var(--pure-white);
-    --sidebar-border: var(--gray-dark);
-    --sidebar-ring: var(--habitta-light-green);
+    /* Dark mode colors */
+    --background: 215 28% 8%;
+    --foreground: 215 16% 90%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 16% 65%;
+    --card: 215 30% 12%;
+    --card-foreground: 215 16% 90%;
+    --popover: 215 30% 12%;
+    --popover-foreground: 215 16% 90%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+
+    /* Dark sidebar colors */
+    --sidebar-background: 215 30% 12%;
+    --sidebar-foreground: 215 16% 65%;
+    --sidebar-accent: 215 28% 17%;
+    --sidebar-accent-foreground: 215 16% 90%;
+    --sidebar-border: 215 28% 17%;
   }
 }
 
@@ -92,6 +86,9 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-nunito;
+    @apply bg-background text-foreground;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
   }
 }
