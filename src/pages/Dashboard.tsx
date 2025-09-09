@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Home, Plus, MapPin, Calendar, Square, Bed, Bath, Settings, User, Loader2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Home, Plus, MapPin, Calendar, Square, Bed, Bath, Settings, User, Loader2, Trash2 } from 'lucide-react';
 
 interface HomeData {
   id: string;
@@ -55,6 +56,30 @@ const Dashboard = () => {
 
     fetchHomes();
   }, [user, toast]);
+
+  const handleDeleteHome = async (homeId: string) => {
+    try {
+      const { error } = await supabase
+        .from('homes')
+        .delete()
+        .eq('id', homeId)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+      
+      setHomes(homes.filter(home => home.id !== homeId));
+      toast({
+        title: "Home Deleted",
+        description: "Your property has been removed from your dashboard.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error Deleting Home",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -205,9 +230,22 @@ const Dashboard = () => {
                       >
                         View Details
                       </Button>
-                      <Button variant="outline" size="sm">
-                        <Settings className="h-3 w-3" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Settings className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteHome(home.id)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Home
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </CardContent>
