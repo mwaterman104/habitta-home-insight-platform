@@ -12,6 +12,7 @@ import OnboardingStart from "./OnboardingStart";
 import OnboardingSnapshot from "./OnboardingSnapshot";
 import OnboardingUnknowns from "./OnboardingUnknowns";
 import OnboardingPersonalization from "./OnboardingPersonalization";
+import HomeProfilePage from "./HomeProfilePage";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -55,7 +56,7 @@ export function AppRoutes() {
           }>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/home-profile" element={<div className="p-6"><h1 className="text-2xl font-bold">Home Profile - Coming Soon</h1></div>} />
+            <Route path="/home-profile" element={<HomeProfilePage />} />
             <Route path="/property-intelligence" element={<div className="p-6"><h1 className="text-2xl font-bold">Property Intelligence - Coming Soon</h1></div>} />
             <Route path="/maintenance-planner" element={<div className="p-6"><h1 className="text-2xl font-bold">Maintenance Planner - Coming Soon</h1></div>} />
             <Route path="/projects" element={<div className="p-6"><h1 className="text-2xl font-bold">Projects - Coming Soon</h1></div>} />
