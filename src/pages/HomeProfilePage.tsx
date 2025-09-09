@@ -15,9 +15,9 @@ import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
 import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
 
 // Mock data
-import homeSystemsData from '@/../../client/mock/home_systems.json';
-import userProfileData from '@/../../client/mock/user_profile.json';
-import maintenanceHistoryData from '@/../../client/mock/maintenance_history.json';
+import homeSystemsData from '../../client/mock/home_systems.json';
+import userProfileData from '../../client/mock/user_profile.json';
+import maintenanceHistoryData from '../../client/mock/maintenance_history.json';
 
 interface HomeData {
   id: string;
