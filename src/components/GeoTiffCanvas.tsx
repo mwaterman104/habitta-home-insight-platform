@@ -43,6 +43,7 @@ function heatColor(t: number): [number, number, number, number] {
 export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, alt, mode = 'auto' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isCancelled = false;
@@ -50,6 +51,9 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
     async function render() {
       try {
         setError(null);
+        setIsLoading(true);
+        console.log('Loading GeoTIFF from:', url);
+        
         // Use fromUrl so we leverage browser fetch and CORS
         const tiff = await geotiff.fromUrl(url, {
           headers: {
@@ -60,9 +64,14 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
         const width = image.getWidth();
         const height = image.getHeight();
         const samples = image.getSamplesPerPixel();
+        
+        console.log('GeoTIFF loaded:', { width, height, samples });
 
         const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx || !canvasRef.current) return;
+        if (!ctx || !canvasRef.current) {
+          console.error('Canvas context not available');
+          return;
+        }
         canvasRef.current.width = width;
         canvasRef.current.height = height;
 
@@ -120,8 +129,14 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
           }
         }
         ctx.putImageData(imgData, 0, 0);
+        console.log('GeoTIFF rendered successfully');
+        setIsLoading(false);
       } catch (e: any) {
-        if (!isCancelled) setError(e?.message || 'Failed to render GeoTIFF');
+        console.error('GeoTIFF render error:', e);
+        if (!isCancelled) {
+          setError(e?.message || 'Failed to render GeoTIFF');
+          setIsLoading(false);
+        }
       }
     }
 
@@ -130,8 +145,32 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
   }, [url, mode]);
 
   if (error) {
-    return <div className={className} aria-label={alt} />;
+    return (
+      <div className={`${className} flex items-center justify-center bg-muted text-muted-foreground text-sm`} aria-label={alt}>
+        Failed to load image
+      </div>
+    );
   }
 
-  return <canvas ref={canvasRef} className={className} aria-label={alt} />;
+  if (isLoading) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-muted text-muted-foreground text-sm`} aria-label={alt}>
+        Loading...
+      </div>
+    );
+  }
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className={`${className} block`}
+      aria-label={alt}
+      style={{ 
+        width: '100%', 
+        height: '100%', 
+        objectFit: 'contain',
+        imageRendering: 'pixelated'
+      }}
+    />
+  );
 };
