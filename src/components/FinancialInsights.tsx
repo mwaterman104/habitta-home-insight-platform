@@ -1,0 +1,208 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { 
+  TrendingUp, 
+  DollarSign, 
+  PiggyBank, 
+  Shield,
+  ArrowUp,
+  ArrowDown,
+  Clock
+} from "lucide-react";
+
+interface FinancialData {
+  homeValue: number;
+  valueChange: number;
+  maintenanceBudget: number;
+  spentThisYear: number;
+  projectedSpend1Year: number;
+  projectedSpend3Year: number;
+  preventativeSavings: number;
+  roiFromProjects: number;
+  insuranceDiscount: number;
+}
+
+interface FinancialInsightsProps {
+  data?: FinancialData;
+}
+
+const mockFinancialData: FinancialData = {
+  homeValue: 485000,
+  valueChange: 3.2,
+  maintenanceBudget: 5000,
+  spentThisYear: 1850,
+  projectedSpend1Year: 2400,
+  projectedSpend3Year: 8500,
+  preventativeSavings: 3200,
+  roiFromProjects: 12800,
+  insuranceDiscount: 450
+};
+
+export const FinancialInsights: React.FC<FinancialInsightsProps> = ({ 
+  data = mockFinancialData 
+}) => {
+  const budgetUsed = Math.round((data.spentThisYear / data.maintenanceBudget) * 100);
+  const remainingBudget = data.maintenanceBudget - data.spentThisYear;
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* Property Value & Forecast */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Property Value & Forecast
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-2xl font-bold">${data.homeValue.toLocaleString()}</p>
+              <p className="text-sm text-muted-foreground">Current Value</p>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-1 text-accent">
+                <ArrowUp className="h-4 w-4" />
+                <span className="font-semibold">+{data.valueChange}%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">This year</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+            <div className="text-center p-3 bg-primary/5 rounded-lg">
+              <div className="text-lg font-bold text-primary">
+                +${data.roiFromProjects.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground">ROI from Projects</div>
+            </div>
+            <div className="text-center p-3 bg-accent/5 rounded-lg">
+              <div className="text-lg font-bold text-accent">
+                ${data.preventativeSavings.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground">Preventive Savings</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Spend Forecast */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Spend Forecast
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">This Quarter</span>
+              <span className="font-semibold">${data.projectedSpend1Year.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Next 12 Months</span>
+              <span className="font-semibold">${(data.projectedSpend1Year * 4).toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">3-Year Outlook</span>
+              <span className="font-semibold">${data.projectedSpend3Year.toLocaleString()}</span>
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-muted-foreground">Budget Progress</span>
+              <span className="text-sm font-medium">{budgetUsed}% used</span>
+            </div>
+            <Progress value={budgetUsed} className="h-2" />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>${data.spentThisYear.toLocaleString()} spent</span>
+              <span>${remainingBudget.toLocaleString()} remaining</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Budget Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PiggyBank className="h-5 w-5" />
+            Smart Budgeting
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3">
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-accent" />
+                <span className="text-sm">Insurance Savings</span>
+              </div>
+              <span className="font-semibold text-accent">-${data.insuranceDiscount}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <ArrowDown className="h-4 w-4 text-accent" />
+                <span className="text-sm">Preventive vs Reactive</span>
+              </div>
+              <span className="font-semibold text-accent">73% less</span>
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t">
+            <p className="text-xs text-muted-foreground">
+              <strong>Tip:</strong> Completing preventive maintenance saves an average of 
+              ${data.preventativeSavings.toLocaleString()} annually vs reactive repairs.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Financing & Support */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Financing & Support
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="p-3 border border-primary/20 bg-primary/5 rounded-lg">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium">HVAC Upgrade Loan</span>
+                <Badge variant="outline" className="text-xs">Pre-approved</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">0% APR for 18 months</p>
+            </div>
+            
+            <div className="p-3 border border-accent/20 bg-accent/5 rounded-lg">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium">Energy Rebates</span>
+                <span className="text-sm font-semibold text-accent">$2,400</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Available for solar + insulation</p>
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t">
+            <p className="text-xs text-muted-foreground mb-3">
+              Get personalized financing options for major home improvements.
+            </p>
+            <div className="flex gap-2">
+              <button className="flex-1 text-xs bg-primary text-primary-foreground py-2 px-3 rounded-md hover:bg-primary/90">
+                View Offers
+              </button>
+              <button className="flex-1 text-xs border border-border py-2 px-3 rounded-md hover:bg-muted">
+                Calculate ROI
+              </button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
