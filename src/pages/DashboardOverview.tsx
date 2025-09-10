@@ -10,40 +10,58 @@ import { FinancialInsights } from "@/components/FinancialInsights";
 import { HomeHealthSnapshot } from "@/components/HomeHealthSnapshot";
 import { SupportLayer } from "@/components/SupportLayer";
 import { useSolarInsights } from "@/hooks/useSolarInsights";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
-// User profile data
-interface UserProfile {
-  name: string;
-  homeAddress: string;
-  timezone?: string;
+interface UserHome {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  latitude?: number;
+  longitude?: number;
+  user_id: string;
 }
 
 export default function DashboardOverview() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userHome, setUserHome] = useState<UserHome | null>(null);
   
-  // Mock coordinates for solar analysis - replace with actual home coordinates  
-  const homeLatitude = 37.7749; // San Francisco example
-  const homeLongitude = -122.4194;
+  // Use real home coordinates when available
+  const homeLatitude = userHome?.latitude || 37.7749; // fallback to SF
+  const homeLongitude = userHome?.longitude || -122.4194;
   const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
   useEffect(() => {
-    // Simulate loading user profile and initializing dashboard
-    const loadData = async () => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock user profile - replace with actual user data
-      setUserProfile({
-        name: "Matt",
-        homeAddress: "1425 Maple Grove Drive, Austin, TX 78732"
-      });
-      
-      setLoading(false);
+    if (!user) return;
+
+    const fetchUserHome = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('homes')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        
+        if (data) {
+          setUserHome(data);
+        }
+      } catch (error) {
+        console.error('Error fetching user home:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    loadData();
-  }, []);
+    fetchUserHome();
+  }, [user]);
 
   if (loading) {
     return (
@@ -75,7 +93,7 @@ export default function DashboardOverview() {
       <HomePulse 
         latitude={homeLatitude}
         longitude={homeLongitude}
-        homeAddress={userProfile?.homeAddress}
+        homeAddress={userHome ? `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}` : undefined}
       />
 
       {/* Main Dashboard Grid */}

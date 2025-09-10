@@ -21,6 +21,7 @@ interface StormInsight {
   checkList: string[];
   title: string;
   description: string;
+  locationName?: string;
 }
 
 serve(async (req) => {
@@ -36,6 +37,27 @@ serve(async (req) => {
       throw new Error('Google Weather API key not configured');
     }
 
+    // Get location name using reverse geocoding
+    let locationName = '';
+    try {
+      const geocodeResponse = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`
+      );
+      
+      if (geocodeResponse.ok) {
+        const geocodeData = await geocodeResponse.json();
+        if (geocodeData.results?.[0]) {
+          // Extract city and state from the address components
+          const addressComponents = geocodeData.results[0].address_components;
+          const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name;
+          const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
+          locationName = city && state ? `${city}, ${state}` : geocodeData.results[0].formatted_address;
+        }
+      }
+    } catch (error) {
+      console.log('Reverse geocoding failed:', error);
+    }
+
     // Fetch current weather data from Google Maps Weather API
     const weatherResponse = await fetch(
       `https://maps.googleapis.com/maps/api/weather/json?location=${latitude},${longitude}&key=${apiKey}`
@@ -49,6 +71,7 @@ serve(async (req) => {
         stormScore: 85,
         title: 'Recent Storm Detected',
         description: 'High winds and heavy rain reported in your area. Immediate inspection recommended.',
+        locationName: locationName || 'Your Location',
         recommendations: [
           'Check roof for loose or missing shingles',
           'Inspect gutters for clogs or damage',
@@ -73,7 +96,7 @@ serve(async (req) => {
     
     // Calculate storm score based on weather conditions
     const stormScore = calculateStormScore(weatherData);
-    const insights = generateStormInsights(weatherData, stormScore);
+    const insights = generateStormInsights(weatherData, stormScore, locationName);
 
     return new Response(JSON.stringify(insights), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -88,6 +111,7 @@ serve(async (req) => {
       stormScore: 65,
       title: 'Weather Monitoring Active',
       description: 'Storm conditions possible. Regular home inspection recommended.',
+      locationName: 'Your Location',
       recommendations: [
         'Check roof condition',
         'Clear gutters of debris',
@@ -135,7 +159,7 @@ function calculateStormScore(weather: WeatherData): number {
   return Math.min(score, 100);
 }
 
-function generateStormInsights(weather: WeatherData, stormScore: number): StormInsight {
+function generateStormInsights(weather: WeatherData, stormScore: number, locationName?: string): StormInsight {
   let severity: 'low' | 'medium' | 'high' = 'low';
   let title = 'Weather Conditions Normal';
   let description = 'No immediate weather-related maintenance needed.';
@@ -195,6 +219,7 @@ function generateStormInsights(weather: WeatherData, stormScore: number): StormI
     stormScore,
     title,
     description,
+    locationName,
     recommendations,
     checkList
   };

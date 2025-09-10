@@ -8,6 +8,7 @@ interface WeatherInsight {
   checkList: string[];
   title: string;
   description: string;
+  locationName?: string;
 }
 
 export const useWeatherInsights = (latitude?: number, longitude?: number) => {

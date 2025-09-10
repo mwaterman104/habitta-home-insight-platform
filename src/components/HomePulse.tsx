@@ -121,7 +121,7 @@ export const HomePulse: React.FC<HomePulseProps> = ({
             
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3" />
-              <span>{homeAddress}</span>
+              <span>{weatherInsights?.locationName || homeAddress}</span>
               <Clock className="h-3 w-3 ml-2" />
               <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
