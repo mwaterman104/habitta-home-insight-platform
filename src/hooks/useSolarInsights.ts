@@ -28,7 +28,18 @@ export interface SolarInsights {
     azimuth: number;
     area: number;
     sunshineScore: number;
+    sunshineQuantiles?: number[];
   }>;
+  imagery?: {
+    roofImageUrl: string | null;
+    solarFluxUrl: string | null;
+    imageryDate?: {
+      year: number;
+      month: number;
+      day: number;
+    };
+    buildingId?: string;
+  };
   coverage: boolean;
   lastUpdated: string;
 }

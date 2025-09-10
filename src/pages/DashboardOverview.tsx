@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SolarPotentialCard } from "@/components/SolarPotentialCard";
 import { SolarSavingsEstimator } from "@/components/SolarSavingsEstimator";
+import { SolarRoofVisualizer } from "@/components/SolarRoofVisualizer";
 import { WeatherImpactCard } from "@/components/WeatherImpactCard";
 import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { 
@@ -470,6 +471,8 @@ export default function DashboardOverview() {
             <SolarPotentialCard solarData={solarData} loading={solarLoading} />
             <SolarSavingsEstimator solarData={solarData} loading={solarLoading} />
           </div>
+          
+          <SolarRoofVisualizer solarData={solarData} loading={solarLoading} />
           
           {/* Energy Efficiency Overview */}
           <Card>

@@ -104,6 +104,32 @@ serve(async (req) => {
     const solarData: SolarApiResponse = await response.json();
     console.log('Solar data received:', JSON.stringify(solarData, null, 2));
 
+    // Get roof imagery from Data Layers API
+    let roofImageUrl = null;
+    let solarFluxUrl = null;
+    
+    if (solarData.name) {
+      try {
+        // Request roof imagery and solar flux map
+        const dataLayersResponse = await fetch(
+          `https://solar.googleapis.com/v1/${solarData.name}/dataLayers:get?key=${googleApiKey}`,
+          {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+        
+        if (dataLayersResponse.ok) {
+          const layersData = await dataLayersResponse.json();
+          roofImageUrl = layersData.rgbUrl || null;
+          solarFluxUrl = layersData.annualFluxUrl || null;
+          console.log('Retrieved roof imagery URLs:', { roofImageUrl, solarFluxUrl });
+        }
+      } catch (error) {
+        console.log('Could not fetch roof imagery:', error.message);
+      }
+    }
+
     // Process and structure the data for our frontend
     const processedData = {
       roofAnalysis: {
@@ -132,7 +158,14 @@ serve(async (req) => {
         azimuth: segment.azimuthDegrees,
         area: segment.areaMeters2,
         sunshineScore: segment.sunshineQuantiles?.[5] || 0, // median sunshine
+        sunshineQuantiles: segment.sunshineQuantiles,
       })) || [],
+      imagery: {
+        roofImageUrl,
+        solarFluxUrl,
+        imageryDate: solarData.imageryDate,
+        buildingId: solarData.name,
+      },
       coverage: true,
       lastUpdated: new Date().toISOString(),
     };

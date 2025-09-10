@@ -140,6 +140,62 @@ export const SolarPotentialCard = ({ solarData, loading }: SolarPotentialCardPro
           </div>
         )}
 
+        {/* Roof Imagery */}
+        {solarData.imagery?.roofImageUrl && (
+          <div className="border-t pt-4">
+            <h4 className="font-medium mb-3">Roof Analysis</h4>
+            <div className="space-y-3">
+              <div className="relative rounded-lg overflow-hidden">
+                <img 
+                  src={solarData.imagery.roofImageUrl} 
+                  alt="Roof satellite imagery"
+                  className="w-full h-32 object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+                {solarData.imagery.solarFluxUrl && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-600/20 pointer-events-none" />
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Imagery from {solarData.imagery.imageryDate ? 
+                  new Date(solarData.imagery.imageryDate.year, solarData.imagery.imageryDate.month - 1, solarData.imagery.imageryDate.day).toLocaleDateString() : 
+                  'Google Solar API'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Roof Segments Analysis */}
+        {solarData.roofSegments && solarData.roofSegments.length > 0 && (
+          <div className="border-t pt-4">
+            <h4 className="font-medium mb-3">Roof Segment Analysis</h4>
+            <div className="space-y-2">
+              {solarData.roofSegments.slice(0, 3).map((segment, index) => (
+                <div key={index} className="flex justify-between items-center text-sm">
+                  <div>
+                    <span className="font-medium">Segment {index + 1}</span>
+                    <div className="text-xs text-muted-foreground">
+                      {Math.round(segment.area)}m² • {Math.round(segment.pitch)}° pitch • {Math.round(segment.azimuth)}° azimuth
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">{Math.round(segment.sunshineScore)}h</div>
+                    <div className="text-xs text-muted-foreground">annual sun</div>
+                  </div>
+                </div>
+              ))}
+              {solarData.roofSegments.length > 3 && (
+                <div className="text-xs text-muted-foreground">
+                  + {solarData.roofSegments.length - 3} more segments
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="text-xs text-muted-foreground pt-2 border-t">
           Data from Google Solar API • Updated {new Date(solarData.lastUpdated).toLocaleDateString()}
         </div>
