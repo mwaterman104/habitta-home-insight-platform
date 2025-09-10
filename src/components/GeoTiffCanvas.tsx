@@ -51,7 +51,11 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
       try {
         setError(null);
         // Use fromUrl so we leverage browser fetch and CORS
-        const tiff = await geotiff.fromUrl(url);
+        const tiff = await geotiff.fromUrl(url, {
+          headers: {
+            Accept: 'image/tiff,image/*;q=0.8,application/octet-stream;q=0.5,*/*;q=0.1',
+          },
+        } as RequestInit);
         const image = await tiff.getImage();
         const width = image.getWidth();
         const height = image.getHeight();
@@ -66,13 +70,21 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
         const effectiveMode = mode === 'auto' ? (samples >= 3 ? 'rgb' : 'flux') : mode;
 
         if (effectiveMode === 'rgb') {
-          const rasters = (await image.readRasters({ interleave: true, samples: [0, 1, 2] })) as unknown as Uint8Array;
+          // Scale channels to 8-bit if needed based on BitsPerSample
+          const bits = image.getBitsPerSample();
+          const bitsArr = Array.isArray(bits) ? bits : [bits, bits, bits];
+          const maxVals = bitsArr.slice(0, 3).map((b) => (typeof b === 'number' && b > 0 ? Math.min(65535, (1 << Math.min(b, 16)) - 1) : 255));
+
+          const rasters = (await image.readRasters({ interleave: true, samples: [0, 1, 2] })) as any;
           const imgData = ctx.createImageData(width, height);
           const data = imgData.data;
           for (let i = 0, p = 0; i < rasters.length; i += 3, p += 4) {
-            data[p] = rasters[i];
-            data[p + 1] = rasters[i + 1];
-            data[p + 2] = rasters[i + 2];
+            const r = rasters[i] as number;
+            const g = rasters[i + 1] as number;
+            const b = rasters[i + 2] as number;
+            data[p] = Math.max(0, Math.min(255, Math.round((r / maxVals[0]) * 255)));
+            data[p + 1] = Math.max(0, Math.min(255, Math.round((g / maxVals[1]) * 255)));
+            data[p + 2] = Math.max(0, Math.min(255, Math.round((b / maxVals[2]) * 255)));
             data[p + 3] = 255;
           }
           ctx.putImageData(imgData, 0, 0);
