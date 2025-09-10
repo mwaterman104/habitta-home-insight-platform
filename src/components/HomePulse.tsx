@@ -113,10 +113,26 @@ export const HomePulse: React.FC<HomePulseProps> = ({
               {greeting.message}
             </h2>
             
-            {weatherInsights && weatherInsights.severity !== 'low' && (
-              <p className="text-sm text-muted-foreground">
-                {weatherInsights.description}
-              </p>
+            {weatherInsights && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {weatherInsights.description}
+                </p>
+                
+                {weatherInsights.severity !== 'low' && weatherInsights.recommendations.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-foreground">Recommended Actions:</h4>
+                    <div className="grid grid-cols-1 gap-1">
+                      {weatherInsights.recommendations.slice(0, 3).map((rec, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="w-1.5 h-1.5 bg-warning rounded-full flex-shrink-0" />
+                          <span>{rec}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
