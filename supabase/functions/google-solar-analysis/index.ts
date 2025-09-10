@@ -14,40 +14,52 @@ interface SolarApiRequest {
 }
 
 interface SolarApiResponse {
+  name?: string;
+  center?: {
+    latitude: number;
+    longitude: number;
+  };
+  imageryDate?: {
+    year: number;
+    month: number;
+    day: number;
+  };
   solarPotential: {
     maxArrayPanelsCount: number;
     maxArrayAreaMeters2: number;
     maxSunshineHoursPerYear: number;
     carbonOffsetFactorKgPerMwh: number;
-  };
-  solarPanelConfigs: Array<{
-    panelsCount: number;
-    yearlyEnergyDcKwh: number;
-    roofSegmentSummaries: Array<{
-      pitchDegrees: number;
-      azimuthDegrees: number;
+    solarPanelConfigs?: Array<{
       panelsCount: number;
       yearlyEnergyDcKwh: number;
+      roofSegmentSummaries?: Array<{
+        pitchDegrees: number;
+        azimuthDegrees: number;
+        panelsCount: number;
+        yearlyEnergyDcKwh: number;
+      }>;
     }>;
-  }>;
-  financialAnalyses: Array<{
-    monthlyBill: {
-      currencyCode: string;
-      units: number;
-    };
-    panelsCount: number;
-    initialAcKwhPerYear: number;
-    lifetimeSolarGeneration: number;
-    presentValueOfSavingsYear20: number;
-    presentValueSavingsLifetime: number;
-    paybackYears: number;
-  }>;
-  roofSegmentStats: Array<{
-    pitchDegrees: number;
-    azimuthDegrees: number;
-    areaMeters2: number;
-    sunshineQuantiles: number[];
-  }>;
+    financialAnalyses?: Array<{
+      monthlyBill: {
+        currencyCode: string;
+        units: number;
+      };
+      panelsCount: number;
+      initialAcKwhPerYear: number;
+      lifetimeSolarGeneration: number;
+      presentValueOfSavingsYear20: number;
+      presentValueSavingsLifetime: number;
+      paybackYears: number;
+    }>;
+    roofSegmentStats?: Array<{
+      pitchDegrees: number;
+      azimuthDegrees: number;
+      stats?: {
+        areaMeters2: number;
+        sunshineQuantiles: number[];
+      };
+    }>;
+  };
 }
 
 serve(async (req) => {
@@ -124,10 +136,15 @@ serve(async (req) => {
           roofImageUrl = layersData.rgbUrl || null;
           solarFluxUrl = layersData.annualFluxUrl || null;
           console.log('Retrieved roof imagery URLs:', { roofImageUrl, solarFluxUrl });
+        } else {
+          const errorText = await dataLayersResponse.text();
+          console.error('Data Layers API error:', dataLayersResponse.status, errorText);
         }
       } catch (error) {
-        console.log('Could not fetch roof imagery:', error.message);
+        console.error('Could not fetch roof imagery:', error.message);
       }
+    } else {
+      console.log('No building name available for Data Layers API call');
     }
 
     // Process and structure the data for our frontend
