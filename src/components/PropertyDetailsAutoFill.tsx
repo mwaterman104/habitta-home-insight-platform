@@ -4,8 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { smartyEnrich } from '@/lib/smarty';
-import { mapEnrichment } from '@/adapters/smartyMappers';
+import { useAttomProperty } from '@/hooks/useAttomProperty';
 
 interface PropertyDetailsAutoFillProps {
   formData: {
@@ -33,63 +32,32 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
   isAddressVerified,
   verifiedAddress
 }) => {
-  const [fetchStatus, setFetchStatus] = useState<FetchStatus>('idle');
-  const [fetchedData, setFetchedData] = useState<any | null>(null);
+  // Build full address for Attom API
+  const fullAddress = verifiedAddress 
+    ? `${verifiedAddress.address}, ${verifiedAddress.city}, ${verifiedAddress.state} ${verifiedAddress.zipCode}`
+    : '';
+
+  const { data: attomData, loading, error } = useAttomProperty(isAddressVerified ? fullAddress : '');
 
   useEffect(() => {
-    if (!isAddressVerified || !verifiedAddress) {
-      setFetchStatus('idle');
-      return;
+    if (attomData?.propertyDetails && isAddressVerified) {
+      console.log('Auto-filling property details from Attom:', attomData.propertyDetails);
+      
+      // Auto-fill empty fields only
+      setFormData((prev: any) => ({
+        ...prev,
+        propertyType: prev.propertyType || mapPropertyType(attomData.propertyDetails.propertyType),
+        yearBuilt: prev.yearBuilt || attomData.propertyDetails.yearBuilt?.toString() || '',
+        squareFeet: prev.squareFeet || attomData.propertyDetails.sqft?.toString() || '',
+        bedrooms: prev.bedrooms || attomData.propertyDetails.bedrooms?.toString() || '',
+        bathrooms: prev.bathrooms || attomData.propertyDetails.bathrooms?.toString() || '',
+      }));
     }
+  }, [attomData, isAddressVerified, setFormData]);
 
-    const fetchPropertyDetails = async () => {
-      const stepId = crypto.randomUUID().slice(0, 8);
-      console.log(`[${stepId}] Fetching property details for verified address`);
-      
-      setFetchStatus('loading');
-      
-      try {
-        const fiveDigitZip = verifiedAddress.zipCode.split('-')[0];
-        const enrichResponse = await smartyEnrich({
-          street: verifiedAddress.address,
-          city: verifiedAddress.city,
-          state: verifiedAddress.state,
-          postal_code: fiveDigitZip
-        });
-
-        const enrichmentData = mapEnrichment(enrichResponse);
-        console.log(`[${stepId}] Smarty enrichment successful:`, enrichmentData.attributes);
-        setFetchedData(enrichmentData);
-        setFetchStatus('success');
-        
-        // Auto-fill empty fields only
-        setFormData((prev: any) => ({
-          ...prev,
-          propertyType: prev.propertyType || (enrichmentData.attributes?.property_type ? 
-            mapPropertyType(enrichmentData.attributes.property_type) : ''),
-          yearBuilt: prev.yearBuilt || (enrichmentData.attributes?.year_built?.toString() || ''),
-          squareFeet: prev.squareFeet || (enrichmentData.attributes?.square_feet?.toString() || ''),
-          bedrooms: prev.bedrooms || (enrichmentData.attributes?.beds?.toString() || ''),
-          bathrooms: prev.bathrooms || (enrichmentData.attributes?.baths?.toString() || ''),
-        }));
-        
-      } catch (error: any) {
-        console.warn(`[${stepId}] Smarty enrichment failed (non-blocking):`, error);
-        
-        if (error.message?.includes('Enrichment failed')) {
-          setFetchStatus('miss');
-        } else {
-          setFetchStatus('error');
-        }
-      }
-    };
-
-    fetchPropertyDetails();
-  }, [isAddressVerified, verifiedAddress, setFormData]);
-
-  // Map Smarty property types to our form values
-  const mapPropertyType = (smartyType: string): string => {
-    const type = smartyType?.toLowerCase() || '';
+  // Map Attom property types to our form values
+  const mapPropertyType = (attomType: string): string => {
+    const type = attomType?.toLowerCase() || '';
     if (type.includes('single') || type.includes('family') || type.includes('residential')) return 'single-family';
     if (type.includes('town') || type.includes('townhome')) return 'townhouse';
     if (type.includes('condo') || type.includes('condominium')) return 'condo';
@@ -100,45 +68,41 @@ export const PropertyDetailsAutoFill: React.FC<PropertyDetailsAutoFillProps> = (
   const renderFetchStatus = () => {
     if (!isAddressVerified) return null;
 
-    switch (fetchStatus) {
-      case 'loading':
-        return (
-          <div className="flex items-center text-sm text-muted-foreground mb-4">
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            Auto-filling property details...
-          </div>
-        );
-      case 'success':
-        return (
-          <div className="flex items-center text-sm text-green-600 mb-4">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            Property details auto-filled from Smarty enrichment
-          </div>
-        );
-      case 'miss':
-        return (
-          <div className="flex items-center text-sm text-amber-600 mb-4">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Property details not available from Smarty
-          </div>
-        );
-      case 'error':
-        return (
-          <div className="flex items-center text-sm text-muted-foreground mb-4">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Could not fetch property details
-          </div>
-        );
-      default:
-        return null;
+    if (loading) {
+      return (
+        <div className="flex items-center text-sm text-muted-foreground mb-4">
+          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          Auto-filling property details from Attom...
+        </div>
+      );
     }
+
+    if (error) {
+      return (
+        <div className="flex items-center text-sm text-amber-600 mb-4">
+          <AlertCircle className="w-3 h-3 mr-1" />
+          Property details not available from Attom
+        </div>
+      );
+    }
+
+    if (attomData?.propertyDetails) {
+      return (
+        <div className="flex items-center text-sm text-green-600 mb-4">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Property details auto-filled from Attom
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Property Details</h3>
-        {fetchStatus === 'success' && (
+        {attomData?.propertyDetails && (
           <Badge variant="outline" className="text-green-600">
             Auto-filled
           </Badge>

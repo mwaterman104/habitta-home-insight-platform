@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { useAttomProperty } from '@/hooks/useAttomProperty';
+import { SimpleRefreshButton } from '@/components/SimpleRefreshButton';
 
 // Home Profile Components
 import { PropertyHero } from '@/components/HomeProfile/PropertyHero';
@@ -40,6 +42,13 @@ const HomeProfilePage = () => {
   const { toast } = useToast();
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Build full address for Attom API when home data is available
+  const fullAddress = home 
+    ? `${home.address}, ${home.city}, ${home.state} ${home.zip_code}`
+    : '';
+
+  const { data: attomData, loading: attomLoading, refetch: refetchAttomData } = useAttomProperty(fullAddress);
 
   useEffect(() => {
     if (!user) return;
@@ -117,24 +126,34 @@ const HomeProfilePage = () => {
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-8">
           {/* Property Hero */}
-          <PropertyHero
-            address={home.address}
-            city={home.city}
-            state={home.state}
-            zipCode={home.zip_code}
-            imageUrl={userProfileData.housePhotoUrl}
-          />
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <PropertyHero
+                address={home.address}
+                city={home.city}
+                state={home.state}
+                zipCode={home.zip_code}
+                imageUrl={userProfileData.housePhotoUrl}
+              />
+            </div>
+            <SimpleRefreshButton
+              onRefresh={refetchAttomData}
+              loading={attomLoading}
+              className="ml-4 mt-2"
+            />
+          </div>
 
-          {/* Key Metrics */}
+          {/* Key Metrics - use Attom data when available */}
           <KeyMetrics
-            squareFeet={home.square_feet || userProfileData.square_feet}
-            bedrooms={home.bedrooms || userProfileData.bedrooms}
-            bathrooms={home.bathrooms || userProfileData.bathrooms}
-            yearBuilt={home.year_built}
+            squareFeet={attomData?.propertyDetails?.sqft || home.square_feet || userProfileData.square_feet}
+            bedrooms={attomData?.propertyDetails?.bedrooms || home.bedrooms || userProfileData.bedrooms}
+            bathrooms={attomData?.propertyDetails?.bathrooms || home.bathrooms || userProfileData.bathrooms}
+            yearBuilt={attomData?.propertyDetails?.yearBuilt || home.year_built}
           />
 
-          {/* Property Details */}
+          {/* Property Details - pass Attom data */}
           <PropertyDetails
+            propertyData={attomData || undefined}
             propertyType={home.property_type || userProfileData.property_type}
           />
 

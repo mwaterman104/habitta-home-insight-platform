@@ -33,7 +33,6 @@ import LiveHomeConditionCard from "../components/live/LiveHomeConditionCard";
 import LiveHomeValueCard from "../components/live/LiveHomeValueCard";
 
 import { useHabittaLive } from "@/hooks/useHabittaLive";
-import { RefreshPropertyButton } from "@/components/RefreshPropertyButton";
 
 interface HomeData {
   id: string;
@@ -166,16 +165,6 @@ export default function HomeIntelligenceDashboard() {
               {home.address}, {home.city}, {home.state} • What needs attention today • Smart recommendations • Preventive insights
             </p>
           </div>
-          {home.address && home.city && home.state && home.zip_code && (
-            <RefreshPropertyButton
-              homeId={homeId!}
-              address={home.address}
-              city={home.city}
-              state={home.state}
-              zipCode={home.zip_code}
-              onRefresh={handleRefreshComplete}
-            />
-          )}
         </div>
         
         {/* Property Details Bar */}
