@@ -3,6 +3,7 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Sun, Zap, TreePine, Calculator } from 'lucide-react';
 import { SolarInsights } from '@/hooks/useSolarInsights';
+import { GeoTiffCanvas } from '@/components/GeoTiffCanvas';
 
 interface SolarPotentialCardProps {
   solarData: SolarInsights | null;
@@ -146,17 +147,21 @@ export const SolarPotentialCard = ({ solarData, loading }: SolarPotentialCardPro
             <h4 className="font-medium mb-3">Roof Analysis</h4>
             <div className="space-y-3">
               <div className="relative rounded-lg overflow-hidden">
-                <img 
-                  src={solarData.imagery.roofImageUrl} 
+                <GeoTiffCanvas 
+                  url={solarData.imagery.roofImageUrl}
                   alt="Roof satellite imagery"
                   className="w-full h-32 object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
+                  mode="rgb"
                 />
                 {solarData.imagery.solarFluxUrl && (
-                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-600/20 pointer-events-none" />
+                  <div className="absolute inset-0">
+                    <GeoTiffCanvas 
+                      url={solarData.imagery.solarFluxUrl}
+                      alt="Solar flux overlay"
+                      className="w-full h-full opacity-50 mix-blend-multiply"
+                      mode="flux"
+                    />
+                  </div>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">

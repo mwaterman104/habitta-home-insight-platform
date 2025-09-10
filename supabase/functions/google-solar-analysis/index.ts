@@ -122,9 +122,10 @@ serve(async (req) => {
     
     if (solarData.name) {
       try {
-        // Request roof imagery and solar flux map
+        // Request roof imagery and solar flux map via Data Layers API around the given location
+        const dataLayersUrl = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${latitude}&location.longitude=${longitude}&radius_meters=50&required_quality=LOW&key=${googleApiKey}`;
         const dataLayersResponse = await fetch(
-          `https://solar.googleapis.com/v1/${solarData.name}/dataLayers:get?key=${googleApiKey}`,
+          dataLayersUrl,
           {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
@@ -135,6 +136,13 @@ serve(async (req) => {
           const layersData = await dataLayersResponse.json();
           roofImageUrl = layersData.rgbUrl || null;
           solarFluxUrl = layersData.annualFluxUrl || null;
+          // Append API key so client-side GeoTIFF fetch works
+          if (roofImageUrl) {
+            roofImageUrl = `${roofImageUrl}${roofImageUrl.includes('?') ? '&' : '?'}key=${googleApiKey}`;
+          }
+          if (solarFluxUrl) {
+            solarFluxUrl = `${solarFluxUrl}${solarFluxUrl.includes('?') ? '&' : '?'}key=${googleApiKey}`;
+          }
           console.log('Retrieved roof imagery URLs:', { roofImageUrl, solarFluxUrl });
         } else {
           const errorText = await dataLayersResponse.text();

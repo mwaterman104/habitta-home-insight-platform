@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sun, Camera, Zap, Info } from 'lucide-react';
 import { SolarInsights } from '@/hooks/useSolarInsights';
+import { GeoTiffCanvas } from '@/components/GeoTiffCanvas';
 
 interface SolarRoofVisualizerProps {
   solarData: SolarInsights | null;
@@ -54,27 +55,20 @@ export const SolarRoofVisualizer: React.FC<SolarRoofVisualizerProps> = ({ solarD
           
           <TabsContent value="roof" className="space-y-4">
             <div className="relative rounded-lg overflow-hidden border">
-              <img 
-                src={solarData.imagery.roofImageUrl} 
+              <GeoTiffCanvas 
+                url={solarData.imagery.roofImageUrl}
                 alt="Roof satellite imagery"
                 className="w-full h-64 object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
+                mode="rgb"
               />
               
-              {/* Solar flux overlay if available */}
               {solarData.imagery.solarFluxUrl && (
                 <div className="absolute inset-0">
-                  <img 
-                    src={solarData.imagery.solarFluxUrl}
+                  <GeoTiffCanvas 
+                    url={solarData.imagery.solarFluxUrl}
                     alt="Solar flux overlay"
-                    className="w-full h-full object-cover opacity-60 mix-blend-multiply"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                    }}
+                    className="w-full h-full opacity-60 mix-blend-multiply"
+                    mode="flux"
                   />
                 </div>
               )}
