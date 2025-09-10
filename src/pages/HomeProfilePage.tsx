@@ -15,6 +15,7 @@ import { PropertyDetails } from '@/components/HomeProfile/PropertyDetails';
 import { SystemsAppliances } from '@/components/HomeProfile/SystemsAppliances';
 import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
 import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
+import { PermitsHistory } from '@/components/HomeProfile/PermitsHistory';
 
 // Mock data
 import homeSystemsData from '../../client/mock/home_systems.json';
@@ -155,6 +156,12 @@ const HomeProfilePage = () => {
           <PropertyDetails
             propertyData={attomData || undefined}
             propertyType={home.property_type || userProfileData.property_type}
+          />
+
+          {/* Permits History - new section */}
+          <PermitsHistory
+            homeId={home.id}
+            address={fullAddress}
           />
 
           {/* Systems & Appliances */}
