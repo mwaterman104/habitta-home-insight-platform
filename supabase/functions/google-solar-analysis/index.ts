@@ -138,12 +138,12 @@ serve(async (req) => {
         sunshineHoursPerYear: solarData.solarPotential?.maxSunshineHoursPerYear || 0,
         carbonOffsetFactor: solarData.solarPotential?.carbonOffsetFactorKgPerMwh || 0,
       },
-      systemOptions: solarData.solarPanelConfigs?.map(config => ({
+      systemOptions: solarData.solarPotential?.solarPanelConfigs?.map(config => ({
         panelCount: config.panelsCount,
         annualGenerationKwh: config.yearlyEnergyDcKwh,
         roofSegments: config.roofSegmentSummaries?.length || 0,
       })) || [],
-      financialProjections: solarData.financialAnalyses?.map(analysis => ({
+      financialProjections: solarData.solarPotential?.financialAnalyses?.map(analysis => ({
         panelCount: analysis.panelsCount,
         monthlyBillOffset: analysis.monthlyBill?.units || 0,
         currency: analysis.monthlyBill?.currencyCode || 'USD',
@@ -153,12 +153,12 @@ serve(async (req) => {
         lifetimeSavings: analysis.presentValueSavingsLifetime,
         paybackYears: analysis.paybackYears,
       })) || [],
-      roofSegments: solarData.roofSegmentStats?.map(segment => ({
+      roofSegments: solarData.solarPotential?.roofSegmentStats?.map(segment => ({
         pitch: segment.pitchDegrees,
         azimuth: segment.azimuthDegrees,
-        area: segment.areaMeters2,
-        sunshineScore: segment.sunshineQuantiles?.[5] || 0, // median sunshine
-        sunshineQuantiles: segment.sunshineQuantiles,
+        area: segment.stats?.areaMeters2 || 0,
+        sunshineScore: segment.stats?.sunshineQuantiles?.[5] || 0, // median sunshine
+        sunshineQuantiles: segment.stats?.sunshineQuantiles,
       })) || [],
       imagery: {
         roofImageUrl,
