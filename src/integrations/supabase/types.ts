@@ -1070,6 +1070,36 @@ export type Database = {
           },
         ]
       }
+      solar_analysis: {
+        Row: {
+          address_id: string | null
+          created_at: string
+          id: string
+          processed_data: Json
+          raw_data: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address_id?: string | null
+          created_at?: string
+          id?: string
+          processed_data: Json
+          raw_data: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address_id?: string | null
+          created_at?: string
+          id?: string
+          processed_data?: Json
+          raw_data?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       systems: {
         Row: {
           confidence: number | null
