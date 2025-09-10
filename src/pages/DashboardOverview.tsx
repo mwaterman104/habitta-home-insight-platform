@@ -4,6 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SolarPotentialCard } from "@/components/SolarPotentialCard";
+import { SolarSavingsEstimator } from "@/components/SolarSavingsEstimator";
+import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { 
   Home, 
   TrendingUp, 
@@ -55,11 +59,17 @@ interface FinancialData {
 }
 
 export default function DashboardOverview() {
+  const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [homeScore, setHomeScore] = useState<HomeScore | null>(null);
   const [nextAction, setNextAction] = useState<NextAction | null>(null);
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([]);
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  
+  // Mock coordinates for solar analysis - replace with actual home coordinates
+  const homeLatitude = 37.7749; // San Francisco example
+  const homeLongitude = -122.4194;
+  const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
   useEffect(() => {
     // Simulate loading data
@@ -169,16 +179,8 @@ export default function DashboardOverview() {
     );
   }
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Your home's health overview and what needs attention today
-        </p>
-      </div>
-
+  const OverviewContent = () => (
+    <>
       {/* Key Metrics Row */}
       <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6">
         {/* Home Score */}
@@ -416,6 +418,86 @@ export default function DashboardOverview() {
           </div>
         </CardContent>
       </Card>
+    </>
+  );
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-muted-foreground mt-1">
+          Your home's health overview and what needs attention today
+        </p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 rounded-2xl">
+          <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
+          <TabsTrigger value="energy" className="rounded-xl">Energy</TabsTrigger>
+          <TabsTrigger value="maintenance" className="rounded-xl">Maintenance</TabsTrigger>
+          <TabsTrigger value="financial" className="rounded-xl">Financial</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <OverviewContent />
+        </TabsContent>
+
+        <TabsContent value="energy" className="space-y-6">
+          <div className="grid lg:grid-cols-2 gap-6">
+            <SolarPotentialCard solarData={solarData} loading={solarLoading} />
+            <SolarSavingsEstimator solarData={solarData} loading={solarLoading} />
+          </div>
+          
+          {/* Energy Efficiency Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Energy Efficiency Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-primary/5 rounded-lg">
+                  <div className="text-2xl font-bold text-primary">A+</div>
+                  <div className="text-sm text-muted-foreground">Energy Rating</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">23%</div>
+                  <div className="text-sm text-muted-foreground">Below Avg Usage</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">$2,340</div>
+                  <div className="text-sm text-muted-foreground">Annual Savings</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Maintenance Schedule</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">Detailed maintenance planning coming soon.</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="financial" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Financial Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">Financial analysis and projections coming soon.</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
