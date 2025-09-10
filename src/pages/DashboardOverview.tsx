@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SolarPotentialCard } from "@/components/SolarPotentialCard";
 import { SolarSavingsEstimator } from "@/components/SolarSavingsEstimator";
+import { WeatherImpactCard } from "@/components/WeatherImpactCard";
 import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { 
   Home, 
@@ -350,6 +351,15 @@ export default function DashboardOverview() {
           </CardContent>
         </Card>
 
+        {/* Weather Impact */}
+        <WeatherImpactCard 
+          latitude={homeLatitude} 
+          longitude={homeLongitude}
+        />
+      </div>
+
+      {/* Second row for additional cards */}  
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* Pro Help CTA */}
         <Card>
           <CardHeader>
@@ -376,6 +386,18 @@ export default function DashboardOverview() {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Placeholder for future card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Property Insights</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Additional property intelligence coming soon.
+            </p>
           </CardContent>
         </Card>
       </div>

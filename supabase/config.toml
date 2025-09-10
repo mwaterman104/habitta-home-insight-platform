@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.attom-property]
 verify_jwt = true
+
+[functions.google-weather-insights]
+verify_jwt = true
