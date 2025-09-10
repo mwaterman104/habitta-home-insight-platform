@@ -22,7 +22,10 @@ import SeasonalEnergyReadiness from "../components/SeasonalEnergyReadiness";
 import LifestyleTimeline from "../components/LifestyleTimeline";
 import PartnerOpportunities from "../components/PartnerOpportunities";
 import PropertyIntelligenceTab from "../components/PropertyIntelligenceTab";
+import { SolarPotentialCard } from "../../src/components/SolarPotentialCard";
+import { SolarSavingsEstimator } from "../../src/components/SolarSavingsEstimator";
 import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary, useUserProfile } from "../hooks/useHabittaLocal";
+import { useSolarInsights } from "../../src/hooks/useSolarInsights";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -31,6 +34,11 @@ export default function Dashboard() {
   const moneySavings = useMoneySavings();
   const tasksSummary = useTasksSummary();
   const userProfile = useUserProfile();
+  
+  // Mock coordinates for solar analysis - replace with actual home coordinates
+  const homeLatitude = 37.7749; // San Francisco example
+  const homeLongitude = -122.4194;
+  const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
   return (
     <div className="p-6">
@@ -105,6 +113,10 @@ export default function Dashboard() {
           <div className="grid md:grid-cols-2 gap-6">
             <NeighborhoodComparison />
             <NeighborhoodPeerBenchmark />
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <SolarPotentialCard solarData={solarData} loading={solarLoading} />
+            <SolarSavingsEstimator solarData={solarData} loading={solarLoading} />
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <LifestyleEnergyBenefits />
