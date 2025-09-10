@@ -35,6 +35,10 @@ export default function DashboardOverview() {
   const homeLongitude = userHome?.longitude || -122.4194;
   const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
+  // Avoid inaccurate location in Home Pulse if coordinates are unknown
+  const pulseLatitude = userHome?.latitude;
+  const pulseLongitude = userHome?.longitude;
+
   useEffect(() => {
     if (!user) return;
 
@@ -91,8 +95,8 @@ export default function DashboardOverview() {
     <div className="space-y-6">
       {/* Home Pulse - Living Greeting */}
       <HomePulse 
-        latitude={homeLatitude}
-        longitude={homeLongitude}
+        latitude={pulseLatitude}
+        longitude={pulseLongitude}
         homeAddress={userHome ? `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}` : undefined}
       />
 

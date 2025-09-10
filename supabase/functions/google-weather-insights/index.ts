@@ -58,12 +58,11 @@ serve(async (req) => {
       console.log('Reverse geocoding failed:', error);
     }
 
-    // Fetch current weather data from Google Maps Weather API
-    const weatherResponse = await fetch(
-      `https://maps.googleapis.com/maps/api/weather/json?location=${latitude},${longitude}&key=${apiKey}`
-    );
+    // Fetch current weather data using Open-Meteo (reliable, no API key required)
+    const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m`;
+    const omResponse = await fetch(omUrl);
 
-    if (!weatherResponse.ok) {
+    if (!omResponse.ok) {
       // If API fails, return mock storm data for demo
       console.log('Weather API unavailable, using mock storm data');
       const mockStormData: StormInsight = {
@@ -92,8 +91,27 @@ serve(async (req) => {
       });
     }
 
-    const weatherData: WeatherData = await weatherResponse.json();
-    
+    const omJson = await omResponse.json();
+
+    const code = omJson.current?.weather_code ?? 0;
+    const condition = (() => {
+      if ([95, 96, 99].includes(code)) return 'thunderstorm';
+      if ([80, 81, 82, 51, 53, 55, 61, 63, 65].includes(code)) return 'rain';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return 'snow';
+      if ([66, 67].includes(code)) return 'sleet';
+      if ([0, 1].includes(code)) return 'clear';
+      if ([2, 3, 45, 48].includes(code)) return 'cloudy';
+      return 'unknown';
+    })();
+
+    const weatherData: WeatherData = {
+      temperature: omJson.current?.temperature_2m ?? 0,
+      windSpeed: omJson.current?.wind_speed_10m ?? 0,
+      precipitation: omJson.current?.precipitation ?? 0,
+      humidity: omJson.current?.relative_humidity_2m ?? 0,
+      condition,
+    };
+
     // Calculate storm score based on weather conditions
     const stormScore = calculateStormScore(weatherData);
     const insights = generateStormInsights(weatherData, stormScore, locationName);
