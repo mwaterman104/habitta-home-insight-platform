@@ -1,161 +1,151 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface LifecyclePrediction {
+  id: string;
   systemType: string;
+  systemName: string;
   predictedYearsRemaining: number;
-  predictedReplacementDate: string;
   predictedCost: number;
-  confidenceScore: number;
+  confidence: number;
   riskFactors: string[];
   recommendations: string[];
-  modelVersion: string;
-  features: {
-    weatherImpact: number;
-    maintenanceBonus: number;
-    qualityFactor: number;
-  };
 }
 
 interface PredictionData {
   predictions: LifecyclePrediction[];
-  totalPredictedCosts: {
+  totalCosts: {
     oneYear: number;
     twoYear: number;
     fiveYear: number;
   };
-  highRiskSystems: LifecyclePrediction[];
+  highRiskSystems: string[];
   lastUpdated: string;
 }
 
-export const useAILifecyclePredictions = (propertyId?: string) => {
+export function useAILifecyclePredictions(homeId?: string) {
   const [data, setData] = useState<PredictionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!propertyId) {
+  const fetchPredictions = async () => {
+    if (!homeId) {
       setLoading(false);
       return;
     }
 
-    fetchPredictions();
-  }, [propertyId]);
-
-  const fetchPredictions = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Get property systems data
+      // Check if home has any systems
       const { data: systemsData, error: systemsError } = await supabase
-        .from('system_lifecycles')
+        .from('home_systems')
         .select('*')
-        .eq('property_id', propertyId);
+        .eq('home_id', homeId);
 
-      if (systemsError) throw systemsError;
+      if (systemsError) {
+        throw systemsError;
+      }
 
-      if (!systemsData?.length) {
+      if (!systemsData || systemsData.length === 0) {
         setData({
           predictions: [],
-          totalPredictedCosts: { oneYear: 0, twoYear: 0, fiveYear: 0 },
+          totalCosts: { oneYear: 0, twoYear: 0, fiveYear: 0 },
           highRiskSystems: [],
           lastUpdated: new Date().toISOString()
         });
+        setLoading(false);
         return;
       }
 
-      // Generate predictions for each system using AI
-      const predictions: LifecyclePrediction[] = [];
-      
-      for (const system of systemsData) {
-        try {
-          const { data: prediction, error: predictionError } = await supabase.functions.invoke(
-            'ai-lifecycle-predictor',
-            {
-              body: {
-                propertyId,
-                systemType: system.system_type,
-                features: {
-                  currentAge: new Date().getFullYear() - new Date(system.installation_date).getFullYear(),
-                  maintenanceHistory: [],
-                  installationQuality: 'standard',
-                  location: { state: 'FL' }
-                }
-              }
-            }
-          );
+      // Generate predictions using edge function
+      const { data: predictionsResponse, error: predictionsError } = await supabase.functions
+        .invoke('generate-system-predictions', {
+          body: { homeId }
+        });
 
-          if (!predictionError && prediction) {
-            predictions.push(prediction);
-          }
-        } catch (err) {
-          console.error(`Error predicting lifecycle for ${system.system_type}:`, err);
-        }
+      if (predictionsError) {
+        throw predictionsError;
       }
 
-      // Calculate total predicted costs
-      const totalPredictedCosts = {
-        oneYear: predictions
-          .filter(p => p.predictedYearsRemaining <= 1)
-          .reduce((sum, p) => sum + p.predictedCost, 0),
-        twoYear: predictions
-          .filter(p => p.predictedYearsRemaining <= 2)
-          .reduce((sum, p) => sum + p.predictedCost, 0),
-        fiveYear: predictions
-          .filter(p => p.predictedYearsRemaining <= 5)
-          .reduce((sum, p) => sum + p.predictedCost, 0)
-      };
+      const predictions: LifecyclePrediction[] = predictionsResponse.predictions.map((pred: any) => ({
+        id: pred.system_id,
+        systemType: pred.system_key,
+        systemName: pred.system_name,
+        predictedYearsRemaining: pred.remaining_years,
+        predictedCost: pred.predicted_cost_mean,
+        confidence: pred.confidence,
+        riskFactors: Object.keys(pred.risk_factors || {}),
+        recommendations: pred.maintenance_actions?.map((a: any) => a.action) || []
+      }));
 
-      // Identify high-risk systems (replacement needed within 3 years or low confidence)
-      const highRiskSystems = predictions.filter(p => 
-        p.predictedYearsRemaining <= 3 || p.confidenceScore < 0.7
-      );
+      // Calculate costs by timeframe
+      let totalOneYear = 0;
+      let totalTwoYear = 0;
+      let totalFiveYear = 0;
+      const highRiskSystems: string[] = [];
+
+      predictions.forEach(pred => {
+        if (pred.predictedYearsRemaining <= 1) {
+          totalOneYear += pred.predictedCost;
+        }
+        if (pred.predictedYearsRemaining <= 2) {
+          totalTwoYear += pred.predictedCost;
+        }
+        if (pred.predictedYearsRemaining <= 5) {
+          totalFiveYear += pred.predictedCost;
+        }
+
+        if (pred.predictedYearsRemaining <= 2) {
+          highRiskSystems.push(pred.systemName);
+        }
+      });
 
       setData({
         predictions,
-        totalPredictedCosts,
+        totalCosts: {
+          oneYear: totalOneYear,
+          twoYear: totalTwoYear,
+          fiveYear: totalFiveYear
+        },
         highRiskSystems,
         lastUpdated: new Date().toISOString()
       });
 
     } catch (err) {
-      console.error('Error fetching AI lifecycle predictions:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load predictions');
+      console.error('Error fetching predictions:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch predictions');
     } finally {
       setLoading(false);
     }
   };
 
-  const submitFeedback = async (systemType: string, rating: number, feedbackText?: string) => {
+  const submitFeedback = async (predictionId: string, actualData: { 
+    actualCost?: number; 
+    actualDate?: string; 
+    wasAccurate: boolean 
+  }) => {
     try {
-      const prediction = data?.predictions.find(p => p.systemType === systemType);
-      if (!prediction) return;
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      const { error } = await supabase
-        .from('user_feedback')
-        .insert({
-          user_id: user.id,
-          property_id: propertyId!,
-          feedback_type: 'prediction_accuracy',
-          predicted_value: {
-            yearsRemaining: prediction.predictedYearsRemaining,
-            cost: prediction.predictedCost,
-            confidence: prediction.confidenceScore
-          },
-          rating,
-          feedback_text: feedbackText
-        });
-
-      if (error) throw error;
+      // Store feedback for model improvement
+      const { error } = await supabase.functions.invoke('prediction-feedback', {
+        body: {
+          predictionId,
+          actualData
+        }
+      });
+      
+      if (error) {
+        console.error('Error submitting feedback:', error);
+      }
     } catch (err) {
       console.error('Error submitting feedback:', err);
-      throw err;
     }
   };
+
+  useEffect(() => {
+    fetchPredictions();
+  }, [homeId]);
 
   return {
     data,
@@ -164,4 +154,4 @@ export const useAILifecyclePredictions = (propertyId?: string) => {
     refetch: fetchPredictions,
     submitFeedback
   };
-};
+}

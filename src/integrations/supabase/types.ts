@@ -486,6 +486,59 @@ export type Database = {
           },
         ]
       }
+      home_systems: {
+        Row: {
+          brand: string | null
+          created_at: string | null
+          expected_lifespan_years: number | null
+          home_id: string
+          id: string
+          install_date: string | null
+          last_service_date: string | null
+          model: string | null
+          notes: string | null
+          source: Json | null
+          system_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          brand?: string | null
+          created_at?: string | null
+          expected_lifespan_years?: number | null
+          home_id: string
+          id?: string
+          install_date?: string | null
+          last_service_date?: string | null
+          model?: string | null
+          notes?: string | null
+          source?: Json | null
+          system_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          brand?: string | null
+          created_at?: string | null
+          expected_lifespan_years?: number | null
+          home_id?: string
+          id?: string
+          install_date?: string | null
+          last_service_date?: string | null
+          model?: string | null
+          notes?: string | null
+          source?: Json | null
+          system_key?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_systems_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       homes: {
         Row: {
           address: string
@@ -1617,6 +1670,45 @@ export type Database = {
         }
         Relationships: []
       }
+      system_catalog: {
+        Row: {
+          cost_high: number | null
+          cost_low: number | null
+          created_at: string | null
+          display_name: string
+          id: string
+          key: string
+          maintenance_checks: Json | null
+          risk_weights: Json | null
+          typical_lifespan_years: number
+          updated_at: string | null
+        }
+        Insert: {
+          cost_high?: number | null
+          cost_low?: number | null
+          created_at?: string | null
+          display_name: string
+          id?: string
+          key: string
+          maintenance_checks?: Json | null
+          risk_weights?: Json | null
+          typical_lifespan_years: number
+          updated_at?: string | null
+        }
+        Update: {
+          cost_high?: number | null
+          cost_low?: number | null
+          created_at?: string | null
+          display_name?: string
+          id?: string
+          key?: string
+          maintenance_checks?: Json | null
+          risk_weights?: Json | null
+          typical_lifespan_years?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       system_lifecycles: {
         Row: {
           brand: string | null
@@ -1684,6 +1776,56 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_predictions: {
+        Row: {
+          confidence: number | null
+          forecast_run_at: string | null
+          home_system_id: string
+          id: string
+          maintenance_actions: Json | null
+          notes: string | null
+          predicted_cost_high: number | null
+          predicted_cost_low: number | null
+          predicted_cost_mean: number | null
+          predicted_replace_date: string | null
+          risk_factors: Json | null
+        }
+        Insert: {
+          confidence?: number | null
+          forecast_run_at?: string | null
+          home_system_id: string
+          id?: string
+          maintenance_actions?: Json | null
+          notes?: string | null
+          predicted_cost_high?: number | null
+          predicted_cost_low?: number | null
+          predicted_cost_mean?: number | null
+          predicted_replace_date?: string | null
+          risk_factors?: Json | null
+        }
+        Update: {
+          confidence?: number | null
+          forecast_run_at?: string | null
+          home_system_id?: string
+          id?: string
+          maintenance_actions?: Json | null
+          notes?: string | null
+          predicted_cost_high?: number | null
+          predicted_cost_low?: number | null
+          predicted_cost_mean?: number | null
+          predicted_replace_date?: string | null
+          risk_factors?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_predictions_home_system_id_fkey"
+            columns: ["home_system_id"]
+            isOneToOne: false
+            referencedRelation: "home_systems"
             referencedColumns: ["id"]
           },
         ]

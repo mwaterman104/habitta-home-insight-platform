@@ -179,7 +179,7 @@ export default function DashboardOverview() {
         </TabsContent>
 
         <TabsContent value="ai-predictions" className="space-y-6">
-          <AILifecycleDashboard propertyId={userHome?.property_id} />
+          <AILifecycleDashboard homeId={userHome?.id} />
         </TabsContent>
 
         <TabsContent value="ai-assistant" className="space-y-6">
