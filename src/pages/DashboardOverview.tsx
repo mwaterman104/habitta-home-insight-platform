@@ -134,7 +134,7 @@ export default function DashboardOverview() {
             Local Intelligence
           </TabsTrigger>
           <TabsTrigger value="insights" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            Property Insights
+            Financial Intelligence
           </TabsTrigger>
         </TabsList>
 
@@ -164,12 +164,10 @@ export default function DashboardOverview() {
         </TabsContent>
 
         <TabsContent value="insights" className="space-y-6">
-          <div className="text-center py-12">
-            <h3 className="text-lg font-semibold mb-2">Property Intelligence Coming Soon</h3>
-            <p className="text-muted-foreground">
-              Advanced property analytics, neighborhood insights, and market trends.
-            </p>
-          </div>
+          <FinancialInsights 
+            homeAddress={userHome ? `${userHome.address}, ${userHome.city}, ${userHome.state}` : undefined}
+            homeId={userHome?.id}
+          />
         </TabsContent>
       </Tabs>
     </div>

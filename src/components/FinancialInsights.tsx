@@ -2,10 +2,12 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calculator, Clock, Target, ArrowUp, ArrowDown, Shield } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calculator, Clock, Target, ArrowUp, ArrowDown, Shield, Home } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
+import { useSmartyPropertyData } from '@/hooks/useSmartyPropertyData';
+import { EquityImpactDashboard } from './EquityImpactDashboard';
 
 interface FinancialData {
   homeValue: number;
@@ -21,6 +23,8 @@ interface FinancialData {
 
 interface FinancialInsightsProps {
   data?: FinancialData;
+  homeAddress?: string;
+  homeId?: string;
 }
 
 const mockFinancialData: FinancialData = {
@@ -36,13 +40,23 @@ const mockFinancialData: FinancialData = {
 };
 
 export const FinancialInsights: React.FC<FinancialInsightsProps> = ({ 
-  data = mockFinancialData 
+  data = mockFinancialData,
+  homeAddress,
+  homeId 
 }) => {
   const budgetUsed = Math.round((data.spentThisYear / data.maintenanceBudget) * 100);
   const remainingBudget = data.maintenanceBudget - data.spentThisYear;
+  const { data: smartyData } = useSmartyPropertyData(homeAddress || '');
 
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
+    <div className="space-y-6">
+      {/* Equity Impact Dashboard */}
+      {homeAddress && (
+        <EquityImpactDashboard homeAddress={homeAddress} homeId={homeId} />
+      )}
+      
+      {/* Traditional Financial Insights */}
+      <div className="grid lg:grid-cols-2 gap-6">
       {/* Property Value & Forecast */}
       <Card>
         <CardHeader>
@@ -54,8 +68,12 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-2xl font-bold">${data.homeValue.toLocaleString()}</p>
-              <p className="text-sm text-muted-foreground">Current Value</p>
+              <p className="text-2xl font-bold">
+                ${smartyData?.currentValue?.toLocaleString() || data.homeValue.toLocaleString()}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {smartyData ? 'Current Market Value' : 'Estimated Value'}
+              </p>
             </div>
             <div className="text-right">
               <div className="flex items-center gap-1 text-accent">
@@ -199,6 +217,7 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };
