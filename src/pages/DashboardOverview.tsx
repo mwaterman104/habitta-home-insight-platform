@@ -21,6 +21,7 @@ interface UserHome {
   city: string;
   state: string;
   zip_code: string;
+  property_id?: string;
   latitude?: number;
   longitude?: number;
   user_id: string;
