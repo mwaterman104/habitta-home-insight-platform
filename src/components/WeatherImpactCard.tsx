@@ -15,7 +15,7 @@ export const WeatherImpactCard: React.FC<WeatherImpactCardProps> = ({
   latitude,
   longitude
 }) => {
-  const { insights, loading, error } = useWeatherInsights(latitude, longitude);
+  const { insights, loading, error } = useWeatherInsights({ latitude, longitude });
   const [checkedItems, setCheckedItems] = React.useState<Record<string, boolean>>({});
 
   if (loading) {

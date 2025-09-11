@@ -35,9 +35,9 @@ export default function DashboardOverview() {
   const homeLongitude = userHome?.longitude || -122.4194;
   const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
-  // Use coordinates for Home Pulse weather insights
-  const pulseLatitude = userHome?.latitude || homeLatitude;
-  const pulseLongitude = userHome?.longitude || homeLongitude;
+  // Avoid inaccurate location in Home Pulse if coordinates are unknown
+  const pulseLatitude = userHome?.latitude;
+  const pulseLongitude = userHome?.longitude;
 
   useEffect(() => {
     if (!user) return;

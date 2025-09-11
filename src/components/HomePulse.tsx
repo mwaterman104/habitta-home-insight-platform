@@ -29,7 +29,7 @@ export const HomePulse: React.FC<HomePulseProps> = ({
   homeAddress = "Your Home"
 }) => {
   const [greeting, setGreeting] = useState<GreetingData | null>(null);
-  const { insights: weatherInsights, loading: weatherLoading } = useWeatherInsights(latitude, longitude);
+  const { insights: weatherInsights, loading: weatherLoading } = useWeatherInsights({ address: homeAddress, latitude, longitude });
 
   useEffect(() => {
     const generateGreeting = () => {
@@ -137,7 +137,7 @@ export const HomePulse: React.FC<HomePulseProps> = ({
             
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3" />
-              <span>{weatherInsights?.locationName || homeAddress}</span>
+              <span>{homeAddress}</span>
               <Clock className="h-3 w-3 ml-2" />
               <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>

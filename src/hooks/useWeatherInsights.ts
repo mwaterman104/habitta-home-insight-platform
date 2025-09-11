@@ -11,13 +11,14 @@ interface WeatherInsight {
   locationName?: string;
 }
 
-export const useWeatherInsights = (latitude?: number, longitude?: number) => {
+export const useWeatherInsights = (params: { address?: string; latitude?: number; longitude?: number }) => {
+  const { address, latitude, longitude } = params || {};
   const [insights, setInsights] = useState<WeatherInsight | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchWeatherInsights = async () => {
-    if (!latitude || !longitude) return;
+    if (((!latitude || !longitude) && !address)) return;
 
     setLoading(true);
     setError(null);
@@ -26,7 +27,7 @@ export const useWeatherInsights = (latitude?: number, longitude?: number) => {
       const { data, error: functionError } = await supabase.functions.invoke(
         'google-weather-insights',
         {
-          body: { latitude, longitude }
+          body: { address, latitude, longitude }
         }
       );
 
@@ -45,7 +46,7 @@ export const useWeatherInsights = (latitude?: number, longitude?: number) => {
 
   useEffect(() => {
     fetchWeatherInsights();
-  }, [latitude, longitude]);
+  }, [address, latitude, longitude]);
 
   return {
     insights,

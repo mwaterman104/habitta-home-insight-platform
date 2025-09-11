@@ -30,32 +30,60 @@ serve(async (req) => {
   }
 
   try {
-    const { latitude, longitude } = await req.json();
+    const { address, latitude: latBody, longitude: lonBody } = await req.json();
     const apiKey = Deno.env.get('GOOGLE_WEATHER_API_KEY');
 
     if (!apiKey) {
       throw new Error('Google Weather API key not configured');
     }
 
-    // Get location name using reverse geocoding
+    // Resolve coordinates from address if needed
+    let latitude = latBody;
+    let longitude = lonBody;
     let locationName = '';
-    try {
-      const geocodeResponse = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`
-      );
-      
-      if (geocodeResponse.ok) {
-        const geocodeData = await geocodeResponse.json();
-        if (geocodeData.results?.[0]) {
-          // Extract city and state from the address components
-          const addressComponents = geocodeData.results[0].address_components;
-          const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name;
-          const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-          locationName = city && state ? `${city}, ${state}` : geocodeData.results[0].formatted_address;
+
+    if ((!latitude || !longitude) && address) {
+      try {
+        const forwardResp = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+        );
+        if (forwardResp.ok) {
+          const forwardData = await forwardResp.json();
+          const first = forwardData.results?.[0];
+          if (first?.geometry?.location) {
+            latitude = first.geometry.location.lat;
+            longitude = first.geometry.location.lng;
+            // Prefer the user's address string for display; reverse geocode can refine later
+            locationName = address;
+          }
         }
+      } catch (e) {
+        console.log('Forward geocoding failed:', e);
       }
-    } catch (error) {
-      console.log('Reverse geocoding failed:', error);
+    }
+    if (latitude && longitude) {
+      try {
+        const geocodeResponse = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`
+        );
+        
+        if (geocodeResponse.ok) {
+          const geocodeData = await geocodeResponse.json();
+          if (geocodeData.results?.[0]) {
+            // Extract city and state from the address components
+            const addressComponents = geocodeData.results[0].address_components;
+            const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name;
+            const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
+            locationName = city && state ? `${city}, ${state}` : geocodeData.results[0].formatted_address;
+          }
+        }
+      } catch (error) {
+        console.log('Reverse geocoding failed:', error);
+      }
+    }
+
+    if (!latitude || !longitude) {
+      throw new Error('Missing coordinates after geocoding');
     }
 
     // Fetch current weather data using Open-Meteo (reliable, no API key required)
