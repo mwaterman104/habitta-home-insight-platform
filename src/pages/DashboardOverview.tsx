@@ -11,6 +11,8 @@ import { HomeHealthSnapshot } from "@/components/HomeHealthSnapshot";
 import { SupportLayer } from "@/components/SupportLayer";
 import { PredictiveCostDashboard } from '@/components/PredictiveCostDashboard';
 import { HyperlocalIntelligence } from '@/components/HyperlocalIntelligence';
+import { AILifecycleDashboard } from '@/components/AILifecycleDashboard';
+import { AIHomeAssistant } from '@/components/AIHomeAssistant';
 import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -120,7 +122,7 @@ export default function DashboardOverview() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 rounded-2xl bg-muted/50">
+        <TabsList className="grid w-full grid-cols-7 rounded-2xl bg-muted/50">
           <TabsTrigger value="overview" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Home Pulse
           </TabsTrigger>
@@ -135,6 +137,12 @@ export default function DashboardOverview() {
           </TabsTrigger>
           <TabsTrigger value="insights" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Financial Intelligence
+          </TabsTrigger>
+          <TabsTrigger value="ai-predictions" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            AI Predictions
+          </TabsTrigger>
+          <TabsTrigger value="ai-assistant" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            AI Assistant
           </TabsTrigger>
         </TabsList>
 
@@ -168,6 +176,14 @@ export default function DashboardOverview() {
             homeAddress={userHome ? `${userHome.address}, ${userHome.city}, ${userHome.state}` : undefined}
             homeId={userHome?.id}
           />
+        </TabsContent>
+
+        <TabsContent value="ai-predictions" className="space-y-6">
+          <AILifecycleDashboard propertyId={userHome?.property_id} />
+        </TabsContent>
+
+        <TabsContent value="ai-assistant" className="space-y-6">
+          <AIHomeAssistant propertyId={userHome?.property_id} />
         </TabsContent>
       </Tabs>
     </div>

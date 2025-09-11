@@ -600,6 +600,48 @@ export type Database = {
         }
         Relationships: []
       }
+      image_assessments: {
+        Row: {
+          assessment_type: string
+          condition_score: number | null
+          confidence_score: number | null
+          created_at: string
+          detected_issues: Json | null
+          id: string
+          image_url: string
+          processed_at: string | null
+          property_id: string
+          recommendations: Json | null
+          user_id: string
+        }
+        Insert: {
+          assessment_type: string
+          condition_score?: number | null
+          confidence_score?: number | null
+          created_at?: string
+          detected_issues?: Json | null
+          id?: string
+          image_url: string
+          processed_at?: string | null
+          property_id: string
+          recommendations?: Json | null
+          user_id: string
+        }
+        Update: {
+          assessment_type?: string
+          condition_score?: number | null
+          confidence_score?: number | null
+          created_at?: string
+          detected_issues?: Json | null
+          id?: string
+          image_url?: string
+          processed_at?: string | null
+          property_id?: string
+          recommendations?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       local_contractors: {
         Row: {
           business_hours: Json | null
@@ -859,6 +901,42 @@ export type Database = {
           },
         ]
       }
+      ml_models: {
+        Row: {
+          accuracy_score: number | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          model_config: Json | null
+          model_name: string
+          model_type: string
+          training_date: string | null
+          version: string
+        }
+        Insert: {
+          accuracy_score?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          model_config?: Json | null
+          model_name: string
+          model_type: string
+          training_date?: string | null
+          version: string
+        }
+        Update: {
+          accuracy_score?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          model_config?: Json | null
+          model_name?: string
+          model_type?: string
+          training_date?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       permits: {
         Row: {
           contractor_license: string | null
@@ -990,6 +1068,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      prediction_accuracy: {
+        Row: {
+          accuracy_score: number | null
+          actual_cost: number | null
+          actual_date: string | null
+          created_at: string
+          id: string
+          model_id: string
+          predicted_cost: number | null
+          predicted_date: string | null
+          prediction_type: string
+          property_id: string
+        }
+        Insert: {
+          accuracy_score?: number | null
+          actual_cost?: number | null
+          actual_date?: string | null
+          created_at?: string
+          id?: string
+          model_id: string
+          predicted_cost?: number | null
+          predicted_date?: string | null
+          prediction_type: string
+          property_id: string
+        }
+        Update: {
+          accuracy_score?: number | null
+          actual_cost?: number | null
+          actual_date?: string | null
+          created_at?: string
+          id?: string
+          model_id?: string
+          predicted_cost?: number | null
+          predicted_date?: string | null
+          prediction_type?: string
+          property_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_accuracy_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "ml_models"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1667,6 +1792,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_feedback: {
+        Row: {
+          actual_value: Json | null
+          created_at: string
+          feedback_text: string | null
+          feedback_type: string
+          id: string
+          predicted_value: Json | null
+          property_id: string
+          rating: number | null
+          user_id: string
+        }
+        Insert: {
+          actual_value?: Json | null
+          created_at?: string
+          feedback_text?: string | null
+          feedback_type: string
+          id?: string
+          predicted_value?: Json | null
+          property_id: string
+          rating?: number | null
+          user_id: string
+        }
+        Update: {
+          actual_value?: Json | null
+          created_at?: string
+          feedback_text?: string | null
+          feedback_type?: string
+          id?: string
+          predicted_value?: Json | null
+          property_id?: string
+          rating?: number | null
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
