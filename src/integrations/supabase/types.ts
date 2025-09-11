@@ -242,6 +242,147 @@ export type Database = {
         }
         Relationships: []
       }
+      contractor_projects: {
+        Row: {
+          actual_cost: number | null
+          communication_rating: number | null
+          completion_date: string | null
+          contractor_id: string | null
+          created_at: string | null
+          estimated_cost: number | null
+          id: string
+          permit_obtained: boolean | null
+          permit_required: boolean | null
+          project_notes: string | null
+          project_type: string
+          property_id: string | null
+          quality_rating: number | null
+          start_date: string | null
+          timeliness_rating: number | null
+          warranty_length_months: number | null
+          would_recommend: boolean | null
+        }
+        Insert: {
+          actual_cost?: number | null
+          communication_rating?: number | null
+          completion_date?: string | null
+          contractor_id?: string | null
+          created_at?: string | null
+          estimated_cost?: number | null
+          id?: string
+          permit_obtained?: boolean | null
+          permit_required?: boolean | null
+          project_notes?: string | null
+          project_type: string
+          property_id?: string | null
+          quality_rating?: number | null
+          start_date?: string | null
+          timeliness_rating?: number | null
+          warranty_length_months?: number | null
+          would_recommend?: boolean | null
+        }
+        Update: {
+          actual_cost?: number | null
+          communication_rating?: number | null
+          completion_date?: string | null
+          contractor_id?: string | null
+          created_at?: string | null
+          estimated_cost?: number | null
+          id?: string
+          permit_obtained?: boolean | null
+          permit_required?: boolean | null
+          project_notes?: string | null
+          project_type?: string
+          property_id?: string | null
+          quality_rating?: number | null
+          start_date?: string | null
+          timeliness_rating?: number | null
+          warranty_length_months?: number | null
+          would_recommend?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_projects_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "local_contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_projects_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cost_predictions: {
+        Row: {
+          confidence_level: number | null
+          cost_breakdown: Json | null
+          created_at: string | null
+          data_sources: string[] | null
+          estimated_cost_max: number | null
+          estimated_cost_min: number | null
+          id: string
+          market_factors: Json | null
+          prediction_type: string
+          property_id: string | null
+          roi_score: number | null
+          system_lifecycle_id: string | null
+          urgency_score: number | null
+          valid_until: string | null
+        }
+        Insert: {
+          confidence_level?: number | null
+          cost_breakdown?: Json | null
+          created_at?: string | null
+          data_sources?: string[] | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          id?: string
+          market_factors?: Json | null
+          prediction_type: string
+          property_id?: string | null
+          roi_score?: number | null
+          system_lifecycle_id?: string | null
+          urgency_score?: number | null
+          valid_until?: string | null
+        }
+        Update: {
+          confidence_level?: number | null
+          cost_breakdown?: Json | null
+          created_at?: string | null
+          data_sources?: string[] | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          id?: string
+          market_factors?: Json | null
+          prediction_type?: string
+          property_id?: string | null
+          roi_score?: number | null
+          system_lifecycle_id?: string | null
+          urgency_score?: number | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_predictions_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_predictions_system_lifecycle_id_fkey"
+            columns: ["system_lifecycle_id"]
+            isOneToOne: false
+            referencedRelation: "system_lifecycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diagnoses: {
         Row: {
           ai_diagnosis: string | null
@@ -459,6 +600,81 @@ export type Database = {
         }
         Relationships: []
       }
+      local_contractors: {
+        Row: {
+          business_hours: Json | null
+          business_license: string | null
+          contact_info: Json | null
+          created_at: string | null
+          emergency_services: boolean | null
+          florida_license_number: string | null
+          hurricane_response: boolean | null
+          id: string
+          insurance_verified: boolean | null
+          is_active: boolean | null
+          last_verified: string | null
+          license_expiration: string | null
+          license_type: string | null
+          license_verified: boolean | null
+          name: string
+          pricing_tier: string | null
+          ratings: Json | null
+          review_count: number | null
+          service_areas: string[] | null
+          service_radius_miles: number | null
+          specialties: string[] | null
+          typical_response_time_hours: number | null
+        }
+        Insert: {
+          business_hours?: Json | null
+          business_license?: string | null
+          contact_info?: Json | null
+          created_at?: string | null
+          emergency_services?: boolean | null
+          florida_license_number?: string | null
+          hurricane_response?: boolean | null
+          id?: string
+          insurance_verified?: boolean | null
+          is_active?: boolean | null
+          last_verified?: string | null
+          license_expiration?: string | null
+          license_type?: string | null
+          license_verified?: boolean | null
+          name: string
+          pricing_tier?: string | null
+          ratings?: Json | null
+          review_count?: number | null
+          service_areas?: string[] | null
+          service_radius_miles?: number | null
+          specialties?: string[] | null
+          typical_response_time_hours?: number | null
+        }
+        Update: {
+          business_hours?: Json | null
+          business_license?: string | null
+          contact_info?: Json | null
+          created_at?: string | null
+          emergency_services?: boolean | null
+          florida_license_number?: string | null
+          hurricane_response?: boolean | null
+          id?: string
+          insurance_verified?: boolean | null
+          is_active?: boolean | null
+          last_verified?: string | null
+          license_expiration?: string | null
+          license_type?: string | null
+          license_verified?: boolean | null
+          name?: string
+          pricing_tier?: string | null
+          ratings?: Json | null
+          review_count?: number | null
+          service_areas?: string[] | null
+          service_radius_miles?: number | null
+          specialties?: string[] | null
+          typical_response_time_hours?: number | null
+        }
+        Relationships: []
+      }
       maintenance_signals: {
         Row: {
           confidence: number | null
@@ -550,6 +766,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      market_data: {
+        Row: {
+          category: string | null
+          data_type: string
+          data_values: Json
+          id: string
+          location_key: string
+          reliability_score: number | null
+          source: string
+          updated_at: string | null
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          category?: string | null
+          data_type: string
+          data_values: Json
+          id?: string
+          location_key: string
+          reliability_score?: number | null
+          source: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          category?: string | null
+          data_type?: string
+          data_values?: Json
+          id?: string
+          location_key?: string
+          reliability_score?: number | null
+          source?: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: []
       }
       materials: {
         Row: {
@@ -988,6 +1243,59 @@ export type Database = {
         }
         Relationships: []
       }
+      property_climate_data: {
+        Row: {
+          average_humidity: number | null
+          climate_zone: string | null
+          flood_zone: string | null
+          historical_weather_events: Json | null
+          hurricane_risk_level: string | null
+          id: string
+          microclimate_factors: Json | null
+          prevailing_wind_direction: string | null
+          property_id: string | null
+          salt_air_exposure: boolean | null
+          soil_type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          average_humidity?: number | null
+          climate_zone?: string | null
+          flood_zone?: string | null
+          historical_weather_events?: Json | null
+          hurricane_risk_level?: string | null
+          id?: string
+          microclimate_factors?: Json | null
+          prevailing_wind_direction?: string | null
+          property_id?: string | null
+          salt_air_exposure?: boolean | null
+          soil_type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          average_humidity?: number | null
+          climate_zone?: string | null
+          flood_zone?: string | null
+          historical_weather_events?: Json | null
+          hurricane_risk_level?: string | null
+          id?: string
+          microclimate_factors?: Json | null
+          prevailing_wind_direction?: string | null
+          property_id?: string | null
+          salt_air_exposure?: boolean | null
+          soil_type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_climate_data_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_enrichment: {
         Row: {
           address_id: string | null
@@ -1070,6 +1378,90 @@ export type Database = {
           },
         ]
       }
+      smart_recommendations: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          diy_difficulty: string | null
+          energy_savings_potential: number | null
+          estimated_cost_max: number | null
+          estimated_cost_min: number | null
+          estimated_time_hours: number | null
+          id: string
+          is_completed: boolean | null
+          property_id: string | null
+          recommendation_type: string
+          roi_potential: number | null
+          seasonal_timing: string | null
+          system_lifecycle_id: string | null
+          title: string
+          triggers: Json | null
+          urgency_score: number | null
+          valid_until: string | null
+          weather_dependent: boolean | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          diy_difficulty?: string | null
+          energy_savings_potential?: number | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          estimated_time_hours?: number | null
+          id?: string
+          is_completed?: boolean | null
+          property_id?: string | null
+          recommendation_type: string
+          roi_potential?: number | null
+          seasonal_timing?: string | null
+          system_lifecycle_id?: string | null
+          title: string
+          triggers?: Json | null
+          urgency_score?: number | null
+          valid_until?: string | null
+          weather_dependent?: boolean | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          diy_difficulty?: string | null
+          energy_savings_potential?: number | null
+          estimated_cost_max?: number | null
+          estimated_cost_min?: number | null
+          estimated_time_hours?: number | null
+          id?: string
+          is_completed?: boolean | null
+          property_id?: string | null
+          recommendation_type?: string
+          roi_potential?: number | null
+          seasonal_timing?: string | null
+          system_lifecycle_id?: string | null
+          title?: string
+          triggers?: Json | null
+          urgency_score?: number | null
+          valid_until?: string | null
+          weather_dependent?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smart_recommendations_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "smart_recommendations_system_lifecycle_id_fkey"
+            columns: ["system_lifecycle_id"]
+            isOneToOne: false
+            referencedRelation: "system_lifecycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       solar_analysis: {
         Row: {
           address_id: string | null
@@ -1099,6 +1491,77 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      system_lifecycles: {
+        Row: {
+          brand: string | null
+          climate_zone: string | null
+          confidence_level: number | null
+          created_at: string | null
+          estimated_lifespan_years: number | null
+          exposure_factors: Json | null
+          id: string
+          installation_date: string | null
+          last_maintenance_date: string | null
+          last_prediction_update: string | null
+          maintenance_frequency_months: number | null
+          maintenance_quality_score: number | null
+          model: string | null
+          predicted_replacement_date: string | null
+          property_id: string | null
+          replacement_probability: Json | null
+          system_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          brand?: string | null
+          climate_zone?: string | null
+          confidence_level?: number | null
+          created_at?: string | null
+          estimated_lifespan_years?: number | null
+          exposure_factors?: Json | null
+          id?: string
+          installation_date?: string | null
+          last_maintenance_date?: string | null
+          last_prediction_update?: string | null
+          maintenance_frequency_months?: number | null
+          maintenance_quality_score?: number | null
+          model?: string | null
+          predicted_replacement_date?: string | null
+          property_id?: string | null
+          replacement_probability?: Json | null
+          system_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          brand?: string | null
+          climate_zone?: string | null
+          confidence_level?: number | null
+          created_at?: string | null
+          estimated_lifespan_years?: number | null
+          exposure_factors?: Json | null
+          id?: string
+          installation_date?: string | null
+          last_maintenance_date?: string | null
+          last_prediction_update?: string | null
+          maintenance_frequency_months?: number | null
+          maintenance_quality_score?: number | null
+          model?: string | null
+          predicted_replacement_date?: string | null
+          property_id?: string | null
+          replacement_probability?: Json | null
+          system_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_lifecycles_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       systems: {
         Row: {
@@ -1269,6 +1732,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weather_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          description: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          location_key: string
+          maintenance_actions: string[] | null
+          severity: string | null
+          source: string | null
+          starts_at: string | null
+          title: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_key: string
+          maintenance_actions?: string[] | null
+          severity?: string | null
+          source?: string | null
+          starts_at?: string | null
+          title: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_key?: string
+          maintenance_actions?: string[] | null
+          severity?: string | null
+          source?: string | null
+          starts_at?: string | null
+          title?: string
+        }
+        Relationships: []
       }
     }
     Views: {

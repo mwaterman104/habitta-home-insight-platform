@@ -1,15 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { 
-  TrendingUp, 
-  DollarSign, 
-  PiggyBank, 
-  Shield,
-  ArrowUp,
-  ArrowDown,
-  Clock
-} from "lucide-react";
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calculator, Clock, Target, ArrowUp, ArrowDown, Shield } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
+import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
 
 interface FinancialData {
   homeValue: number;

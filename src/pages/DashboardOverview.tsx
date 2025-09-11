@@ -9,6 +9,8 @@ import { SmartToDoEngine } from "@/components/SmartToDoEngine";
 import { FinancialInsights } from "@/components/FinancialInsights";
 import { HomeHealthSnapshot } from "@/components/HomeHealthSnapshot";
 import { SupportLayer } from "@/components/SupportLayer";
+import { PredictiveCostDashboard } from '@/components/PredictiveCostDashboard';
+import { HyperlocalIntelligence } from '@/components/HyperlocalIntelligence';
 import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -117,12 +119,18 @@ export default function DashboardOverview() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-muted/50">
+        <TabsList className="grid w-full grid-cols-5 rounded-2xl bg-muted/50">
           <TabsTrigger value="overview" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Home Pulse
           </TabsTrigger>
           <TabsTrigger value="energy" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Energy Intelligence
+          </TabsTrigger>
+          <TabsTrigger value="costs" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            Cost Planning
+          </TabsTrigger>
+          <TabsTrigger value="local" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            Local Intelligence
           </TabsTrigger>
           <TabsTrigger value="insights" className="rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Property Insights
@@ -140,6 +148,18 @@ export default function DashboardOverview() {
           </div>
           
           <SolarRoofVisualizer solarData={solarData} loading={solarLoading} />
+        </TabsContent>
+
+        <TabsContent value="costs" className="space-y-6">
+          <PredictiveCostDashboard propertyId={userHome?.property_id} />
+        </TabsContent>
+
+        <TabsContent value="local" className="space-y-6">
+          <HyperlocalIntelligence 
+            propertyId={userHome?.property_id}
+            zipCode={userHome?.zip_code}
+            address={userHome?.address}
+          />
         </TabsContent>
 
         <TabsContent value="insights" className="space-y-6">
