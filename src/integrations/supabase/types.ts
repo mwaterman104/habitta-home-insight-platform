@@ -489,43 +489,76 @@ export type Database = {
       home_systems: {
         Row: {
           brand: string | null
+          capacity_rating: string | null
+          confidence_scores: Json | null
           created_at: string | null
+          data_sources: string[] | null
           expected_lifespan_years: number | null
+          fuel_type: string | null
           home_id: string
           id: string
+          images: Json | null
           install_date: string | null
           last_service_date: string | null
+          location_detail: string | null
+          manufacture_date: string | null
+          manufacture_year: number | null
           model: string | null
           notes: string | null
+          purchase_date: string | null
+          serial: string | null
           source: Json | null
+          status: string | null
           system_key: string
           updated_at: string | null
         }
         Insert: {
           brand?: string | null
+          capacity_rating?: string | null
+          confidence_scores?: Json | null
           created_at?: string | null
+          data_sources?: string[] | null
           expected_lifespan_years?: number | null
+          fuel_type?: string | null
           home_id: string
           id?: string
+          images?: Json | null
           install_date?: string | null
           last_service_date?: string | null
+          location_detail?: string | null
+          manufacture_date?: string | null
+          manufacture_year?: number | null
           model?: string | null
           notes?: string | null
+          purchase_date?: string | null
+          serial?: string | null
           source?: Json | null
+          status?: string | null
           system_key: string
           updated_at?: string | null
         }
         Update: {
           brand?: string | null
+          capacity_rating?: string | null
+          confidence_scores?: Json | null
           created_at?: string | null
+          data_sources?: string[] | null
           expected_lifespan_years?: number | null
+          fuel_type?: string | null
           home_id?: string
           id?: string
+          images?: Json | null
           install_date?: string | null
           last_service_date?: string | null
+          location_detail?: string | null
+          manufacture_date?: string | null
+          manufacture_year?: number | null
           model?: string | null
           notes?: string | null
+          purchase_date?: string | null
+          serial?: string | null
           source?: Json | null
+          status?: string | null
           system_key?: string
           updated_at?: string | null
         }
@@ -1708,6 +1741,44 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      system_images: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          image_type: string | null
+          image_url: string
+          ocr_data: Json | null
+          system_id: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          image_type?: string | null
+          image_url: string
+          ocr_data?: Json | null
+          system_id?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          image_type?: string | null
+          image_url?: string
+          ocr_data?: Json | null
+          system_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_images_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "home_systems"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       system_lifecycles: {
         Row: {

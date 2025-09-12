@@ -189,6 +189,7 @@ export function useHomeSystems(homeId?: string) {
     addSystem,
     updateSystem,
     deleteSystem,
+    analyzePhoto,
     refetch: fetchSystems
   };
 }
