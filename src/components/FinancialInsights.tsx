@@ -8,6 +8,7 @@ import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
 import { EquityImpactDashboard } from './EquityImpactDashboard';
 import { PropertyValueCard } from './PropertyValueCard';
+import { MortgageInsights } from './MortgageInsights';
 import { useUserHome } from '@/hooks/useUserHome';
 
 interface FinancialData {
@@ -47,6 +48,9 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Mortgage Insights - Real mortgage data from Smarty API */}
+      <MortgageInsights />
+      
       {/* Equity Impact Dashboard */}
       <EquityImpactDashboard />
       

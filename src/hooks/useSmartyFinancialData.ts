@@ -15,6 +15,30 @@ export interface SmartyFinancialData {
   price_per_sqft?: number;
   value_range_low?: number;
   value_range_high?: number;
+  // Mortgage data
+  loan_amount?: number;
+  mortgage_amount_2?: number;
+  mortgage_start_date?: string;
+  mortgage_start_date_2?: string;
+  mortgage_due_date?: string;
+  mortgage_due_date_2?: string;
+  mortgage_term?: number;
+  mortgage_term_2?: number;
+  mortgage_type?: string;
+  mortgage_type_2?: string;
+  interest_rate?: number;
+  interest_rate_2?: number;
+  // Lender information
+  lender_name?: string;
+  lender_name_2?: string;
+  lender_address?: string;
+  lender_city?: string;
+  lender_state?: string;
+  lender_zip?: string;
+  // Calculated fields
+  estimated_current_balance?: number;
+  estimated_current_balance_2?: number;
+  total_estimated_mortgage_balance?: number;
   raw?: any;
 }
 
@@ -52,6 +76,32 @@ export function useSmartyFinancialData() {
         const attributes = financial?.attributes || financial;
         console.log('Financial attributes:', attributes);
 
+        // Calculate current mortgage balances if mortgage data exists
+        const loanAmount = toNum(attributes?.loan_amount);
+        const loanAmount2 = toNum(attributes?.mortgage_amount_2);
+        const startDate = attributes?.mortgage_start_date;
+        const startDate2 = attributes?.mortgage_start_date_2;
+        const term = toNum(attributes?.mortgage_term);
+        const term2 = toNum(attributes?.mortgage_term_2);
+
+        let estimatedBalance = 0;
+        let estimatedBalance2 = 0;
+
+        // Calculate remaining balance for primary mortgage
+        if (loanAmount && startDate && term) {
+          const yearsElapsed = new Date().getFullYear() - new Date(startDate).getFullYear();
+          const remainingYears = Math.max(0, term - yearsElapsed);
+          // Simple estimation: assume standard amortization (rough approximation)
+          estimatedBalance = remainingYears > 0 ? loanAmount * (remainingYears / term) * 0.8 : 0;
+        }
+
+        // Calculate remaining balance for secondary mortgage
+        if (loanAmount2 && startDate2 && term2) {
+          const yearsElapsed2 = new Date().getFullYear() - new Date(startDate2).getFullYear();
+          const remainingYears2 = Math.max(0, term2 - yearsElapsed2);
+          estimatedBalance2 = remainingYears2 > 0 ? loanAmount2 * (remainingYears2 / term2) * 0.8 : 0;
+        }
+
         setData({
           avm_value: toNum(attributes?.avm_value) ?? toNum(attributes?.total_market_value),
           avm_confidence: attributes?.avm_confidence,
@@ -64,6 +114,30 @@ export function useSmartyFinancialData() {
           price_per_sqft: toNum(attributes?.price_per_sqft),
           value_range_low: toNum(attributes?.value_range_low),
           value_range_high: toNum(attributes?.value_range_high),
+          // Mortgage data
+          loan_amount: loanAmount,
+          mortgage_amount_2: loanAmount2,
+          mortgage_start_date: startDate,
+          mortgage_start_date_2: startDate2,
+          mortgage_due_date: attributes?.mortgage_due_date,
+          mortgage_due_date_2: attributes?.mortgage_due_date_2,
+          mortgage_term: term,
+          mortgage_term_2: term2,
+          mortgage_type: attributes?.mortgage_type,
+          mortgage_type_2: attributes?.mortgage_type_2,
+          interest_rate: toNum(attributes?.interest_rate),
+          interest_rate_2: toNum(attributes?.interest_rate_2),
+          // Lender information
+          lender_name: attributes?.lender_name,
+          lender_name_2: attributes?.lender_name_2,
+          lender_address: attributes?.lender_address,
+          lender_city: attributes?.lender_city,
+          lender_state: attributes?.lender_state,
+          lender_zip: attributes?.lender_zip,
+          // Calculated fields
+          estimated_current_balance: Math.round(estimatedBalance),
+          estimated_current_balance_2: Math.round(estimatedBalance2),
+          total_estimated_mortgage_balance: Math.round(estimatedBalance + estimatedBalance2),
           raw: financial,
         });
       } else {

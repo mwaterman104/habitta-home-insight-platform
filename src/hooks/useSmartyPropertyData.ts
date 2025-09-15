@@ -3,6 +3,7 @@ import { smartyEnrich } from '@/lib/smarty';
 import { mapEnrichment } from '@/adapters/smartyMappers';
 import type { AddressPayload } from '@/lib/smarty';
 import { useUserHome } from '@/hooks/useUserHome';
+import { useSmartyFinancialData } from '@/hooks/useSmartyFinancialData';
 
 export interface SmartyPropertyData {
   currentValue: number;
@@ -31,6 +32,7 @@ export interface PropertyEquityData {
 
 export const useSmartyPropertyData = () => {
   const { fullAddress } = useUserHome();
+  const { data: financialData } = useSmartyFinancialData();
   const [data, setData] = useState<SmartyPropertyData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,9 +73,14 @@ export const useSmartyPropertyData = () => {
         const saleDate = attrs.last_sale_date || attrs.sale_date || '';
         const yearsSinceSale = saleDate ? new Date().getFullYear() - new Date(saleDate).getFullYear() : 0;
         const appreciationRate = 0.04; // assumption
-        const currentValue = lastSale ? lastSale * Math.pow(1 + appreciationRate, yearsSinceSale) : Number(attrs.total_market_value || 0);
+        
+        // Use financial data for current value if available, otherwise calculate from last sale
+        const currentValue = financialData?.avm_value || financialData?.market_value || 
+          (lastSale ? lastSale * Math.pow(1 + appreciationRate, yearsSinceSale) : Number(attrs.total_market_value || 0));
 
-        const estimatedMortgageBalance = lastSale ? lastSale * 0.8 * Math.pow(0.97, yearsSinceSale) : 0; // rough
+        // Use real mortgage data if available, otherwise estimate
+        const estimatedMortgageBalance = financialData?.total_estimated_mortgage_balance || 
+          (lastSale ? lastSale * 0.8 * Math.pow(0.97, yearsSinceSale) : 0);
 
         const propertyData: SmartyPropertyData = {
           currentValue: Math.round(currentValue || 0),
