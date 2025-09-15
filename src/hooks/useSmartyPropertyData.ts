@@ -37,13 +37,12 @@ export const useSmartyPropertyData = () => {
 
   const fetchPropertyData = async () => {
     if (!fullAddress) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      // Parse address for Smarty API: "street, city, state [zip]"
-      const parts = fullAddress.split(',').map(p => p.trim());
+      const parts = fullAddress.split(',').map((p) => p.trim());
       const street = parts[0] || '';
       const city = parts[1] || '';
       const stateZip = (parts[2] || '').split(' ').filter(Boolean);
@@ -58,7 +57,7 @@ export const useSmartyPropertyData = () => {
         street,
         city,
         state,
-        postal_code: postalCode
+        postal_code: postalCode,
       };
 
       // Get enriched property data from Smarty
@@ -66,74 +65,77 @@ export const useSmartyPropertyData = () => {
       const mappedData = mapEnrichment(enrichedData);
 
       if (mappedData.attributes) {
-        const attrs = mappedData.attributes;
-        
-        // Estimate current value based on last sale + appreciation
-        const lastSale = attrs.last_sale_price || 0;
-        const saleDate = attrs.last_sale_date;
-        const yearsSinceSale = saleDate ? new Date().getFullYear() - new Date(saleDate).getFullYear() : 0;
-        const appreciationRate = 0.04; // 4% annual appreciation assumption
-        const currentValue = lastSale * Math.pow(1 + appreciationRate, yearsSinceSale);
+        const attrs = mappedData.attributes as any;
 
-        // Estimate mortgage balance (assuming 30-year loan at purchase)
-        const estimatedMortgageBalance = lastSale * 0.8 * Math.pow(0.97, yearsSinceSale); // Rough calculation
+        const lastSale = Number(attrs.last_sale_price || attrs.sale_amount || 0);
+        const saleDate = attrs.last_sale_date || attrs.sale_date || '';
+        const yearsSinceSale = saleDate ? new Date().getFullYear() - new Date(saleDate).getFullYear() : 0;
+        const appreciationRate = 0.04; // assumption
+        const currentValue = lastSale ? lastSale * Math.pow(1 + appreciationRate, yearsSinceSale) : Number(attrs.total_market_value || 0);
+
+        const estimatedMortgageBalance = lastSale ? lastSale * 0.8 * Math.pow(0.97, yearsSinceSale) : 0; // rough
 
         const propertyData: SmartyPropertyData = {
-          currentValue: Math.round(currentValue),
-          lastSalePrice: lastSale,
-          lastSaleDate: saleDate || '',
-          yearBuilt: attrs.year_built || 0,
-          squareFeet: attrs.square_feet || 0,
-          bedrooms: attrs.beds || 0,
-          bathrooms: attrs.baths || 0,
-          lotSize: attrs.lot_size || 0,
+          currentValue: Math.round(currentValue || 0),
+          lastSalePrice: Number(lastSale) || 0,
+          lastSaleDate: saleDate,
+          yearBuilt: Number(attrs.year_built) || 0,
+          squareFeet: Number(attrs.square_feet) || 0,
+          bedrooms: Number(attrs.beds) || 0,
+          bathrooms: Number(attrs.baths) || 0,
+          lotSize: Number(attrs.lot_size) || 0,
           propertyType: attrs.property_type || '',
-          estimatedEquity: Math.round(currentValue - estimatedMortgageBalance),
-          estimatedMortgageBalance: Math.round(estimatedMortgageBalance),
-          marketAppreciation: appreciationRate * 100
+          estimatedEquity: Math.round((currentValue || 0) - (estimatedMortgageBalance || 0)),
+          estimatedMortgageBalance: Math.round(estimatedMortgageBalance || 0),
+          marketAppreciation: appreciationRate * 100,
         };
 
         setData(propertyData);
+      } else {
+        setData(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching Smarty property data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch property data');
+      // Gracefully handle 404s from enrichment without breaking UI
+      if (err?.name === 'FunctionsHttpError' || String(err?.message || '').includes('non-2xx')) {
+        setError('Property enrichment unavailable');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch property data');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (fullAddress) {
-      fetchPropertyData();
-    }
+    if (fullAddress) fetchPropertyData();
   }, [fullAddress]);
 
   return {
     data,
     loading,
     error,
-    refetch: fetchPropertyData
+    refetch: fetchPropertyData,
   };
 };
 
 export const calculateRepairImpact = (
   propertyData: SmartyPropertyData,
-  repairCosts: number, 
+  repairCosts: number,
   valueIncrease: number
 ): PropertyEquityData => {
   const currentEquity = propertyData.currentValue - (propertyData.estimatedMortgageBalance || 0);
   const potentialValueWithRepairs = propertyData.currentValue + valueIncrease;
   const potentialEquityIncrease = valueIncrease;
-  const repairROI = (valueIncrease / repairCosts) * 100;
+  const repairROI = repairCosts > 0 ? (valueIncrease / repairCosts) * 100 : 0;
 
   return {
     currentValue: propertyData.currentValue,
     estimatedMortgageBalance: propertyData.estimatedMortgageBalance || 0,
     currentEquity,
-    equityPercent: (currentEquity / propertyData.currentValue) * 100,
+    equityPercent: propertyData.currentValue ? (currentEquity / propertyData.currentValue) * 100 : 0,
     potentialValueWithRepairs,
     potentialEquityIncrease,
-    repairROI
+    repairROI,
   };
 };

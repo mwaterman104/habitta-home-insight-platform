@@ -18,6 +18,12 @@ export interface SmartyFinancialData {
   raw?: any;
 }
 
+const toNum = (v: any): number | undefined => {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 export function useSmartyFinancialData() {
   const { fullAddress } = useUserHome();
   const [data, setData] = useState<SmartyFinancialData | null>(null);
@@ -26,48 +32,41 @@ export function useSmartyFinancialData() {
 
   const fetchFinancialData = async (addr: AddressPayload) => {
     if (!addr.street || !addr.city || !addr.state) {
-      console.log('Missing address components:', addr);
-      setError("No address on file");
+      setError('No address on file');
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError(null);
-    
+
     try {
-      console.log('Calling smartyFinancialLookup with:', addr);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
-
       const result = await smartyFinancialLookup(addr);
       clearTimeout(timeout);
-      console.log('Financial lookup result:', result);
-      
+
       const records = Array.isArray(result) ? result : (result?.results || []);
-      
-      if (records && Array.isArray(records) && records.length > 0) {
+      if (Array.isArray(records) && records.length > 0) {
         const financial = records[0];
         const attributes = financial?.attributes || financial;
-        
         console.log('Financial attributes:', attributes);
-        
+
         setData({
-          avm_value: attributes?.avm_value,
+          avm_value: toNum(attributes?.avm_value) ?? toNum(attributes?.total_market_value),
           avm_confidence: attributes?.avm_confidence,
           avm_date: attributes?.avm_date,
-          market_value: attributes?.market_value,
-          assessed_value: attributes?.assessed_value,
-          tax_value: attributes?.tax_value,
-          last_sale_price: attributes?.last_sale_price,
-          last_sale_date: attributes?.last_sale_date,
-          price_per_sqft: attributes?.price_per_sqft,
-          value_range_low: attributes?.value_range_low,
-          value_range_high: attributes?.value_range_high,
-          raw: financial
+          market_value: toNum(attributes?.market_value) ?? toNum(attributes?.total_market_value),
+          assessed_value: toNum(attributes?.assessed_value),
+          tax_value: toNum(attributes?.tax_value),
+          last_sale_price: toNum(attributes?.sale_amount) ?? toNum(attributes?.last_sale_price),
+          last_sale_date: attributes?.sale_date || attributes?.last_sale_date,
+          price_per_sqft: toNum(attributes?.price_per_sqft),
+          value_range_low: toNum(attributes?.value_range_low),
+          value_range_high: toNum(attributes?.value_range_high),
+          raw: financial,
         });
       } else {
-        console.log('No financial data returned');
         setData(null);
       }
     } catch (err) {
@@ -79,40 +78,30 @@ export function useSmartyFinancialData() {
   };
 
   const parseAddress = (addressString: string): AddressPayload => {
-    const parts = addressString.split(',').map(p => p.trim());
-    if (parts.length < 3) {
-      return { street: '', city: '', state: '' };
-    }
-    
+    const parts = addressString.split(',').map((p) => p.trim());
+    if (parts.length < 3) return { street: '', city: '', state: '' };
     const street = parts[0];
     const city = parts[1];
-    const stateZip = parts[2].split(' ');
+    const stateZip = parts[2].split(' ').filter(Boolean);
     const state = stateZip[0];
     const postal_code = stateZip[1];
-    
     return { street, city, state, postal_code };
   };
 
   useEffect(() => {
-    if (fullAddress) {
-      const parsedAddress = parseAddress(fullAddress);
-      if (parsedAddress.street && parsedAddress.city && parsedAddress.state) {
-        fetchFinancialData(parsedAddress);
-      } else {
-        setError("Invalid address format");
-        setLoading(false);
-      }
-    } else {
-      setError("No address on file");
+    if (!fullAddress) {
+      setError('No address on file');
       setLoading(false);
+      return;
     }
+    const addr = parseAddress(fullAddress);
+    fetchFinancialData(addr);
   }, [fullAddress]);
 
   const refetch = () => {
-    if (fullAddress) {
-      const addr = parseAddress(fullAddress);
-      fetchFinancialData(addr);
-    }
+    if (!fullAddress) return;
+    const addr = parseAddress(fullAddress);
+    fetchFinancialData(addr);
   };
 
   return { data, loading, error, refetch };
