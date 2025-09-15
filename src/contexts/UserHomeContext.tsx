@@ -29,7 +29,14 @@ const UserHomeContext = createContext<UserHomeContextType | undefined>(undefined
 export const useUserHome = () => {
   const context = useContext(UserHomeContext);
   if (context === undefined) {
-    throw new Error('useUserHome must be used within a UserHomeProvider');
+    // Safe fallback to avoid crashes if provider is not mounted (e.g., demo routes)
+    return {
+      userHome: null,
+      loading: false,
+      error: null,
+      refreshHome: async () => {},
+      fullAddress: null,
+    } as UserHomeContextType;
   }
   return context;
 };

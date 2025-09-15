@@ -458,46 +458,55 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const path = url.pathname.split('/').pop();
-    const propertyId = url.searchParams.get('property_id');
-    const entityId = url.searchParams.get('entity_id');
-    const entityType = url.searchParams.get('entity_type') as 'system' | 'task' | 'prediction';
+    // Support both query param and JSON body for action and params
+    let action = url.searchParams.get('action') || undefined;
+    let propertyId = url.searchParams.get('property_id') || undefined;
+    let entityId = url.searchParams.get('entity_id') || undefined;
+    let entityType = url.searchParams.get('entity_type') as 'system' | 'task' | 'prediction' | undefined;
 
-    console.log(`Intelligence Engine API called: ${path}`);
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch (_) {
+      // no body provided
+    }
+
+    if (body) {
+      action = body.action || action;
+      propertyId = body.property_id || propertyId;
+      entityId = body.entity_id || entityId;
+      entityType = (body.entity_type as any) || entityType;
+    }
+
+    if (!action) throw new Error('Missing action. Use one of: predictions, tasks, budget, explanations');
+
+    console.log(`Intelligence Engine action: ${action}`);
 
     let result;
 
-    switch (path) {
+    switch (action) {
       case 'predictions':
-        if (!propertyId) {
-          throw new Error('property_id parameter required');
-        }
+        if (!propertyId) throw new Error('property_id parameter required');
         result = await getPredictions(propertyId);
         break;
 
       case 'tasks':
-        if (!propertyId) {
-          throw new Error('property_id parameter required');
-        }
+        if (!propertyId) throw new Error('property_id parameter required');
         result = await getTasks(propertyId);
         break;
 
       case 'budget':
-        if (!propertyId) {
-          throw new Error('property_id parameter required');
-        }
+        if (!propertyId) throw new Error('property_id parameter required');
         result = await getBudget(propertyId);
         break;
 
       case 'explanations':
-        if (!entityId || !entityType) {
-          throw new Error('entity_id and entity_type parameters required');
-        }
-        result = await getExplanations(entityId, entityType);
+        if (!entityId || !entityType) throw new Error('entity_id and entity_type parameters required');
+        result = await getExplanations(entityId, entityType as any);
         break;
 
       default:
-        throw new Error(`Unknown endpoint: ${path}`);
+        throw new Error(`Unknown action: ${action}`);
     }
 
     return new Response(JSON.stringify(result), {

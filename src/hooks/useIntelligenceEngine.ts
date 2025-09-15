@@ -86,8 +86,8 @@ export function useIntelligencePredictions(propertyId?: string) {
       setLoading(true);
       setError(null);
 
-      const { data: result, error } = await supabase.functions.invoke('intelligence-engine/predictions', {
-        body: { property_id: propertyId }
+      const { data: result, error } = await supabase.functions.invoke('intelligence-engine', {
+        body: { action: 'predictions', property_id: propertyId }
       });
 
       if (error) throw error;
@@ -124,8 +124,8 @@ export function useIntelligenceTasks(propertyId?: string) {
       setLoading(true);
       setError(null);
 
-      const { data: result, error } = await supabase.functions.invoke('intelligence-engine/tasks', {
-        body: { property_id: propertyId }
+      const { data: result, error } = await supabase.functions.invoke('intelligence-engine', {
+        body: { action: 'tasks', property_id: propertyId }
       });
 
       if (error) throw error;
@@ -162,8 +162,8 @@ export function useIntelligenceBudget(propertyId?: string) {
       setLoading(true);
       setError(null);
 
-      const { data: result, error } = await supabase.functions.invoke('intelligence-engine/budget', {
-        body: { property_id: propertyId }
+      const { data: result, error } = await supabase.functions.invoke('intelligence-engine', {
+        body: { action: 'budget', property_id: propertyId }
       });
 
       if (error) throw error;
@@ -199,8 +199,8 @@ export function useIntelligenceExplanations(entityId?: string, entityType?: 'sys
       setLoading(true);
       setError(null);
 
-      const { data: result, error } = await supabase.functions.invoke('intelligence-engine/explanations', {
-        body: { entity_id: entityId, entity_type: entityType }
+      const { data: result, error } = await supabase.functions.invoke('intelligence-engine', {
+        body: { action: 'explanations', entity_id: entityId, entity_type: entityType }
       });
 
       if (error) throw error;

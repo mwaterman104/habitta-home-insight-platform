@@ -34,9 +34,8 @@ async function runNightlyUpdate() {
     // Update predictions for each property
     for (const property of properties || []) {
       try {
-        // Invoke intelligence engine to refresh predictions
-        const { error: updateError } = await supabase.functions.invoke('intelligence-engine/predictions', {
-          body: { property_id: property.id }
+        const { error: updateError } = await supabase.functions.invoke('intelligence-engine', {
+          body: { action: 'predictions', property_id: property.id }
         });
         
         if (updateError) {
