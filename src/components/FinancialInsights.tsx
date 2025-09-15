@@ -8,6 +8,7 @@ import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
 import { useSmartyPropertyData } from '@/hooks/useSmartyPropertyData';
 import { EquityImpactDashboard } from './EquityImpactDashboard';
+import { PropertyValueCard } from './PropertyValueCard';
 
 interface FinancialData {
   homeValue: number;
@@ -57,49 +58,13 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
       
       {/* Traditional Financial Insights */}
       <div className="grid lg:grid-cols-2 gap-6">
-      {/* Property Value & Forecast */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Property Value & Forecast
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold">
-                ${smartyData?.currentValue?.toLocaleString() || data.homeValue.toLocaleString()}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {smartyData ? 'Current Market Value' : 'Estimated Value'}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center gap-1 text-accent">
-                <ArrowUp className="h-4 w-4" />
-                <span className="font-semibold">+{data.valueChange}%</span>
-              </div>
-              <p className="text-xs text-muted-foreground">This year</p>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-            <div className="text-center p-3 bg-primary/5 rounded-lg">
-              <div className="text-lg font-bold text-primary">
-                +${data.roiFromProjects.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">ROI from Projects</div>
-            </div>
-            <div className="text-center p-3 bg-accent/5 rounded-lg">
-              <div className="text-lg font-bold text-accent">
-                ${data.preventativeSavings.toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">Preventive Savings</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Property Value from Smarty Financial API */}
+      {homeAddress ? (
+        <PropertyValueCard address={homeAddress} />
+      ) : (
+        // Test with a sample address for demonstration
+        <PropertyValueCard address="123 Main St, San Francisco, CA 94102" />
+      )}
 
       {/* Spend Forecast */}
       <Card>

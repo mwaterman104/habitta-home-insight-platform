@@ -23,6 +23,7 @@ export function useSmartyFinancialData(address: string) {
 
   const fetchFinancialData = async (addr: AddressPayload) => {
     if (!addr.street || !addr.city || !addr.state) {
+      console.log('Missing address components:', addr);
       return;
     }
 
@@ -30,11 +31,15 @@ export function useSmartyFinancialData(address: string) {
     setError(null);
     
     try {
+      console.log('Calling smartyFinancialLookup with:', addr);
       const result = await smartyFinancialLookup(addr);
+      console.log('Financial lookup result:', result);
       
       if (result && Array.isArray(result) && result.length > 0) {
         const financial = result[0];
         const attributes = financial?.attributes || financial;
+        
+        console.log('Financial attributes:', attributes);
         
         setData({
           avm_value: attributes?.avm_value,
@@ -51,6 +56,7 @@ export function useSmartyFinancialData(address: string) {
           raw: financial
         });
       } else {
+        console.log('No financial data returned');
         setData(null);
       }
     } catch (err) {
