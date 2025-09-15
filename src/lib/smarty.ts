@@ -12,6 +12,7 @@ export interface AddressPayload {
   city: string;
   state: string;
   postal_code?: string;
+  include?: string;
 }
 
 // Use public autocomplete function for address suggestions

@@ -162,7 +162,8 @@ serve(async (req) => {
         street: payload.street,
         city: payload.city,
         state: payload.state,
-        zipcode: payload.postal_code
+        zipcode: payload.postal_code,
+        include: payload.include
       })}`;
       
       console.log(`[${stepId}] Financial URL:`, finUrl);
@@ -175,7 +176,7 @@ serve(async (req) => {
       const financial = await finRes.json();
       
       const latency = Date.now() - startTime;
-      console.log(`[${stepId}] Financial lookup complete:`, latency + 'ms', 'records:', financial?.length || 0);
+      console.log(`[${stepId}] Financial lookup complete:`, latency + 'ms', 'records:', Array.isArray(financial) ? financial.length : (financial?.results?.length || 0));
       
       return new Response(JSON.stringify(financial), { 
         headers: { ...corsHeaders, "content-type": "application/json" } 
