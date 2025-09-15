@@ -26,7 +26,7 @@ export const EquityImpactDashboard: React.FC<EquityImpactDashboardProps> = ({
   homeAddress, 
   homeId 
 }) => {
-  const { data: propertyData, loading: propertyLoading } = useSmartyPropertyData(homeAddress);
+  const { data: propertyData, loading: propertyLoading, error: propertyError } = useSmartyPropertyData(homeAddress);
   const { data: costData } = usePredictiveCosts(homeId || '');
   
   const [repairCost, setRepairCost] = useState<number>(5000);
@@ -84,7 +84,9 @@ export const EquityImpactDashboard: React.FC<EquityImpactDashboardProps> = ({
           <CardContent>
             <div className="space-y-2">
               <p className="text-3xl font-bold">
-                {propertyData ? formatCurrency(propertyData.currentValue) : 'Loading...'}
+                {propertyData 
+                  ? formatCurrency(propertyData.currentValue) 
+                  : (propertyError ? 'No data' : 'Loading...')}
               </p>
               <div className="flex items-center gap-2">
                 <ArrowUp className="h-4 w-4 text-accent" />
@@ -93,7 +95,9 @@ export const EquityImpactDashboard: React.FC<EquityImpactDashboardProps> = ({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Last sold: {propertyData ? formatCurrency(propertyData.lastSalePrice) : 'N/A'}
+                {propertyError ? 'Unable to fetch market data' : (
+                  <>Last sold: {propertyData ? formatCurrency(propertyData.lastSalePrice) : 'N/A'}</>
+                )}
               </p>
             </div>
           </CardContent>

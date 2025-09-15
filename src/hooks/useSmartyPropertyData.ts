@@ -39,17 +39,22 @@ export const useSmartyPropertyData = (address: string) => {
     setError(null);
     
     try {
-      // Parse address for Smarty API
-      const addressParts = address.split(',');
-      const street = addressParts[0]?.trim() || '';
-      const cityState = addressParts[1]?.trim() || '';
-      const [city, state] = cityState.split(' ');
-      const postalCode = addressParts[2]?.trim() || '';
+      // Parse address for Smarty API: "street, city, state [zip]"
+      const parts = address.split(',').map(p => p.trim());
+      const street = parts[0] || '';
+      const city = parts[1] || '';
+      const stateZip = (parts[2] || '').split(' ').filter(Boolean);
+      const state = stateZip[0] || '';
+      const postalCode = stateZip[1] || '';
+
+      if (!street || !city || !state) {
+        throw new Error(`Invalid address format. Expected "street, city, state [zip]" but got: ${address}`);
+      }
 
       const addressPayload: AddressPayload = {
         street,
-        city: city || '',
-        state: state || '',
+        city,
+        state,
         postal_code: postalCode
       };
 
