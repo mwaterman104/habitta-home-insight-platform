@@ -20,7 +20,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
           stroke="currentColor" 
           strokeWidth="2.5" 
           fill="none"
-          className="text-habitta-green"
+          className="text-primary"
         />
         <rect 
           x="40" 
@@ -29,7 +29,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
           height="20" 
           fill="currentColor" 
           opacity="0.9"
-          className="text-habitta-green"
+          className="text-primary"
         />
         <rect 
           x="50" 
@@ -38,7 +38,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
           height="20" 
           fill="currentColor" 
           opacity="0.9"
-          className="text-habitta-green"
+          className="text-primary"
         />
       </svg>
     </div>

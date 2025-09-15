@@ -7,14 +7,14 @@
 
 @layer base {
   :root {
-    /* New Habitta Design System */
-    /* Primary Brand */
-    --primary: 181 69% 35%; /* #1C9C9D */
-    --primary-foreground: 0 0% 100%;
+    /* Habitta Brand Colors */
+    /* Primary - Dark Green from logo */
+    --primary: 162 64% 13%; /* #0C3629 */
+    --primary-foreground: 62 73% 91%; /* #F9FAD7 cream text on dark green */
     
-    /* Secondary */
-    --secondary: 215 16% 47%; /* #6B7280 */
-    --secondary-foreground: 0 0% 100%;
+    /* Secondary - Light Cream from logo */
+    --secondary: 62 73% 91%; /* #F9FAD7 */
+    --secondary-foreground: 162 64% 13%; /* #0C3629 dark green text on cream */
     
     /* Accent Success */
     --accent: 159 68% 39%; /* #10B981 */
@@ -41,18 +41,18 @@
     /* Borders & UI */
     --border: 215 16% 90%; /* #E5E7EB */
     --input: 215 16% 90%;
-    --ring: 181 69% 35%;
+    --ring: 162 64% 13%; /* Match primary brand color */
     --radius: 10px;
 
     /* Sidebar colors */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 215 16% 47%;
-    --sidebar-primary: 181 69% 35%;
-    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-primary: 162 64% 13%; /* Dark green brand color */
+    --sidebar-primary-foreground: 62 73% 91%; /* Cream brand color */
     --sidebar-accent: 215 16% 97%;
     --sidebar-accent-foreground: 215 28% 17%;
     --sidebar-border: 215 16% 90%;
-    --sidebar-ring: 181 69% 35%;
+    --sidebar-ring: 162 64% 13%; /* Match primary brand color */
     
     /* Destructive mapping */
     --destructive: var(--danger);
