@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calculator, Clock, Target, ArrowUp, ArrowDown, Shield, Home } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calculator, Clock, Target, ArrowUp, ArrowDown, Shield, Home, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
@@ -10,6 +10,7 @@ import { EquityImpactDashboard } from './EquityImpactDashboard';
 import { PropertyValueCard } from './PropertyValueCard';
 import { MortgageInsights } from './MortgageInsights';
 import { useUserHome } from '@/hooks/useUserHome';
+import { useIntelligenceBudget } from '@/hooks/useIntelligenceEngine';
 
 interface FinancialData {
   homeValue: number;
@@ -43,7 +44,13 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
   data = mockFinancialData
 }) => {
   const { userHome, fullAddress } = useUserHome();
-  const budgetUsed = Math.round((data.spentThisYear / data.maintenanceBudget) * 100);
+  const propertyId = userHome?.property_id;
+  
+  // Use Intelligence Engine for budget predictions
+  const { data: budgetData, loading, error } = useIntelligenceBudget(propertyId);
+  
+  // Use real data if available, fallback to mock data
+  const budgetUsed = budgetData?.budgetUtilization || Math.round((data.spentThisYear / data.maintenanceBudget) * 100);
   const remainingBudget = data.maintenanceBudget - data.spentThisYear;
 
   return (
@@ -65,21 +72,39 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
             Spend Forecast
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {budgetData && (
+              <Badge variant="outline" className="text-xs">
+                AI-Powered
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {error && (
+            <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+              <p className="text-sm text-warning">Using backup budget data</p>
+            </div>
+          )}
+          
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">This Quarter</span>
-              <span className="font-semibold">${data.projectedSpend1Year.toLocaleString()}</span>
+              <span className="font-semibold">
+                ${budgetData?.quarterlyForecast?.toLocaleString() || data.projectedSpend1Year.toLocaleString()}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Next 12 Months</span>
-              <span className="font-semibold">${(data.projectedSpend1Year * 4).toLocaleString()}</span>
+              <span className="font-semibold">
+                ${budgetData?.yearlyForecast?.toLocaleString() || (data.projectedSpend1Year * 4).toLocaleString()}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">3-Year Outlook</span>
-              <span className="font-semibold">${data.projectedSpend3Year.toLocaleString()}</span>
+              <span className="font-semibold">
+                ${budgetData?.threeYearForecast?.toLocaleString() || data.projectedSpend3Year.toLocaleString()}
+              </span>
             </div>
           </div>
           
@@ -124,12 +149,17 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
             </div>
           </div>
           
-          <div className="pt-4 border-t">
-            <p className="text-xs text-muted-foreground">
-              <strong>Tip:</strong> Completing preventive maintenance saves an average of 
-              ${data.preventativeSavings.toLocaleString()} annually vs reactive repairs.
-            </p>
-          </div>
+            <div className="pt-4 border-t">
+              <p className="text-xs text-muted-foreground">
+                <strong>Tip:</strong> Completing preventive maintenance saves an average of 
+                ${budgetData?.preventativeSavings?.toLocaleString() || data.preventativeSavings.toLocaleString()} annually vs reactive repairs.
+              </p>
+              {budgetData?.confidence && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  AI Confidence: {Math.round(budgetData.confidence * 100)}%
+                </p>
+              )}
+            </div>
         </CardContent>
       </Card>
 

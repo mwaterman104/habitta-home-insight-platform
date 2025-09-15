@@ -10,8 +10,12 @@ import {
   User,
   Calendar,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  HelpCircle,
+  Loader2
 } from "lucide-react";
+import { useIntelligenceTasks } from "@/hooks/useIntelligenceEngine";
+import { useUserHome } from "@/hooks/useUserHome";
 
 interface SmartTask {
   id: string;
@@ -91,12 +95,21 @@ const mockSmartTasks: SmartTask[] = [
 ];
 
 export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({ 
-  tasks = mockSmartTasks,
-  completionRate = 87 
+  tasks,
+  completionRate
 }) => {
-  const todayTasks = tasks.filter(t => t.priority === 'today');
-  const thisWeekTasks = tasks.filter(t => t.priority === 'this_week');
-  const upcomingTasks = tasks.filter(t => t.priority === 'upcoming');
+  const { userHome } = useUserHome();
+  const propertyId = userHome?.property_id;
+  
+  // Use Intelligence Engine for real data
+  const { data: intelligenceData, loading, error } = useIntelligenceTasks(propertyId);
+  
+  // Use real data if available, fallback to props, then mock data
+  const actualTasks = intelligenceData?.tasks || tasks || mockSmartTasks;
+  const actualCompletionRate = intelligenceData?.completionRate || completionRate || 87;
+  const todayTasks = actualTasks.filter(t => t.priority === 'today');
+  const thisWeekTasks = actualTasks.filter(t => t.priority === 'this_week');
+  const upcomingTasks = actualTasks.filter(t => t.priority === 'upcoming');
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -169,16 +182,42 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
             Smart To-Do
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {intelligenceData && (
+              <Badge variant="outline" className="text-xs">
+                AI-Powered
+              </Badge>
+            )}
           </CardTitle>
           <div className="text-right">
-            <div className="text-sm font-medium">{completionRate}%</div>
-            <div className="text-xs text-muted-foreground">Completion Rate</div>
+            <div className="text-sm font-medium">{actualCompletionRate}%</div>
+            <div className="text-xs text-muted-foreground">
+              {intelligenceData ? 'AI Completion Rate' : 'Completion Rate'}
+            </div>
           </div>
         </div>
-        <Progress value={completionRate} className="h-2" />
+        <Progress value={actualCompletionRate} className="h-2" />
+        {intelligenceData?.confidence && (
+          <div className="text-xs text-muted-foreground">
+            Confidence: {Math.round(intelligenceData.confidence * 100)}%
+          </div>
+        )}
       </CardHeader>
       
       <CardContent className="space-y-6">
+        {error && (
+          <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
+            <p className="text-sm text-danger">Unable to load AI recommendations. Using backup data.</p>
+          </div>
+        )}
+        
+        {intelligenceData?.totalSavings && (
+          <div className="p-3 bg-accent/10 border border-accent/20 rounded-lg">
+            <p className="text-sm text-accent font-medium">
+              💡 Complete these tasks to save ${intelligenceData.totalSavings.toLocaleString()} this year
+            </p>
+          </div>
+        )}
         {/* Today Section */}
         {todayTasks.length > 0 && (
           <div>

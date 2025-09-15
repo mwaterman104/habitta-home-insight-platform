@@ -8,6 +8,7 @@ interface UserHome {
   city: string;
   state: string;
   zip_code: string;
+  property_id?: string;
   property_type?: string;
   year_built?: number;
   square_feet?: number;
