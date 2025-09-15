@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { smartyFinancialLookup, AddressPayload } from '@/lib/smarty';
+import { smartyFinancialLookup } from '@/lib/smarty';
+import type { AddressPayload } from '@/lib/smarty';
+import { useUserHome } from '@/hooks/useUserHome';
 
 export interface SmartyFinancialData {
   avm_value?: number;
@@ -16,7 +18,8 @@ export interface SmartyFinancialData {
   raw?: any;
 }
 
-export function useSmartyFinancialData(address: string) {
+export function useSmartyFinancialData() {
+  const { fullAddress } = useUserHome();
   const [data, setData] = useState<SmartyFinancialData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,15 +94,23 @@ export function useSmartyFinancialData(address: string) {
   };
 
   useEffect(() => {
-    if (address) {
-      const addr = parseAddress(address);
-      fetchFinancialData(addr);
+    if (fullAddress) {
+      const parsedAddress = parseAddress(fullAddress);
+      if (parsedAddress.street && parsedAddress.city && parsedAddress.state) {
+        fetchFinancialData(parsedAddress);
+      } else {
+        setError("Invalid address format");
+        setLoading(false);
+      }
+    } else {
+      setError("No address on file");
+      setLoading(false);
     }
-  }, [address]);
+  }, [fullAddress]);
 
   const refetch = () => {
-    if (address) {
-      const addr = parseAddress(address);
+    if (fullAddress) {
+      const addr = parseAddress(fullAddress);
       fetchFinancialData(addr);
     }
   };

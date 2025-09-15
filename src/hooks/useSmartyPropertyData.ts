@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { smartyEnrich, smartyStandardizeGeocode, AddressPayload } from '@/lib/smarty';
+import { smartyEnrich } from '@/lib/smarty';
 import { mapEnrichment } from '@/adapters/smartyMappers';
+import type { AddressPayload } from '@/lib/smarty';
+import { useUserHome } from '@/hooks/useUserHome';
 
 export interface SmartyPropertyData {
   currentValue: number;
@@ -27,20 +29,21 @@ export interface PropertyEquityData {
   repairROI: number;
 }
 
-export const useSmartyPropertyData = (address: string) => {
+export const useSmartyPropertyData = () => {
+  const { fullAddress } = useUserHome();
   const [data, setData] = useState<SmartyPropertyData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPropertyData = async () => {
-    if (!address) return;
+    if (!fullAddress) return;
     
     setLoading(true);
     setError(null);
     
     try {
       // Parse address for Smarty API: "street, city, state [zip]"
-      const parts = address.split(',').map(p => p.trim());
+      const parts = fullAddress.split(',').map(p => p.trim());
       const street = parts[0] || '';
       const city = parts[1] || '';
       const stateZip = (parts[2] || '').split(' ').filter(Boolean);
@@ -48,7 +51,7 @@ export const useSmartyPropertyData = (address: string) => {
       const postalCode = stateZip[1] || '';
 
       if (!street || !city || !state) {
-        throw new Error(`Invalid address format. Expected "street, city, state [zip]" but got: ${address}`);
+        throw new Error(`Invalid address format. Expected "street, city, state [zip]" but got: ${fullAddress}`);
       }
 
       const addressPayload: AddressPayload = {
@@ -101,8 +104,10 @@ export const useSmartyPropertyData = (address: string) => {
   };
 
   useEffect(() => {
-    fetchPropertyData();
-  }, [address]);
+    if (fullAddress) {
+      fetchPropertyData();
+    }
+  }, [fullAddress]);
 
   return {
     data,

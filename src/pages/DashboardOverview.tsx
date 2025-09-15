@@ -112,12 +112,7 @@ export default function DashboardOverview() {
       </div>
 
       {/* Financial Insights */}
-      {userHome && (
-        <FinancialInsights 
-          homeAddress={`${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`}
-          homeId={userHome.id}
-        />
-      )}
+      <FinancialInsights />
       
       {/* Support Layer */}
       <SupportLayer />
@@ -177,23 +172,7 @@ export default function DashboardOverview() {
         </TabsContent>
 
         <TabsContent value="insights" className="space-y-6">
-          {userHome ? (
-            <FinancialInsights 
-              homeAddress={`${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`}
-              homeId={userHome.id}
-            />
-          ) : (
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">No home on file</h3>
-              <p className="text-muted-foreground mb-4">Add your home to see financial insights</p>
-              <button 
-                onClick={() => window.location.href = '/onboarding/start'} 
-                className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-              >
-                Add Home
-              </button>
-            </div>
-          )}
+          <FinancialInsights />
         </TabsContent>
 
         <TabsContent value="ai-predictions" className="space-y-6">

@@ -16,27 +16,21 @@ import {
 } from 'lucide-react';
 import { useSmartyPropertyData, calculateRepairImpact } from '@/hooks/useSmartyPropertyData';
 import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
+import { useUserHome } from '@/hooks/useUserHome';
 
-interface EquityImpactDashboardProps {
-  homeAddress?: string;
-  homeId?: string;
-}
+export const EquityImpactDashboard: React.FC = () => {
+  const { userHome, fullAddress } = useUserHome();
+  const { data: propertyData, loading: propertyLoading, error: propertyError } = useSmartyPropertyData();
+  const { data: costData } = usePredictiveCosts(userHome?.id || '');
 
-export const EquityImpactDashboard: React.FC<EquityImpactDashboardProps> = ({ 
-  homeAddress, 
-  homeId 
-}) => {
   // Short-circuit if no address
-  if (!homeAddress) {
+  if (!fullAddress || !userHome) {
     return (
       <div className="text-center py-8">
         <p className="text-muted-foreground">Add a home to see equity insights</p>
       </div>
     );
   }
-
-  const { data: propertyData, loading: propertyLoading, error: propertyError } = useSmartyPropertyData(homeAddress);
-  const { data: costData } = usePredictiveCosts(homeId || '');
   
   const [repairCost, setRepairCost] = useState<number>(5000);
   const [expectedValueIncrease, setExpectedValueIncrease] = useState<number>(8000);

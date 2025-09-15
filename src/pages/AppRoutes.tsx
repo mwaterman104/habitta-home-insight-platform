@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { UserHomeProvider } from "@/contexts/UserHomeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthenticatedLayout } from "@/layouts/AuthenticatedLayout";
 import AuthPage from "./AuthPage";
@@ -25,7 +26,8 @@ import ClientDashboard from "../../client/pages/Dashboard";
 export function AppRoutes() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <UserHomeProvider>
+        <BrowserRouter>
         <Routes>
           {/* Public routes */}
           <Route path="/auth" element={<AuthPage />} />
@@ -83,6 +85,7 @@ export function AppRoutes() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
-    </AuthProvider>
+    </UserHomeProvider>
+  </AuthProvider>
   );
 }

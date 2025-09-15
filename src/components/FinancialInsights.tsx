@@ -6,9 +6,9 @@ import { TrendingUp, TrendingDown, DollarSign, PiggyBank, AlertTriangle, Calcula
 import { Progress } from '@/components/ui/progress';
 import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 import { useSmartRecommendations } from '@/hooks/useSmartRecommendations';
-import { useSmartyPropertyData } from '@/hooks/useSmartyPropertyData';
 import { EquityImpactDashboard } from './EquityImpactDashboard';
 import { PropertyValueCard } from './PropertyValueCard';
+import { useUserHome } from '@/hooks/useUserHome';
 
 interface FinancialData {
   homeValue: number;
@@ -24,8 +24,6 @@ interface FinancialData {
 
 interface FinancialInsightsProps {
   data?: FinancialData;
-  homeAddress?: string;
-  homeId?: string;
 }
 
 const mockFinancialData: FinancialData = {
@@ -41,30 +39,21 @@ const mockFinancialData: FinancialData = {
 };
 
 export const FinancialInsights: React.FC<FinancialInsightsProps> = ({ 
-  data = mockFinancialData,
-  homeAddress,
-  homeId 
+  data = mockFinancialData
 }) => {
+  const { userHome, fullAddress } = useUserHome();
   const budgetUsed = Math.round((data.spentThisYear / data.maintenanceBudget) * 100);
   const remainingBudget = data.maintenanceBudget - data.spentThisYear;
-  const { data: smartyData } = useSmartyPropertyData(homeAddress || '');
 
   return (
     <div className="space-y-6">
       {/* Equity Impact Dashboard */}
-      {homeAddress && (
-        <EquityImpactDashboard homeAddress={homeAddress} homeId={homeId} />
-      )}
+      <EquityImpactDashboard />
       
       {/* Traditional Financial Insights */}
       <div className="grid lg:grid-cols-2 gap-6">
       {/* Property Value from Smarty Financial API */}
-      {homeAddress ? (
-        <PropertyValueCard address={homeAddress} />
-      ) : (
-        // Test with a sample address for demonstration
-        <PropertyValueCard address="123 Main St, San Francisco, CA 94102" />
-      )}
+      <PropertyValueCard />
 
       {/* Spend Forecast */}
       <Card>
