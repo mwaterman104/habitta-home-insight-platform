@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as geotiff from 'geotiff';
+import { supabase } from '@/integrations/supabase/client';
 
 interface GeoTiffCanvasProps {
   url: string;
@@ -54,12 +55,32 @@ export const GeoTiffCanvas: React.FC<GeoTiffCanvasProps> = ({ url, className, al
         setIsLoading(true);
         console.log('Loading GeoTIFF from:', url);
         
-        // Use fromUrl so we leverage browser fetch and CORS
-        const tiff = await geotiff.fromUrl(url, {
-          headers: {
-            Accept: 'image/tiff,image/*;q=0.8,application/octet-stream;q=0.5,*/*;q=0.1',
-          },
-        } as RequestInit);
+        let tiff;
+        try {
+          // Try direct fetch first
+          tiff = await geotiff.fromUrl(url, {
+            headers: {
+              Accept: 'image/tiff,image/*;q=0.8,application/octet-stream;q=0.5,*/*;q=0.1',
+            },
+          } as RequestInit);
+        } catch (corsError) {
+          console.warn('Direct GeoTIFF fetch failed, trying proxy:', corsError);
+          // If direct fetch fails (likely CORS), use our proxy
+          const { data: proxyData, error: proxyError } = await supabase.functions.invoke('solar-imagery-proxy', {
+            body: { imageUrl: url }
+          });
+          
+          if (proxyError) {
+            throw new Error(`Proxy failed: ${proxyError.message}`);
+          }
+          
+          if (!(proxyData instanceof ArrayBuffer)) {
+            throw new Error('Invalid proxy response format');
+          }
+          
+          tiff = await geotiff.fromArrayBuffer(proxyData);
+        }
+
         const image = await tiff.getImage();
         const width = image.getWidth();
         const height = image.getHeight();
