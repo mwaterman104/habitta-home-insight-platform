@@ -13,7 +13,7 @@ const endpoints = {
   street: "https://us-street.api.smarty.com/street-address",
   rooftop: "https://us-rooftop-geo.api.smarty.com/lookup",
   enrich: "https://us-enrichment.api.smarty.com/lookup",
-  financial: "https://us-enrichment.api.smarty.com/financial",
+  financial: "https://us-enrichment.api.smarty.com/lookup/search/property/financial",
 };
 
 serve(async (req) => {
@@ -165,8 +165,11 @@ serve(async (req) => {
         zipcode: payload.postal_code
       })}`;
       
+      console.log(`[${stepId}] Financial URL:`, finUrl);
+      
       const finRes = await fetch(finUrl);
       if (!finRes.ok) {
+        console.error(`[${stepId}] Financial API response:`, finRes.status, await finRes.text());
         throw new Error(`Financial lookup failed: ${finRes.status}`);
       }
       const financial = await finRes.json();
