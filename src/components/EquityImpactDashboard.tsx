@@ -18,7 +18,7 @@ import { useSmartyPropertyData, calculateRepairImpact } from '@/hooks/useSmartyP
 import { usePredictiveCosts } from '@/hooks/usePredictiveCosts';
 
 interface EquityImpactDashboardProps {
-  homeAddress: string;
+  homeAddress?: string;
   homeId?: string;
 }
 
@@ -26,6 +26,15 @@ export const EquityImpactDashboard: React.FC<EquityImpactDashboardProps> = ({
   homeAddress, 
   homeId 
 }) => {
+  // Short-circuit if no address
+  if (!homeAddress) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted-foreground">Add a home to see equity insights</p>
+      </div>
+    );
+  }
+
   const { data: propertyData, loading: propertyLoading, error: propertyError } = useSmartyPropertyData(homeAddress);
   const { data: costData } = usePredictiveCosts(homeId || '');
   

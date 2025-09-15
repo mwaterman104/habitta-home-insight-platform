@@ -162,8 +162,7 @@ serve(async (req) => {
         street: payload.street,
         city: payload.city,
         state: payload.state,
-        zipcode: payload.postal_code,
-        include: payload.include
+        zipcode: payload.postal_code
       })}`;
       
       console.log(`[${stepId}] Financial URL:`, finUrl);

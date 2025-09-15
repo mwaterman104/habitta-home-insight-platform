@@ -24,6 +24,8 @@ export function useSmartyFinancialData(address: string) {
   const fetchFinancialData = async (addr: AddressPayload) => {
     if (!addr.street || !addr.city || !addr.state) {
       console.log('Missing address components:', addr);
+      setError("No address on file");
+      setLoading(false);
       return;
     }
 
@@ -35,10 +37,7 @@ export function useSmartyFinancialData(address: string) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
 
-      const result = await smartyFinancialLookup({
-        ...addr,
-        include: 'avm_value,avm_confidence,avm_date,market_value,assessed_value,tax_value,last_sale_price,last_sale_date,price_per_sqft,value_range_low,value_range_high'
-      } as any);
+      const result = await smartyFinancialLookup(addr);
       clearTimeout(timeout);
       console.log('Financial lookup result:', result);
       
