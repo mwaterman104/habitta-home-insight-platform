@@ -13,6 +13,7 @@ const endpoints = {
   street: "https://us-street.api.smarty.com/street-address",
   rooftop: "https://us-rooftop-geo.api.smarty.com/lookup",
   enrich: "https://us-enrichment.api.smarty.com/lookup",
+  financial: "https://us-enrichment.api.smarty.com/financial",
 };
 
 serve(async (req) => {
@@ -147,9 +148,40 @@ serve(async (req) => {
       });
     }
 
+    if (action === "financial_lookup") {
+      console.log(`[${stepId}] Calling financial lookup`);
+      
+      // Validate required fields
+      if (!payload.street || !payload.city || !payload.state) {
+        throw new Error('Missing required address fields for financial lookup');
+      }
+      
+      const finUrl = `${endpoints.financial}?${qs({
+        "auth-id": AUTH_ID,
+        "auth-token": AUTH_TOKEN,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zipcode: payload.postal_code
+      })}`;
+      
+      const finRes = await fetch(finUrl);
+      if (!finRes.ok) {
+        throw new Error(`Financial lookup failed: ${finRes.status}`);
+      }
+      const financial = await finRes.json();
+      
+      const latency = Date.now() - startTime;
+      console.log(`[${stepId}] Financial lookup complete:`, latency + 'ms', 'records:', financial?.length || 0);
+      
+      return new Response(JSON.stringify(financial), { 
+        headers: { ...corsHeaders, "content-type": "application/json" } 
+      });
+    }
+
     console.log(`[${stepId}] Unknown action:`, action);
     return new Response(JSON.stringify({ 
-      error: "Unknown action. Supported: standardize_geocode, enrich" 
+      error: "Unknown action. Supported: standardize_geocode, enrich, financial_lookup" 
     }), { 
       status: 400, 
       headers: { ...corsHeaders, "content-type": "application/json" } 

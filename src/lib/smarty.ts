@@ -60,6 +60,22 @@ export async function smartyEnrich(addr: AddressPayload) {
   return data;
 }
 
+export async function smartyFinancialLookup(addr: AddressPayload) {
+  const { data, error } = await supabase.functions.invoke('smarty-proxy', {
+    body: { 
+      action: 'financial_lookup', 
+      payload: addr 
+    }
+  });
+
+  if (error) {
+    console.error('Smarty financial lookup error:', error);
+    throw error;
+  }
+
+  return data;
+}
+
 // Compute canonical hash for address deduplication
 export function computeCanonicalHash(line1: string, city: string, state: string, postalCode: string): string {
   const normalized = [
