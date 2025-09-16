@@ -130,21 +130,21 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
   };
 
   const TaskRow = ({ task }: { task: SmartTask }) => (
-    <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-      <div className="flex items-start gap-3 flex-1">
-        <CheckCircle2 className="h-5 w-5 text-muted-foreground mt-0.5" />
+    <div className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors touch-friendly">
+      <div className="flex items-start gap-3 flex-1 mb-3 md:mb-0">
+        <CheckCircle2 className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h4 className="font-medium text-sm">{task.title}</h4>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+            <h4 className="font-medium text-sm md:text-base">{task.title}</h4>
             {task.weatherTriggered && (
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 self-start">
                 Weather Alert
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground mb-2">{task.description}</p>
+          <p className="text-xs md:text-sm text-muted-foreground mb-3">{task.description}</p>
           
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4 text-xs text-muted-foreground">
             {task.estimatedTime && (
               <div className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -158,18 +158,19 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
               </div>
             )}
             {task.preventativeSavings && (
-              <div className="flex items-center gap-1 text-accent">
-                <span>Saves $${task.preventativeSavings}</span>
+              <div className="flex items-center gap-1 text-accent font-medium">
+                <span>Saves ${task.preventativeSavings}</span>
               </div>
             )}
           </div>
         </div>
       </div>
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between md:justify-end gap-2 md:ml-4">
         <Badge variant="outline" className="text-xs">
           {getOwnershipIcon(task.ownership)}
-          <span className="ml-1">{task.ownership.toUpperCase()}</span>
+          <span className="ml-1 hidden md:inline">{task.ownership.toUpperCase()}</span>
+          <span className="ml-1 md:hidden">{task.ownership}</span>
         </Badge>
       </div>
     </div>
@@ -204,7 +205,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
         )}
       </CardHeader>
       
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 md:space-y-6">
         {error && (
           <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
             <p className="text-sm text-danger">Unable to load AI recommendations. Using backup data.</p>
@@ -212,8 +213,8 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
         )}
         
         {intelligenceData?.totalSavings && (
-          <div className="p-3 bg-accent/10 border border-accent/20 rounded-lg">
-            <p className="text-sm text-accent font-medium">
+          <div className="p-3 md:p-4 bg-accent/10 border border-accent/20 rounded-lg">
+            <p className="text-sm md:text-base text-accent font-medium">
               💡 Complete these tasks to save ${intelligenceData.totalSavings.toLocaleString()} this year
             </p>
           </div>
@@ -227,7 +228,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
               </Badge>
               <span className="text-sm text-muted-foreground">Priority actions</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:space-y-3">
               {todayTasks.map(task => <TaskRow key={task.id} task={task} />)}
             </div>
           </div>
@@ -242,7 +243,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
               </Badge>
               <span className="text-sm text-muted-foreground">Plan ahead</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:space-y-3">
               {thisWeekTasks.map(task => <TaskRow key={task.id} task={task} />)}
             </div>
           </div>
@@ -257,7 +258,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
               </Badge>
               <span className="text-sm text-muted-foreground">Coming soon</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:space-y-3">
               {upcomingTasks.slice(0, 2).map(task => <TaskRow key={task.id} task={task} />)}
             </div>
             {upcomingTasks.length > 2 && (

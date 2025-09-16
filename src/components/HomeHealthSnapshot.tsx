@@ -167,16 +167,16 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
           </div>
         </CardHeader>
         <CardContent>
-          <Progress value={overallScore} className="h-3 mb-4" />
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div className="p-3 bg-accent/5 rounded-lg">
-                <div className="text-lg font-bold text-accent">
+          <Progress value={overallScore} className="h-2 md:h-3 mb-4" />
+            <div className="grid grid-cols-2 gap-3 md:gap-4 text-center">
+              <div className="p-2 md:p-3 bg-accent/5 rounded-lg">
+                <div className="text-base md:text-lg font-bold text-accent">
                   {actualSystems.filter(s => s.status === 'excellent' || s.status === 'good').length}
                 </div>
                 <div className="text-xs text-muted-foreground">Systems Healthy</div>
               </div>
-              <div className="p-3 bg-warning/5 rounded-lg">
-                <div className="text-lg font-bold text-warning">
+              <div className="p-2 md:p-3 bg-warning/5 rounded-lg">
+                <div className="text-base md:text-lg font-bold text-warning">
                   {systemsNeedingAttention.length}
                 </div>
                 <div className="text-xs text-muted-foreground">Need Attention</div>
@@ -205,25 +205,32 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
         </CardHeader>
         <CardContent className="space-y-3">
           {actualSystems.map((system) => (
-            <div key={system.system} className="flex items-center justify-between p-3 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full bg-muted ${getStatusColor(system.status)}`}>
+            <div key={system.system} className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg gap-3 md:gap-0">
+              <div className="flex items-center gap-3 flex-1">
+                <div className={`p-2 rounded-full bg-muted ${getStatusColor(system.status)} flex-shrink-0`}>
                   {getSystemIcon(system.system)}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-medium text-sm capitalize">{system.system}</h4>
-                    {getStatusIcon(system.status)}
-                    {system.confidence && (
-                      <Badge variant="outline" className="text-xs">
-                        {Math.round(system.confidence * 100)}%
-                      </Badge>
-                    )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                    <h4 className="font-medium text-sm md:text-base capitalize">{system.system}</h4>
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(system.status)}
+                      {system.confidence && (
+                        <Badge variant="outline" className="text-xs">
+                          {Math.round(system.confidence * 100)}%
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {system.nextAction} • {system.nextActionDate && new Date(system.nextActionDate).toLocaleDateString()}
+                  <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                    {system.nextAction}
+                    {system.nextActionDate && (
+                      <span className="block md:inline md:ml-1">
+                        • {new Date(system.nextActionDate).toLocaleDateString()}
+                      </span>
+                    )}
                     {system.yearsRemaining && (
-                      <span className="ml-2 text-primary">
+                      <span className="block md:inline md:ml-2 text-primary font-medium">
                         ~{system.yearsRemaining} years left
                       </span>
                     )}
@@ -231,12 +238,12 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
                 </div>
               </div>
               
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-sm font-bold">{system.score}%</div>
+              <div className="flex items-center justify-between md:justify-end gap-3 md:ml-4">
+                <div className="text-left md:text-right">
+                  <div className="text-sm md:text-base font-bold">{system.score}%</div>
                   <div className="text-xs text-muted-foreground capitalize">{system.status}</div>
                 </div>
-                <Progress value={system.score} className="w-16" />
+                <Progress value={system.score} className="w-20 md:w-16" />
               </div>
             </div>
           ))}
@@ -254,17 +261,17 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
           </CardHeader>
           <CardContent className="space-y-3">
             {systemsWithQuickFixes.map((system) => (
-              <div key={system.system} className="p-3 border border-primary/20 bg-primary/5 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-sm">{system.quickFix!.title}</h4>
-                  <Badge variant="outline" className="text-xs">
+              <div key={system.system} className="p-3 md:p-4 border border-primary/20 bg-primary/5 rounded-lg">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
+                  <h4 className="font-medium text-sm md:text-base">{system.quickFix!.title}</h4>
+                  <Badge variant="outline" className="text-xs self-start">
                     {system.quickFix!.time}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">
+                <p className="text-xs md:text-sm text-muted-foreground mb-4">
                   {system.quickFix!.impact}
                 </p>
-                <Button size="sm" variant="outline" className="w-full">
+                <Button size="sm" variant="outline" className="w-full touch-friendly">
                   Start Quick Fix
                   <ArrowRight className="h-3 w-3 ml-1" />
                 </Button>

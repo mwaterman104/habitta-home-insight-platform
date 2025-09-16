@@ -88,7 +88,52 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', 'IBM Plex Sans', sans-serif;
-    font-size: 16px;
+    font-size: clamp(0.875rem, 0.8rem + 0.15vw, 0.95rem);
     line-height: 1.5;
+  }
+}
+
+@layer utilities {
+  /* Touch-friendly styles for mobile */
+  @media (max-width: 768px) {
+    .touch-friendly {
+      min-height: 44px;
+      touch-action: manipulation;
+    }
+    
+    /* Improve tap targets on mobile */
+    button, 
+    [role="button"], 
+    input[type="button"], 
+    input[type="submit"], 
+    .clickable {
+      min-height: 44px;
+      min-width: 44px;
+      touch-action: manipulation;
+    }
+    
+    /* Improved spacing for mobile */
+    .mobile-spacing-y > * + * {
+      margin-top: 0.75rem;
+    }
+    
+    .mobile-spacing-x > * + * {
+      margin-left: 0.75rem;
+    }
+  }
+
+  /* Responsive text utilities */
+  .text-responsive-xs { font-size: clamp(0.75rem, 0.7rem + 0.1vw, 0.8rem); }
+  .text-responsive-sm { font-size: clamp(0.875rem, 0.8rem + 0.15vw, 0.95rem); }
+  .text-responsive-base { font-size: clamp(1rem, 0.9rem + 0.2vw, 1.1rem); }
+  .text-responsive-lg { font-size: clamp(1.125rem, 1rem + 0.25vw, 1.25rem); }
+  .text-responsive-xl { font-size: clamp(1.25rem, 1.1rem + 0.3vw, 1.4rem); }
+  
+  /* Mobile-first animation performance */
+  @media (max-width: 768px) {
+    .animate-fade-in,
+    .animate-scale-in {
+      transform: translateZ(0); /* Force hardware acceleration */
+    }
   }
 }

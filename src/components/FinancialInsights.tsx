@@ -62,7 +62,7 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
       <EquityImpactDashboard />
       
       {/* Traditional Financial Insights */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
       {/* Property Value from Smarty Financial API */}
       <PropertyValueCard />
 
@@ -89,20 +89,20 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
           
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">This Quarter</span>
-              <span className="font-semibold">
+              <span className="text-sm md:text-base text-muted-foreground">This Quarter</span>
+              <span className="font-semibold text-sm md:text-base">
                 ${budgetData?.quarterlyForecast?.toLocaleString() || data.projectedSpend1Year.toLocaleString()}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Next 12 Months</span>
-              <span className="font-semibold">
+              <span className="text-sm md:text-base text-muted-foreground">Next 12 Months</span>
+              <span className="font-semibold text-sm md:text-base">
                 ${budgetData?.yearlyForecast?.toLocaleString() || (data.projectedSpend1Year * 4).toLocaleString()}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">3-Year Outlook</span>
-              <span className="font-semibold">
+              <span className="text-sm md:text-base text-muted-foreground">3-Year Outlook</span>
+              <span className="font-semibold text-sm md:text-base">
                 ${budgetData?.threeYearForecast?.toLocaleString() || data.projectedSpend3Year.toLocaleString()}
               </span>
             </div>
@@ -113,7 +113,7 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
               <span className="text-sm text-muted-foreground">Budget Progress</span>
               <span className="text-sm font-medium">{budgetUsed}% used</span>
             </div>
-            <Progress value={budgetUsed} className="h-2" />
+            <Progress value={budgetUsed} className="h-2 md:h-3" />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>${data.spentThisYear.toLocaleString()} spent</span>
               <span>${remainingBudget.toLocaleString()} remaining</span>
@@ -132,20 +132,20 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between p-3 md:p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2 md:gap-3">
                 <Shield className="h-4 w-4 text-accent" />
-                <span className="text-sm">Insurance Savings</span>
+                <span className="text-sm md:text-base">Insurance Savings</span>
               </div>
-              <span className="font-semibold text-accent">-${data.insuranceDiscount}</span>
+              <span className="font-semibold text-accent text-sm md:text-base">-${data.insuranceDiscount}</span>
             </div>
             
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between p-3 md:p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2 md:gap-3">
                 <ArrowDown className="h-4 w-4 text-accent" />
-                <span className="text-sm">Preventive vs Reactive</span>
+                <span className="text-sm md:text-base">Preventive vs Reactive</span>
               </div>
-              <span className="font-semibold text-accent">73% less</span>
+              <span className="font-semibold text-accent text-sm md:text-base">73% less</span>
             </div>
           </div>
           
