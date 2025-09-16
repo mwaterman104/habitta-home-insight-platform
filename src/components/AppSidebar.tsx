@@ -12,6 +12,7 @@ import {
   Settings,
 } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   Sidebar,
   SidebarContent,
@@ -41,9 +42,10 @@ export default function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isMobile = useIsMobile();
 
   const isActive = (path: string) => location.pathname === path;
-  const collapsed = state === 'collapsed';
+  const collapsed = state === 'collapsed' || isMobile;
 
   return (
     <Sidebar 

@@ -2,18 +2,23 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import AppTopbar from "@/components/AppTopbar";
+import BottomNavigation from "@/components/BottomNavigation";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function AuthenticatedLayout() {
+  const isMobile = useIsMobile();
+
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider defaultOpen={!isMobile}>
       <div className="min-h-screen flex w-full">
-        <AppSidebar />
+        {!isMobile && <AppSidebar />}
         
         <div className="flex-1 flex flex-col">
           <AppTopbar />
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto pb-16 md:pb-0">
             <Outlet />
           </main>
+          {isMobile && <BottomNavigation />}
         </div>
       </div>
     </SidebarProvider>

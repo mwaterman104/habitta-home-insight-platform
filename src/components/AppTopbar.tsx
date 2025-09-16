@@ -1,4 +1,4 @@
-import { Bell, Search, Settings, User, HelpCircle } from "lucide-react";
+import { Bell, Search, Settings, User, HelpCircle, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,12 +11,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
+import AppSidebar from "@/components/AppSidebar";
 
 export default function AppTopbar() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const handleSignOut = async () => {
     await signOut();
@@ -24,34 +32,54 @@ export default function AppTopbar() {
   };
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 bg-card border-b border-border">
-      {/* Logo */}
+    <header className="h-16 flex items-center justify-between px-4 md:px-6 bg-card border-b border-border">
+      {/* Mobile Menu & Logo */}
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold text-primary">Habitta</h1>
+        {isMobile && (
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="sm" className="md:hidden">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-60">
+              <AppSidebar />
+            </SheetContent>
+          </Sheet>
+        )}
+        <h1 className="text-xl md:text-2xl font-bold text-primary">Habitta</h1>
       </div>
 
       {/* Search Bar */}
-      <div className="flex-1 max-w-md mx-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search properties, tasks, projects..." 
-            className="pl-10"
-          />
+      {!isMobile ? (
+        <div className="flex-1 max-w-md mx-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search properties, tasks, projects..." 
+              className="pl-10"
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Search className="h-4 w-4" />
+        </Button>
+      )}
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
-        {/* Help */}
-        <Button 
-          variant="ghost" 
-          size="sm"
-          onClick={() => navigate("/chatdiy")}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <HelpCircle className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center gap-2 md:gap-3">
+        {/* Help - Hidden on mobile */}
+        {!isMobile && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => navigate("/chatdiy")}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </Button>
+        )}
 
         {/* Notifications */}
         <DropdownMenu>
@@ -97,9 +125,11 @@ export default function AppTopbar() {
                   {user?.email?.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden sm:block text-sm font-medium">
-                {user?.user_metadata?.full_name || user?.email?.split("@")[0]}
-              </span>
+              {!isMobile && (
+                <span className="text-sm font-medium">
+                  {user?.user_metadata?.full_name || user?.email?.split("@")[0]}
+                </span>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
