@@ -3,6 +3,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import AppTopbar from "@/components/AppTopbar";
 import BottomNavigation from "@/components/BottomNavigation";
+import { InstallPrompt } from "@/components/mobile/InstallPrompt";
+import { GestureHints } from "@/components/mobile/GestureHints";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export function AuthenticatedLayout() {
@@ -21,6 +23,14 @@ export function AuthenticatedLayout() {
           {isMobile && <BottomNavigation />}
         </div>
       </div>
+      
+      {/* Mobile-specific components */}
+      {isMobile && (
+        <>
+          <InstallPrompt />
+          <GestureHints />
+        </>
+      )}
     </SidebarProvider>
   );
 }

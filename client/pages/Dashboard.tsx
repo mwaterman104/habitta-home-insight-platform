@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import MobileTabNavigation from "../../src/components/MobileTabNavigation";
+import { PullToRefresh } from "../../src/components/mobile/PullToRefresh";
 import { useIsMobile } from "../../src/hooks/use-mobile";
+import { useToast } from "../../src/hooks/use-toast";
 import TodaysPriorities from "../components/TodaysPriorities";
 import RepairReadiness from "../components/RepairReadiness";
 import SystemHealthStrip from "../components/SystemHealthStrip";
@@ -32,6 +34,7 @@ import { useSolarInsights } from "../../src/hooks/useSolarInsights";
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const isMobile = useIsMobile();
+  const { toast } = useToast();
   const alerts = useAlerts();
   const systemHealth = useSystemHealth();
   const moneySavings = useMoneySavings();
@@ -52,14 +55,28 @@ export default function Dashboard() {
     { value: "intelligence", label: "Intelligence" },
   ];
 
+  const handleRefresh = async () => {
+    // Simulate refresh delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    toast({
+      title: "Dashboard Updated",
+      description: "Latest data has been synchronized.",
+    });
+    
+    // Here you would typically refetch data
+    console.log("Refreshing dashboard data...");
+  };
+
   return (
-    <div className="p-4 md:p-6">
-      <div className="mb-4 md:mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Home Intelligence Dashboard</h1>
-        <p className="text-muted-foreground mt-1 text-sm md:text-base">
-          {userProfile.address} • What needs attention today • Smart recommendations • Preventive insights
-        </p>
-      </div>
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="p-4 md:p-6">
+        <div className="mb-4 md:mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold">Home Intelligence Dashboard</h1>
+          <p className="text-muted-foreground mt-1 text-sm md:text-base">
+            {userProfile.address} • What needs attention today • Smart recommendations • Preventive insights
+          </p>
+        </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 md:space-y-6">
         {isMobile ? (
@@ -163,5 +180,6 @@ export default function Dashboard() {
         </TabsContent>
       </Tabs>
     </div>
-  );
+  </PullToRefresh>
+);
 }
