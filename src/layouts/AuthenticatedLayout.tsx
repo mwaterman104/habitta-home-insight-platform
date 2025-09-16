@@ -4,7 +4,7 @@ import AppSidebar from "@/components/AppSidebar";
 import AppTopbar from "@/components/AppTopbar";
 import BottomNavigation from "@/components/BottomNavigation";
 import { InstallPrompt } from "@/components/mobile/InstallPrompt";
-import { GestureHints } from "@/components/mobile/GestureHints";
+import { GestureCoach } from "@/components/mobile/GestureCoach";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export function AuthenticatedLayout() {
@@ -28,7 +28,7 @@ export function AuthenticatedLayout() {
       {isMobile && (
         <>
           <InstallPrompt />
-          <GestureHints />
+          <GestureCoach />
         </>
       )}
     </SidebarProvider>
