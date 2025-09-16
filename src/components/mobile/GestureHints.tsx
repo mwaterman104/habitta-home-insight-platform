@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ArrowLeftRight, ArrowDown, Hand } from "lucide-react";
+// Force rebuild to clear cache
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
