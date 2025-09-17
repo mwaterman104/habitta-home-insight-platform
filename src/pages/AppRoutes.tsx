@@ -19,6 +19,8 @@ import PropertyIntelligence from "./PropertyIntelligence";
 import ProjectDashboard from "@/components/ProjectDashboard";
 import ProjectWorkspace from "@/components/ProjectWorkspace";
 import TemplateSelection from "@/components/TemplateSelection";
+import ValidationCockpit from "./ValidationCockpit";
+import PropertyDetail from "./PropertyDetail";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -73,6 +75,10 @@ export function AppRoutes() {
             <Route path="/pro-network" element={<div className="p-6"><h1 className="text-2xl font-bold">Pro Network - Coming Soon</h1></div>} />
             <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant - Coming Soon</h1></div>} />
             <Route path="/settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Settings - Coming Soon</h1></div>} />
+            
+            {/* Validation Cockpit routes */}
+            <Route path="/validation" element={<ValidationCockpit />} />
+            <Route path="/validation/property/:addressId" element={<PropertyDetail />} />
             
             {/* Legacy routes */}
             <Route path="/home" element={<Dashboard />} />
