@@ -120,12 +120,28 @@ serve(async (req) => {
     if (!homeId) {
       console.log('Validation mode - returning data without saving to database')
       
-      // Process permits for return data
-      const processedPermits = (permitsData?.permits || []).map((permit: any) => ({
-        ...permit,
-        is_energy_related: isEnergyRelated(permit),
-        system_tags: extractSystemTags(permit)
-      }));
+      // Process permits for return data (map V2 items to unified shape)
+      const processedPermits = (permitsItems || []).map((p: any) => {
+        const compat = { description: p.description || '', permit_type: p.type || '', work_class: null } as ShovelsPermit;
+        return {
+          permit_number: p.number || null,
+          permit_type: p.type || null,
+          work_class: null,
+          description: p.description || null,
+          status: p.status || null,
+          date_issued: p.issue_date ? new Date(p.issue_date).toISOString().split('T')[0] : null,
+          date_finaled: p.final_date ? new Date(p.final_date).toISOString().split('T')[0] : null,
+          valuation: p.job_value != null ? Number(p.job_value) : null,
+          contractor_name: null,
+          contractor_license: null,
+          jurisdiction: p.jurisdiction || null,
+          source_url: p.source_url || null,
+          source: 'shovels',
+          is_energy_related: isEnergyRelated(compat),
+          system_tags: extractSystemTags(compat),
+          raw: p
+        };
+      });
 
       return new Response(
         JSON.stringify({ 
