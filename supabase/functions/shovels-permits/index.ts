@@ -63,37 +63,58 @@ serve(async (req) => {
       throw new Error('Shovels API key not configured')
     }
 
-    // Fetch permits from Shovels.ai API
-    const permitsResponse = await fetch(`https://api.shovels.ai/v1/permits?address=${encodeURIComponent(address)}`, {
+    // Resolve address to geo_id via Shovels V2 Addresses API
+    const addrSearchResp = await fetch(`https://api.shovels.ai/v2/addresses/search?q=${encodeURIComponent(address)}`, {
       headers: {
-        'Authorization': `Bearer ${shovelsApiKey}`,
+        'X-API-Key': shovelsApiKey,
         'Content-Type': 'application/json'
       }
     })
 
-    let permitsData = { permits: [] }
-    if (permitsResponse.ok) {
-      permitsData = await permitsResponse.json()
-      console.log('Received permits data:', permitsData?.permits?.length || 0, 'permits')
+    let geoId: string | null = null
+    if (addrSearchResp.ok) {
+      const addrJson = await addrSearchResp.json()
+      geoId = addrJson?.items?.[0]?.geo_id || null
+      console.log('Shovels address search items:', addrJson?.items?.length || 0, 'geo_id:', geoId)
     } else {
-      console.log(`Shovels permits API returned ${permitsResponse.status}`)
+      console.log(`Shovels address search returned ${addrSearchResp.status}`)
     }
 
-    // Fetch violations from Shovels.ai API
-    const violationsResponse = await fetch(`https://api.shovels.ai/v1/violations?address=${encodeURIComponent(address)}`, {
-      headers: {
-        'Authorization': `Bearer ${shovelsApiKey}`,
-        'Content-Type': 'application/json'
+    // Default date range required by V2 permits search
+    const to = new Date()
+    const from = new Date()
+    from.setFullYear(to.getFullYear() - 20) // last 20 years
+    const permit_from = from.toISOString().split('T')[0]
+    const permit_to = to.toISOString().split('T')[0]
+
+    // Fetch permits from Shovels V2 API using geo_id and date range
+    let permitsItems: any[] = []
+    if (geoId) {
+      const params = new URLSearchParams({
+        geo_id: geoId,
+        permit_from,
+        permit_to,
+        size: '100'
+      })
+      const permitsResponse = await fetch(`https://api.shovels.ai/v2/permits/search?${params.toString()}`, {
+        headers: {
+          'X-API-Key': shovelsApiKey,
+          'Content-Type': 'application/json'
+        }
+      })
+      if (permitsResponse.ok) {
+        const permitsJson = await permitsResponse.json()
+        permitsItems = permitsJson?.items || []
+        console.log('Received Shovels permits items:', permitsItems.length)
+      } else {
+        console.log(`Shovels permits search returned ${permitsResponse.status}`)
       }
-    })
-
-    let violationsData = { violations: [] }
-    if (violationsResponse.ok) {
-      violationsData = await violationsResponse.json()
-      console.log('Received violations data:', violationsData?.violations?.length || 0, 'violations')
     } else {
-      console.log(`Shovels violations API returned ${violationsResponse.status}`)
+      console.log('No geo_id found for address; skipping permits search')
     }
+
+    // Violations endpoint not available in V2 docs; leaving empty for now
+    const violationsData = { violations: [] as any[] }
 
     // If no homeId provided (validation mode), just return the data without saving
     if (!homeId) {
@@ -123,27 +144,27 @@ serve(async (req) => {
     // Regular mode - save to database (existing code)
     // Process and insert permits
     let permitsInserted = 0
-    if (permitsData?.permits) {
-      for (const permit of permitsData.permits) {
+    if (permitsItems && permitsItems.length) {
+      for (const permit of permitsItems) {
         const permitData = {
           user_id: user.id,
           home_id: homeId,
-          permit_number: permit.permit_number,
-          permit_type: permit.permit_type,
-          work_class: permit.work_class,
-          description: permit.description,
-          status: permit.status,
-          date_issued: permit.date_issued ? new Date(permit.date_issued).toISOString().split('T')[0] : null,
-          date_finaled: permit.date_finaled ? new Date(permit.date_finaled).toISOString().split('T')[0] : null,
-          valuation: permit.valuation ? parseFloat(permit.valuation) : null,
-          contractor_name: permit.contractor_name,
-          contractor_license: permit.contractor_license,
-          jurisdiction: permit.jurisdiction,
-          source_url: permit.source_url,
+          permit_number: permit.number || null,
+          permit_type: permit.type || null,
+          work_class: null,
+          description: permit.description || null,
+          status: permit.status || null,
+          date_issued: permit.issue_date ? new Date(permit.issue_date).toISOString().split('T')[0] : null,
+          date_finaled: permit.final_date ? new Date(permit.final_date).toISOString().split('T')[0] : null,
+          valuation: permit.job_value != null ? Number(permit.job_value) : null,
+          contractor_name: null,
+          contractor_license: null,
+          jurisdiction: permit.jurisdiction || null,
+          source_url: permit.source_url || null,
           source: 'shovels',
           is_energy_related: isEnergyRelated(permit),
           system_tags: extractSystemTags(permit),
-          hash: generateHash(permit),
+          hash: generateHash({ number: permit.number, issue_date: permit.issue_date, jurisdiction: permit.jurisdiction }),
           raw: permit
         }
 
