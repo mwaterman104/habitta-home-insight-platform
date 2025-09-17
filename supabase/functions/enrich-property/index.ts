@@ -17,6 +17,7 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const authHeader = req.headers.get('Authorization') || '';
     const { address_id } = await req.json();
 
     if (!address_id) {
@@ -49,12 +50,16 @@ serve(async (req) => {
       console.log('Calling Smarty for address standardization...');
       const smartyResponse = await supabase.functions.invoke('smarty-proxy', {
         body: {
-          addresses: [{
+          action: 'standardize_geocode',
+          payload: {
             street: property.street_address,
             city: property.city,
             state: property.state,
-            zipcode: property.zip
-          }]
+            postal_code: property.zip
+          }
+        },
+        headers: {
+          Authorization: authHeader
         }
       });
 
@@ -84,6 +89,9 @@ serve(async (req) => {
       const attomResponse = await supabase.functions.invoke('attom-property', {
         body: {
           address: `${property.street_address}, ${property.city}, ${property.state} ${property.zip}`
+        },
+        headers: {
+          Authorization: authHeader
         }
       });
 
@@ -113,6 +121,9 @@ serve(async (req) => {
       const shovelsResponse = await supabase.functions.invoke('shovels-permits', {
         body: {
           address: `${property.street_address}, ${property.city}, ${property.state} ${property.zip}`
+        },
+        headers: {
+          Authorization: authHeader
         }
       });
 
