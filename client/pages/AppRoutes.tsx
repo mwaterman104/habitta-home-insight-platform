@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import Dashboard from "./Dashboard";
-import Seasonal from "./Seasonal";
+import Seasonal from "./Seasonal";  
 import TasksNew from "./TasksNew";
 import ChatDIY from "./ChatDIY";
 

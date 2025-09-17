@@ -10,6 +10,9 @@ import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, Plus, Download, Play, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
+import { ImportCsvDialog } from "@/components/validation/ImportCsvDialog";
+import { AddAddressDialog } from "@/components/validation/AddAddressDialog";
+import { BatchOperationsDialog } from "@/components/validation/BatchOperationsDialog";
 
 export default function ValidationCockpit() {
   const [properties, setProperties] = useState<PropertySample[]>([]);
@@ -80,6 +83,42 @@ export default function ValidationCockpit() {
       console.error('Error generating predictions:', error);
       toast.error('Failed to generate predictions');
     }
+  };
+
+  const handleExportCsv = () => {
+    const csvData = filteredProperties.map(property => ({
+      address_id: property.address_id,
+      street_address: property.street_address,
+      unit: property.unit || '',
+      city: property.city,
+      state: property.state,
+      zip: property.zip,
+      apn: property.apn || '',
+      source_list: property.source_list || '',
+      assigned_to: property.assigned_to || '',
+      status: property.status,
+      lat: property.lat || '',
+      lon: property.lon || '',
+      created_at: property.created_at
+    }));
+
+    const headers = Object.keys(csvData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => headers.map(header => `"${row[header as keyof typeof row] || ''}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `properties_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`Exported ${csvData.length} properties to CSV`);
   };
 
   if (loading) {
@@ -155,23 +194,43 @@ export default function ValidationCockpit() {
       {/* Actions Bar */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline">
-            <Upload className="h-4 w-4 mr-2" />
-            Import CSV
-          </Button>
-          <Button variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Address
-          </Button>
-          <Button variant="outline">
-            <Play className="h-4 w-4 mr-2" />
-            Batch Enrich
-          </Button>
-          <Button variant="outline">
-            <Play className="h-4 w-4 mr-2" />
-            Batch Predict
-          </Button>
-          <Button variant="outline">
+          <ImportCsvDialog onImportComplete={loadProperties}>
+            <Button variant="outline">
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
+          </ImportCsvDialog>
+          
+          <AddAddressDialog onAddComplete={loadProperties}>
+            <Button variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Address
+            </Button>
+          </AddAddressDialog>
+          
+          <BatchOperationsDialog
+            operation="enrich"
+            properties={properties}
+            onComplete={loadProperties}
+          >
+            <Button variant="outline">
+              <Play className="h-4 w-4 mr-2" />
+              Batch Enrich
+            </Button>
+          </BatchOperationsDialog>
+          
+          <BatchOperationsDialog
+            operation="predict"
+            properties={properties}
+            onComplete={loadProperties}
+          >
+            <Button variant="outline">
+              <Play className="h-4 w-4 mr-2" />
+              Batch Predict
+            </Button>
+          </BatchOperationsDialog>
+          
+          <Button variant="outline" onClick={handleExportCsv}>
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
@@ -243,9 +302,9 @@ export default function ValidationCockpit() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => navigate(`/validation/property/${property.address_id}`)}
+                          onClick={() => navigate(`/validation/label/${property.address_id}`)}
                         >
-                          View
+                          {property.status === 'labeled' ? 'Edit Label' : 'Label'}
                         </Button>
                         {property.status === 'pending' && (
                           <Button

@@ -131,6 +131,18 @@ export class ValidationCockpitDB {
     return data as PropertySample;
   }
 
+  static async batchCreatePropertiesSample(properties: Omit<PropertySample, 'address_id' | 'created_at'>[]) {
+    if (properties.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('properties_sample')
+      .insert(properties)
+      .select();
+
+    if (error) throw error;
+    return data as PropertySample[];
+  }
+
   static async updatePropertySample(addressId: string, updates: Partial<PropertySample>) {
     const { data, error } = await supabase
       .from('properties_sample')
@@ -203,13 +215,29 @@ export class ValidationCockpitDB {
     return data as Label | null;
   }
 
-  static async createLabel(label: Omit<Label, 'label_id' | 'created_at'>) {
+  static async getLatestLabel(addressId: string): Promise<Label | null> {
     const { data, error } = await supabase
       .from('labels')
-      .insert(label)
+      .select('*')
+      .eq('address_id', addressId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as Label | null;
+  }
+
+  static async createLabel(addressId: string, labelData: Omit<Label, 'label_id' | 'address_id' | 'created_at'>) {
+    const { data, error } = await supabase
+      .from('labels')
+      .insert({ 
+        ...labelData, 
+        address_id: addressId 
+      })
       .select()
       .single();
-    
+
     if (error) throw error;
     return data as Label;
   }
