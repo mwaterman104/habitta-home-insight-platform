@@ -24,8 +24,7 @@ import PropertyDetail from "./PropertyDetail";
 import ScoringDashboard from "./ScoringDashboard";
 import PropertyLabelingPage from "./PropertyLabelingPage";
 
-// Import client dashboard for demo purposes
-import ClientDashboard from "../../client/pages/Dashboard";
+// Removed ClientDashboard demo import to avoid duplicate React contexts
 
 export function AppRoutes() {
   return (
@@ -35,7 +34,7 @@ export function AppRoutes() {
         <Routes>
           {/* Public routes */}
           <Route path="/auth" element={<AuthPage />} />
-          <Route path="/demo" element={<ClientDashboard />} />
+          {/* <Route path="/demo" element={<ClientDashboard />} /> */}
           
           {/* Onboarding routes (protected but no sidebar) */}
           <Route path="/onboarding/start" element={
