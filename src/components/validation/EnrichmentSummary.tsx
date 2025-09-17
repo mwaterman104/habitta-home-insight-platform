@@ -26,54 +26,106 @@ export function EnrichmentSummary({ snapshots }: EnrichmentSummaryProps) {
       const data = snapshot.payload;
       
       if (snapshot.provider === 'shovels') {
-        const permits = data.permits || [];
-        if (permits.length > 0) {
-          insights.push(`Found ${permits.length} permits`);
-          
-          // Count by system type
-          const systemCounts: Record<string, number> = {};
-          permits.forEach((permit: any) => {
-            const systems = permit.system_tags || [];
-            systems.forEach((system: string) => {
-              systemCounts[system] = (systemCounts[system] || 0) + 1;
-            });
-          });
-          
-          Object.entries(systemCounts).forEach(([system, count]) => {
-            if (count > 0) {
-              insights.push(`${count} ${system} permit${count > 1 ? 's' : ''}`);
-            }
-          });
-
-          // Latest permit
-          const sortedPermits = permits.sort((a: any, b: any) => 
-            new Date(b.date_issued || b.date_finaled).getTime() - new Date(a.date_issued || a.date_finaled).getTime()
-          );
-          if (sortedPermits[0]) {
-            const latestYear = new Date(sortedPermits[0].date_issued || sortedPermits[0].date_finaled).getFullYear();
-            insights.push(`Latest permit: ${latestYear}`);
+        // Handle different Shovels response formats (success, error, no data)
+        if (data.error || data.status === 'error') {
+          insights.push("Error retrieving permits");
+          if (data.message) {
+            insights.push(data.message);
+          }
+        } else if (data.status === 'no_data') {
+          insights.push("No permits found");
+          if (data.message) {
+            insights.push(data.message);
           }
         } else {
-          insights.push("No permits found");
+          const permits = data.permits || [];
+          const violations = data.violations || [];
+          
+          if (permits.length > 0) {
+            insights.push(`Found ${permits.length} permit${permits.length > 1 ? 's' : ''}`);
+            
+            // Count by system type
+            const systemCounts: Record<string, number> = {};
+            permits.forEach((permit: any) => {
+              const systems = permit.system_tags || [];
+              systems.forEach((system: string) => {
+                systemCounts[system] = (systemCounts[system] || 0) + 1;
+              });
+            });
+            
+            Object.entries(systemCounts).forEach(([system, count]) => {
+              if (count > 0) {
+                insights.push(`${count} ${system} permit${count > 1 ? 's' : ''}`);
+              }
+            });
+
+            // Latest permit
+            const sortedPermits = permits.sort((a: any, b: any) => 
+              new Date(b.date_issued || b.date_finaled || 0).getTime() - 
+              new Date(a.date_issued || a.date_finaled || 0).getTime()
+            );
+            if (sortedPermits[0] && (sortedPermits[0].date_issued || sortedPermits[0].date_finaled)) {
+              const latestYear = new Date(sortedPermits[0].date_issued || sortedPermits[0].date_finaled).getFullYear();
+              insights.push(`Latest permit: ${latestYear}`);
+            }
+          } else if (violations.length > 0) {
+            insights.push(`Found ${violations.length} violation${violations.length > 1 ? 's' : ''}`);
+          } else {
+            insights.push("No permits or violations found");
+          }
         }
       }
       
       if (snapshot.provider === 'attom') {
-        if (data.year_built) {
-          const age = new Date().getFullYear() - data.year_built;
-          insights.push(`Built ${data.year_built} (${age} years old)`);
+        // Handle the actual ATTOM data structure
+        const attomData = data._attomData || {};
+        const propertyDetails = data.propertyDetails || {};
+        const extendedDetails = data.extendedDetails || {};
+        
+        // Year built
+        const yearBuilt = propertyDetails.yearBuilt || 
+                         attomData.summary?.yearbuilt || 
+                         extendedDetails.building?.yearBuilt;
+        if (yearBuilt) {
+          const age = new Date().getFullYear() - yearBuilt;
+          insights.push(`Built ${yearBuilt} (${age} years old)`);
         }
-        if (data.square_footage) {
-          insights.push(`${data.square_footage.toLocaleString()} sq ft`);
+        
+        // Square footage
+        const sqft = propertyDetails.sqft || 
+                    attomData.building?.size?.livingsize || 
+                    extendedDetails.building?.livingSize;
+        if (sqft) {
+          insights.push(`${sqft.toLocaleString()} sq ft`);
         }
-        if (data.lot_size_sq_ft) {
-          insights.push(`${(data.lot_size_sq_ft / 43560).toFixed(2)} acre lot`);
+        
+        // Lot size
+        const lotSqFt = attomData.lot?.lotsize2 || 
+                       extendedDetails.lot?.sizeSqFt;
+        if (lotSqFt) {
+          const acres = (lotSqFt / 43560).toFixed(2);
+          insights.push(`${acres} acre lot (${lotSqFt.toLocaleString()} sq ft)`);
         }
-        if (data.heating_type) {
-          insights.push(`Heating: ${data.heating_type}`);
+        
+        // Heating type
+        const heatingType = attomData.utilities?.heatingtype || 
+                           extendedDetails.utilities?.heatingType;
+        if (heatingType) {
+          insights.push(`Heating: ${heatingType}`);
         }
-        if (data.roof_material) {
-          insights.push(`Roof: ${data.roof_material}`);
+        
+        // Roof material
+        const roofMaterial = attomData.building?.construction?.roofcover || 
+                            extendedDetails.building?.roofMaterial;
+        if (roofMaterial) {
+          insights.push(`Roof: ${roofMaterial}`);
+        }
+        
+        // Property type
+        const propertyType = propertyDetails.propertyType || 
+                            attomData.summary?.propertyType;
+        if (propertyType) {
+          insights.push(`Type: ${propertyType}`);
         }
       }
       

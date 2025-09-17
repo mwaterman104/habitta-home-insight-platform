@@ -171,24 +171,72 @@ serve(async (req) => {
         }
       });
 
+      // Always create a snapshot, even if no data or error occurred
+      let shovelsPayload;
       if (shovelsResponse.data) {
-        const { data: snapshot } = await supabase
+        shovelsPayload = shovelsResponse.data;
+        console.log('Shovels data retrieved successfully');
+      } else if (shovelsResponse.error) {
+        shovelsPayload = {
+          error: shovelsResponse.error.message,
+          status: 'error',
+          permits: [],
+          violations: [],
+          message: 'Failed to retrieve permits data'
+        };
+        console.log('Shovels returned error:', shovelsResponse.error.message);
+      } else {
+        shovelsPayload = {
+          status: 'no_data',
+          permits: [],
+          violations: [],
+          message: 'No permits or violations found for this address'
+        };
+        console.log('Shovels returned no data');
+      }
+
+      const { data: snapshot } = await supabase
+        .from('enrichment_snapshots')
+        .insert({
+          address_id,
+          provider: 'shovels',
+          payload: shovelsPayload
+        })
+        .select()
+        .single();
+      
+      if (snapshot) {
+        snapshotIds.push(snapshot.snapshot_id);
+        console.log('Shovels snapshot saved');
+      }
+    } catch (error) {
+      console.log('Shovels enrichment failed:', error);
+      
+      // Create error snapshot even when the function call fails
+      try {
+        const { data: errorSnapshot } = await supabase
           .from('enrichment_snapshots')
           .insert({
             address_id,
             provider: 'shovels',
-            payload: shovelsResponse.data
+            payload: {
+              error: error.message,
+              status: 'error',
+              permits: [],
+              violations: [],
+              message: 'Failed to call Shovels API'
+            }
           })
           .select()
           .single();
         
-        if (snapshot) {
-          snapshotIds.push(snapshot.snapshot_id);
-          console.log('Shovels snapshot saved');
+        if (errorSnapshot) {
+          snapshotIds.push(errorSnapshot.snapshot_id);
+          console.log('Shovels error snapshot saved');
         }
+      } catch (snapshotError) {
+        console.log('Failed to save Shovels error snapshot:', snapshotError);
       }
-    } catch (error) {
-      console.log('Shovels enrichment failed:', error);
     }
 
     // 4. Imagery metadata (stub for now)
