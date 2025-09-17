@@ -56,7 +56,7 @@ export default function PropertyLabelingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<LabelForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors }, reset } = useForm<LabelForm>({
     defaultValues: {
       labeler: '',
       labeler_confidence_0_1: 0.8,
@@ -90,12 +90,34 @@ export default function PropertyLabelingPage() {
       // Check if there's already a label for this property
       const existingLabel = await ValidationCockpitDB.getLatestLabel(addressId);
       if (existingLabel) {
-        // Pre-populate form with existing label data
-        Object.entries(existingLabel).forEach(([key, value]) => {
-          if (key !== 'label_id' && key !== 'address_id' && key !== 'label_date' && key !== 'created_at' && value !== null) {
-            setValue(key as keyof LabelForm, value as any);
-          }
-        });
+        // Pre-populate form with existing label data using reset to avoid infinite re-renders
+        const formDefaults = {
+          labeler: existingLabel.labeler || '',
+          labeler_confidence_0_1: existingLabel.labeler_confidence_0_1 || 0.8,
+          roof_material: existingLabel.roof_material || '',
+          roof_age_bucket: existingLabel.roof_age_bucket || '',
+          roof_visible_damage: existingLabel.roof_visible_damage || false,
+          roof_estimated_remaining_years: existingLabel.roof_estimated_remaining_years || 0,
+          hvac_present: existingLabel.hvac_present ?? true,
+          hvac_system_type: existingLabel.hvac_system_type || '',
+          hvac_age_bucket: existingLabel.hvac_age_bucket || '',
+          hvac_estimated_remaining_years: existingLabel.hvac_estimated_remaining_years || 0,
+          water_heater_present: existingLabel.water_heater_present ?? true,
+          water_heater_type: existingLabel.water_heater_type || '',
+          water_heater_age_bucket: existingLabel.water_heater_age_bucket || '',
+          windows_age_bucket: existingLabel.windows_age_bucket || '',
+          doors_age_bucket: existingLabel.doors_age_bucket || '',
+          basement_or_crawlspace: existingLabel.basement_or_crawlspace || '',
+          moisture_risk: existingLabel.moisture_risk || false,
+          electrical_gfci_kitchen: existingLabel.electrical_gfci_kitchen || false,
+          electrical_gfci_bath: existingLabel.electrical_gfci_bath || false,
+          last_roof_permit_year: existingLabel.last_roof_permit_year || undefined,
+          last_hvac_permit_year: existingLabel.last_hvac_permit_year || undefined,
+          last_water_heater_permit_year: existingLabel.last_water_heater_permit_year || undefined,
+          labeler_notes: existingLabel.labeler_notes || '',
+          evidence_photo_urls: existingLabel.evidence_photo_urls || ''
+        };
+        reset(formDefaults);
       }
     } catch (error) {
       console.error('Error loading property data:', error);
