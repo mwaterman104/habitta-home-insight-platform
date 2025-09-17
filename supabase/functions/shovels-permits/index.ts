@@ -89,6 +89,32 @@ serve(async (req) => {
     const violationsData = violationsResponse.ok ? await violationsResponse.json() : { violations: [] }
     console.log('Received violations data:', violationsData?.violations?.length || 0, 'violations')
 
+    // If no homeId provided (validation mode), just return the data without saving
+    if (!homeId) {
+      console.log('Validation mode - returning data without saving to database')
+      
+      // Process permits for return data
+      const processedPermits = (permitsData?.permits || []).map((permit: any) => ({
+        ...permit,
+        is_energy_related: isEnergyRelated(permit),
+        system_tags: extractSystemTags(permit)
+      }));
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          permits: processedPermits,
+          violations: violationsData?.violations || [],
+          message: `Retrieved ${processedPermits.length} permits and ${violationsData?.violations?.length || 0} violations (validation mode)`
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      )
+    }
+
+    // Regular mode - save to database (existing code)
     // Process and insert permits
     let permitsInserted = 0
     if (permitsData?.permits) {
