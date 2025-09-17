@@ -118,9 +118,53 @@ serve(async (req) => {
     // 3. Permits using existing Shovels integration
     try {
       console.log('Calling Shovels for permits data...');
+      
+      // Get or create a validation home record for permits
+      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Check if there's already a home for this address
+      let homeId = null;
+      const addressStr = `${property.street_address}, ${property.city}, ${property.state} ${property.zip}`;
+      
+      const { data: existingHome } = await supabase
+        .from('homes')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('address', `%${property.street_address}%`)
+        .maybeSingle();
+
+      if (existingHome) {
+        homeId = existingHome.id;
+        console.log(`Using existing home: ${homeId}`);
+      } else {
+        // Create a validation home record
+        const { data: newHome, error: homeError } = await supabase
+          .from('homes')
+          .insert({
+            user_id: user.id,
+            address: addressStr,
+            name: `Validation Property - ${property.street_address}`,
+            is_primary: false
+          })
+          .select('id')
+          .single();
+
+        if (homeError) {
+          console.error('Failed to create validation home:', homeError);
+          throw new Error('Failed to create validation home record');
+        }
+
+        homeId = newHome.id;
+        console.log(`Created validation home: ${homeId}`);
+      }
+
       const shovelsResponse = await supabase.functions.invoke('shovels-permits', {
         body: {
-          address: `${property.street_address}, ${property.city}, ${property.state} ${property.zip}`
+          address: addressStr,
+          homeId: homeId
         },
         headers: {
           Authorization: authHeader
