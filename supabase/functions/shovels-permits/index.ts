@@ -71,12 +71,13 @@ serve(async (req) => {
       }
     })
 
-    if (!permitsResponse.ok) {
-      throw new Error(`Shovels API error: ${permitsResponse.status}`)
+    let permitsData = { permits: [] }
+    if (permitsResponse.ok) {
+      permitsData = await permitsResponse.json()
+      console.log('Received permits data:', permitsData?.permits?.length || 0, 'permits')
+    } else {
+      console.log(`Shovels permits API returned ${permitsResponse.status}`)
     }
-
-    const permitsData = await permitsResponse.json()
-    console.log('Received permits data:', permitsData?.permits?.length || 0, 'permits')
 
     // Fetch violations from Shovels.ai API
     const violationsResponse = await fetch(`https://api.shovels.ai/v1/violations?address=${encodeURIComponent(address)}`, {
@@ -86,8 +87,13 @@ serve(async (req) => {
       }
     })
 
-    const violationsData = violationsResponse.ok ? await violationsResponse.json() : { violations: [] }
-    console.log('Received violations data:', violationsData?.violations?.length || 0, 'violations')
+    let violationsData = { violations: [] }
+    if (violationsResponse.ok) {
+      violationsData = await violationsResponse.json()
+      console.log('Received violations data:', violationsData?.violations?.length || 0, 'violations')
+    } else {
+      console.log(`Shovels violations API returned ${violationsResponse.status}`)
+    }
 
     // If no homeId provided (validation mode), just return the data without saving
     if (!homeId) {
