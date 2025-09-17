@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/validation/StatusBadge";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Plus, Download, Play, BarChart3 } from "lucide-react";
+import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { ImportCsvDialog } from "@/components/validation/ImportCsvDialog";
 import { AddAddressDialog } from "@/components/validation/AddAddressDialog";
@@ -17,6 +17,7 @@ import { BatchOperationsDialog } from "@/components/validation/BatchOperationsDi
 export default function ValidationCockpit() {
   const [properties, setProperties] = useState<PropertySample[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingProperty, setLoadingProperty] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const navigate = useNavigate();
@@ -51,20 +52,48 @@ export default function ValidationCockpit() {
     scored: properties.filter(p => p.status === 'scored').length,
   };
 
+  const getEnrichmentStatusBadge = (property: PropertySample) => {
+    const status = property.enrichment_status || 'pending';
+    const colors = {
+      pending: 'bg-gray-100 text-gray-800',
+      enriching: 'bg-blue-100 text-blue-800',
+      completed: 'bg-green-100 text-green-800',
+      failed: 'bg-red-100 text-red-800'
+    };
+    
+    const icons = {
+      pending: null,
+      enriching: <Loader2 className="h-3 w-3 animate-spin mr-1" />,
+      completed: null,
+      failed: null
+    };
+
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge className={`text-xs ${colors[status]}`}>
+          {icons[status]}
+          {status}
+        </Badge>
+        {property.enrichment_error && (
+          <div className="text-xs text-red-600 max-w-32 truncate" title={property.enrichment_error}>
+            {property.enrichment_error}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const handleEnrichProperty = async (addressId: string) => {
     try {
-      const response = await supabase.functions.invoke('enrich-property', {
-        body: { address_id: addressId }
-      });
-
-      if (response.error) throw new Error(response.error.message);
-      
-      await ValidationCockpitDB.updatePropertySample(addressId, { status: 'enriched' });
-      loadProperties();
-      toast.success('Property enriched successfully');
+      setLoadingProperty(addressId);
+      await ValidationCockpitDB.retryEnrichment(addressId);
+      await loadProperties();
+      toast.success('Property enrichment started successfully');
     } catch (error) {
       console.error('Error enriching property:', error);
-      toast.error('Failed to enrich property');
+      toast.error(error instanceof Error ? error.message : 'Failed to enrich property');
+    } finally {
+      setLoadingProperty(null);
     }
   };
 
@@ -274,6 +303,7 @@ export default function ValidationCockpit() {
                   <th className="text-left p-4 font-medium">City</th>
                   <th className="text-left p-4 font-medium">Zip</th>
                   <th className="text-left p-4 font-medium">Status</th>
+                  <th className="text-left p-4 font-medium">Enrichment</th>
                   <th className="text-left p-4 font-medium">Assigned To</th>
                   <th className="text-left p-4 font-medium">Actions</th>
                 </tr>
@@ -293,6 +323,9 @@ export default function ValidationCockpit() {
                       <StatusBadge status={property.status} />
                     </td>
                     <td className="p-4">
+                      {getEnrichmentStatusBadge(property)}
+                    </td>
+                    <td className="p-4">
                       {property.assigned_to || (
                         <span className="text-muted-foreground text-sm">Unassigned</span>
                       )}
@@ -302,16 +335,29 @@ export default function ValidationCockpit() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => navigate(`/validation/property/${property.address_id}`)}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => navigate(`/validation/label/${property.address_id}`)}
                         >
                           {property.status === 'labeled' ? 'Edit Label' : 'Label'}
                         </Button>
-                        {property.status === 'pending' && (
+                        {(property.status === 'pending' || property.enrichment_status === 'failed') && (
                           <Button
                             size="sm"
                             onClick={() => handleEnrichProperty(property.address_id)}
+                            disabled={loadingProperty === property.address_id}
                           >
-                            Enrich
+                            {loadingProperty === property.address_id ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : property.enrichment_status === 'failed' ? (
+                              <RefreshCw className="h-4 w-4 mr-1" />
+                            ) : null}
+                            {property.enrichment_status === 'failed' ? 'Retry' : 'Enrich'}
                           </Button>
                         )}
                         {property.status === 'enriched' && (

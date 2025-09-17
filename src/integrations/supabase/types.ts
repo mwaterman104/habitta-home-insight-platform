@@ -1728,6 +1728,10 @@ export type Database = {
           assigned_to: string | null
           city: string
           created_at: string | null
+          enrichment_completed_at: string | null
+          enrichment_error: string | null
+          enrichment_started_at: string | null
+          enrichment_status: string | null
           lat: number | null
           lon: number | null
           source_list: string | null
@@ -1743,6 +1747,10 @@ export type Database = {
           assigned_to?: string | null
           city: string
           created_at?: string | null
+          enrichment_completed_at?: string | null
+          enrichment_error?: string | null
+          enrichment_started_at?: string | null
+          enrichment_status?: string | null
           lat?: number | null
           lon?: number | null
           source_list?: string | null
@@ -1758,6 +1766,10 @@ export type Database = {
           assigned_to?: string | null
           city?: string
           created_at?: string | null
+          enrichment_completed_at?: string | null
+          enrichment_error?: string | null
+          enrichment_started_at?: string | null
+          enrichment_status?: string | null
           lat?: number | null
           lon?: number | null
           source_list?: string | null

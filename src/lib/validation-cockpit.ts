@@ -14,6 +14,10 @@ export interface PropertySample {
   source_list?: string;
   assigned_to?: string;
   status: 'pending' | 'enriched' | 'predicted' | 'labeled' | 'scored';
+  enrichment_status?: 'pending' | 'enriching' | 'completed' | 'failed';
+  enrichment_started_at?: string;
+  enrichment_completed_at?: string;
+  enrichment_error?: string;
   created_at: string;
 }
 
@@ -163,14 +167,84 @@ export class ValidationCockpitDB {
   }
 
   static async createPropertySample(property: Omit<PropertySample, 'address_id' | 'created_at'>) {
+    // First create the property sample
     const { data, error } = await supabase
       .from('properties_sample')
-      .insert(property)
+      .insert({
+        ...property,
+        enrichment_status: 'pending'
+      })
       .select()
       .single();
     
     if (error) throw error;
-    return data as PropertySample;
+
+    const createdProperty = data as PropertySample;
+
+    // Auto-trigger enrichment in the background
+    this.triggerAutoEnrichment(createdProperty.address_id).catch(error => {
+      console.error('Auto-enrichment failed for property:', createdProperty.address_id, error);
+      // Update status to failed but don't throw - property creation should still succeed
+      supabase
+        .from('properties_sample')
+        .update({ 
+          enrichment_status: 'failed',
+          enrichment_error: error.message || 'Auto-enrichment failed'
+        })
+        .eq('address_id', createdProperty.address_id);
+    });
+
+    return createdProperty;
+  }
+
+  static async triggerAutoEnrichment(addressId: string): Promise<void> {
+    try {
+      console.log('Starting auto-enrichment for property:', addressId);
+      
+      // Update status to enriching
+      await supabase
+        .from('properties_sample')
+        .update({ 
+          enrichment_status: 'enriching',
+          enrichment_started_at: new Date().toISOString(),
+          enrichment_error: null
+        })
+        .eq('address_id', addressId);
+
+      // Call the enrichment function
+      const { data, error } = await supabase.functions.invoke('enrich-property', {
+        body: { address_id: addressId }
+      });
+
+      if (error) {
+        throw new Error(`Enrichment function error: ${error.message}`);
+      }
+
+      // Update status to completed
+      await supabase
+        .from('properties_sample')
+        .update({ 
+          enrichment_status: 'completed',
+          enrichment_completed_at: new Date().toISOString(),
+          status: 'enriched'
+        })
+        .eq('address_id', addressId);
+
+      console.log('Auto-enrichment completed successfully for property:', addressId);
+    } catch (error) {
+      console.error('Auto-enrichment failed:', error);
+      
+      // Update status to failed with error details
+      await supabase
+        .from('properties_sample')
+        .update({ 
+          enrichment_status: 'failed',
+          enrichment_error: error instanceof Error ? error.message : String(error)
+        })
+        .eq('address_id', addressId);
+
+      throw error;
+    }
   }
 
   static async batchCreatePropertiesSample(properties: Omit<PropertySample, 'address_id' | 'created_at'>[]) {
@@ -341,10 +415,32 @@ export class ValidationCockpitDB {
   static async createMultiplePropertiesSample(properties: Omit<PropertySample, 'address_id' | 'created_at'>[]) {
     const { data, error } = await supabase
       .from('properties_sample')
-      .insert(properties)
+      .insert(properties.map(p => ({ ...p, enrichment_status: 'pending' })))
       .select();
     
     if (error) throw error;
-    return data as PropertySample[];
+
+    const createdProperties = data as PropertySample[];
+
+    // Auto-trigger enrichment for each property in background
+    createdProperties.forEach(property => {
+      this.triggerAutoEnrichment(property.address_id).catch(error => {
+        console.error('Auto-enrichment failed for property:', property.address_id, error);
+        supabase
+          .from('properties_sample')
+          .update({ 
+            enrichment_status: 'failed',
+            enrichment_error: error.message || 'Auto-enrichment failed'
+          })
+          .eq('address_id', property.address_id);
+      });
+    });
+
+    return createdProperties;
+  }
+
+  // Manual enrichment retry method
+  static async retryEnrichment(addressId: string): Promise<void> {
+    await this.triggerAutoEnrichment(addressId);
   }
 }

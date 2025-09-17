@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Download, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Loader2 } from "lucide-react";
 import { ValidationCockpitDB, PropertySample, EnrichmentSnapshot, Prediction } from "@/lib/validation-cockpit";
 import { ProvenanceExplainer } from "@/components/validation/ProvenanceExplainer";
 import { EnrichmentSummary } from "@/components/validation/EnrichmentSummary";
@@ -18,6 +18,7 @@ export default function PropertyReportPage() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [labels, setLabels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [enriching, setEnriching] = useState(false);
   const [expandedPredictions, setExpandedPredictions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -76,6 +77,26 @@ export default function PropertyReportPage() {
     toast.success('Report exported successfully');
   };
 
+  const handleRetryEnrichment = async () => {
+    if (!id) return;
+    
+    try {
+      setEnriching(true);
+      await ValidationCockpitDB.retryEnrichment(id);
+      toast.success('Enrichment started successfully');
+      
+      // Reload the data after a short delay
+      setTimeout(() => {
+        loadReportData(id);
+      }, 2000);
+    } catch (error) {
+      console.error('Error retrying enrichment:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to retry enrichment');
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   const togglePredictionExpansion = (predictionId: string) => {
     const newExpanded = new Set(expandedPredictions);
     if (newExpanded.has(predictionId)) {
@@ -124,10 +145,31 @@ export default function PropertyReportPage() {
             {property.status}
           </Badge>
         </div>
-        <Button onClick={handleExportReport}>
-          <Download className="h-4 w-4 mr-2" />
-          Export Report
-        </Button>
+        <div className="flex gap-2">
+          {(property.status === 'pending' || property.enrichment_status === 'failed') && (
+            <Button 
+              variant="outline" 
+              onClick={handleRetryEnrichment}
+              disabled={enriching}
+            >
+              {enriching ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Enriching...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  {property.enrichment_status === 'failed' ? 'Retry Enrichment' : 'Enrich Property'}
+                </>
+              )}
+            </Button>
+          )}
+          <Button onClick={handleExportReport}>
+            <Download className="h-4 w-4 mr-2" />
+            Export Report
+          </Button>
+        </div>
       </div>
 
       {/* Property Summary */}
