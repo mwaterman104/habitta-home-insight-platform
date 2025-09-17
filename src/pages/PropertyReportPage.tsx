@@ -3,8 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, AlertCircle } from "lucide-react";
+import { ArrowLeft, Download, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { ValidationCockpitDB, PropertySample, EnrichmentSnapshot, Prediction } from "@/lib/validation-cockpit";
+import { ProvenanceExplainer } from "@/components/validation/ProvenanceExplainer";
+import { EnrichmentSummary } from "@/components/validation/EnrichmentSummary";
 import { toast } from "sonner";
 
 export default function PropertyReportPage() {
@@ -16,6 +18,7 @@ export default function PropertyReportPage() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [labels, setLabels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedPredictions, setExpandedPredictions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (id) {
@@ -71,6 +74,16 @@ export default function PropertyReportPage() {
     document.body.removeChild(link);
     
     toast.success('Report exported successfully');
+  };
+
+  const togglePredictionExpansion = (predictionId: string) => {
+    const newExpanded = new Set(expandedPredictions);
+    if (newExpanded.has(predictionId)) {
+      newExpanded.delete(predictionId);
+    } else {
+      newExpanded.add(predictionId);
+    }
+    setExpandedPredictions(newExpanded);
   };
 
   if (loading) {
@@ -157,35 +170,59 @@ export default function PropertyReportPage() {
               {predictions.map((prediction) => {
                 const labelValue = labels[0] ? labels[0][prediction.field] : null;
                 const isMatch = labelValue !== null ? labelValue === prediction.predicted_value : null;
+                const isExpanded = expandedPredictions.has(prediction.prediction_id);
                 
                 return (
-                  <div key={prediction.prediction_id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex-1">
-                      <div className="font-medium">{prediction.field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
-                      <div className="text-sm text-muted-foreground">
-                        Confidence: {(prediction.confidence_0_1 * 100).toFixed(0)}%
+                  <div key={prediction.prediction_id} className="border rounded-lg overflow-hidden">
+                    {/* Main prediction row */}
+                    <div className="flex items-center justify-between p-3">
+                      <div className="flex-1">
+                        <div className="font-medium">{prediction.field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Confidence: {(prediction.confidence_0_1 * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <div className="text-sm text-muted-foreground">Predicted</div>
+                          <div className="font-medium">{prediction.predicted_value}</div>
+                        </div>
+                        {labelValue !== null && (
+                          <>
+                            <div className="text-center">
+                              <div className="text-sm text-muted-foreground">Actual</div>
+                              <div className="font-medium">{labelValue}</div>
+                            </div>
+                            <Badge variant={isMatch ? 'default' : 'destructive'}>
+                              {isMatch ? 'Match' : 'Mismatch'}
+                            </Badge>
+                          </>
+                        )}
+                        {labelValue === null && (
+                          <Badge variant="secondary">No Label</Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => togglePredictionExpansion(prediction.prediction_id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-center">
-                        <div className="text-sm text-muted-foreground">Predicted</div>
-                        <div className="font-medium">{prediction.predicted_value}</div>
+
+                    {/* Expanded provenance section */}
+                    {isExpanded && (
+                      <div className="px-3 pb-3">
+                        <ProvenanceExplainer
+                          provenance={prediction.data_provenance}
+                          field={prediction.field}
+                          predictedValue={prediction.predicted_value}
+                          confidence={prediction.confidence_0_1}
+                        />
                       </div>
-                      {labelValue !== null && (
-                        <>
-                          <div className="text-center">
-                            <div className="text-sm text-muted-foreground">Actual</div>
-                            <div className="font-medium">{labelValue}</div>
-                          </div>
-                          <Badge variant={isMatch ? 'default' : 'destructive'}>
-                            {isMatch ? 'Match' : 'Mismatch'}
-                          </Badge>
-                        </>
-                      )}
-                      {labelValue === null && (
-                        <Badge variant="secondary">No Label</Badge>
-                      )}
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -230,33 +267,17 @@ export default function PropertyReportPage() {
       )}
 
       {/* Enrichment Data */}
-      {enrichmentData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Enrichment Data Sources</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {enrichmentData.map((snapshot) => (
-              <div key={snapshot.snapshot_id} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <Badge variant="outline">{snapshot.provider}</Badge>
-                  <div className="text-sm text-muted-foreground">
-                    {new Date(snapshot.retrieved_at).toLocaleDateString()}
-                  </div>
-                </div>
-                <details className="cursor-pointer">
-                  <summary className="text-sm font-medium hover:text-primary">
-                    View Raw Data
-                  </summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs bg-muted p-3 rounded max-h-60 overflow-auto">
-                    {JSON.stringify(snapshot.payload, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Sources & Insights</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Key information extracted from external data sources used to generate predictions
+          </p>
+        </CardHeader>
+        <CardContent>
+          <EnrichmentSummary snapshots={enrichmentData} />
+        </CardContent>
+      </Card>
 
       {/* Report Footer */}
       <Card>
