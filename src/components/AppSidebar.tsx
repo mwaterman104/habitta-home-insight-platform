@@ -10,6 +10,7 @@ import {
   Users,
   MessageCircle,
   Settings,
+  ClipboardCheck,
 } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -32,6 +33,7 @@ const navigation = [
   { title: "Property Intelligence", url: "/property-intelligence", icon: Brain },
   { title: "Maintenance Planner", url: "/maintenance-planner", icon: Calendar },
   { title: "Projects", url: "/projects", icon: Hammer },
+  { title: "Validation Cockpit", url: "/validation", icon: ClipboardCheck },
   { title: "Marketplace", url: "/marketplace", icon: ShoppingBag },
   { title: "Pro Network", url: "/pro-network", icon: Users },
   { title: "ChatDIY Assistant", url: "/chatdiy", icon: MessageCircle },

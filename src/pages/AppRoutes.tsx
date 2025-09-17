@@ -21,6 +21,7 @@ import ProjectWorkspace from "@/components/ProjectWorkspace";
 import TemplateSelection from "@/components/TemplateSelection";
 import ValidationCockpit from "./ValidationCockpit";
 import PropertyDetail from "./PropertyDetail";
+import ScoringDashboard from "./ScoringDashboard";
 
 // Import client dashboard for demo purposes
 import ClientDashboard from "../../client/pages/Dashboard";
@@ -79,6 +80,7 @@ export function AppRoutes() {
             {/* Validation Cockpit routes */}
             <Route path="/validation" element={<ValidationCockpit />} />
             <Route path="/validation/property/:addressId" element={<PropertyDetail />} />
+            <Route path="/validation/scoring" element={<ScoringDashboard />} />
             
             {/* Legacy routes */}
             <Route path="/home" element={<Dashboard />} />

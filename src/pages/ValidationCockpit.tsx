@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/validation/StatusBadge";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
+import { supabase } from "@/integrations/supabase/client";
 import { Upload, Plus, Download, Play, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,13 +50,11 @@ export default function ValidationCockpit() {
 
   const handleEnrichProperty = async (addressId: string) => {
     try {
-      const response = await fetch('/api/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address_id: addressId }),
+      const response = await supabase.functions.invoke('enrich-property', {
+        body: { address_id: addressId }
       });
 
-      if (!response.ok) throw new Error('Enrichment failed');
+      if (response.error) throw new Error(response.error.message);
       
       await ValidationCockpitDB.updatePropertySample(addressId, { status: 'enriched' });
       loadProperties();
@@ -68,13 +67,11 @@ export default function ValidationCockpit() {
 
   const handlePredictProperty = async (addressId: string) => {
     try {
-      const response = await fetch('/api/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address_id: addressId }),
+      const response = await supabase.functions.invoke('predict-property', {
+        body: { address_id: addressId }
       });
 
-      if (!response.ok) throw new Error('Prediction failed');
+      if (response.error) throw new Error(response.error.message);
       
       await ValidationCockpitDB.updatePropertySample(addressId, { status: 'predicted' });
       loadProperties();
