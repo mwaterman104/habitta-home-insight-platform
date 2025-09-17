@@ -443,4 +443,85 @@ export class ValidationCockpitDB {
   static async retryEnrichment(addressId: string): Promise<void> {
     await this.triggerAutoEnrichment(addressId);
   }
+
+  // Reset methods for property cleanup
+  static async clearLabels(addressId: string): Promise<void> {
+    const { error } = await supabase
+      .from('labels')
+      .delete()
+      .eq('address_id', addressId);
+    
+    if (error) throw error;
+  }
+
+  static async clearPredictions(addressId: string): Promise<void> {
+    const { error } = await supabase
+      .from('predictions')
+      .delete()
+      .eq('address_id', addressId);
+    
+    if (error) throw error;
+  }
+
+  static async clearEnrichmentData(addressId: string): Promise<void> {
+    const { error } = await supabase
+      .from('enrichment_snapshots')
+      .delete()
+      .eq('address_id', addressId);
+    
+    if (error) throw error;
+  }
+
+  static async clearErrorTags(addressId: string): Promise<void> {
+    const { error } = await supabase
+      .from('error_tags')
+      .delete()
+      .eq('address_id', addressId);
+    
+    if (error) throw error;
+  }
+
+  static async resetProperty(addressId: string, options: {
+    clearLabels?: boolean;
+    clearPredictions?: boolean;
+    clearEnrichmentData?: boolean;
+    clearErrorTags?: boolean;
+  } = {}): Promise<void> {
+    const {
+      clearLabels = true,
+      clearPredictions = true,
+      clearEnrichmentData = false,
+      clearErrorTags = true
+    } = options;
+
+    try {
+      // Clear data based on options
+      if (clearLabels) {
+        await this.clearLabels(addressId);
+      }
+      
+      if (clearPredictions) {
+        await this.clearPredictions(addressId);
+      }
+      
+      if (clearEnrichmentData) {
+        await this.clearEnrichmentData(addressId);
+      }
+
+      if (clearErrorTags) {
+        await this.clearErrorTags(addressId);
+      }
+
+      // Reset property status
+      await this.updatePropertySample(addressId, { 
+        status: 'pending',
+        enrichment_status: clearEnrichmentData ? 'pending' : undefined,
+        enrichment_error: clearEnrichmentData ? null : undefined
+      });
+
+    } catch (error) {
+      console.error('Error resetting property:', error);
+      throw error;
+    }
+  }
 }

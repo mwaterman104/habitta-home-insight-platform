@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/validation/StatusBadge";
+import { ResetPropertyDialog } from "@/components/validation/ResetPropertyDialog";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3 } from "lucide-react";
+import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3, MoreVertical, Eye, Edit, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { ImportCsvDialog } from "@/components/validation/ImportCsvDialog";
 import { AddAddressDialog } from "@/components/validation/AddAddressDialog";
@@ -92,6 +94,20 @@ export default function ValidationCockpit() {
     } catch (error) {
       console.error('Error enriching property:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to enrich property');
+    } finally {
+      setLoadingProperty(null);
+    }
+  };
+
+  const handleReEnrichProperty = async (addressId: string) => {
+    try {
+      setLoadingProperty(addressId);
+      await ValidationCockpitDB.retryEnrichment(addressId);
+      await loadProperties();
+      toast.success('Re-enrichment started successfully');
+    } catch (error) {
+      console.error('Error re-enriching property:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to re-enrich property');
     } finally {
       setLoadingProperty(null);
     }
@@ -337,15 +353,11 @@ export default function ValidationCockpit() {
                           variant="outline"
                           onClick={() => navigate(`/validation/property/${property.address_id}`)}
                         >
+                          <Eye className="h-4 w-4 mr-1" />
                           View
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/validation/label/${property.address_id}`)}
-                        >
-                          {property.status === 'labeled' ? 'Edit Label' : 'Label'}
-                        </Button>
+                        
+                        {/* Status-specific primary actions */}
                         {(property.status === 'pending' || property.enrichment_status === 'failed') && (
                           <Button
                             size="sm"
@@ -368,6 +380,44 @@ export default function ValidationCockpit() {
                             Predict
                           </Button>
                         )}
+
+                        {/* Advanced actions dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => navigate(`/validation/label/${property.address_id}`)}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              {property.status === 'labeled' ? 'Edit Label' : 'Label'}
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuItem
+                              onClick={() => handleReEnrichProperty(property.address_id)}
+                              disabled={loadingProperty === property.address_id}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Re-enrich Data
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuSeparator />
+                            
+                            <ResetPropertyDialog
+                              addressId={property.address_id}
+                              propertyAddress={`${property.street_address}, ${property.city}, ${property.state}`}
+                              onResetComplete={loadProperties}
+                            >
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                <RotateCcw className="h-4 w-4 mr-2" />
+                                Reset Property
+                              </DropdownMenuItem>
+                            </ResetPropertyDialog>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>

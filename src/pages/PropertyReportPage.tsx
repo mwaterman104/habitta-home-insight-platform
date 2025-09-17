@@ -3,10 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Loader2, RotateCcw } from "lucide-react";
 import { ValidationCockpitDB, PropertySample, EnrichmentSnapshot, Prediction } from "@/lib/validation-cockpit";
 import { ProvenanceExplainer } from "@/components/validation/ProvenanceExplainer";
 import { EnrichmentSummary } from "@/components/validation/EnrichmentSummary";
+import { ResetPropertyDialog } from "@/components/validation/ResetPropertyDialog";
 import { toast } from "sonner";
 
 export default function PropertyReportPage() {
@@ -165,6 +166,41 @@ export default function PropertyReportPage() {
               )}
             </Button>
           )}
+          
+          {/* Re-enrich button available at any status */}
+          <Button 
+            variant="outline" 
+            onClick={handleRetryEnrichment}
+            disabled={enriching}
+          >
+            {enriching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Re-enriching...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Re-enrich Data
+              </>
+            )}
+          </Button>
+
+          {/* Reset property button */}
+          <ResetPropertyDialog
+            addressId={id!}
+            propertyAddress={`${property.street_address}, ${property.city}, ${property.state} ${property.zip}`}
+            onResetComplete={() => {
+              loadReportData(id!);
+              toast.success('Property reset completed');
+            }}
+          >
+            <Button variant="outline">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset Property
+            </Button>
+          </ResetPropertyDialog>
+
           <Button onClick={handleExportReport}>
             <Download className="h-4 w-4 mr-2" />
             Export Report
