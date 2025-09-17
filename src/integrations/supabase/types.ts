@@ -486,6 +486,38 @@ export type Database = {
           },
         ]
       }
+      enrichment_snapshots: {
+        Row: {
+          address_id: string | null
+          payload: Json
+          provider: string
+          retrieved_at: string | null
+          snapshot_id: string
+        }
+        Insert: {
+          address_id?: string | null
+          payload: Json
+          provider: string
+          retrieved_at?: string | null
+          snapshot_id?: string
+        }
+        Update: {
+          address_id?: string | null
+          payload?: Json
+          provider?: string
+          retrieved_at?: string | null
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_snapshots_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "properties_sample"
+            referencedColumns: ["address_id"]
+          },
+        ]
+      }
       home_systems: {
         Row: {
           brand: string | null
@@ -727,6 +759,107 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      labels: {
+        Row: {
+          address_id: string | null
+          basement_or_crawlspace: string | null
+          created_at: string | null
+          doors_age_bucket: string | null
+          electrical_gfci_bath: boolean | null
+          electrical_gfci_kitchen: boolean | null
+          evidence_photo_urls: string | null
+          hvac_age_bucket: string | null
+          hvac_estimated_remaining_years: number | null
+          hvac_present: boolean | null
+          hvac_system_type: string | null
+          label_date: string | null
+          label_id: string
+          labeler: string
+          labeler_confidence_0_1: number | null
+          labeler_notes: string | null
+          last_hvac_permit_year: number | null
+          last_roof_permit_year: number | null
+          last_water_heater_permit_year: number | null
+          moisture_risk: boolean | null
+          roof_age_bucket: string | null
+          roof_estimated_remaining_years: number | null
+          roof_material: string | null
+          roof_visible_damage: boolean | null
+          water_heater_age_bucket: string | null
+          water_heater_present: boolean | null
+          water_heater_type: string | null
+          windows_age_bucket: string | null
+        }
+        Insert: {
+          address_id?: string | null
+          basement_or_crawlspace?: string | null
+          created_at?: string | null
+          doors_age_bucket?: string | null
+          electrical_gfci_bath?: boolean | null
+          electrical_gfci_kitchen?: boolean | null
+          evidence_photo_urls?: string | null
+          hvac_age_bucket?: string | null
+          hvac_estimated_remaining_years?: number | null
+          hvac_present?: boolean | null
+          hvac_system_type?: string | null
+          label_date?: string | null
+          label_id?: string
+          labeler: string
+          labeler_confidence_0_1?: number | null
+          labeler_notes?: string | null
+          last_hvac_permit_year?: number | null
+          last_roof_permit_year?: number | null
+          last_water_heater_permit_year?: number | null
+          moisture_risk?: boolean | null
+          roof_age_bucket?: string | null
+          roof_estimated_remaining_years?: number | null
+          roof_material?: string | null
+          roof_visible_damage?: boolean | null
+          water_heater_age_bucket?: string | null
+          water_heater_present?: boolean | null
+          water_heater_type?: string | null
+          windows_age_bucket?: string | null
+        }
+        Update: {
+          address_id?: string | null
+          basement_or_crawlspace?: string | null
+          created_at?: string | null
+          doors_age_bucket?: string | null
+          electrical_gfci_bath?: boolean | null
+          electrical_gfci_kitchen?: boolean | null
+          evidence_photo_urls?: string | null
+          hvac_age_bucket?: string | null
+          hvac_estimated_remaining_years?: number | null
+          hvac_present?: boolean | null
+          hvac_system_type?: string | null
+          label_date?: string | null
+          label_id?: string
+          labeler?: string
+          labeler_confidence_0_1?: number | null
+          labeler_notes?: string | null
+          last_hvac_permit_year?: number | null
+          last_roof_permit_year?: number | null
+          last_water_heater_permit_year?: number | null
+          moisture_risk?: boolean | null
+          roof_age_bucket?: string | null
+          roof_estimated_remaining_years?: number | null
+          roof_material?: string | null
+          roof_visible_damage?: boolean | null
+          water_heater_age_bucket?: string | null
+          water_heater_present?: boolean | null
+          water_heater_type?: string | null
+          windows_age_bucket?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labels_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "properties_sample"
+            referencedColumns: ["address_id"]
+          },
+        ]
       }
       local_contractors: {
         Row: {
@@ -1202,6 +1335,50 @@ export type Database = {
           },
         ]
       }
+      predictions: {
+        Row: {
+          address_id: string | null
+          confidence_0_1: number | null
+          data_provenance: Json | null
+          field: string
+          model_version: string
+          predicted_at: string | null
+          predicted_value: string
+          prediction_id: string
+          prediction_run_id: string
+        }
+        Insert: {
+          address_id?: string | null
+          confidence_0_1?: number | null
+          data_provenance?: Json | null
+          field: string
+          model_version: string
+          predicted_at?: string | null
+          predicted_value: string
+          prediction_id?: string
+          prediction_run_id: string
+        }
+        Update: {
+          address_id?: string | null
+          confidence_0_1?: number | null
+          data_provenance?: Json | null
+          field?: string
+          model_version?: string
+          predicted_at?: string | null
+          predicted_value?: string
+          prediction_id?: string
+          prediction_run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictions_address_id_fkey"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "properties_sample"
+            referencedColumns: ["address_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1451,6 +1628,54 @@ export type Database = {
           square_footage?: number | null
           year_built?: number | null
           zipcode?: string | null
+        }
+        Relationships: []
+      }
+      properties_sample: {
+        Row: {
+          address_id: string
+          apn: string | null
+          assigned_to: string | null
+          city: string
+          created_at: string | null
+          lat: number | null
+          lon: number | null
+          source_list: string | null
+          state: string
+          status: string | null
+          street_address: string
+          unit: string | null
+          zip: string
+        }
+        Insert: {
+          address_id?: string
+          apn?: string | null
+          assigned_to?: string | null
+          city: string
+          created_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          source_list?: string | null
+          state: string
+          status?: string | null
+          street_address: string
+          unit?: string | null
+          zip: string
+        }
+        Update: {
+          address_id?: string
+          apn?: string | null
+          assigned_to?: string | null
+          city?: string
+          created_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          source_list?: string | null
+          state?: string
+          status?: string | null
+          street_address?: string
+          unit?: string | null
+          zip?: string
         }
         Relationships: []
       }
