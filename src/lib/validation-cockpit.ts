@@ -97,6 +97,48 @@ export interface AccuracyByField {
 }
 
 // Data access functions
+// Error tag interface
+export interface ErrorTag {
+  id: string;
+  address_id: string;
+  field: string;
+  error_type: string;
+  description: string | null;
+  tagged_by: string;
+  tagged_at: string;
+  resolved: boolean;
+  resolution_notes: string | null;
+}
+
+// Batch job interface  
+export interface BatchJob {
+  id: string;
+  user_id: string;
+  operation_type: 'enrich' | 'predict';
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+  total_properties: number;
+  processed_properties: number;
+  successful_properties: number;
+  failed_properties: number;
+  current_property_id: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  properties_list: string[];
+}
+
+// Confidence calibration interface
+export interface ConfidenceCalibrationData {
+  confidence_bucket: string;
+  field: string;
+  total_predictions: number;
+  correct_predictions: number;
+  accuracy: number;
+  avg_confidence: number;
+}
+
 export class ValidationCockpitDB {
   // Properties Sample
   static async getPropertiesSample() {
@@ -258,6 +300,41 @@ export class ValidationCockpitDB {
     
     if (error) throw error;
     return data as AccuracyByField[];
+  }
+
+  // Error tagging methods
+  static async getErrorTags(addressId: string, field?: string): Promise<ErrorTag[]> {
+    let query = supabase
+      .from('error_tags')
+      .select('*')
+      .eq('address_id', addressId)
+      .order('tagged_at', { ascending: false });
+      
+    if (field) {
+      query = query.eq('field', field);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async createErrorTag(errorTag: Omit<ErrorTag, 'id' | 'tagged_at'>): Promise<ErrorTag> {
+    const { data, error } = await supabase
+      .from('error_tags')
+      .insert(errorTag)
+      .select()
+      .single();
+      
+    if (error) throw error;
+    return data;
+  }
+
+  // Confidence calibration methods
+  static async getConfidenceCalibration(): Promise<ConfidenceCalibrationData[]> {
+    const { data, error } = await supabase.rpc('rpc_confidence_calibration');
+    if (error) throw error;
+    return data || [];
   }
 
   // Batch operations

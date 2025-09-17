@@ -14,28 +14,38 @@ interface PredictionRule {
   predict: (snapshots: any[], property: any) => { value: string; confidence: number; provenance: any };
 }
 
-// Baseline prediction rules
+// Enhanced prediction rules with dynamic confidence scoring
 const predictionRules: PredictionRule[] = [
   {
     field: 'roof_age_bucket',
     predict: (snapshots, property) => {
       const shovelsData = snapshots.find(s => s.provider === 'shovels')?.payload;
       const attomData = snapshots.find(s => s.provider === 'attom')?.payload;
+      const smartyData = snapshots.find(s => s.provider === 'smarty')?.payload;
+      
+      let baseConfidence = 0.3;
+      let sources = [];
       
       // Check for roof permits first (highest confidence)
       if (shovelsData?.permits) {
         const roofPermits = shovelsData.permits.filter((p: any) => 
           p.description?.toLowerCase().includes('roof') || 
-          p.work_type?.toLowerCase().includes('roof')
+          p.work_type?.toLowerCase().includes('roof') ||
+          p.permit_type?.toLowerCase().includes('roof')
         );
         
         if (roofPermits.length > 0) {
           const latestPermit = roofPermits.sort((a: any, b: any) => 
-            new Date(b.issue_date).getTime() - new Date(a.issue_date).getTime()
+            new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
           )[0];
           
-          const permitYear = new Date(latestPermit.issue_date).getFullYear();
+          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
+          const permitYear = permitDate.getFullYear();
           const age = 2024 - permitYear;
+          
+          // Higher confidence for recent permits
+          const recencyBonus = age < 2 ? 0.15 : age < 5 ? 0.1 : 0.05;
+          baseConfidence = 0.85 + recencyBonus;
           
           let bucket = '20y+';
           if (age <= 5) bucket = '0-5y';
@@ -43,35 +53,76 @@ const predictionRules: PredictionRule[] = [
           else if (age <= 15) bucket = '11-15y';
           else if (age <= 20) bucket = '16-20y';
           
+          sources.push(`roof permit ${permitYear}`);
+          
+          // Cross-validate with property age
+          if (attomData?.year_built) {
+            const houseAge = 2024 - attomData.year_built;
+            if (age > houseAge + 5) {
+              // Permit is much newer than house - likely roof replacement
+              baseConfidence += 0.05;
+            }
+          }
+          
           return {
             value: bucket,
-            confidence: 0.9,
-            provenance: { source: 'shovels_permit', permit_id: latestPermit.id }
+            confidence: Math.min(baseConfidence, 0.95),
+            provenance: { 
+              source: 'shovels_permit', 
+              permit_year: permitYear,
+              sources: sources,
+              cross_validated: sources.length > 1
+            }
           };
         }
       }
       
-      // Fall back to year built (lower confidence)
+      // Cross-validate with multiple sources
       if (attomData?.year_built || property.year_built) {
         const yearBuilt = attomData?.year_built || property.year_built;
-        const age = 2024 - yearBuilt;
+        const houseAge = 2024 - yearBuilt;
+        sources.push(`built ${yearBuilt}`);
+        
+        // Assume roof replacement at different intervals based on house age
+        let estimatedRoofAge = houseAge;
+        if (houseAge > 25) {
+          estimatedRoofAge = houseAge - 20; // Assume replacement 20 years ago
+          baseConfidence = 0.4;
+        } else if (houseAge > 15) {
+          estimatedRoofAge = houseAge - 10; // Assume replacement 10 years ago  
+          baseConfidence = 0.45;
+        } else {
+          baseConfidence = 0.6; // Original roof
+        }
         
         let bucket = '20y+';
-        if (age <= 10) bucket = '6-10y';
-        else if (age <= 20) bucket = '11-15y';
-        else if (age <= 30) bucket = '16-20y';
+        if (estimatedRoofAge <= 5) bucket = '0-5y';
+        else if (estimatedRoofAge <= 10) bucket = '6-10y';
+        else if (estimatedRoofAge <= 15) bucket = '11-15y';
+        else if (estimatedRoofAge <= 20) bucket = '16-20y';
+        
+        // Regional adjustment for Florida climate
+        if (smartyData?.components?.state_abbreviation === 'FL') {
+          baseConfidence += 0.05; // Better data for FL properties
+          sources.push('FL climate adjustment');
+        }
         
         return {
           value: bucket,
-          confidence: 0.6,
-          provenance: { source: 'year_built', year_built: yearBuilt }
+          confidence: baseConfidence,
+          provenance: { 
+            source: 'estimated_from_house_age', 
+            house_age: houseAge,
+            estimated_roof_age: estimatedRoofAge,
+            sources: sources
+          }
         };
       }
       
       return {
         value: '11-15y',
-        confidence: 0.3,
-        provenance: { source: 'default_assumption' }
+        confidence: 0.25,
+        provenance: { source: 'default_assumption', sources: ['no data available'] }
       };
     }
   },

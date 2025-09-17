@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Play, Pause, AlertTriangle } from "lucide-react";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface BatchOperationsDialogProps {
@@ -16,6 +17,7 @@ interface BatchOperationsDialogProps {
 }
 
 export function BatchOperationsDialog({ operation, properties, onComplete, children }: BatchOperationsDialogProps) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [running, setRunning] = useState(false);
@@ -64,41 +66,76 @@ export function BatchOperationsDialog({ operation, properties, onComplete, child
       return;
     }
 
+    if (!user) {
+      toast.error('Authentication required');
+      return;
+    }
+
     setRunning(true);
     setPaused(false);
     setProgress(0);
     setResults({ success: 0, failed: 0 });
 
-    let successCount = 0;
-    let failedCount = 0;
+    try {
+      // Use the new batch processor for larger jobs
+      if (propertiesToProcess.length > 5) {
+        const response = await supabase.functions.invoke('batch-processor', {
+          body: {
+            operation_type: operation,
+            property_ids: propertiesToProcess.map(p => p.address_id),
+            user_id: user.id,
+          }
+        });
 
-    for (let i = 0; i < propertiesToProcess.length; i++) {
-      if (paused) {
-        break;
-      }
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
 
-      const property = propertiesToProcess[i];
-      setCurrentProperty(`${property.street_address}, ${property.city}`);
-      
-      const success = await processProperty(property);
-      
-      if (success) {
-        successCount++;
+        const result = response.data;
+        setResults({
+          success: result.results.successful,
+          failed: result.results.failed
+        });
+        setProgress(100);
+
+        toast.success(`Batch ${operation} completed: ${result.results.successful} success, ${result.results.failed} failed`);
       } else {
-        failedCount++;
-      }
-      
-      setResults({ success: successCount, failed: failedCount });
-      setProgress(((i + 1) / propertiesToProcess.length) * 100);
+        // Use original sequential processing for small jobs
+        let successCount = 0;
+        let failedCount = 0;
 
-      // Small delay to prevent overwhelming the API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+        for (let i = 0; i < propertiesToProcess.length; i++) {
+          if (paused) {
+            break;
+          }
+
+          const property = propertiesToProcess[i];
+          setCurrentProperty(`${property.street_address}, ${property.city}`);
+          
+          const success = await processProperty(property);
+          
+          if (success) {
+            successCount++;
+          } else {
+            failedCount++;
+          }
+          
+          setResults({ success: successCount, failed: failedCount });
+          setProgress(((i + 1) / propertiesToProcess.length) * 100);
+
+          // Small delay to prevent overwhelming the API
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        toast.success(`Batch ${operation} completed: ${successCount} success, ${failedCount} failed`);
+      }
+    } catch (error) {
+      console.error('Batch operation failed:', error);
+      toast.error(`Batch operation failed: ${error.message}`);
     }
 
     setRunning(false);
     setCurrentProperty('');
-    
-    toast.success(`Batch ${operation} completed: ${successCount} success, ${failedCount} failed`);
     onComplete();
   };
 
