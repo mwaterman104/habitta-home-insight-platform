@@ -147,6 +147,60 @@ export type Database = {
           },
         ]
       }
+      batch_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_property_id: string | null
+          error_message: string | null
+          failed_properties: number | null
+          id: string
+          operation_type: string
+          processed_properties: number | null
+          properties_list: Json
+          started_at: string | null
+          status: string
+          successful_properties: number | null
+          total_properties: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_property_id?: string | null
+          error_message?: string | null
+          failed_properties?: number | null
+          id?: string
+          operation_type: string
+          processed_properties?: number | null
+          properties_list: Json
+          started_at?: string | null
+          status?: string
+          successful_properties?: number | null
+          total_properties: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_property_id?: string | null
+          error_message?: string | null
+          failed_properties?: number | null
+          id?: string
+          operation_type?: string
+          processed_properties?: number | null
+          properties_list?: Json
+          started_at?: string | null
+          status?: string
+          successful_properties?: number | null
+          total_properties?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       chat_sessions: {
         Row: {
           created_at: string
@@ -517,6 +571,42 @@ export type Database = {
             referencedColumns: ["address_id"]
           },
         ]
+      }
+      error_tags: {
+        Row: {
+          address_id: string
+          description: string | null
+          error_type: string
+          field: string
+          id: string
+          resolution_notes: string | null
+          resolved: boolean | null
+          tagged_at: string
+          tagged_by: string | null
+        }
+        Insert: {
+          address_id: string
+          description?: string | null
+          error_type: string
+          field: string
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          tagged_at?: string
+          tagged_by?: string | null
+        }
+        Update: {
+          address_id?: string
+          description?: string | null
+          error_type?: string
+          field?: string
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          tagged_at?: string
+          tagged_by?: string | null
+        }
+        Relationships: []
       }
       home_systems: {
         Row: {
@@ -2379,6 +2469,17 @@ export type Database = {
       }
     }
     Views: {
+      v_confidence_calibration: {
+        Row: {
+          accuracy: number | null
+          avg_confidence: number | null
+          confidence_bucket: string | null
+          correct_predictions: number | null
+          field: string | null
+          total_predictions: number | null
+        }
+        Relationships: []
+      }
       v_latest_labels: {
         Row: {
           address_id: string | null
@@ -2485,6 +2586,17 @@ export type Database = {
         Returns: {
           accuracy: number
           field: string
+        }[]
+      }
+      rpc_confidence_calibration: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          accuracy: number
+          avg_confidence: number
+          confidence_bucket: string
+          correct_predictions: number
+          field: string
+          total_predictions: number
         }[]
       }
     }
