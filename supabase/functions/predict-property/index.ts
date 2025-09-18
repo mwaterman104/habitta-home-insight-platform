@@ -612,12 +612,7 @@ const predictionRules: PredictionRule[] = [
             heating_fuel: attomData.utilities.heatingfuel
           }
         };
-      }
-            heating_fuel: attomData.utilities.heatingfuel,
-            climate_zone: climateZone
-          }
-        };
-      }
+       }
       
       // Fallback to pure regional default
       sources.push(`${climateZone} statistical default`);
