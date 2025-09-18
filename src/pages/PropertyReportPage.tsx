@@ -8,6 +8,7 @@ import { ValidationCockpitDB, PropertySample, EnrichmentSnapshot, Prediction } f
 import { ProvenanceExplainer } from "@/components/validation/ProvenanceExplainer";
 import { EnrichmentSummary } from "@/components/validation/EnrichmentSummary";
 import { ResetPropertyDialog } from "@/components/validation/ResetPropertyDialog";
+import { DataQualityInsights } from "@/components/validation/DataQualityInsights";
 import { toast } from "sonner";
 
 export default function PropertyReportPage() {
@@ -237,11 +238,70 @@ export default function PropertyReportPage() {
         </CardContent>
       </Card>
 
-      {/* Predictions vs Labels Comparison */}
+      {/* Data Quality Overview */}
       {predictions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Predictions{labels.length > 0 ? ' vs Ground Truth' : ''}</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Data Quality Assessment
+              <Badge variant="outline" className="ml-auto">
+                {predictions.filter(p => p.confidence_0_1 >= 0.7).length}/{predictions.length} High Confidence
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="text-2xl font-bold text-green-700">
+                  {predictions.filter(p => p.confidence_0_1 >= 0.7).length}
+                </div>
+                <div className="text-sm text-green-600">High Confidence (≥70%)</div>
+              </div>
+              <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="text-2xl font-bold text-yellow-700">
+                  {predictions.filter(p => p.confidence_0_1 >= 0.4 && p.confidence_0_1 < 0.7).length}
+                </div>
+                <div className="text-sm text-yellow-600">Medium Confidence (40-69%)</div>
+              </div>
+              <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
+                <div className="text-2xl font-bold text-red-700">
+                  {predictions.filter(p => p.confidence_0_1 < 0.4).length}
+                </div>
+                <div className="text-sm text-red-600">Low Confidence (&lt;40%)</div>
+              </div>
+            </div>
+
+            {/* Low confidence warnings */}
+            {predictions.filter(p => p.confidence_0_1 < 0.4).length > 0 && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="font-medium text-amber-800 mb-2">Action Required: Low Confidence Predictions</div>
+                    <div className="text-sm text-amber-700 space-y-1">
+                      <p>Several predictions have low confidence due to missing data sources:</p>
+                      <ul className="list-disc list-inside ml-2 space-y-1">
+                        {predictions.filter(p => p.confidence_0_1 < 0.4).map(p => (
+                          <li key={p.prediction_id}>
+                            <span className="font-medium">{p.field.replace(/_/g, ' ')}</span> - 
+                            Consider manual inspection or obtaining permits/documentation
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* System Predictions */}
+      {predictions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>System Predictions{labels.length > 0 ? ' vs Ground Truth' : ''}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -250,14 +310,46 @@ export default function PropertyReportPage() {
                 const isMatch = labelValue !== null ? labelValue === prediction.predicted_value : null;
                 const isExpanded = expandedPredictions.has(prediction.prediction_id);
                 
+                // Determine confidence level and styling
+                const confidenceLevel = prediction.confidence_0_1 >= 0.7 ? 'high' : 
+                                      prediction.confidence_0_1 >= 0.4 ? 'medium' : 'low';
+                const confidenceColors = {
+                  high: 'border-green-200 bg-green-50',
+                  medium: 'border-yellow-200 bg-yellow-50', 
+                  low: 'border-red-200 bg-red-50'
+                };
+                const badgeColors = {
+                  high: 'bg-green-100 text-green-800',
+                  medium: 'bg-yellow-100 text-yellow-800',
+                  low: 'bg-red-100 text-red-800'
+                };
+
+                // Check for replacement likelihood indicators
+                const provenance = prediction.data_provenance || {};
+                const hasReplacementWarning = provenance.modifiers?.some((mod: any) => 
+                  mod.includes('exceeds_expected') || mod.includes('replacement_likely')
+                );
+                
                 return (
-                  <div key={prediction.prediction_id} className="border rounded-lg overflow-hidden">
+                  <div key={prediction.prediction_id} className={`border rounded-lg overflow-hidden ${confidenceColors[confidenceLevel]}`}>
                     {/* Main prediction row */}
-                    <div className="flex items-center justify-between p-3">
+                    <div className="flex items-center justify-between p-4">
                       <div className="flex-1">
-                        <div className="font-medium">{prediction.field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Confidence: {(prediction.confidence_0_1 * 100).toFixed(0)}%
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="font-medium">{prediction.field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                          {hasReplacementWarning && (
+                            <Badge variant="destructive" className="text-xs">
+                              May Need Replacement
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${badgeColors[confidenceLevel]}`}>
+                            {(prediction.confidence_0_1 * 100).toFixed(0)}% Confidence
+                          </span>
+                          <span className="text-muted-foreground">
+                            Source: {provenance.source || 'Unknown'}
+                          </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
@@ -292,7 +384,7 @@ export default function PropertyReportPage() {
 
                     {/* Expanded provenance section */}
                     {isExpanded && (
-                      <div className="px-3 pb-3">
+                      <div className="px-4 pb-4 bg-white/50">
                         <ProvenanceExplainer
                           provenance={prediction.data_provenance}
                           field={prediction.field}
@@ -344,12 +436,20 @@ export default function PropertyReportPage() {
         </Card>
       )}
 
+      {/* Data Quality Insights */}
+      {predictions.length > 0 && (
+        <DataQualityInsights 
+          predictions={predictions} 
+          propertyAddress={`${property.street_address}, ${property.city}, ${property.state}`}
+        />
+      )}
+
       {/* Enrichment Data */}
       <Card>
         <CardHeader>
-          <CardTitle>Data Sources & Insights</CardTitle>
+          <CardTitle>Data Sources & Enrichment Details</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Key information extracted from external data sources used to generate predictions
+            Raw data extracted from external sources used to generate predictions
           </p>
         </CardHeader>
         <CardContent>
