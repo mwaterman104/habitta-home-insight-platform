@@ -95,7 +95,7 @@ serve(async (req) => {
         }
       });
 
-      if (attomResponse.data) {
+      if (attomResponse.data && !attomResponse.error) {
         const { data: snapshot } = await supabase
           .from('enrichment_snapshots')
           .insert({
@@ -109,6 +109,27 @@ serve(async (req) => {
         if (snapshot) {
           snapshotIds.push(snapshot.snapshot_id);
           console.log('ATTOM snapshot saved');
+        }
+      } else if (attomResponse.error) {
+        // Create snapshot for "no data found" case
+        const { data: snapshot } = await supabase
+          .from('enrichment_snapshots')
+          .insert({
+            address_id,
+            provider: 'attom',
+            payload: {
+              error: attomResponse.error,
+              status: 'no_data_found',
+              message: 'No property data found in Attom database',
+              searchedAddress: `${property.street_address}, ${property.city}, ${property.state} ${property.zip}`
+            }
+          })
+          .select()
+          .single();
+        
+        if (snapshot) {
+          snapshotIds.push(snapshot.snapshot_id);
+          console.log('ATTOM no-data snapshot saved');
         }
       }
     } catch (error) {

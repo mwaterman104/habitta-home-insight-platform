@@ -224,8 +224,25 @@ serve(async (req) => {
     
     console.log('Attom API response received:', {
       total: attomData.status?.total || 0,
-      code: attomData.status?.code || 'unknown'
+      code: attomData.status?.code || 'unknown',
+      msg: attomData.status?.msg || 'unknown'
     });
+
+    // Handle "SuccessWithoutResult" - this is Attom's way of saying no data found
+    if (attomData.status?.msg === 'SuccessWithoutResult' || attomData.status?.total === 0) {
+      console.log(`No Attom data found for address: ${address}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'No property data found in Attom database',
+          searchedAddress: address,
+          attomStatus: attomData.status
+        }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     console.log('Raw property data sample:', JSON.stringify(attomData.property?.[0], null, 2));
 
