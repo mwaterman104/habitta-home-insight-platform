@@ -31,22 +31,38 @@ interface ClimateFactor {
   description: string;
 }
 
-// Confidence base scores and modifiers
-const CONFIDENCE_BASES = {
+// Phase 1.5 Configuration constants - exact values from spec
+export const BASES = {
   permit: 0.90,
-  attom: 0.70,
+  attom: 0.70,  
   vision: 0.75,
   inferred: 0.50,
   default: 0.28
 };
 
-const CONFIDENCE_MODIFIERS = {
+export const MODS = {
   recency: 0.05,
   crossVal: 0.05,
   climate: 0.05,
-  exceedsNoPermit: -0.10,
-  agreement: 0.05
+  exceedsNoPermit: -0.10
 };
+
+export const LIFESPAN = {
+  FL: {
+    roof: { tile: [28, 35], shingle: [12, 18], metal: [30, 45], flat: [12, 20], other: [15, 25] },
+    hvac: [10, 14],
+    wh: { tank_electric: [8, 12], tank_gas: [10, 15], tankless: [18, 25] }
+  },
+  DEFAULT: {
+    roof: { tile: [30, 40], shingle: [15, 25], metal: [35, 50], flat: [15, 25], other: [20, 30] },
+    hvac: [12, 18],
+    wh: { tank_electric: [10, 15], tank_gas: [12, 18], tankless: [20, 30] }
+  }
+};
+
+// Legacy constants for compatibility
+const CONFIDENCE_BASES = BASES;
+const CONFIDENCE_MODIFIERS = MODS;
 
 // Utility functions
 function getClimateZone(smartyData: any): string {
@@ -204,19 +220,20 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Estimate from house age with ATTOM roof material data and climate-adjusted lifespans
-      if (attomData?.year_built || property.year_built) {
-        const yearBuilt = attomData?.year_built || property.year_built;
-        const houseAge = 2024 - yearBuilt;
-        sources.push(`built ${yearBuilt}`);
+      // Phase 1.5: Use ATTOM yearbuilt or yearbuilteffective for roof age
+      const installYear = attomData?.summary?.yearbuilt ?? attomData?.building?.summary?.yearbuilteffective ?? attomData?.year_built ?? property.year_built;
+      
+      if (installYear) {
+        const houseAge = 2024 - installYear;
+        sources.push(`built ${installYear}`);
         
         // Use ATTOM roof material if available, otherwise regional default
         const roofMaterial = inferRoofMaterial('', attomData);
         if (attomData?.building?.construction?.roofcover) {
-          baseConfidence = CONFIDENCE_BASES.attom; // Higher confidence with ATTOM data
+          baseConfidence = BASES.inferred + MODS.climate; // 0.55 as per Phase 1.5 spec
           sources.push(`ATTOM roofcover: ${attomData.building.construction.roofcover}`);
         } else {
-          baseConfidence = CONFIDENCE_BASES.inferred;
+          baseConfidence = BASES.inferred;
         }
         
         const lifespanInfo = getLifespanData(lifespanData, 'roof', roofMaterial, climateZone);
@@ -279,28 +296,48 @@ const predictionRules: PredictionRule[] = [
     predict: (snapshots, property, lifespanData, climateFactors) => {
       const attomData = snapshots.find(s => s.provider === 'attom')?.payload;
       
-      // Use ATTOM cooling data if available for higher confidence
+      const shovelsData = snapshots.find(s => s.provider === 'shovels')?.payload;
+      let baseConfidence = BASES.attom; // 0.7 base confidence
+      let sources = [];
+      let modifiers = [];
+      
+      // Phase 1.5: Use ATTOM cooling data with cross-validation bonus
       if (attomData?.utilities?.coolingtype) {
         const coolingType = attomData.utilities.coolingtype.toLowerCase();
-        if (coolingType.includes('yes') || coolingType.includes('central') || coolingType.includes('air')) {
+        sources.push(`ATTOM cooling: ${attomData.utilities.coolingtype}`);
+        
+        // Check for recent HVAC permit for cross-validation
+        const recentHvacPermit = shovelsData?.permits?.some((p: any) => {
+          const isHvac = isHvacPermit(p);
+          const permitDate = new Date(p.issue_date || p.date_issued);
+          const age = 2024 - permitDate.getFullYear();
+          return isHvac && age < 5;
+        });
+        
+        if (recentHvacPermit) {
+          baseConfidence += MODS.crossVal;
+          modifiers.push('cross-validated with permit');
+        }
+        
+        if (coolingType === 'yes' || coolingType.includes('central') || coolingType.includes('air')) {
           return {
             value: 'true',
-            confidence: 0.7,
+            confidence: clampConfidence(baseConfidence),
             provenance: { 
-              source: 'attom_cooling_type',
-              sources: [`ATTOM cooling: ${attomData.utilities.coolingtype}`],
-              modifiers: [],
+              source: 'attom_cooling_enhanced',
+              sources: sources,
+              modifiers: modifiers,
               signal: coolingType
             }
           };
         } else if (coolingType.includes('no') || coolingType.includes('none')) {
           return {
             value: 'false',
-            confidence: 0.7,
+            confidence: clampConfidence(baseConfidence),
             provenance: { 
-              source: 'attom_cooling_type',
-              sources: [`ATTOM cooling: ${attomData.utilities.coolingtype}`],
-              modifiers: [],
+              source: 'attom_cooling_enhanced',
+              sources: sources,
+              modifiers: modifiers,
               signal: coolingType
             }
           };
@@ -682,12 +719,18 @@ const predictionRules: PredictionRule[] = [
           const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
           const replacementLikely = calculateReplacementLikelihood(estimatedWhAge, adjustedMaxLifespan, false);
           
-          // For 2012 home (12+ years), WH should be in 13+ bucket if no permit found
-          if (replacementLikely && homeAge > 12) {
+          // Phase 1.5: Force WH age correction for audit case  
+          if (replacementLikely) {
             modifiers.push('age exceeds expected lifespan without permit');
-            baseConfidence += CONFIDENCE_MODIFIERS.exceedsNoPermit;
-            // Force to older bucket for homes >12 years without WH permit
+            baseConfidence += MODS.exceedsNoPermit;
+          }
+          
+          // For homes >12 years without WH permit, force to 13+ bucket
+          if (homeAge > 12 && !shovelsData?.permits?.some((p: any) => 
+            p.description?.toLowerCase().includes('water heater') || 
+            p.description?.toLowerCase().includes('hot water'))) {
             estimatedWhAge = Math.max(estimatedWhAge, 13);
+            modifiers.push('forced to 13+ bucket - no permit found');
           }
         }
         
@@ -726,34 +769,36 @@ const predictionRules: PredictionRule[] = [
   }
 ];
 
-// Enhanced HVAC detection patterns based on audit feedback
+// Phase 1.5: Enhanced HVAC detection with stricter anti-patterns
 function isHvacPermit(permit: any): boolean {
   const desc = (permit.description || '').toLowerCase();
   const workType = (permit.work_type || '').toLowerCase();
   
-  // Enhanced patterns to catch permits like "a/c change out 4 ton split system"
-  const hvacPatterns = [
-    /\b(hvac|heating|cooling|air condition|a\/c|ac)\b/,
-    /\b(change[\s-]?out|changeout|replacement|install|swap)\s+.*\b(hvac|air|cooling|heating|a\/c|ac)\b/,
-    /\b(split|packaged?|heat[\s-]?pump|central[\s-]?air|duct)\s+(system|unit)/,
-    /\b(\d+[\s-]?ton|tonnage)\b/,
-    /mechanical/
-  ];
-  
-  // Anti-patterns - exclude these even if they match HVAC keywords  
+  // Phase 1.5: Stricter anti-patterns first - exclude non-HVAC items
   const antiPatterns = [
-    /\b(shutter|awning|paver|driveway|pool|fence|deck)\b/,
-    /\b(hurricane[\s-]?shutter|roll[\s-]?up|accordion)\b/
+    /\b(hurricane[\s-]?shutter|shutter|accordion|roll[\s-]?up)\b/,
+    /\b(paver|driveway|concrete|walkway|sidewalk)\b/,
+    /\b(pool|spa|deck|fence|gate)\b/,
+    /\b(misc|miscellaneous)\b.*\b(paver|driveway|shutter)\b/
   ];
   
-  // Check anti-patterns first
+  // Check anti-patterns first - hard exclusion
   for (const antiPattern of antiPatterns) {
     if (antiPattern.test(desc) || antiPattern.test(workType)) {
       return false;
     }
   }
   
-  // Check HVAC patterns
+  // Enhanced HVAC patterns - must match at least one
+  const hvacPatterns = [
+    /\b(a\/c|air\s*conditioning?|hvac|heat\s*pump)\b/,
+    /\b(change[\s-]?out|changeout|replacement|install|swap).*\b(a\/c|air|hvac|cooling|heating)\b/,
+    /\b(split|package)[\s-]?(system|unit)\b/,
+    /\b(\d+[\s-]?ton|tonnage)\b.*\b(a\/c|air|cooling|system)\b/,
+    /\bmechanical\b.*\b(air|cooling|heating)\b/
+  ];
+  
+  // Must match HVAC pattern
   return hvacPatterns.some(pattern => pattern.test(desc) || pattern.test(workType));
 }
 
@@ -807,13 +852,27 @@ function inferWaterHeaterType(description: string, attomData?: any, climateZone?
   return climateZone === 'florida' ? 'tank_electric' : 'tank_gas'; // Regional default
 }
 
-// Money normalization for implausible permit values
-function normalizePermitValue(value: number): number {
-  // If value seems too high (>$100k for typical permits), assume it's in cents
-  if (value > 100000) {
-    return value / 100;
+// Phase 1.5: Money normalization for implausible permit values
+function normalizePermitValue(value: number, permitType?: string): { value: number; normalized: boolean } {
+  const type = (permitType || '').toLowerCase();
+  const likelyCents = value > 100000 && /air|driveway|shutter|misc|paver/i.test(type);
+  
+  return {
+    value: likelyCents ? Math.round(value / 100) : value,
+    normalized: likelyCents
+  };
+}
+
+// Phase 1.5: Backfill property coordinates from ATTOM
+function backfillPropertyCoords(currentLat: number | null, currentLon: number | null, attomData: any): { lat: number | null; lon: number | null; source?: string } {
+  if (!currentLat && !currentLon && attomData?.location?.latitude && attomData?.location?.longitude) {
+    return {
+      lat: parseFloat(attomData.location.latitude),
+      lon: parseFloat(attomData.location.longitude),
+      source: 'attom'
+    };
   }
-  return value;
+  return { lat: currentLat, lon: currentLon };
 }
 
 serve(async (req) => {
@@ -880,6 +939,19 @@ serve(async (req) => {
     const predictionRunId = crypto.randomUUID();
 
     console.log(`Found ${snapshots.length} snapshots, ${lifespanData.length} lifespan entries, ${climateFactors.length} climate factors`);
+
+    // Phase 1.5: Backfill lat/lon from ATTOM if missing
+    const attomData = snapshots.find(s => s.provider === 'attom')?.payload;
+    if (attomData && !property.lat && !property.lon) {
+      const coords = backfillPropertyCoords(property.lat, property.lon, attomData);
+      if (coords.lat && coords.lon) {
+        await supabase
+          .from('properties_sample')
+          .update({ lat: coords.lat, lon: coords.lon })
+          .eq('address_id', address_id);
+        console.log(`Backfilled coordinates from ATTOM: ${coords.lat}, ${coords.lon}`);
+      }
+    }
 
     // Generate predictions for each field using enhanced logic
     const predictions = [];
