@@ -236,6 +236,33 @@ export type Database = {
           },
         ]
       }
+      climate_factors: {
+        Row: {
+          climate_zone: string
+          created_at: string
+          description: string | null
+          factor_type: string
+          id: string
+          multiplier: number
+        }
+        Insert: {
+          climate_zone: string
+          created_at?: string
+          description?: string | null
+          factor_type: string
+          id?: string
+          multiplier?: number
+        }
+        Update: {
+          climate_zone?: string
+          created_at?: string
+          description?: string | null
+          factor_type?: string
+          id?: string
+          multiplier?: number
+        }
+        Relationships: []
+      }
       code_violations: {
         Row: {
           created_at: string
@@ -950,6 +977,45 @@ export type Database = {
             referencedColumns: ["address_id"]
           },
         ]
+      }
+      lifespan_reference: {
+        Row: {
+          climate_zone: string
+          created_at: string
+          id: string
+          max_years: number
+          min_years: number
+          notes: string | null
+          quality_tier: string | null
+          system_subtype: string | null
+          system_type: string
+          typical_years: number
+        }
+        Insert: {
+          climate_zone?: string
+          created_at?: string
+          id?: string
+          max_years: number
+          min_years: number
+          notes?: string | null
+          quality_tier?: string | null
+          system_subtype?: string | null
+          system_type: string
+          typical_years: number
+        }
+        Update: {
+          climate_zone?: string
+          created_at?: string
+          id?: string
+          max_years?: number
+          min_years?: number
+          notes?: string | null
+          quality_tier?: string | null
+          system_subtype?: string | null
+          system_type?: string
+          typical_years?: number
+        }
+        Relationships: []
       }
       local_contractors: {
         Row: {
