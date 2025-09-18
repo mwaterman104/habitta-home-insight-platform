@@ -740,9 +740,7 @@ const predictionRules: PredictionRule[] = [
             climate_zone: climateZone
           }
         };
-      }
-        };
-      }
+       }
       
       return {
         value: '9-12',
