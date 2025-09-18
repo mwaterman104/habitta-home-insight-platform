@@ -31,13 +31,16 @@ interface ClimateFactor {
   description: string;
 }
 
-// Phase 1.5 Configuration constants - Enhanced confidence system
+// Phase 1.5+ Configuration constants - Enhanced confidence system with permit aging
 export const BASES = {
-  permit: 0.90,           // Permit-derived predictions (0.85-0.95 with bonuses)
-  attom_enhanced: 0.70,   // ATTOM with cross-validation (0.6-0.8 range)
-  attom_basic: 0.60,      // ATTOM data alone (0.5-0.7 range)
-  inferred: 0.50,         // Regional inference (0.4-0.5 range)
-  default: 0.28           // Defaults (0.25-0.35 range)
+  permit_fresh: 0.92,     // Recent permits (0-5 years): 0.85-0.95
+  permit_medium: 0.75,    // Medium-aged permits (5-15 years): 0.70-0.80  
+  permit_aged: 0.55,      // Aged permits (15+ years): 0.50-0.60
+  attom_enhanced: 0.75,   // ATTOM with cross-validation (0.65-0.80 range)
+  attom_basic: 0.65,      // ATTOM data alone (0.55-0.70 range)
+  attom_uncertain: 0.40,  // ATTOM uncertain data (NONE/Unknown): ≤0.40
+  inferred: 0.45,         // Regional inference (0.40-0.50 range)
+  default: 0.32           // Defaults (0.30-0.35 range)
 };
 
 export const MODS = {
@@ -45,7 +48,8 @@ export const MODS = {
   crossVal: 0.05,         // Cross-validation bonus
   climate: 0.05,          // Climate factor bonus
   material: 0.05,         // ATTOM material data bonus
-  exceedsNoPermit: -0.10  // Age exceeds lifespan without permit
+  exceedsNoPermit: -0.15, // Age exceeds lifespan without permit (stronger penalty)
+  permitAging: -0.05      // Per-decade aging penalty for old permits
 };
 
 export const LIFESPAN = {
@@ -179,7 +183,11 @@ function applyClimateFactors(baseLifespan: number, climateFactors: ClimateFactor
   return Math.round(adjustedLifespan);
 }
 
-function calculateReplacementLikelihood(age: number, expectedMax: number, hasPermit: boolean): boolean {
+function calculateReplacementLikelihood(age: number, expectedMax: number, hasPermit: boolean, systemType?: string): boolean {
+  // Phase 1.5+: Strengthened HVAC replacement logic
+  if (systemType === 'hvac') {
+    return age > 20 || (!hasPermit && age > expectedMax * 0.8);
+  }
   return !hasPermit && age > expectedMax * 0.9;
 }
 
@@ -300,26 +308,50 @@ function inferHvacType(description: string): string {
   return 'central_air'; // default
 }
 
-function inferWaterHeaterType(description: string, attomData?: any, climateZone?: string): string {
+function inferWaterHeaterType(description: string, attomData?: any, climateZone?: string, buildYear?: number): { type: string; confidence: number } {
   const desc = description?.toLowerCase() || '';
   const attomExtracted = extractAttomData(attomData);
   
   // Check permit description first
-  if (desc.includes('tankless')) return 'tankless';
-  if (desc.includes('electric')) return 'tank_electric';
-  if (desc.includes('gas')) return 'tank_gas';
+  if (desc.includes('tankless')) return { type: 'tankless', confidence: BASES.permit_fresh };
+  if (desc.includes('electric')) return { type: 'tank_electric', confidence: BASES.permit_fresh };
+  if (desc.includes('gas')) return { type: 'tank_gas', confidence: BASES.permit_fresh };
   
-  // Phase 1.5: Enhanced ATTOM heating fuel prioritization
+  // Phase 1.5+: Enhanced ATTOM heating fuel prioritization with confidence handling
   if (attomExtracted?.heatingFuel) {
     const heatingFuel = attomExtracted.heatingFuel.toLowerCase();
+    
     if (heatingFuel.includes('electric')) {
-      return 'tank_electric'; // Prioritize ATTOM data over region
+      return { type: 'tank_electric', confidence: BASES.attom_enhanced };
     } else if (heatingFuel.includes('gas')) {
-      return 'tank_gas'; // Prioritize ATTOM data over region
+      return { type: 'tank_gas', confidence: BASES.attom_enhanced };
+    } else if (heatingFuel.includes('none') || heatingFuel.includes('unknown')) {
+      // Phase 1.5+: Handle uncertain ATTOM fuel data with decade-based priors
+      const defaultType = getDecadeBasedWaterHeaterDefault(buildYear, climateZone);
+      return { type: defaultType, confidence: BASES.attom_uncertain };
     }
   }
   
-  // Phase 1.5: Better Florida defaults - electric preferred in FL  
+  // Phase 1.5+: Decade-based defaults when ATTOM missing
+  const defaultType = getDecadeBasedWaterHeaterDefault(buildYear, climateZone);
+  return { type: defaultType, confidence: BASES.inferred };
+}
+
+// Phase 1.5+: Decade-based water heater defaults with size considerations  
+function getDecadeBasedWaterHeaterDefault(buildYear?: number, climateZone?: string): string {
+  if (!buildYear) return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
+  
+  // Pre-1980 homes: more likely gas if infrastructure available
+  if (buildYear < 1980) {
+    return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
+  }
+  
+  // 1980-2000: transition period, region-dependent
+  if (buildYear < 2000) {
+    return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
+  }
+  
+  // Post-2000: modern defaults
   return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
 }
 
@@ -424,13 +456,24 @@ const predictionRules: PredictionRule[] = [
           } else {
             const age = 2024 - permitYear;
           
-          baseConfidence = BASES.permit;
+          // Phase 1.5+: Permit aging confidence decay
+          if (age <= 5) {
+            baseConfidence = BASES.permit_fresh;
+            modifiers.push('fresh permit');
+          } else if (age <= 15) {
+            baseConfidence = BASES.permit_medium;
+            modifiers.push('medium-aged permit');
+          } else {
+            baseConfidence = BASES.permit_aged;
+            modifiers.push(`aged permit (${age}y old)`);
+          }
+          
           sources.push(`roof permit ${permitYear}`);
           
-          // Recency bonus
+          // Recency bonus for very recent permits only
           if (age < 2) {
             baseConfidence += MODS.recency;
-            modifiers.push('recent permit');
+            modifiers.push('very recent permit');
           }
           
           const roofMaterial = inferRoofMaterial(latestPermit.description, attomData);
@@ -439,7 +482,13 @@ const predictionRules: PredictionRule[] = [
           let replacementLikely = false;
           if (lifespanInfo) {
             const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
-            replacementLikely = calculateReplacementLikelihood(age, adjustedMaxLifespan, true);
+            replacementLikely = calculateReplacementLikelihood(age, adjustedMaxLifespan, true, 'roof');
+            
+            // Phase 1.5+: Flag replacement likely if permit age exceeds typical lifespan
+            if (age > lifespanInfo.typical_years + 5) {
+              replacementLikely = true;
+              modifiers.push('permit age exceeds typical lifespan');
+            }
             
             if (climateZone !== 'default') {
               baseConfidence += MODS.climate;
@@ -468,39 +517,39 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Phase 1.5: Use ATTOM yearbuilt/effective with proper confidence tiers
-      const installYear = attomExtracted?.effectiveYear || attomExtracted?.yearBuilt || property.year_built;
+      // Phase 1.5+: Use effective year only for roof (renovation indicator), yearBuilt for others
+      const roofInstallYear = attomExtracted?.effectiveYear || attomExtracted?.yearBuilt || property.year_built;
       
-      if (installYear) {
-        const houseAge = 2024 - installYear;
-        sources.push(`built ${installYear}`);
+      if (roofInstallYear) {
+        const roofAge = 2024 - roofInstallYear;
+        sources.push(`roof install/effective year ${roofInstallYear}`);
         
         // Enhanced confidence based on available ATTOM data
         if (attomExtracted?.roofMaterial) {
-          baseConfidence = BASES.attom_enhanced; // 0.70 base
+          baseConfidence = BASES.attom_enhanced;
           sources.push(`ATTOM roofcover: ${attomExtracted.roofMaterial}`);
           modifiers.push('material confirmed');
         } else {
-          baseConfidence = BASES.attom_basic; // 0.60 base  
+          baseConfidence = BASES.attom_basic;
         }
         
         const roofMaterial = inferRoofMaterial('', attomData);
         const lifespanInfo = getLifespanData(lifespanData, 'roof', roofMaterial, climateZone);
         
-        let estimatedRoofAge = houseAge;
+        let estimatedRoofAge = roofAge;
         let replacementLikely = false;
         
         if (lifespanInfo) {
           const adjustedTypicalLifespan = applyClimateFactors(lifespanInfo.typical_years, climateFactors, climateZone);
+          const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
           
-          // Assume roof replacement based on typical lifespan
-          if (houseAge > adjustedTypicalLifespan) {
-            estimatedRoofAge = houseAge - adjustedTypicalLifespan;
+          // Phase 1.5+: Only estimate replacement if using built year (not effective year)
+          if (!attomExtracted?.effectiveYear && roofAge > adjustedTypicalLifespan) {
+            estimatedRoofAge = roofAge - adjustedTypicalLifespan;
             sources.push(`estimated replacement after ${adjustedTypicalLifespan}y`);
           }
           
-          const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
-          replacementLikely = calculateReplacementLikelihood(estimatedRoofAge, adjustedMaxLifespan, false);
+          replacementLikely = calculateReplacementLikelihood(estimatedRoofAge, adjustedMaxLifespan, false, 'roof');
           
           if (replacementLikely) {
             modifiers.push('age exceeds expected lifespan without permit');
@@ -520,14 +569,15 @@ const predictionRules: PredictionRule[] = [
           confidence: clampConfidence(baseConfidence),
           provenance: { 
             source: attomExtracted?.roofMaterial ? 'attom_enhanced' : 'attom_basic',
-            house_age: houseAge,
+            roof_age: roofAge,
             estimated_roof_age: estimatedRoofAge,
             roof_material: roofMaterial,
             sources: sources,
             modifiers: modifiers,
             replacement_likely: replacementLikely,
             climate_zone: climateZone,
-            install_year: installYear
+            install_year: roofInstallYear,
+            used_effective_year: !!attomExtracted?.effectiveYear
           }
         };
       }
@@ -743,18 +793,36 @@ const predictionRules: PredictionRule[] = [
           const hvacType = inferHvacType(latestPermit.description);
           const lifespanInfo = getLifespanData(lifespanData, 'hvac', hvacType, climateZone);
           
-          let baseConfidence = BASES.permit;
+          // Phase 1.5+: Permit aging confidence decay for HVAC
+          let baseConfidence;
+          if (age <= 5) {
+            baseConfidence = BASES.permit_fresh;
+            modifiers.push('fresh HVAC permit');
+          } else if (age <= 15) {
+            baseConfidence = BASES.permit_medium;
+            modifiers.push('medium-aged HVAC permit');
+          } else {
+            baseConfidence = BASES.permit_aged;
+            modifiers.push(`aged HVAC permit (${age}y old)`);
+          }
+          
           let replacementLikely = false;
           
           // Recency bonus for very recent permits
           if (age < 2) {
             baseConfidence += MODS.recency;
-            modifiers.push('recent permit');
+            modifiers.push('very recent permit');
           }
           
           if (lifespanInfo) {
             const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
-            replacementLikely = calculateReplacementLikelihood(age, adjustedMaxLifespan, true);
+            replacementLikely = calculateReplacementLikelihood(age, adjustedMaxLifespan, true, 'hvac');
+            
+            // Phase 1.5+: Flag replacement likely if permit age exceeds typical lifespan
+            if (age > lifespanInfo.typical_years + 5) {
+              replacementLikely = true;
+              modifiers.push('HVAC permit age exceeds typical lifespan');
+            }
             
             if (climateZone !== 'default') {
               baseConfidence += MODS.climate;
@@ -783,12 +851,12 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Phase 1.5: Enhanced ATTOM-based age estimation
-      const installYear = attomExtracted?.effectiveYear || attomExtracted?.yearBuilt || property.year_built;
+      // Phase 1.5+: Use yearBuilt for HVAC (not effective year - that's for roof renovations)
+      const hvacInstallYear = attomExtracted?.yearBuilt || property.year_built;
       
-      if (installYear) {
-        const homeAge = 2024 - installYear;
-        sources.push(`built ${installYear}`);
+      if (hvacInstallYear) {
+        const homeAge = 2024 - hvacInstallYear;
+        sources.push(`built ${hvacInstallYear}`);
         
         let baseConfidence = BASES.attom_basic; // 0.60 for ATTOM data
         let estimatedHvacAge = homeAge;
@@ -806,6 +874,7 @@ const predictionRules: PredictionRule[] = [
         
         if (lifespanInfo) {
           const adjustedTypicalLifespan = applyClimateFactors(lifespanInfo.typical_years, climateFactors, climateZone);
+          const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
           
           // Assume HVAC replaced based on typical lifespan
           if (homeAge > adjustedTypicalLifespan) {
@@ -813,11 +882,11 @@ const predictionRules: PredictionRule[] = [
             sources.push(`estimated replacement after ${adjustedTypicalLifespan}y`);
           }
           
-          const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
-          replacementLikely = calculateReplacementLikelihood(estimatedHvacAge, adjustedMaxLifespan, false);
+          // Phase 1.5+: Strengthened HVAC replacement logic - 20+ years threshold
+          replacementLikely = calculateReplacementLikelihood(estimatedHvacAge, adjustedMaxLifespan, false, 'hvac');
           
           if (replacementLikely) {
-            modifiers.push('age exceeds expected lifespan without permit');
+            modifiers.push('HVAC age exceeds expected lifespan without permit');
             baseConfidence += MODS.exceedsNoPermit;
           }
         }
@@ -841,7 +910,7 @@ const predictionRules: PredictionRule[] = [
             modifiers: modifiers,
             replacement_likely: replacementLikely,
             climate_zone: climateZone,
-            install_year: installYear
+            install_year: hvacInstallYear
           }
         };
       }
@@ -898,41 +967,39 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Phase 1.5: Prioritize ATTOM heating fuel over regional defaults
+      // Phase 1.5+: Enhanced ATTOM heating fuel handling with uncertainty management
       if (attomExtracted?.heatingFuel) {
         const heatingFuel = attomExtracted.heatingFuel.toLowerCase();
-        let whType;
-        let baseConfidence;
+        const buildYear = attomExtracted?.yearBuilt || property.year_built;
+        
+        const whResult = inferWaterHeaterType('', attomData, climateZone, buildYear);
         
         if (heatingFuel.includes('electric')) {
-          whType = 'tank_electric';
-          baseConfidence = BASES.attom_enhanced; // 0.70 for ATTOM fuel data
           sources.push(`ATTOM heating fuel: ${attomExtracted.heatingFuel} → electric WH`);
         } else if (heatingFuel.includes('gas')) {
-          whType = 'tank_gas';
-          baseConfidence = BASES.attom_enhanced; // 0.70 for ATTOM fuel data  
           sources.push(`ATTOM heating fuel: ${attomExtracted.heatingFuel} → gas WH`);
+        } else if (heatingFuel.includes('none') || heatingFuel.includes('unknown')) {
+          sources.push(`ATTOM fuel uncertain: ${attomExtracted.heatingFuel}, using decade defaults`);
+          modifiers.push('uncertain ATTOM fuel data');
         } else {
-          // Fallback to climate defaults for other fuel types
-          whType = climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
-          baseConfidence = BASES.attom_basic; // 0.60
-          sources.push(`ATTOM fuel: ${attomExtracted.heatingFuel}, climate default: ${whType}`);
+          sources.push(`ATTOM fuel: ${attomExtracted.heatingFuel}, climate default: ${whResult.type}`);
         }
         
         if (climateZone !== 'default') {
-          baseConfidence += MODS.climate;
+          whResult.confidence += MODS.climate;
           modifiers.push(`${climateZone} climate factors applied`);
         }
         
         return {
-          value: whType,
-          confidence: clampConfidence(baseConfidence),
+          value: whResult.type,
+          confidence: clampConfidence(whResult.confidence),
           provenance: { 
             source: 'attom_fuel_enhanced',
             sources: sources,
             modifiers: modifiers,
             climate_zone: climateZone,
-            heating_fuel: attomExtracted.heatingFuel
+            heating_fuel: attomExtracted.heatingFuel,
+            build_year: buildYear
           }
         };
       }
@@ -1027,15 +1094,15 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Phase 1.5: Enhanced age estimation with proper lifespan logic
-      const installYear = attomExtracted?.effectiveYear || attomExtracted?.yearBuilt || property.year_built;
+      // Phase 1.5+: Use yearBuilt for water heater (not effective year)
+      const whInstallYear = attomExtracted?.yearBuilt || property.year_built;
       
-      if (installYear) {
-        const homeAge = 2024 - installYear;
-        sources.push(`built ${installYear}`);
+      if (whInstallYear) {
+        const homeAge = 2024 - whInstallYear;
+        sources.push(`built ${whInstallYear}`);
         
-        const typicalWhType = inferWaterHeaterType('', attomData, climateZone);
-        const lifespanInfo = getLifespanData(lifespanData, 'water_heater', typicalWhType, climateZone);
+        const whResult = inferWaterHeaterType('', attomData, climateZone, whInstallYear);
+        const lifespanInfo = getLifespanData(lifespanData, 'water_heater', whResult.type, climateZone);
         
         let estimatedWhAge = homeAge; // Start with actual house age
         let baseConfidence = BASES.attom_basic; // 0.60 for ATTOM data
@@ -1078,12 +1145,12 @@ const predictionRules: PredictionRule[] = [
             source: attomExtracted?.heatingFuel ? 'attom_enhanced' : 'attom_basic',
             home_age: homeAge,
             estimated_wh_age: estimatedWhAge,
-            water_heater_type: typicalWhType,
+            water_heater_type: whResult.type,
             sources: sources,
             modifiers: modifiers,
             replacement_likely: replacementLikely,
             climate_zone: climateZone,
-            install_year: installYear
+            install_year: whInstallYear
           }
         };
        }
