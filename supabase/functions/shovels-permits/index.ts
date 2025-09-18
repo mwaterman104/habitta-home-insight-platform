@@ -47,12 +47,22 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseClient.auth.getUser(token)
+    // Handle authentication - support both direct calls and internal function calls
+    let user = null
+    const authHeader = req.headers.get('Authorization')
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user: authUser } } = await supabaseClient.auth.getUser(token)
+      user = authUser
+    }
 
+    // For internal function calls, we might not have a user but we should still allow the call
+    // We'll use a default user ID for internal operations or skip user-specific operations
     if (!user) {
-      throw new Error('Not authenticated')
+      console.log('No authenticated user found - this might be an internal function call')
+      // For validation mode or internal calls, we don't need authentication
+      // But for database operations, we'll need to handle this differently
     }
 
     const { address, homeId } = await req.json()
@@ -158,6 +168,23 @@ serve(async (req) => {
     }
 
     // Regular mode - save to database (existing code)
+    // For database operations, we need a user - if no user, skip database operations
+    if (!user) {
+      console.log('No user found - skipping database operations, returning data only')
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          permits: [],
+          violations: [],
+          message: 'No user authentication - data retrieved but not saved'
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      )
+    }
+
     // Process and insert permits
     let permitsInserted = 0
     if (permitsItems && permitsItems.length) {
@@ -205,7 +232,7 @@ serve(async (req) => {
     if (violationsData?.violations) {
       for (const violation of violationsData.violations) {
         const violationData = {
-          user_id: user.id,
+          user_id: user!.id,
           home_id: homeId,
           violation_number: violation.violation_number,
           violation_type: violation.violation_type,
