@@ -10,11 +10,12 @@ import { StatusBadge } from "@/components/validation/StatusBadge";
 import { ResetPropertyDialog } from "@/components/validation/ResetPropertyDialog";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3, MoreVertical, Eye, Edit, RotateCcw } from "lucide-react";
+import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3, MoreVertical, Eye, Edit, RotateCcw, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { ImportCsvDialog } from "@/components/validation/ImportCsvDialog";
 import { AddAddressDialog } from "@/components/validation/AddAddressDialog";
 import { BatchOperationsDialog } from "@/components/validation/BatchOperationsDialog";
+import { BulkReportDialog } from "@/components/validation/BulkReportDialog";
 
 export default function ValidationCockpit() {
   const [properties, setProperties] = useState<PropertySample[]>([]);
@@ -275,9 +276,16 @@ export default function ValidationCockpit() {
             </Button>
           </BatchOperationsDialog>
           
+          <BulkReportDialog properties={properties}>
+            <Button variant="outline">
+              <FileText className="h-4 w-4 mr-2" />
+              Bulk Reports
+            </Button>
+          </BulkReportDialog>
+          
           <Button variant="outline" onClick={handleExportCsv}>
             <Download className="h-4 w-4 mr-2" />
-            Export CSV
+            Export Properties
           </Button>
         </div>
         
