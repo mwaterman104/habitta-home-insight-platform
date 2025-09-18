@@ -40,41 +40,121 @@ export function ImportCsvDialog({ onImportComplete, children }: ImportCsvDialogP
     reader.readAsText(selectedFile);
   };
 
+  const parseCsvRow = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    result.push(current.trim());
+    return result;
+  };
+
+  const normalizeHeader = (header: string): string => {
+    return header.toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+  };
+
+  const findHeaderMapping = (headers: string[]): { [key: string]: number } => {
+    const mapping: { [key: string]: number } = {};
+    const normalizedHeaders = headers.map(h => normalizeHeader(h));
+    
+    // Define flexible mappings for required fields
+    const fieldMappings = {
+      street_address: ['street_address', 'address', 'street', 'address_line_1', 'line1'],
+      city: ['city'],
+      state: ['state', 'st'],
+      zip: ['zip', 'zipcode', 'postal_code', 'zip_code']
+    };
+    
+    // Find matches for each required field
+    for (const [field, variations] of Object.entries(fieldMappings)) {
+      for (const variation of variations) {
+        const index = normalizedHeaders.findIndex(h => h === variation);
+        if (index !== -1) {
+          mapping[field] = index;
+          break;
+        }
+      }
+    }
+    
+    // Find optional fields
+    const optionalMappings = {
+      unit: ['unit', 'apt', 'suite', 'apartment'],
+      apn: ['apn', 'parcel', 'parcel_number'],
+      source_list: ['source_list', 'source', 'list_name'],
+      assigned_to: ['assigned_to', 'assignee', 'owner']
+    };
+    
+    for (const [field, variations] of Object.entries(optionalMappings)) {
+      for (const variation of variations) {
+        const index = normalizedHeaders.findIndex(h => h === variation);
+        if (index !== -1) {
+          mapping[field] = index;
+          break;
+        }
+      }
+    }
+    
+    return mapping;
+  };
+
   const parseCsv = (csvText: string) => {
-    const lines = csvText.trim().split('\n');
+    const lines = csvText.trim().split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV must have at least a header and one data row');
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const requiredFields = ['street_address', 'city', 'state', 'zip'];
+    const headers = parseCsvRow(lines[0]);
+    const mapping = findHeaderMapping(headers);
     
-    const missingFields = requiredFields.filter(field => !headers.includes(field));
+    // Check for required fields
+    const requiredFields = ['street_address', 'city', 'state', 'zip'];
+    const missingFields = requiredFields.filter(field => mapping[field] === undefined);
     if (missingFields.length > 0) {
-      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}. Available headers: ${headers.join(', ')}`);
     }
 
     return lines.slice(1).map((line, index) => {
-      const values = line.split(',').map(v => v.trim());
-      if (values.length !== headers.length) {
-        throw new Error(`Row ${index + 2} has incorrect number of columns`);
+      if (!line.trim()) return null; // Skip empty lines
+      
+      try {
+        const values = parseCsvRow(line);
+        
+        return {
+          street_address: values[mapping.street_address] || '',
+          unit: mapping.unit !== undefined ? values[mapping.unit] || null : null,
+          city: values[mapping.city] || '',
+          state: values[mapping.state] || '',
+          zip: values[mapping.zip] || '',
+          apn: mapping.apn !== undefined ? values[mapping.apn] || null : null,
+          source_list: mapping.source_list !== undefined ? values[mapping.source_list] || 'CSV Import' : 'CSV Import',
+          assigned_to: mapping.assigned_to !== undefined ? values[mapping.assigned_to] || null : null,
+          status: 'pending' as const,
+        };
+      } catch (error) {
+        console.warn(`Skipping malformed row ${index + 2}: ${line}`);
+        return null;
       }
-
-      const row: any = {};
-      headers.forEach((header, i) => {
-        row[header] = values[i];
-      });
-
-      return {
-        street_address: row.street_address,
-        unit: row.unit || null,
-        city: row.city,
-        state: row.state,
-        zip: row.zip,
-        apn: row.apn || null,
-        source_list: row.source_list || 'CSV Import',
-        assigned_to: row.assigned_to || null,
-        status: 'pending' as const,
-      };
-    });
+    }).filter(Boolean); // Remove null entries
   };
 
   const handleImport = async () => {
