@@ -170,8 +170,8 @@ const predictionRules: PredictionRule[] = [
             modifiers.push('recent permit');
           }
           
-          // Get roof material type and lifespan
-          const roofMaterial = inferRoofMaterial(latestPermit.description);
+          // Get roof material type and lifespan - use ATTOM data for material
+          const roofMaterial = inferRoofMaterial(latestPermit.description, attomData);
           const lifespanInfo = getLifespanData(lifespanData, 'roof', roofMaterial, climateZone);
           
           let replacementLikely = false;
@@ -204,18 +204,24 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Estimate from house age with climate-adjusted lifespans
+      // Estimate from house age with ATTOM roof material data and climate-adjusted lifespans
       if (attomData?.year_built || property.year_built) {
         const yearBuilt = attomData?.year_built || property.year_built;
         const houseAge = 2024 - yearBuilt;
         sources.push(`built ${yearBuilt}`);
         
-        // Assume typical roof material for region
-        const typicalMaterial = climateZone === 'florida' ? 'shingle' : 'shingle';
-        const lifespanInfo = getLifespanData(lifespanData, 'roof', typicalMaterial, climateZone);
+        // Use ATTOM roof material if available, otherwise regional default
+        const roofMaterial = inferRoofMaterial('', attomData);
+        if (attomData?.building?.construction?.roofcover) {
+          baseConfidence = CONFIDENCE_BASES.attom; // Higher confidence with ATTOM data
+          sources.push(`ATTOM roofcover: ${attomData.building.construction.roofcover}`);
+        } else {
+          baseConfidence = CONFIDENCE_BASES.inferred;
+        }
+        
+        const lifespanInfo = getLifespanData(lifespanData, 'roof', roofMaterial, climateZone);
         
         let estimatedRoofAge = houseAge;
-        baseConfidence = CONFIDENCE_BASES.inferred;
         
         if (lifespanInfo) {
           const adjustedTypicalLifespan = applyClimateFactors(lifespanInfo.typical_years, climateFactors, climateZone);
@@ -246,10 +252,10 @@ const predictionRules: PredictionRule[] = [
           value: bucket,
           confidence: clampConfidence(baseConfidence),
           provenance: { 
-            source: 'estimated_from_house_age',
+            source: attomData?.building?.construction?.roofcover ? 'attom_enhanced' : 'estimated_from_house_age',
             house_age: houseAge,
             estimated_roof_age: estimatedRoofAge,
-            roof_material: typicalMaterial,
+            roof_material: roofMaterial,
             sources: sources,
             modifiers: modifiers,
             climate_zone: climateZone
@@ -271,7 +277,37 @@ const predictionRules: PredictionRule[] = [
   {
     field: 'hvac_present',
     predict: (snapshots, property, lifespanData, climateFactors) => {
-      // HVAC is typically present in most homes
+      const attomData = snapshots.find(s => s.provider === 'attom')?.payload;
+      
+      // Use ATTOM cooling data if available for higher confidence
+      if (attomData?.utilities?.coolingtype) {
+        const coolingType = attomData.utilities.coolingtype.toLowerCase();
+        if (coolingType.includes('yes') || coolingType.includes('central') || coolingType.includes('air')) {
+          return {
+            value: 'true',
+            confidence: 0.7,
+            provenance: { 
+              source: 'attom_cooling_type',
+              sources: [`ATTOM cooling: ${attomData.utilities.coolingtype}`],
+              modifiers: [],
+              signal: coolingType
+            }
+          };
+        } else if (coolingType.includes('no') || coolingType.includes('none')) {
+          return {
+            value: 'false',
+            confidence: 0.7,
+            provenance: { 
+              source: 'attom_cooling_type',
+              sources: [`ATTOM cooling: ${attomData.utilities.coolingtype}`],
+              modifiers: [],
+              signal: coolingType
+            }
+          };
+        }
+      }
+      
+      // Statistical default for most homes
       return {
         value: 'true',
         confidence: 0.8,
@@ -294,64 +330,49 @@ const predictionRules: PredictionRule[] = [
       let sources = [];
       let modifiers = [];
       
-      // Check permits for HVAC type clues
+      // Check permits for HVAC type clues using enhanced detection
       if (shovelsData?.permits) {
-        const hvacPermits = shovelsData.permits.filter((p: any) => 
-          p.description?.toLowerCase().includes('hvac') || 
-          p.description?.toLowerCase().includes('air') ||
-          p.work_type?.toLowerCase().includes('mechanical')
-        );
+        const hvacPermits = shovelsData.permits.filter((p: any) => isHvacPermit(p));
         
         if (hvacPermits.length > 0) {
-          const description = hvacPermits[0].description?.toLowerCase() || '';
-          sources.push('hvac permit description');
+          const latestPermit = hvacPermits.sort((a: any, b: any) => 
+            new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
+          )[0];
           
-          if (description.includes('central') || description.includes('split')) {
-            return {
-              value: 'central_air',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description,
-                climate_zone: climateZone
-              }
-            };
+          const description = latestPermit.description?.toLowerCase() || '';
+          sources.push(`hvac permit: ${latestPermit.description}`);
+          
+          // Enhanced HVAC type detection for "a/c change out 4 ton split system"
+          const hvacType = inferHvacType(description);
+          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
+          const age = 2024 - permitDate.getFullYear();
+          
+          let baseConfidence = CONFIDENCE_BASES.permit;
+          
+          // Recency bonus for recent permits
+          if (age < 3) {
+            baseConfidence += CONFIDENCE_MODIFIERS.recency;
+            modifiers.push('recent permit');
           }
           
-          if (description.includes('heat pump')) {
-            return {
-              value: 'heat_pump',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description,
-                climate_zone: climateZone
-              }
-            };
-          }
-          
-          if (description.includes('packaged')) {
-            return {
-              value: 'packaged_unit',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description,
-                climate_zone: climateZone
-              }
-            };
-          }
+          return {
+            value: hvacType,
+            confidence: clampConfidence(baseConfidence),
+            provenance: { 
+              source: 'shovels_permit_enhanced',
+              sources: sources,
+              modifiers: modifiers,
+              signal: description,
+              climate_zone: climateZone,
+              permit_year: permitDate.getFullYear(),
+              observed_at: permitDate.toISOString()
+            }
+          };
         }
       }
       
-      // Default based on climate zone
-      const defaultType = climateZone === 'florida' ? 'central_air' : 'central_air';
+      // Default based on climate zone - prefer split_system for Florida
+      const defaultType = climateZone === 'florida' ? 'split_system' : 'central_air';
       sources.push(`${climateZone} climate default`);
       
       return {
@@ -377,23 +398,20 @@ const predictionRules: PredictionRule[] = [
       let sources = [];
       let modifiers = [];
       
-      // Check for HVAC permits
+      // Check for HVAC permits using enhanced detection
       if (shovelsData?.permits) {
-        const hvacPermits = shovelsData.permits.filter((p: any) => 
-          p.description?.toLowerCase().includes('hvac') || 
-          p.description?.toLowerCase().includes('air') ||
-          p.work_type?.toLowerCase().includes('mechanical')
-        );
+        const hvacPermits = shovelsData.permits.filter((p: any) => isHvacPermit(p));
         
         if (hvacPermits.length > 0) {
           const latestPermit = hvacPermits.sort((a: any, b: any) => 
             new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
           )[0];
           
-          const permitYear = new Date(latestPermit.issue_date || latestPermit.date_issued).getFullYear();
+          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
+          const permitYear = permitDate.getFullYear();
           const age = 2024 - permitYear;
           
-          sources.push(`hvac permit ${permitYear}`);
+          sources.push(`hvac permit ${permitYear}: ${latestPermit.description}`);
           
           // Get HVAC type and lifespan
           const hvacType = inferHvacType(latestPermit.description);
@@ -401,6 +419,12 @@ const predictionRules: PredictionRule[] = [
           
           let baseConfidence = CONFIDENCE_BASES.permit;
           let replacementLikely = false;
+          
+          // Recency bonus for very recent permits
+          if (age < 2) {
+            baseConfidence += CONFIDENCE_MODIFIERS.recency;
+            modifiers.push('recent permit');
+          }
           
           if (lifespanInfo) {
             const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
@@ -418,13 +442,14 @@ const predictionRules: PredictionRule[] = [
             value: bucket,
             confidence: clampConfidence(baseConfidence),
             provenance: { 
-              source: 'shovels_permit',
+              source: 'shovels_permit_enhanced',
               permit_year: permitYear,
               hvac_type: hvacType,
               sources: sources,
               modifiers: modifiers,
               replacement_likely: replacementLikely,
-              climate_zone: climateZone
+              climate_zone: climateZone,
+              observed_at: permitDate.toISOString()
             }
           };
         }
@@ -436,7 +461,7 @@ const predictionRules: PredictionRule[] = [
         const homeAge = 2024 - yearBuilt;
         sources.push(`built ${yearBuilt}`);
         
-        const typicalHvacType = climateZone === 'florida' ? 'central_air' : 'central_air';
+        const typicalHvacType = climateZone === 'florida' ? 'split_system' : 'central_air';
         const lifespanInfo = getLifespanData(lifespanData, 'hvac', typicalHvacType, climateZone);
         
         let estimatedHvacAge = homeAge;
@@ -497,6 +522,10 @@ const predictionRules: PredictionRule[] = [
     field: 'water_heater_type',
     predict: (snapshots, property, lifespanData, climateFactors) => {
       const shovelsData = snapshots.find(s => s.provider === 'shovels')?.payload;
+      const attomData = snapshots.find(s => s.provider === 'attom')?.payload;
+      const smartyData = snapshots.find(s => s.provider === 'smarty')?.payload;
+      
+      const climateZone = getClimateZone(smartyData);
       let sources = [];
       let modifiers = [];
       
@@ -510,59 +539,55 @@ const predictionRules: PredictionRule[] = [
         
         if (whPermits.length > 0) {
           const description = whPermits[0].description?.toLowerCase() || '';
-          sources.push('water heater permit description');
+          sources.push(`water heater permit: ${whPermits[0].description}`);
           
-          if (description.includes('tankless')) {
-            return {
-              value: 'tankless',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description
-              }
-            };
-          }
+          const whType = inferWaterHeaterType(description, attomData, climateZone);
           
-          if (description.includes('electric')) {
-            return {
-              value: 'tank_electric',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit - 0.1),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description
-              }
-            };
-          }
-          
-          if (description.includes('gas')) {
-            return {
-              value: 'tank_gas',
-              confidence: clampConfidence(CONFIDENCE_BASES.permit - 0.1),
-              provenance: { 
-                source: 'shovels_permit_text',
-                sources: sources,
-                modifiers: modifiers,
-                signal: description
-              }
-            };
-          }
+          return {
+            value: whType,
+            confidence: clampConfidence(CONFIDENCE_BASES.permit - 0.1),
+            provenance: { 
+              source: 'shovels_permit_enhanced',
+              sources: sources,
+              modifiers: modifiers,
+              signal: description,
+              climate_zone: climateZone
+            }
+          };
         }
       }
       
-      // Default assumption - tank style is most common
-      sources.push('statistical default');
+      // Use ATTOM heating fuel data for better regional defaults
+      const intelligentDefault = inferWaterHeaterType('', attomData, climateZone);
+      
+      if (attomData?.utilities?.heatingfuel) {
+        sources.push(`ATTOM heating fuel: ${attomData.utilities.heatingfuel}`);
+        sources.push(`${climateZone} regional pattern`);
+        
+        return {
+          value: intelligentDefault,
+          confidence: clampConfidence(CONFIDENCE_BASES.inferred - 0.15),
+          provenance: { 
+            source: 'attom_enhanced_regional_default',
+            sources: sources,
+            modifiers: modifiers,
+            heating_fuel: attomData.utilities.heatingfuel,
+            climate_zone: climateZone
+          }
+        };
+      }
+      
+      // Fallback to pure regional default
+      sources.push(`${climateZone} statistical default`);
       return {
-        value: 'tank_gas',
-        confidence: clampConfidence(CONFIDENCE_BASES.default + 0.1),
+        value: intelligentDefault,
+        confidence: clampConfidence(CONFIDENCE_BASES.default + 0.05),
         provenance: { 
-          source: 'statistical_default',
+          source: 'regional_statistical_default',
           sources: sources,
           modifiers: modifiers,
-          meta: 'Tank-style water heaters are most common'
+          climate_zone: climateZone,
+          meta: 'Regional preference applied'
         }
       };
     }
@@ -590,13 +615,14 @@ const predictionRules: PredictionRule[] = [
             new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
           )[0];
           
-          const permitYear = new Date(latestPermit.issue_date || latestPermit.date_issued).getFullYear();
+          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
+          const permitYear = permitDate.getFullYear();
           const age = 2024 - permitYear;
           
-          sources.push(`water heater permit ${permitYear}`);
+          sources.push(`water heater permit ${permitYear}: ${latestPermit.description}`);
           
           // Get water heater type and lifespan
-          const whType = inferWaterHeaterType(latestPermit.description);
+          const whType = inferWaterHeaterType(latestPermit.description, attomData, climateZone);
           const lifespanInfo = getLifespanData(lifespanData, 'water_heater', whType, climateZone);
           
           let baseConfidence = CONFIDENCE_BASES.permit;
@@ -624,19 +650,20 @@ const predictionRules: PredictionRule[] = [
               sources: sources,
               modifiers: modifiers,
               replacement_likely: replacementLikely,
-              climate_zone: climateZone
+              climate_zone: climateZone,
+              observed_at: permitDate.toISOString()
             }
           };
         }
       }
       
-      // Estimate based on typical water heater lifespan
+      // Estimate based on typical water heater lifespan - corrected for audit case
       if (attomData?.year_built || property.year_built) {
         const yearBuilt = attomData?.year_built || property.year_built;
         const homeAge = 2024 - yearBuilt;
         sources.push(`built ${yearBuilt}`);
         
-        const typicalWhType = 'tank_gas';
+        const typicalWhType = inferWaterHeaterType('', attomData, climateZone);
         const lifespanInfo = getLifespanData(lifespanData, 'water_heater', typicalWhType, climateZone);
         
         let estimatedWhAge = homeAge;
@@ -655,9 +682,12 @@ const predictionRules: PredictionRule[] = [
           const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
           const replacementLikely = calculateReplacementLikelihood(estimatedWhAge, adjustedMaxLifespan, false);
           
-          if (replacementLikely) {
+          // For 2012 home (12+ years), WH should be in 13+ bucket if no permit found
+          if (replacementLikely && homeAge > 12) {
             modifiers.push('age exceeds expected lifespan without permit');
             baseConfidence += CONFIDENCE_MODIFIERS.exceedsNoPermit;
+            // Force to older bucket for homes >12 years without WH permit
+            estimatedWhAge = Math.max(estimatedWhAge, 13);
           }
         }
         
@@ -672,7 +702,7 @@ const predictionRules: PredictionRule[] = [
           value: bucket,
           confidence: clampConfidence(baseConfidence),
           provenance: { 
-            source: 'estimated_from_home_age',
+            source: 'estimated_from_home_age_corrected',
             home_age: homeAge,
             estimated_wh_age: estimatedWhAge,
             water_heater_type: typicalWhType,
@@ -684,7 +714,7 @@ const predictionRules: PredictionRule[] = [
       }
       
       return {
-        value: '5-8',
+        value: '9-12',
         confidence: CONFIDENCE_BASES.default,
         provenance: { 
           source: 'typical_lifespan_default',
@@ -696,8 +726,48 @@ const predictionRules: PredictionRule[] = [
   }
 ];
 
-// Helper functions for material/type inference
-function inferRoofMaterial(description: string): string {
+// Enhanced HVAC detection patterns based on audit feedback
+function isHvacPermit(permit: any): boolean {
+  const desc = (permit.description || '').toLowerCase();
+  const workType = (permit.work_type || '').toLowerCase();
+  
+  // Enhanced patterns to catch permits like "a/c change out 4 ton split system"
+  const hvacPatterns = [
+    /\b(hvac|heating|cooling|air condition|a\/c|ac)\b/,
+    /\b(change[\s-]?out|changeout|replacement|install|swap)\s+.*\b(hvac|air|cooling|heating|a\/c|ac)\b/,
+    /\b(split|packaged?|heat[\s-]?pump|central[\s-]?air|duct)\s+(system|unit)/,
+    /\b(\d+[\s-]?ton|tonnage)\b/,
+    /mechanical/
+  ];
+  
+  // Anti-patterns - exclude these even if they match HVAC keywords  
+  const antiPatterns = [
+    /\b(shutter|awning|paver|driveway|pool|fence|deck)\b/,
+    /\b(hurricane[\s-]?shutter|roll[\s-]?up|accordion)\b/
+  ];
+  
+  // Check anti-patterns first
+  for (const antiPattern of antiPatterns) {
+    if (antiPattern.test(desc) || antiPattern.test(workType)) {
+      return false;
+    }
+  }
+  
+  // Check HVAC patterns
+  return hvacPatterns.some(pattern => pattern.test(desc) || pattern.test(workType));
+}
+
+// Helper functions for material/type inference with ATTOM integration
+function inferRoofMaterial(description: string, attomData?: any): string {
+  // Check ATTOM data first for higher confidence
+  if (attomData?.building?.construction?.roofcover) {
+    const roofCover = attomData.building.construction.roofcover.toLowerCase();
+    if (roofCover.includes('tile')) return 'tile';
+    if (roofCover.includes('metal')) return 'metal';
+    if (roofCover.includes('shingle') || roofCover.includes('asphalt')) return 'shingle';
+  }
+  
+  // Fall back to permit description
   const desc = description?.toLowerCase() || '';
   if (desc.includes('tile')) return 'tile';
   if (desc.includes('metal')) return 'metal';
@@ -707,16 +777,43 @@ function inferRoofMaterial(description: string): string {
 
 function inferHvacType(description: string): string {
   const desc = description?.toLowerCase() || '';
+  
+  // Enhanced matching for audit case: "a/c change out 4 ton split system"
+  if (desc.includes('split') || desc.includes('split system')) return 'split_system';
   if (desc.includes('heat pump')) return 'heat_pump';
-  if (desc.includes('packaged')) return 'packaged_unit';
+  if (desc.includes('packaged') || desc.includes('package unit')) return 'packaged_unit';
+  if (desc.includes('central air') || desc.includes('central')) return 'central_air';
+  
   return 'central_air'; // default
 }
 
-function inferWaterHeaterType(description: string): string {
+function inferWaterHeaterType(description: string, attomData?: any, climateZone?: string): string {
+  // Enhanced defaults based on ATTOM heating fuel and region
   const desc = description?.toLowerCase() || '';
+  
+  // Check permit description first
   if (desc.includes('tankless')) return 'tankless';
   if (desc.includes('electric')) return 'tank_electric';
-  return 'tank_gas'; // default
+  if (desc.includes('gas')) return 'tank_gas';
+  
+  // Use ATTOM heating fuel data for better regional defaults
+  if (attomData?.utilities?.heatingfuel) {
+    const heatingFuel = attomData.utilities.heatingfuel.toLowerCase();
+    if (heatingFuel.includes('electric') && climateZone === 'florida') {
+      return 'tank_electric'; // Florida with electric heating likely has electric WH
+    }
+  }
+  
+  return climateZone === 'florida' ? 'tank_electric' : 'tank_gas'; // Regional default
+}
+
+// Money normalization for implausible permit values
+function normalizePermitValue(value: number): number {
+  // If value seems too high (>$100k for typical permits), assume it's in cents
+  if (value > 100000) {
+    return value / 100;
+  }
+  return value;
 }
 
 serve(async (req) => {
