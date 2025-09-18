@@ -61,66 +61,90 @@ export const LIFESPAN = {
   }
 };
 
-// Enhanced utility functions for Phase 1.5
+// Phase 1.5: Enhanced climate zone detection with comprehensive Florida logic
 function getClimateZone(smartyData: any, attomData: any): string {
   // Try Smarty data first
   const state = smartyData?.components?.state_abbreviation;
   if (state === 'FL') return 'florida';
   
-  // Fall back to ATTOM data - handle multiple response formats
-  const attomState = attomData?.address?.countrySubd || 
-                    attomData?.location?.state ||
-                    attomData?.summary?.state ||
-                    attomData?._attomData?.address?.countrySubd;
+  // Enhanced ATTOM data extraction
+  const attomExtracted = extractAttomData(attomData);
   
-  if (attomState === 'FL') return 'florida';
+  if (attomExtracted?.address?.state === 'FL') return 'florida';
   
-  // Check locality/city for additional context
-  const locality = attomData?.address?.locality || 
-                   attomData?.location?.city ||
-                   attomData?._attomData?.address?.locality;
-                   
-  if (locality && (locality.toLowerCase().includes('florida') || 
-                   locality.toLowerCase().includes('miami') ||
-                   locality.toLowerCase().includes('palm beach') ||
-                   locality.toLowerCase().includes('boca raton') ||
-                   locality.toLowerCase().includes('delray'))) {
-    return 'florida';
+  // Check locality/city for Florida indicators
+  const locality = attomExtracted?.address?.locality;
+  if (locality) {
+    const floridaCities = [
+      'miami', 'palm beach', 'boca raton', 'delray', 'fort lauderdale',
+      'hollywood', 'pompano', 'coral springs', 'wellington', 'boynton',
+      'west palm', 'dania', 'wilton manors', 'plantation', 'davie',
+      'pembroke', 'sunrise', 'margate', 'coconut creek', 'orlando',
+      'tampa', 'jacksonville', 'tallahassee', 'gainesville', 'pensacola',
+      'clearwater', 'st petersburg', 'naples', 'sarasota', 'bradenton',
+      'lakeland', 'ocala', 'melbourne', 'vero beach', 'winter park'
+    ];
+    
+    const localityLower = locality.toLowerCase();
+    if (floridaCities.some(city => localityLower.includes(city))) {
+      console.log(`Climate zone detection: Florida detected via locality: ${locality}`);
+      return 'florida';
+    }
   }
   
+  console.log(`Climate zone detection: Default (state: ${attomExtracted?.address?.state}, locality: ${locality})`);
   return 'default';
 }
 
-// Enhanced ATTOM data extraction to handle multiple response formats
+// Phase 1.5: Comprehensive ATTOM data extraction with multiple format support
 function extractAttomData(attomPayload: any) {
   if (!attomPayload) return null;
   
   // Handle both direct ATTOM response and nested _attomData structure
   const data = attomPayload._attomData || attomPayload;
   
-  return {
+  // Enhanced extraction with comprehensive path fallbacks
+  const extracted = {
     yearBuilt: data?.summary?.yearbuilt || 
-               data?.building?.summary?.yearbuilteffective ||
-               data?.summary?.yearbuilteffective ||
+               data?.building?.summary?.yearbuilt ||
                data?.property?.summary?.yearbuilt ||
-               data?.year_built,
+               data?.year_built ||
+               null,
     effectiveYear: data?.building?.summary?.yearbuilteffective ||
-                   data?.summary?.yearbuilteffective,
+                   data?.summary?.yearbuilteffective ||
+                   null,
     roofMaterial: data?.building?.construction?.roofcover ||
-                  data?.construction?.roofcover,
+                  data?.construction?.roofcover ||
+                  null,
     heatingFuel: data?.utilities?.heatingfuel ||
-                 data?.building?.utilities?.heatingfuel,
+                 data?.building?.utilities?.heatingfuel ||
+                 null,
     coolingType: data?.utilities?.coolingtype ||
-                 data?.building?.utilities?.coolingtype,
+                 data?.building?.utilities?.coolingtype ||
+                 data?.utilities?.energyType ||
+                 null,
     coordinates: {
-      latitude: data?.location?.latitude,
-      longitude: data?.location?.longitude
+      latitude: data?.location?.latitude || null,
+      longitude: data?.location?.longitude || null
     },
     address: {
-      state: data?.address?.countrySubd,
-      locality: data?.address?.locality
+      state: data?.address?.countrySubd || data?.location?.state || null,
+      locality: data?.address?.locality || data?.location?.city || null
     }
   };
+
+  console.log('ATTOM data extraction:', {
+    yearBuilt: extracted.yearBuilt,
+    effectiveYear: extracted.effectiveYear,
+    roofMaterial: extracted.roofMaterial,
+    heatingFuel: extracted.heatingFuel,
+    coolingType: extracted.coolingType,
+    state: extracted.address.state,
+    locality: extracted.address.locality,
+    hasCoords: !!(extracted.coordinates.latitude && extracted.coordinates.longitude)
+  });
+
+  return extracted;
 }
 
 function getLifespanData(lifespanData: LifespanData[], systemType: string, subtype: string, climateZone: string): LifespanData | null {
@@ -197,39 +221,51 @@ function clampConfidence(confidence: number): number {
   return Math.max(0, Math.min(0.98, confidence));
 }
 
-// Phase 1.5: Enhanced HVAC detection with stricter anti-patterns
+// Phase 1.5: Enhanced HVAC detection with comprehensive anti-patterns
 function isHvacPermit(permit: any): boolean {
   const desc = (permit.description || '').toLowerCase();
   const workType = (permit.work_type || '').toLowerCase();
+  const permitType = (permit.permit_type || '').toLowerCase();
   
-  // Phase 1.5: Stricter anti-patterns first - exclude non-HVAC items
+  // Phase 1.5: Comprehensive anti-patterns - hard exclusions first
   const antiPatterns = [
-    /\b(hurricane[\s-]?shutter|shutter|accordion|roll[\s-]?up)\b/,
-    /\b(paver|driveway|concrete|walkway|sidewalk)\b/,
-    /\b(pool|spa|deck|fence|gate)\b/,
-    /\b(window|door|screen)\b.*\b(install|replace|repair)\b/,
-    /\b(misc|miscellaneous)\b.*\b(paver|driveway|shutter)\b/
+    /\b(hurricane[\s-]?shutter|shutter|accordion|roll[\s-]?up|storm[\s-]?shutter)\b/,
+    /\b(paver|driveway|concrete|walkway|sidewalk|asphalt)\b/,
+    /\b(pool|spa|deck|fence|gate|pergola)\b/,
+    /\b(window|door|screen|glass)\b.*\b(install|replace|repair|frame)\b/,
+    /\b(misc|miscellaneous)\b.*\b(paver|driveway|shutter|fence|deck)\b/,
+    /\b(electrical|plumbing)\b.*\b(outlet|fixture|pipe|drain)\b/,
+    /\b(kitchen|bathroom|cabinet|counter|tile)\b/,
+    /\b(paint|flooring|carpet|wood|vinyl)\b/,
+    /\b(landscaping|irrigation|sprinkler)\b/
   ];
   
   // Check anti-patterns first - hard exclusion
   for (const antiPattern of antiPatterns) {
-    if (antiPattern.test(desc) || antiPattern.test(workType)) {
+    if (antiPattern.test(`${desc} ${workType} ${permitType}`)) {
       return false;
     }
   }
   
   // Enhanced HVAC patterns - must match at least one
   const hvacPatterns = [
-    /\b(a\/c|air\s*conditioning?|hvac|heat\s*pump)\b/,
-    /\b(change[\s-]?out|changeout|replacement|install|swap).*\b(a\/c|air|hvac|cooling|heating)\b/,
-    /\b(split|package)[\s-]?(system|unit)\b/,
-    /\b(\d+[\s-]?ton|tonnage)\b.*\b(a\/c|air|cooling|system)\b/,
-    /\bmechanical\b.*\b(air|cooling|heating)\b/,
-    /\b(mechout|mech[\s-]?out)\b/
+    /\b(a\/c|air\s*conditioning?|hvac|heat\s*pump|air\s*handler)\b/,
+    /\b(change[\s-]?out|changeout|replacement|install|swap).*\b(a\/c|air|hvac|cooling|heating|unit)\b/,
+    /\b(split|package|central)[\s-]?(system|unit|air)\b/,
+    /\b(\d+[\s-]?ton|tonnage)\b.*\b(a\/c|air|cooling|system|unit)\b/,
+    /\bmechanical\b.*\b(air|cooling|heating|ventilation)\b/,
+    /\b(mechout|mech[\s-]?out|mechanical[\s-]?permit)\b/,
+    /\b(ductwork|duct|ventilation|thermostat)\b/
   ];
   
   // Must match HVAC pattern
-  return hvacPatterns.some(pattern => pattern.test(desc) || pattern.test(workType));
+  const isHvac = hvacPatterns.some(pattern => pattern.test(`${desc} ${workType} ${permitType}`));
+  
+  if (isHvac) {
+    console.log(`HVAC permit detected: ${desc} | ${workType} | ${permitType}`);
+  }
+  
+  return isHvac;
 }
 
 // Enhanced helper functions with improved ATTOM data handling
@@ -287,15 +323,53 @@ function inferWaterHeaterType(description: string, attomData?: any, climateZone?
   return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
 }
 
-// Phase 1.5: Money normalization for implausible permit values
-function normalizePermitValue(value: number, permitType?: string): { value: number; normalized: boolean } {
-  const type = (permitType || '').toLowerCase();
-  const likelyCents = value > 100000 && /air|driveway|shutter|misc|paver/i.test(type);
+// Phase 1.5: Enhanced permit value normalization and date validation
+function normalizePermitValue(value: number, description?: string): { value: number; normalized: boolean } {
+  if (!value || value <= 0) return { value: 0, normalized: false };
   
-  return {
-    value: likelyCents ? Math.round(value / 100) : value,
-    normalized: likelyCents
-  };
+  // Detect inflated values (likely in cents instead of dollars)
+  const desc = (description || '').toLowerCase();
+  const isLikelyCents = value > 50000 && (
+    /\b(ac|air|hvac|roof|water[\s-]?heater|shutter|fence|driveway)\b/.test(desc) ||
+    value > 1000000 // Values over $1M are almost certainly in cents
+  );
+  
+  if (isLikelyCents) {
+    console.log(`Permit value normalization: ${value} → ${Math.round(value / 100)} (likely cents → dollars)`);
+    return {
+      value: Math.round(value / 100),
+      normalized: true
+    };
+  }
+  
+  return { value: value, normalized: false };
+}
+
+// Phase 1.5: Enhanced permit date validation with proper fallbacks
+function extractPermitDate(permit: any): { date: Date | null; year: number | null; source: string } {
+  const dateFields = [
+    { field: permit.issue_date || permit.date_issued, name: 'issue_date' },
+    { field: permit.start_date, name: 'start_date' },
+    { field: permit.end_date || permit.date_finaled, name: 'end_date' },
+    { field: permit.file_date || permit.applied_date, name: 'file_date' }
+  ];
+  
+  for (const { field, name } of dateFields) {
+    if (field) {
+      const date = new Date(field);
+      const year = date.getFullYear();
+      
+      // Validate year is reasonable (after 1980, before 2030)
+      if (year >= 1980 && year <= 2030 && !isNaN(date.getTime())) {
+        return { date, year, source: name };
+      } else {
+        console.warn(`Invalid permit date detected: ${field} (${name}) → year ${year}`);
+      }
+    }
+  }
+  
+  console.warn('No valid permit date found, falling back to null');
+  return { date: null, year: null, source: 'none' };
 }
 
 // Phase 1.5: Backfill property coordinates from ATTOM
@@ -337,13 +411,18 @@ const predictionRules: PredictionRule[] = [
         );
         
         if (roofPermits.length > 0) {
-          const latestPermit = roofPermits.sort((a: any, b: any) => 
-            new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
-          )[0];
+          const latestPermit = roofPermits.sort((a: any, b: any) => {
+            const dateA = extractPermitDate(a);
+            const dateB = extractPermitDate(b);
+            return (dateB.date?.getTime() || 0) - (dateA.date?.getTime() || 0);
+          })[0];
           
-          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
-          const permitYear = permitDate.getFullYear();
-          const age = 2024 - permitYear;
+          const { date: permitDate, year: permitYear, source: dateSource } = extractPermitDate(latestPermit);
+          
+          if (!permitDate || !permitYear) {
+            console.warn('Invalid roof permit date, skipping permit-based prediction');
+          } else {
+            const age = 2024 - permitYear;
           
           baseConfidence = BASES.permit;
           sources.push(`roof permit ${permitYear}`);
@@ -370,20 +449,22 @@ const predictionRules: PredictionRule[] = [
           
           const bucket = bucketizeAge(age, 'roof');
           
-          return {
-            value: bucket,
-            confidence: clampConfidence(baseConfidence),
-            provenance: { 
-              source: 'shovels_permit',
-              permit_year: permitYear,
-              roof_material: roofMaterial,
-              sources: sources,
-              modifiers: modifiers,
-              replacement_likely: replacementLikely,
-              climate_zone: climateZone,
-              observed_at: permitDate.toISOString()
-            }
-          };
+            return {
+              value: bucket,
+              confidence: clampConfidence(baseConfidence),
+              provenance: { 
+                source: 'shovels_permit_enhanced',
+                permit_year: permitYear,
+                roof_material: roofMaterial,
+                sources: sources,
+                modifiers: modifiers,
+                replacement_likely: replacementLikely,
+                climate_zone: climateZone,
+                date_source: dateSource,
+                observed_at: permitDate.toISOString()
+              }
+            };
+          }
         }
       }
       
@@ -644,13 +725,18 @@ const predictionRules: PredictionRule[] = [
         const hvacPermits = shovelsData.permits.filter((p: any) => isHvacPermit(p));
         
         if (hvacPermits.length > 0) {
-          const latestPermit = hvacPermits.sort((a: any, b: any) => 
-            new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
-          )[0];
+          const latestPermit = hvacPermits.sort((a: any, b: any) => {
+            const dateA = extractPermitDate(a);
+            const dateB = extractPermitDate(b);
+            return (dateB.date?.getTime() || 0) - (dateA.date?.getTime() || 0);
+          })[0];
           
-          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
-          const permitYear = permitDate.getFullYear();
-          const age = 2024 - permitYear;
+          const { date: permitDate, year: permitYear, source: dateSource } = extractPermitDate(latestPermit);
+          
+          if (!permitDate || !permitYear) {
+            console.warn('Invalid HVAC permit date, skipping permit-based prediction');
+          } else {
+            const age = 2024 - permitYear;
           
           sources.push(`hvac permit ${permitYear}: ${latestPermit.description}`);
           
@@ -678,20 +764,22 @@ const predictionRules: PredictionRule[] = [
           
           const bucket = bucketizeAge(age, 'hvac');
           
-          return {
-            value: bucket,
-            confidence: clampConfidence(baseConfidence),
-            provenance: { 
-              source: 'shovels_permit_enhanced',
-              permit_year: permitYear,
-              hvac_type: hvacType,
-              sources: sources,
-              modifiers: modifiers,
-              replacement_likely: replacementLikely,
-              climate_zone: climateZone,
-              observed_at: permitDate.toISOString()
-            }
-          };
+            return {
+              value: bucket,
+              confidence: clampConfidence(baseConfidence),
+              provenance: { 
+                source: 'shovels_permit_enhanced',
+                permit_year: permitYear,
+                hvac_type: hvacType,
+                sources: sources,
+                modifiers: modifiers,
+                replacement_likely: replacementLikely,
+                climate_zone: climateZone,
+                date_source: dateSource,
+                observed_at: permitDate.toISOString()
+              }
+            };
+          }
         }
       }
       
@@ -887,13 +975,18 @@ const predictionRules: PredictionRule[] = [
         );
         
         if (whPermits.length > 0) {
-          const latestPermit = whPermits.sort((a: any, b: any) => 
-            new Date(b.issue_date || b.date_issued).getTime() - new Date(a.issue_date || a.date_issued).getTime()
-          )[0];
+          const latestPermit = whPermits.sort((a: any, b: any) => {
+            const dateA = extractPermitDate(a);
+            const dateB = extractPermitDate(b);
+            return (dateB.date?.getTime() || 0) - (dateA.date?.getTime() || 0);
+          })[0];
           
-          const permitDate = new Date(latestPermit.issue_date || latestPermit.date_issued);
-          const permitYear = permitDate.getFullYear();
-          const age = 2024 - permitYear;
+          const { date: permitDate, year: permitYear, source: dateSource } = extractPermitDate(latestPermit);
+          
+          if (!permitDate || !permitYear) {
+            console.warn('Invalid water heater permit date, skipping permit-based prediction');
+          } else {
+            const age = 2024 - permitYear;
           
           sources.push(`water heater permit ${permitYear}: ${latestPermit.description}`);
           
@@ -915,20 +1008,22 @@ const predictionRules: PredictionRule[] = [
           
           const bucket = bucketizeAge(age, 'water_heater');
           
-          return {
-            value: bucket,
-            confidence: clampConfidence(baseConfidence),
-            provenance: { 
-              source: 'shovels_permit',
-              permit_year: permitYear,
-              water_heater_type: whType,
-              sources: sources,
-              modifiers: modifiers,
-              replacement_likely: replacementLikely,
-              climate_zone: climateZone,
-              observed_at: permitDate.toISOString()
-            }
-          };
+            return {
+              value: bucket,
+              confidence: clampConfidence(baseConfidence),
+              provenance: { 
+                source: 'shovels_permit_enhanced',
+                permit_year: permitYear,
+                water_heater_type: whType,
+                sources: sources,
+                modifiers: modifiers,
+                replacement_likely: replacementLikely,
+                climate_zone: climateZone,
+                date_source: dateSource,
+                observed_at: permitDate.toISOString()
+              }
+            };
+          }
         }
       }
       
@@ -1104,12 +1199,23 @@ serve(async (req) => {
           model_version: 'phase_1_5_enhanced'
         };
         
+        // Phase 1.5: Implement proper upsert to prevent duplicates
         const { error } = await supabase
           .from('predictions')
-          .insert(predictionRecord);
+          .upsert(predictionRecord, {
+            onConflict: 'address_id,field,model_version',
+            ignoreDuplicates: false
+          });
         
         if (error) {
           console.error(`Failed to save prediction for ${rule.field}:`, error);
+          // Fallback to regular insert if upsert fails
+          const { error: insertError } = await supabase
+            .from('predictions')
+            .insert(predictionRecord);
+          if (insertError) {
+            console.error(`Fallback insert also failed for ${rule.field}:`, insertError);
+          }
         } else {
           console.log(`Saved enhanced prediction for ${rule.field}: ${prediction.value} (conf: ${prediction.confidence.toFixed(2)})`);
         }
