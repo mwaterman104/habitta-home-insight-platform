@@ -10,7 +10,8 @@ import { StatusBadge } from "@/components/validation/StatusBadge";
 import { ResetPropertyDialog } from "@/components/validation/ResetPropertyDialog";
 import { ValidationCockpitDB, PropertySample } from "@/lib/validation-cockpit";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3, MoreVertical, Eye, Edit, RotateCcw, FileText } from "lucide-react";
+import { Upload, Plus, Download, Play, RefreshCw, Loader2, BarChart3, MoreVertical, Eye, Edit, RotateCcw, FileText, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { ImportCsvDialog } from "@/components/validation/ImportCsvDialog";
 import { AddAddressDialog } from "@/components/validation/AddAddressDialog";
@@ -23,6 +24,8 @@ export default function ValidationCockpit() {
   const [loadingProperty, setLoadingProperty] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -167,6 +170,39 @@ export default function ValidationCockpit() {
     toast.success(`Exported ${csvData.length} properties to CSV`);
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedProperties(filteredProperties.map(p => p.address_id));
+    } else {
+      setSelectedProperties([]);
+    }
+  };
+
+  const handleSelectProperty = (addressId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedProperties(prev => [...prev, addressId]);
+    } else {
+      setSelectedProperties(prev => prev.filter(id => id !== addressId));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProperties.length === 0) return;
+
+    try {
+      setIsDeleting(true);
+      await ValidationCockpitDB.deleteMultipleProperties(selectedProperties);
+      setSelectedProperties([]);
+      await loadProperties();
+      toast.success(`Deleted ${selectedProperties.length} properties successfully`);
+    } catch (error) {
+      console.error('Error deleting properties:', error);
+      toast.error('Failed to delete properties');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -287,6 +323,21 @@ export default function ValidationCockpit() {
             <Download className="h-4 w-4 mr-2" />
             Export Properties
           </Button>
+
+          {selectedProperties.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBulkDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete ({selectedProperties.length})
+            </Button>
+          )}
         </div>
         
         <div className="flex gap-2">
@@ -323,6 +374,12 @@ export default function ValidationCockpit() {
             <table className="w-full">
               <thead className="border-b bg-muted/50">
                 <tr>
+                  <th className="w-12 p-4">
+                    <Checkbox
+                      checked={selectedProperties.length === filteredProperties.length && filteredProperties.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </th>
                   <th className="text-left p-4 font-medium">Address</th>
                   <th className="text-left p-4 font-medium">City</th>
                   <th className="text-left p-4 font-medium">Zip</th>
@@ -335,6 +392,12 @@ export default function ValidationCockpit() {
               <tbody>
                 {filteredProperties.map((property) => (
                   <tr key={property.address_id} className="border-b hover:bg-muted/25">
+                    <td className="w-12 p-4">
+                      <Checkbox
+                        checked={selectedProperties.includes(property.address_id)}
+                        onCheckedChange={(checked) => handleSelectProperty(property.address_id, checked as boolean)}
+                      />
+                    </td>
                     <td className="p-4">
                       <div className="font-medium">{property.street_address}</div>
                       {property.unit && (

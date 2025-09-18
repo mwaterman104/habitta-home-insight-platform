@@ -524,4 +524,34 @@ export class ValidationCockpitDB {
       throw error;
     }
   }
+
+  // Delete properties
+  static async deletePropertySample(addressId: string) {
+    try {
+      // Delete the property and all associated data
+      const { error } = await supabase
+        .from('properties_sample')
+        .delete()
+        .eq('address_id', addressId);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting property:', error);
+      throw error;
+    }
+  }
+
+  static async deleteMultipleProperties(addressIds: string[]) {
+    try {
+      const { error } = await supabase
+        .from('properties_sample')
+        .delete()
+        .in('address_id', addressIds);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting multiple properties:', error);
+      throw error;
+    }
+  }
 }
