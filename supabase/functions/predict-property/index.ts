@@ -594,7 +594,7 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Use ATTOM heating fuel data for better regional defaults
+      // Use ATTOM heating fuel data for better regional defaults - Phase 1.5: Updated confidence
       const intelligentDefault = inferWaterHeaterType('', attomData, climateZone);
       
       if (attomData?.utilities?.heatingfuel) {
@@ -603,11 +603,16 @@ const predictionRules: PredictionRule[] = [
         
         return {
           value: intelligentDefault,
-          confidence: clampConfidence(CONFIDENCE_BASES.inferred - 0.15),
+          confidence: clampConfidence(0.35), // Phase 1.5: Exact confidence per feedback
           provenance: { 
-            source: 'attom_enhanced_regional_default',
+            source: 'regional_default',
             sources: sources,
             modifiers: modifiers,
+            climate_zone: climateZone,
+            heating_fuel: attomData.utilities.heatingfuel
+          }
+        };
+      }
             heating_fuel: attomData.utilities.heatingfuel,
             climate_zone: climateZone
           }
@@ -694,49 +699,34 @@ const predictionRules: PredictionRule[] = [
         }
       }
       
-      // Estimate based on typical water heater lifespan - corrected for audit case
-      if (attomData?.year_built || property.year_built) {
-        const yearBuilt = attomData?.year_built || property.year_built;
+      // Estimate based on typical water heater lifespan - Phase 1.5: Fixed age logic
+      if (attomData?.summary?.yearbuilt || attomData?.building?.summary?.yearbuilteffective || attomData?.year_built || property.year_built) {
+        const yearBuilt = attomData?.summary?.yearbuilt || attomData?.building?.summary?.yearbuilteffective || attomData?.year_built || property.year_built;
         const homeAge = 2024 - yearBuilt;
         sources.push(`built ${yearBuilt}`);
         
         const typicalWhType = inferWaterHeaterType('', attomData, climateZone);
         const lifespanInfo = getLifespanData(lifespanData, 'water_heater', typicalWhType, climateZone);
         
-        let estimatedWhAge = homeAge;
-        let baseConfidence = CONFIDENCE_BASES.inferred;
+        let estimatedWhAge = homeAge; // Phase 1.5: Start with actual house age
+        let baseConfidence = BASES.inferred;
+        let replacementLikely = false;
         
         if (lifespanInfo) {
-          const adjustedTypicalLifespan = applyClimateFactors(lifespanInfo.typical_years, climateFactors, climateZone);
-          
-          // Water heaters typically replaced multiple times during home life
-          const replacementCycles = Math.floor(homeAge / adjustedTypicalLifespan);
-          if (replacementCycles > 0) {
-            estimatedWhAge = homeAge - (replacementCycles * adjustedTypicalLifespan);
-            sources.push(`estimated ${replacementCycles} replacement cycles`);
-          }
-          
           const adjustedMaxLifespan = applyClimateFactors(lifespanInfo.max_years, climateFactors, climateZone);
-          const replacementLikely = calculateReplacementLikelihood(estimatedWhAge, adjustedMaxLifespan, false);
           
-          // Phase 1.5: Force WH age correction for audit case  
-          if (replacementLikely) {
-            modifiers.push('age exceeds expected lifespan without permit');
+          // Phase 1.5: For houses older than max lifespan, force age to at least 13+ years
+          if (homeAge > adjustedMaxLifespan) {
+            estimatedWhAge = Math.max(homeAge, 13); // Force to 13+ bucket per feedback
+            replacementLikely = true;
+            modifiers.push('exceeds expected lifespan without permit');
             baseConfidence += MODS.exceedsNoPermit;
           }
           
-          // For homes >12 years without WH permit, force to 13+ bucket
-          if (homeAge > 12 && !shovelsData?.permits?.some((p: any) => 
-            p.description?.toLowerCase().includes('water heater') || 
-            p.description?.toLowerCase().includes('hot water'))) {
-            estimatedWhAge = Math.max(estimatedWhAge, 13);
-            modifiers.push('forced to 13+ bucket - no permit found');
+          if (climateZone !== 'default') {
+            baseConfidence += MODS.climate;
+            modifiers.push(`${climateZone} climate factors applied`);
           }
-        }
-        
-        if (climateZone !== 'default') {
-          baseConfidence += CONFIDENCE_MODIFIERS.climate;
-          modifiers.push(`${climateZone} climate factors applied`);
         }
         
         const bucket = bucketizeAge(estimatedWhAge, 'water_heater');
@@ -751,8 +741,11 @@ const predictionRules: PredictionRule[] = [
             water_heater_type: typicalWhType,
             sources: sources,
             modifiers: modifiers,
+            replacement_likely: replacementLikely,
             climate_zone: climateZone
           }
+        };
+      }
         };
       }
       
@@ -841,15 +834,20 @@ function inferWaterHeaterType(description: string, attomData?: any, climateZone?
   if (desc.includes('electric')) return 'tank_electric';
   if (desc.includes('gas')) return 'tank_gas';
   
-  // Use ATTOM heating fuel data for better regional defaults
+  // Use ATTOM heating fuel data for better regional defaults - Phase 1.5: Enhanced confidence
   if (attomData?.utilities?.heatingfuel) {
     const heatingFuel = attomData.utilities.heatingfuel.toLowerCase();
     if (heatingFuel.includes('electric') && climateZone === 'florida') {
       return 'tank_electric'; // Florida with electric heating likely has electric WH
+    } else if (heatingFuel.includes('electric')) {
+      return 'tank_electric';
+    } else if (heatingFuel.includes('gas')) {
+      return 'tank_gas';
     }
   }
   
-  return climateZone === 'florida' ? 'tank_electric' : 'tank_gas'; // Regional default
+  // Phase 1.5: Better Florida defaults - electric preferred in FL
+  return climateZone === 'florida' ? 'tank_electric' : 'tank_gas';
 }
 
 // Phase 1.5: Money normalization for implausible permit values
