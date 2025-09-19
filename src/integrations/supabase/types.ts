@@ -2822,6 +2822,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      link_home_to_property: {
+        Args: { p_home_id: string }
+        Returns: Json
+      }
       promote_validation_to_production: {
         Args: { p_property_id: string }
         Returns: Json
