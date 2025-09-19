@@ -518,6 +518,13 @@ export type Database = {
             referencedRelation: "homes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "diagnoses_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
         ]
       }
       documents: {
@@ -564,6 +571,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "homes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
           },
         ]
       }
@@ -718,6 +732,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "homes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_systems_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
           },
         ]
       }
@@ -1181,6 +1202,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "homes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_tasks_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
           },
         ]
       }
@@ -2558,6 +2586,124 @@ export type Database = {
         }
         Relationships: []
       }
+      v_dashboard_replacements: {
+        Row: {
+          cost_avg: number | null
+          cost_max: number | null
+          cost_min: number | null
+          horizon_years: number | null
+          predicted_replacement_date: string | null
+          property_id: string | null
+          replacement_probability: number | null
+          system_type: string | null
+        }
+        Relationships: []
+      }
+      v_dashboard_smart_tasks: {
+        Row: {
+          category: string | null
+          confidence: number | null
+          description: string | null
+          due_date: string | null
+          estimated_cost: number | null
+          estimated_time: number | null
+          id: string | null
+          preventative_savings: number | null
+          priority: string | null
+          property_id: string | null
+          title: string | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          confidence?: never
+          description?: string | null
+          due_date?: string | null
+          estimated_cost?: number | null
+          estimated_time?: never
+          id?: string | null
+          preventative_savings?: never
+          priority?: never
+          property_id?: string | null
+          title?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          confidence?: never
+          description?: string | null
+          due_date?: string | null
+          estimated_cost?: number | null
+          estimated_time?: never
+          id?: string | null
+          preventative_savings?: never
+          priority?: never
+          property_id?: string | null
+          title?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_tasks_home_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_tasks_home_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
+      v_dashboard_systems: {
+        Row: {
+          brand: string | null
+          confidence_level: number | null
+          estimated_lifespan_years: number | null
+          id: string | null
+          installation_date: string | null
+          maintenance_frequency_months: number | null
+          model: string | null
+          predicted_replacement_date: string | null
+          property_id: string | null
+          replacement_probability: number | null
+          system_type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          brand?: never
+          confidence_level?: number | null
+          estimated_lifespan_years?: never
+          id?: string | null
+          installation_date?: never
+          maintenance_frequency_months?: never
+          model?: never
+          predicted_replacement_date?: never
+          property_id?: string | null
+          replacement_probability?: never
+          system_type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          brand?: never
+          confidence_level?: number | null
+          estimated_lifespan_years?: never
+          id?: string | null
+          installation_date?: never
+          maintenance_frequency_months?: never
+          model?: never
+          predicted_replacement_date?: never
+          property_id?: string | null
+          replacement_probability?: never
+          system_type?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       v_latest_labels: {
         Row: {
           address_id: string | null
@@ -2620,6 +2766,23 @@ export type Database = {
             referencedColumns: ["address_id"]
           },
         ]
+      }
+      v_property_profile: {
+        Row: {
+          address_std: string | null
+          apn: string | null
+          last_permit_closed_date: string | null
+          property_id: string | null
+          roof_brand: string | null
+          roof_installation_date: string | null
+          roof_model: string | null
+          roof_predicted_replacement_date: string | null
+          roof_replacement_probability: number | null
+          user_id: string | null
+          year_built: number | null
+          zipcode: string | null
+        }
+        Relationships: []
       }
       v_scored: {
         Row: {
