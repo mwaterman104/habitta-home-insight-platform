@@ -16,6 +16,10 @@ import { SystemsAppliances } from '@/components/HomeProfile/SystemsAppliances';
 import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
 import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
 import { PermitsHistory } from '@/components/HomeProfile/PermitsHistory';
+import { SystemsOverview } from '@/components/SystemsOverview';
+
+// Hooks
+import { useHomeIntelligence } from '@/hooks/useHomeIntelligence';
 
 // Mock data
 import homeSystemsData from '../../client/mock/home_systems.json';
@@ -43,6 +47,9 @@ const HomeProfilePage = () => {
   const { toast } = useToast();
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get intelligence data for the home
+  const { systems, validationInsights, loading: intelligenceLoading } = useHomeIntelligence();
 
   // Build full address for Attom API when home data is available
   const fullAddress = home 
@@ -99,7 +106,7 @@ const HomeProfilePage = () => {
     fetchHome();
   }, [user, homeId, navigate, toast]);
 
-  if (loading) {
+  if (loading || intelligenceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -164,7 +171,10 @@ const HomeProfilePage = () => {
             address={fullAddress}
           />
 
-          {/* Systems & Appliances */}
+          {/* Systems Overview - New section with real data */}
+          <SystemsOverview systems={systems} insights={validationInsights} />
+
+          {/* Systems & Appliances - Legacy component for comparison */}
           <SystemsAppliances systems={homeSystemsData as any} />
 
           {/* Home Documents */}
