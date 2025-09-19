@@ -12,7 +12,6 @@ import { SimpleRefreshButton } from '@/components/SimpleRefreshButton';
 import { PropertyHero } from '@/components/HomeProfile/PropertyHero';
 import { KeyMetrics } from '@/components/HomeProfile/KeyMetrics';
 import { PropertyDetails } from '@/components/HomeProfile/PropertyDetails';
-import { SystemsAppliances } from '@/components/HomeProfile/SystemsAppliances';
 import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
 import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
 import { PermitsHistory } from '@/components/HomeProfile/PermitsHistory';
@@ -21,8 +20,7 @@ import { SystemsOverview } from '@/components/SystemsOverview';
 // Hooks
 import { useHomeIntelligence } from '@/hooks/useHomeIntelligence';
 
-// Mock data
-import homeSystemsData from '../../client/mock/home_systems.json';
+// Mock data - only for non-system related data
 import userProfileData from '../../client/mock/user_profile.json';
 import maintenanceHistoryData from '../../client/mock/maintenance_history.json';
 
@@ -171,11 +169,8 @@ const HomeProfilePage = () => {
             address={fullAddress}
           />
 
-          {/* Systems Overview - New section with real data */}
+          {/* Systems Overview - Single source of truth from validation data */}
           <SystemsOverview systems={systems} insights={validationInsights} />
-
-          {/* Systems & Appliances - Legacy component for comparison */}
-          <SystemsAppliances systems={homeSystemsData as any} />
 
           {/* Home Documents */}
           <HomeDocuments />
