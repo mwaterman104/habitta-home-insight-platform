@@ -10,10 +10,6 @@ import Dashboard from "./Dashboard";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingPage from "./OnboardingPage";
-import OnboardingStart from "./OnboardingStart";
-import OnboardingSnapshot from "./OnboardingSnapshot";
-import OnboardingUnknowns from "./OnboardingUnknowns";
-import OnboardingPersonalization from "./OnboardingPersonalization";
 import HomeProfilePage from "./HomeProfilePage";
 import MaintenancePlanner from "./MaintenancePlanner";
 import PropertyIntelligence from "./PropertyIntelligence";
@@ -43,26 +39,6 @@ export function AppRoutes() {
                 <OnboardingPage />
               </ProtectedRoute>
             } />
-          <Route path="/onboarding/start" element={
-            <ProtectedRoute>
-              <OnboardingStart />
-            </ProtectedRoute>
-          } />
-          <Route path="/onboarding/snapshot" element={
-            <ProtectedRoute>
-              <OnboardingSnapshot />
-            </ProtectedRoute>
-          } />
-          <Route path="/onboarding/unknowns" element={
-            <ProtectedRoute>
-              <OnboardingUnknowns />
-            </ProtectedRoute>
-          } />
-          <Route path="/onboarding/personalization" element={
-            <ProtectedRoute>
-              <OnboardingPersonalization />
-            </ProtectedRoute>
-          } />
           
           {/* Protected routes with unified layout */}
           <Route element={
