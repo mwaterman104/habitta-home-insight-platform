@@ -9,6 +9,7 @@ import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
+import OnboardingPage from "./OnboardingPage";
 import OnboardingStart from "./OnboardingStart";
 import OnboardingSnapshot from "./OnboardingSnapshot";
 import OnboardingUnknowns from "./OnboardingUnknowns";
@@ -37,7 +38,11 @@ export function AppRoutes() {
           <Route path="/auth" element={<AuthPage />} />
           {/* <Route path="/demo" element={<ClientDashboard />} /> */}
           
-          {/* Onboarding routes (protected but no sidebar) */}
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            } />
           <Route path="/onboarding/start" element={
             <ProtectedRoute>
               <OnboardingStart />

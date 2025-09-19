@@ -28,22 +28,32 @@ import PartnerOpportunities from "../components/PartnerOpportunities";
 import PropertyIntelligenceTab from "../components/PropertyIntelligenceTab";
 import { SolarPotentialCard } from "../../src/components/SolarPotentialCard";
 import { SolarSavingsEstimator } from "../../src/components/SolarSavingsEstimator";
-import { useAlerts, useSystemHealth, useMoneySavings, useTasksSummary, useUserProfile } from "../hooks/useHabittaLocal";
+import { useHabittaData } from "../hooks/useHabittaData";
+import { useUserHome } from "../../src/contexts/UserHomeContext";
 import { useSolarInsights } from "../../src/hooks/useSolarInsights";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const isMobile = useIsMobile();
   const { toast } = useToast();
-  const alerts = useAlerts();
-  const systemHealth = useSystemHealth();
-  const moneySavings = useMoneySavings();
-  const tasksSummary = useTasksSummary();
-  const userProfile = useUserProfile();
+  const { userHome, loading: homeLoading } = useUserHome();
   
-  // Mock coordinates for solar analysis - replace with actual home coordinates
-  const homeLatitude = 37.7749; // San Francisco example
-  const homeLongitude = -122.4194;
+  // Use real data from the new hook
+  const {
+    loading,
+    error,
+    alerts,
+    systemHealth,
+    moneySavings,
+    tasksSummary,
+    profile,
+    upcomingTasks,
+    allTasks
+  } = useHabittaData(userHome?.id);
+  
+  // Use actual home coordinates from user data
+  const homeLatitude = userHome?.latitude || 37.7749;
+  const homeLongitude = userHome?.longitude || -122.4194;
   const { data: solarData, loading: solarLoading } = useSolarInsights(homeLatitude, homeLongitude);
 
   const dashboardTabs = [
@@ -64,9 +74,64 @@ export default function Dashboard() {
       description: "Latest data has been synchronized.",
     });
     
-    // Here you would typically refetch data
+    // Force re-fetch by updating the dependency
     console.log("Refreshing dashboard data...");
   };
+
+  // Show loading state
+  if (homeLoading || loading) {
+    return (
+      <div className="p-4 md:p-6 animate-pulse">
+        <div className="space-y-4">
+          <div className="h-8 bg-muted rounded w-1/3"></div>
+          <div className="h-4 bg-muted rounded w-1/2"></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-32 bg-muted rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state for new users
+  if (!userHome && !loading) {
+    return (
+      <div className="p-4 md:p-6 text-center">
+        <div className="max-w-md mx-auto space-y-4">
+          <h2 className="text-xl font-semibold">Welcome to Habitta</h2>
+          <p className="text-muted-foreground">
+            Get started by adding your home to begin tracking maintenance and getting smart recommendations.
+          </p>
+          <button 
+            onClick={() => window.location.href = '/onboarding'}
+            className="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Add Your Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="p-4 md:p-6 text-center">
+        <div className="max-w-md mx-auto space-y-4">
+          <h2 className="text-xl font-semibold text-destructive">Error Loading Data</h2>
+          <p className="text-muted-foreground">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
@@ -74,7 +139,9 @@ export default function Dashboard() {
         <div className="mb-4 md:mb-6">
           <h1 className="text-2xl md:text-3xl font-bold">Home Intelligence Dashboard</h1>
           <p className="text-muted-foreground mt-1 text-sm md:text-base">
-            {userProfile.address} • What needs attention today • Smart recommendations • Preventive insights
+            {userHome?.address || profile?.address_std || "Your Home"} • 
+            {loading ? "Loading..." : `${alerts.length} items need attention`} • 
+            Smart recommendations • Preventive insights
           </p>
         </div>
 

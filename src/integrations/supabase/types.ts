@@ -2822,6 +2822,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      promote_validation_to_production: {
+        Args: { p_property_id: string }
+        Returns: Json
+      }
       rpc_accuracy_by_field: {
         Args: Record<PropertyKey, never>
         Returns: {
