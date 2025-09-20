@@ -44,13 +44,19 @@ export function useHomeIntelligence(): HomeIntelligenceData {
   // Aggregate loading state
   const loading = homeLoading || systemsLoading || insightsLoading || predictionsLoading || tasksLoading || budgetLoading;
 
-  // Aggregate errors
+  // Aggregate errors - only show critical errors that prevent core functionality
   useEffect(() => {
-    const errors = [homeError, systemsError, insightsError].filter(Boolean);
-    if (errors.length > 0) {
-      setError(errors[0]);
+    // Only treat home and systems errors as critical, insights can be gracefully degraded
+    const criticalErrors = [homeError, systemsError].filter(Boolean);
+    if (criticalErrors.length > 0) {
+      setError(criticalErrors[0]);
     } else {
       setError(null);
+    }
+    
+    // Log insights errors for debugging but don't fail the whole component
+    if (insightsError) {
+      console.warn('Property insights error (non-critical):', insightsError);
     }
   }, [homeError, systemsError, insightsError]);
 
