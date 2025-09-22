@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { useCostModel, useAllTasks } from "../hooks/useHabittaLocal";
+import { useCostModel } from "../../src/hooks/useBenchmarkData";
+import { useAllTasks } from "../hooks/useHabittaLocal";
 import { Slider } from "../ui/slider";
 import { DollarSign, AlertTriangle } from "lucide-react";
 
 export default function CostImpactModel() {
   const [monthsDelay, setMonthsDelay] = useState(0);
-  const costModel = useCostModel();
+  const { costModel, loading: costLoading } = useCostModel();
   const allTasks = useAllTasks();
+
+  if (costLoading || !costModel) return <div>Loading...</div>;
 
   const calculateTotalCost = (delay: number) => {
     const baseCost = allTasks

@@ -1,15 +1,19 @@
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
-import { useSeasonalHero, useUserProfile, useRepairReadiness } from "../hooks/useHabittaLocal";
+import { useSeasonalExperiences } from "../../src/hooks/useSeasonalData";
+import { useUserProfile, useRepairReadiness } from "../hooks/useHabittaLocal";
 import { getSeasonInfo } from "../hooks/useHabittaLocal";
 import { Badge } from "./ui/badge";
 import { Calendar, Home, MapPin } from "lucide-react";
 
 export default function SeasonalExperienceHero() {
-  const hero = useSeasonalHero();
+  const { experiences, loading: seasonalLoading } = useSeasonalExperiences();
+  const hero = experiences?.[0]; // Use first seasonal experience as hero
   const userProfile = useUserProfile();
   const { current: currentSeason, next: nextSeason } = getSeasonInfo();
   const repairReadiness = useRepairReadiness();
+
+  if (seasonalLoading) return <div>Loading...</div>;
   
   const annualReserve = repairReadiness?.annualReserve || 0;
 

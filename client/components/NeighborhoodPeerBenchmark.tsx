@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { usePeerBenchmark } from "../hooks/useHabittaLocal";
+import { useNeighborhoodBenchmarks } from "../../src/hooks/useBenchmarkData";
 import { Users } from "lucide-react";
 
 export default function NeighborhoodPeerBenchmark() {
-  const benchmarkData = usePeerBenchmark();
+  const { benchmarks: benchmarkData, loading } = useNeighborhoodBenchmarks();
+
+  if (loading || !benchmarkData) return <div>Loading...</div>;
 
   const formatTooltipValue = (value: any, name: string, props: any) => {
     const metric = benchmarkData.find(item => item.metric === props.payload.metric);

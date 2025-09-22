@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { useLifestyleMetrics } from "../hooks/useHabittaLocal";
+import { useLifestyleMetrics } from "../../src/hooks/useLifestyleData";
 import { Home, DollarSign, Leaf } from "lucide-react";
 
 export default function LifestyleEnergyBenefits() {
-  const metrics = useLifestyleMetrics();
+  const { metrics, loading } = useLifestyleMetrics();
+
+  if (loading || !metrics) return <div>Loading...</div>;
 
   return (
     <Card className="rounded-2xl">

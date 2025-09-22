@@ -1,13 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { usePartnerOffers, useLifestyleMetrics, useHomeSystems } from "../hooks/useHabittaLocal";
+import { usePartnerOffers } from "../../src/hooks/usePartnerData";
+import { useLifestyleMetrics } from "../../src/hooks/useLifestyleData";
+import { useHomeSystems } from "../hooks/useHabittaLocal";
 import { Handshake, ExternalLink, DollarSign, Percent, Calendar } from "lucide-react";
 
 export default function PartnerOpportunities() {
-  const allOffers = usePartnerOffers();
-  const lifestyleMetrics = useLifestyleMetrics();
+  const { offers: allOffers, loading: offersLoading } = usePartnerOffers();
+  const { metrics: lifestyleMetrics, loading: metricsLoading } = useLifestyleMetrics();
   const homeSystems = useHomeSystems();
+
+  if (offersLoading || metricsLoading || !lifestyleMetrics) return <div>Loading...</div>;
 
   // Simple trigger evaluation
   const evaluateTrigger = (trigger: string): boolean => {

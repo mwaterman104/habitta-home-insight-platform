@@ -1,7 +1,8 @@
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { useAllTasks, useChatDIYGuides } from "../hooks/useHabittaLocal";
+import { useAllTasks } from "../hooks/useHabittaLocal";
+import { useDIYGuides } from "../../src/hooks/useSeasonalData";
 import { ArrowLeft, AlertTriangle, Wrench, Package, CheckCircle } from "lucide-react";
 import { useState } from "react";
 
@@ -11,7 +12,9 @@ export default function ChatDIY() {
   const taskId = searchParams.get("taskId");
   
   const allTasks = useAllTasks();
-  const guides = useChatDIYGuides();
+  const { guides, loading: guidesLoading } = useDIYGuides();
+
+  if (guidesLoading) return <div>Loading...</div>;
   
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   
