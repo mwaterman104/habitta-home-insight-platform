@@ -133,6 +133,7 @@ export const useChatDIYGuides = () => {
   }, []);
 };
 
+// NOTE: These hooks are now available from src/hooks/useBenchmarkData with database integration
 export const usePeerBenchmark = () => {
   return useMemo(() => {
     return neighborhoodBenchmark as any[];
@@ -220,12 +221,19 @@ export const useMoneySavings = () => {
   }, [alerts]);
 };
 
-// New lifestyle hooks
+// New lifestyle hooks - now using database
 export const useHomeSystems = () => {
   return useMemo(() => {
     return homeSystemsData as HomeSystem[];
   }, []);
 };
+
+// NOTE: These hooks are now available from src/hooks/ with database integration
+// Import from: 
+// - useLifestyleMetrics from '@/hooks/useLifestyleData'
+// - useSeasonalExperiences from '@/hooks/useSeasonalData'  
+// - usePartnerOffers from '@/hooks/usePartnerData'
+// - useNeighborhoodBenchmarks from '@/hooks/useBenchmarkData'
 
 export const useLifestyleMetrics = () => {
   return useMemo(() => {

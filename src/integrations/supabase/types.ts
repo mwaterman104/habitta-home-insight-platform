@@ -398,6 +398,33 @@ export type Database = {
           },
         ]
       }
+      cost_models: {
+        Row: {
+          baseline_monthly_cost: number | null
+          category_multipliers: Json | null
+          created_at: string
+          delay_scenarios: Json | null
+          global_multiplier: number | null
+          id: string
+        }
+        Insert: {
+          baseline_monthly_cost?: number | null
+          category_multipliers?: Json | null
+          created_at?: string
+          delay_scenarios?: Json | null
+          global_multiplier?: number | null
+          id?: string
+        }
+        Update: {
+          baseline_monthly_cost?: number | null
+          category_multipliers?: Json | null
+          created_at?: string
+          delay_scenarios?: Json | null
+          global_multiplier?: number | null
+          id?: string
+        }
+        Relationships: []
+      }
       cost_predictions: {
         Row: {
           confidence_level: number | null
@@ -527,6 +554,45 @@ export type Database = {
           },
         ]
       }
+      diy_guides: {
+        Row: {
+          created_at: string
+          id: string
+          match_keywords: string[] | null
+          required_parts: string[] | null
+          required_tools: string[] | null
+          safety_precautions: string[] | null
+          steps: string[] | null
+          title: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          match_keywords?: string[] | null
+          required_parts?: string[] | null
+          required_tools?: string[] | null
+          safety_precautions?: string[] | null
+          steps?: string[] | null
+          title: string
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          match_keywords?: string[] | null
+          required_parts?: string[] | null
+          required_tools?: string[] | null
+          safety_precautions?: string[] | null
+          steps?: string[] | null
+          title?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           created_at: string
@@ -574,6 +640,51 @@ export type Database = {
           },
           {
             foreignKeyName: "documents_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
+      energy_comparison: {
+        Row: {
+          created_at: string
+          home_id: string | null
+          id: string
+          month_year: string
+          neighborhood_avg: number
+          user_id: string
+          user_usage: number
+        }
+        Insert: {
+          created_at?: string
+          home_id?: string | null
+          id?: string
+          month_year: string
+          neighborhood_avg: number
+          user_id: string
+          user_usage: number
+        }
+        Update: {
+          created_at?: string
+          home_id?: string | null
+          id?: string
+          month_year?: string
+          neighborhood_avg?: number
+          user_id?: string
+          user_usage?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "energy_comparison_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "energy_comparison_home_id_fkey"
             columns: ["home_id"]
             isOneToOne: false
             referencedRelation: "v_property_profile"
@@ -1038,6 +1149,87 @@ export type Database = {
         }
         Relationships: []
       }
+      lifestyle_metrics: {
+        Row: {
+          air_quality: string | null
+          comfort_rating: string | null
+          comfort_summary: string | null
+          created_at: string
+          energy_neighborhood_avg: number | null
+          energy_trend: string | null
+          energy_wellness_score: number | null
+          home_id: string | null
+          id: string
+          monthly_savings: number | null
+          outdoor_readiness_status: string | null
+          outdoor_systems: string[] | null
+          safety_score: number | null
+          safety_status: string | null
+          safety_summary: string | null
+          seasonal_note: string | null
+          temperature_stability: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          air_quality?: string | null
+          comfort_rating?: string | null
+          comfort_summary?: string | null
+          created_at?: string
+          energy_neighborhood_avg?: number | null
+          energy_trend?: string | null
+          energy_wellness_score?: number | null
+          home_id?: string | null
+          id?: string
+          monthly_savings?: number | null
+          outdoor_readiness_status?: string | null
+          outdoor_systems?: string[] | null
+          safety_score?: number | null
+          safety_status?: string | null
+          safety_summary?: string | null
+          seasonal_note?: string | null
+          temperature_stability?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          air_quality?: string | null
+          comfort_rating?: string | null
+          comfort_summary?: string | null
+          created_at?: string
+          energy_neighborhood_avg?: number | null
+          energy_trend?: string | null
+          energy_wellness_score?: number | null
+          home_id?: string | null
+          id?: string
+          monthly_savings?: number | null
+          outdoor_readiness_status?: string | null
+          outdoor_systems?: string[] | null
+          safety_score?: number | null
+          safety_status?: string | null
+          safety_summary?: string | null
+          seasonal_note?: string | null
+          temperature_stability?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lifestyle_metrics_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lifestyle_metrics_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       local_contractors: {
         Row: {
           business_hours: Json | null
@@ -1340,6 +1532,87 @@ export type Database = {
         }
         Relationships: []
       }
+      neighborhood_benchmarks: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          lower_is_better: boolean | null
+          metric_name: string
+          metric_unit: string
+          neighborhood_avg: number
+          region: string | null
+          zipcode: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          lower_is_better?: boolean | null
+          metric_name: string
+          metric_unit: string
+          neighborhood_avg: number
+          region?: string | null
+          zipcode?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          lower_is_better?: boolean | null
+          metric_name?: string
+          metric_unit?: string
+          neighborhood_avg?: number
+          region?: string | null
+          zipcode?: string | null
+        }
+        Relationships: []
+      }
+      partner_offers: {
+        Row: {
+          created_at: string
+          description: string | null
+          expiry_date: string | null
+          id: string
+          is_qualified: boolean | null
+          offer_type: string
+          partner_name: string
+          title: string
+          trigger_condition: string | null
+          updated_at: string
+          value: number | null
+          value_unit: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          expiry_date?: string | null
+          id?: string
+          is_qualified?: boolean | null
+          offer_type: string
+          partner_name: string
+          title: string
+          trigger_condition?: string | null
+          updated_at?: string
+          value?: number | null
+          value_unit?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          expiry_date?: string | null
+          id?: string
+          is_qualified?: boolean | null
+          offer_type?: string
+          partner_name?: string
+          title?: string
+          trigger_condition?: string | null
+          updated_at?: string
+          value?: number | null
+          value_unit?: string | null
+        }
+        Relationships: []
+      }
       permits: {
         Row: {
           contractor_license: string | null
@@ -1565,31 +1838,55 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address: string | null
           avatar_url: string | null
+          bathrooms: number | null
+          bedrooms: number | null
           created_at: string
           demo_mode: boolean
           full_name: string | null
+          house_photo_url: string | null
           id: string
           phone: string | null
+          photo_url: string | null
+          property_type: string | null
+          square_feet: number | null
           updated_at: string
+          year_purchased: number | null
         }
         Insert: {
+          address?: string | null
           avatar_url?: string | null
+          bathrooms?: number | null
+          bedrooms?: number | null
           created_at?: string
           demo_mode?: boolean
           full_name?: string | null
+          house_photo_url?: string | null
           id: string
           phone?: string | null
+          photo_url?: string | null
+          property_type?: string | null
+          square_feet?: number | null
           updated_at?: string
+          year_purchased?: number | null
         }
         Update: {
+          address?: string | null
           avatar_url?: string | null
+          bathrooms?: number | null
+          bedrooms?: number | null
           created_at?: string
           demo_mode?: boolean
           full_name?: string | null
+          house_photo_url?: string | null
           id?: string
           phone?: string | null
+          photo_url?: string | null
+          property_type?: string | null
+          square_feet?: number | null
           updated_at?: string
+          year_purchased?: number | null
         }
         Relationships: []
       }
@@ -2010,6 +2307,51 @@ export type Database = {
           },
         ]
       }
+      seasonal_experiences: {
+        Row: {
+          bullets: string[] | null
+          created_at: string
+          id: string
+          imagery: string | null
+          message: string | null
+          primary_cta_route: string | null
+          primary_cta_text: string | null
+          season: string
+          secondary_cta_action: string | null
+          secondary_cta_text: string | null
+          title: string
+          trigger_conditions: string[] | null
+        }
+        Insert: {
+          bullets?: string[] | null
+          created_at?: string
+          id?: string
+          imagery?: string | null
+          message?: string | null
+          primary_cta_route?: string | null
+          primary_cta_text?: string | null
+          season: string
+          secondary_cta_action?: string | null
+          secondary_cta_text?: string | null
+          title: string
+          trigger_conditions?: string[] | null
+        }
+        Update: {
+          bullets?: string[] | null
+          created_at?: string
+          id?: string
+          imagery?: string | null
+          message?: string | null
+          primary_cta_route?: string | null
+          primary_cta_text?: string | null
+          season?: string
+          secondary_cta_action?: string | null
+          secondary_cta_text?: string | null
+          title?: string
+          trigger_conditions?: string[] | null
+        }
+        Relationships: []
+      }
       smart_recommendations: {
         Row: {
           completed_at: string | null
@@ -2427,6 +2769,41 @@ export type Database = {
           },
         ]
       }
+      user_benchmarks: {
+        Row: {
+          benchmark_id: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+          user_value: number
+        }
+        Insert: {
+          benchmark_id: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          user_value: number
+        }
+        Update: {
+          benchmark_id?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          user_value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_benchmarks_benchmark_id_fkey"
+            columns: ["benchmark_id"]
+            isOneToOne: false
+            referencedRelation: "neighborhood_benchmarks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_feedback: {
         Row: {
           actual_value: Json | null
@@ -2462,6 +2839,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_partner_offers: {
+        Row: {
+          created_at: string
+          id: string
+          is_qualified: boolean | null
+          offer_id: string
+          qualified_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_qualified?: boolean | null
+          offer_id: string
+          qualified_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_qualified?: boolean | null
+          offer_id?: string
+          qualified_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_partner_offers_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "partner_offers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
