@@ -7,6 +7,7 @@ import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
 import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
+import DashboardV2 from "./DashboardV2";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingPage from "./OnboardingPage";
@@ -49,6 +50,7 @@ export function AppRoutes() {
           }>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/home/v2" element={<DashboardV2 />} />
             <Route path="/home-profile" element={<HomeProfilePage />} />
             <Route path="/property-intelligence" element={<PropertyIntelligence />} />
             <Route path="/maintenance-planner" element={<MaintenancePlanner />} />
