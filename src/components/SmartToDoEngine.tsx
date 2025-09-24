@@ -17,6 +17,7 @@ import {
 import { useIntelligenceTasks } from "@/hooks/useIntelligenceEngine";
 import { useUserHome } from "@/hooks/useUserHome";
 import { useTaskCompletion } from "./TaskCompletionHandler";
+import { PermitInsightsWidget } from "./PermitInsightsWidget";
 
 interface SmartTask {
   id: string;
@@ -162,6 +163,11 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
       </CardHeader>
       
       <CardContent className="space-y-4 md:space-y-6">
+        {/* Permit-Based Personalized Suggestions */}
+        {userHome?.id && (
+          <PermitInsightsWidget homeId={userHome.id} />
+        )}
+        
         {error && (
           <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
             <p className="text-sm text-danger">Unable to load AI recommendations. Please try again later.</p>

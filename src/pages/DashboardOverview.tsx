@@ -13,6 +13,7 @@ import { PredictiveCostDashboard } from '@/components/PredictiveCostDashboard';
 import { HyperlocalIntelligence } from '@/components/HyperlocalIntelligence';
 import { AILifecycleDashboard } from '@/components/AILifecycleDashboard';
 import { AIHomeAssistant } from '@/components/AIHomeAssistant';
+import { PermitBasedSuggestions } from '@/components/PermitBasedSuggestions';
 import { useSolarInsights } from "@/hooks/useSolarInsights";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -111,6 +112,9 @@ export default function DashboardOverview() {
         <HomeHealthSnapshot />
       </div>
 
+      {/* Permit-Based Personalized Suggestions */}
+      {userHome?.id && <PermitBasedSuggestions homeId={userHome.id} />}
+      
       {/* Financial Insights */}
       <FinancialInsights />
       
