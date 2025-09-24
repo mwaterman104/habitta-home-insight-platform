@@ -28,20 +28,20 @@ interface FinancialInsightsProps {
   data?: FinancialData;
 }
 
-const mockFinancialData: FinancialData = {
-  homeValue: 485000,
-  valueChange: 3.2,
+const defaultFinancialData: FinancialData = {
+  homeValue: 0,
+  valueChange: 0,
   maintenanceBudget: 5000,
-  spentThisYear: 1850,
-  projectedSpend1Year: 2400,
-  projectedSpend3Year: 8500,
-  preventativeSavings: 3200,
-  roiFromProjects: 12800,
-  insuranceDiscount: 450
+  spentThisYear: 0,
+  projectedSpend1Year: 0,
+  projectedSpend3Year: 0,
+  preventativeSavings: 0,
+  roiFromProjects: 0,
+  insuranceDiscount: 0
 };
 
 export const FinancialInsights: React.FC<FinancialInsightsProps> = ({ 
-  data = mockFinancialData
+  data = defaultFinancialData
 }) => {
   const { userHome, fullAddress } = useUserHome();
   const propertyId = userHome?.property_id;

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useIntelligenceTasks } from "@/hooks/useIntelligenceEngine";
 import { useUserHome } from "@/hooks/useUserHome";
+import { useTaskCompletion } from "./TaskCompletionHandler";
 
 interface SmartTask {
   id: string;
@@ -36,77 +37,20 @@ interface SmartToDoEngineProps {
   completionRate?: number;
 }
 
-// Mock smart tasks with weather and predictive logic
-const mockSmartTasks: SmartTask[] = [
-  {
-    id: '1',
-    title: 'Clear gutters before tonight\'s storm',
-    description: 'Heavy rain expected. Clear debris to prevent overflow damage.',
-    priority: 'today',
-    ownership: 'diy',
-    estimatedTime: '15 min',
-    weatherTriggered: true,
-    preventativeSavings: 1200,
-    category: 'Storm Prep'
-  },
-  {
-    id: '2', 
-    title: 'Replace HVAC filter (overdue)',
-    description: 'System efficiency dropping. Replace to maintain optimal performance.',
-    priority: 'today',
-    ownership: 'diy',
-    estimatedTime: '5 min',
-    estimatedCost: 25,
-    preventativeSavings: 150,
-    dueDate: '2024-01-15',
-    category: 'HVAC'
-  },
-  {
-    id: '3',
-    title: 'Schedule furnace tune-up',
-    description: 'Annual maintenance due. Book before winter peak season.',
-    priority: 'this_week',
-    ownership: 'pro',
-    estimatedCost: 180,
-    preventativeSavings: 400,
-    category: 'HVAC'
-  },
-  {
-    id: '4',
-    title: 'Seal windows before cold snap',
-    description: 'Temperatures dropping 20°F this week. Seal gaps to prevent heat loss.',
-    priority: 'this_week',
-    ownership: 'either',
-    estimatedTime: '2 hours',
-    estimatedCost: 45,
-    weatherTriggered: true,
-    preventativeSavings: 200,
-    category: 'Energy'
-  },
-  {
-    id: '5',
-    title: 'Test smoke detectors',
-    description: 'Monthly safety check due.',
-    priority: 'upcoming',
-    ownership: 'diy',
-    estimatedTime: '10 min',
-    category: 'Safety'
-  }
-];
-
 export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({ 
   tasks,
   completionRate
 }) => {
   const { userHome } = useUserHome();
   const propertyId = userHome?.property_id;
+  const { toggleTaskCompletion, completingTasks } = useTaskCompletion();
   
   // Use Intelligence Engine for real data
   const { data: intelligenceData, loading, error } = useIntelligenceTasks(propertyId);
   
-  // Use real data if available, fallback to props, then mock data
-  const actualTasks = intelligenceData?.tasks || tasks || mockSmartTasks;
-  const actualCompletionRate = intelligenceData?.completionRate || completionRate || 87;
+  // Use real data - no mock fallbacks
+  const actualTasks = intelligenceData?.tasks || tasks || [];
+  const actualCompletionRate = intelligenceData?.completionRate || completionRate || 0;
   const todayTasks = actualTasks.filter(t => t.priority === 'today');
   const thisWeekTasks = actualTasks.filter(t => t.priority === 'this_week');
   const upcomingTasks = actualTasks.filter(t => t.priority === 'upcoming');
@@ -129,52 +73,64 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
     }
   };
 
-  const TaskRow = ({ task }: { task: SmartTask }) => (
-    <div className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors touch-friendly">
-      <div className="flex items-start gap-3 flex-1 mb-3 md:mb-0">
-        <CheckCircle2 className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-            <h4 className="font-medium text-sm md:text-base">{task.title}</h4>
-            {task.weatherTriggered && (
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 self-start">
-                Weather Alert
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs md:text-sm text-muted-foreground mb-3">{task.description}</p>
-          
-          <div className="flex flex-wrap items-center gap-3 md:gap-4 text-xs text-muted-foreground">
-            {task.estimatedTime && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                <span>{task.estimatedTime}</span>
-              </div>
-            )}
-            {task.estimatedCost && (
-              <div className="flex items-center gap-1">
-                <DollarSign className="h-3 w-3" />
-                <span>${task.estimatedCost}</span>
-              </div>
-            )}
-            {task.preventativeSavings && (
-              <div className="flex items-center gap-1 text-accent font-medium">
-                <span>Saves ${task.preventativeSavings}</span>
-              </div>
-            )}
+  const TaskRow = ({ task }: { task: SmartTask }) => {
+    const isCompleting = completingTasks.has(task.id);
+    
+    return (
+      <div className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors touch-friendly">
+        <div className="flex items-start gap-3 flex-1 mb-3 md:mb-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-0 h-5 w-5"
+            onClick={() => toggleTaskCompletion(task.id, true)}
+            disabled={isCompleting}
+          >
+            <CheckCircle2 className={`h-5 w-5 ${isCompleting ? 'text-accent animate-pulse' : 'text-muted-foreground hover:text-accent'}`} />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+              <h4 className="font-medium text-sm md:text-base">{task.title}</h4>
+              {task.weatherTriggered && (
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 self-start">
+                  Weather Alert
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs md:text-sm text-muted-foreground mb-3">{task.description}</p>
+            
+            <div className="flex flex-wrap items-center gap-3 md:gap-4 text-xs text-muted-foreground">
+              {task.estimatedTime && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{task.estimatedTime}</span>
+                </div>
+              )}
+              {task.estimatedCost && (
+                <div className="flex items-center gap-1">
+                  <DollarSign className="h-3 w-3" />
+                  <span>${task.estimatedCost}</span>
+                </div>
+              )}
+              {task.preventativeSavings && (
+                <div className="flex items-center gap-1 text-accent font-medium">
+                  <span>Saves ${task.preventativeSavings}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+        
+        <div className="flex items-center justify-between md:justify-end gap-2 md:ml-4">
+          <Badge variant="outline" className="text-xs">
+            {getOwnershipIcon(task.ownership)}
+            <span className="ml-1 hidden md:inline">{task.ownership.toUpperCase()}</span>
+            <span className="ml-1 md:hidden">{task.ownership}</span>
+          </Badge>
+        </div>
       </div>
-      
-      <div className="flex items-center justify-between md:justify-end gap-2 md:ml-4">
-        <Badge variant="outline" className="text-xs">
-          {getOwnershipIcon(task.ownership)}
-          <span className="ml-1 hidden md:inline">{task.ownership.toUpperCase()}</span>
-          <span className="ml-1 md:hidden">{task.ownership}</span>
-        </Badge>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <Card>
@@ -208,7 +164,14 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
       <CardContent className="space-y-4 md:space-y-6">
         {error && (
           <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
-            <p className="text-sm text-danger">Unable to load AI recommendations. Using backup data.</p>
+            <p className="text-sm text-danger">Unable to load AI recommendations. Please try again later.</p>
+          </div>
+        )}
+        
+        {!loading && actualTasks.length === 0 && !error && (
+          <div className="p-4 text-center">
+            <p className="text-muted-foreground mb-2">No active tasks found</p>
+            <p className="text-sm text-muted-foreground">Complete your home setup to get personalized recommendations</p>
           </div>
         )}
         

@@ -36,62 +36,6 @@ interface HomeHealthSnapshotProps {
   systems?: SystemHealth[];
 }
 
-const mockSystems: SystemHealth[] = [
-  {
-    system: 'hvac',
-    score: 85,
-    status: 'good',
-    nextAction: 'Replace air filter',
-    nextActionDate: '2024-01-15',
-    lastService: '2024-03-20',
-    quickFix: {
-      title: 'Replace air filter',
-      time: '5 min',
-      impact: '+8% efficiency'
-    }
-  },
-  {
-    system: 'electrical',
-    score: 92,
-    status: 'excellent',
-    lastService: '2024-08-12',
-    nextAction: 'Annual inspection',
-    nextActionDate: '2026-01-15'
-  },
-  {
-    system: 'plumbing',
-    score: 78,
-    status: 'attention',
-    nextAction: 'Check pipe insulation',
-    nextActionDate: '2024-01-20',
-    quickFix: {
-      title: 'Insulate exposed pipes',
-      time: '30 min',
-      impact: 'Prevents freezing'
-    }
-  },
-  {
-    system: 'roof',
-    score: 94,
-    status: 'excellent',
-    lastService: '2024-09-10',
-    nextAction: 'Spring inspection',
-    nextActionDate: '2025-04-01'
-  },
-  {
-    system: 'energy',
-    score: 88,
-    status: 'good',
-    nextAction: 'Seal window gaps',
-    nextActionDate: '2024-01-18',
-    quickFix: {
-      title: 'Weatherstrip windows',
-      time: '2 hours',
-      impact: 'Save $200/year'
-    }
-  }
-];
-
 export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({ 
   systems
 }) => {
@@ -101,10 +45,10 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
   // Use Intelligence Engine for real data
   const { data: intelligenceData, loading, error } = useIntelligencePredictions(propertyId);
   
-  // Use real data if available, fallback to props, then mock data
-  const actualSystems = intelligenceData?.systems || systems || mockSystems;
+  // Use real data - no mock fallbacks
+  const actualSystems = intelligenceData?.systems || systems || [];
   const overallScore = intelligenceData?.overallHealth || 
-    Math.round(actualSystems.reduce((acc, sys) => acc + sys.score, 0) / actualSystems.length);
+    (actualSystems.length > 0 ? Math.round(actualSystems.reduce((acc, sys) => acc + sys.score, 0) / actualSystems.length) : 0);
   
   const getSystemIcon = (system: string) => {
     switch (system) {
@@ -167,44 +111,58 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
           </div>
         </CardHeader>
         <CardContent>
-          <Progress value={overallScore} className="h-2 md:h-3 mb-4" />
-            <div className="grid grid-cols-2 gap-3 md:gap-4 text-center">
-              <div className="p-2 md:p-3 bg-accent/5 rounded-lg">
-                <div className="text-base md:text-lg font-bold text-accent">
-                  {actualSystems.filter(s => s.status === 'excellent' || s.status === 'good').length}
+          {!loading && actualSystems.length === 0 && !error && (
+            <div className="p-4 text-center">
+              <p className="text-muted-foreground mb-2">No system data available</p>
+              <p className="text-sm text-muted-foreground">Add your home systems to see health insights</p>
+            </div>
+          )}
+          
+          {actualSystems.length > 0 && (
+            <>
+              <Progress value={overallScore} className="h-2 md:h-3 mb-4" />
+              <div className="grid grid-cols-2 gap-3 md:gap-4 text-center">
+                <div className="p-2 md:p-3 bg-accent/5 rounded-lg">
+                  <div className="text-base md:text-lg font-bold text-accent">
+                    {actualSystems.filter(s => s.status === 'excellent' || s.status === 'good').length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Systems Healthy</div>
                 </div>
-                <div className="text-xs text-muted-foreground">Systems Healthy</div>
+                <div className="p-2 md:p-3 bg-warning/5 rounded-lg">
+                  <div className="text-base md:text-lg font-bold text-warning">
+                    {systemsNeedingAttention.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Need Attention</div>
+                </div>
               </div>
-              <div className="p-2 md:p-3 bg-warning/5 rounded-lg">
-                <div className="text-base md:text-lg font-bold text-warning">
-                  {systemsNeedingAttention.length}
-                </div>
-                <div className="text-xs text-muted-foreground">Need Attention</div>
+            </>
+          )}
+          
+          {intelligenceData?.confidence && (
+            <div className="pt-3 border-t">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>AI Confidence: {Math.round(intelligenceData.confidence * 100)}%</span>
+                <span>Updated: {new Date(intelligenceData.lastUpdated).toLocaleDateString()}</span>
               </div>
             </div>
-            {intelligenceData?.confidence && (
-              <div className="pt-3 border-t">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>AI Confidence: {Math.round(intelligenceData.confidence * 100)}%</span>
-                  <span>Updated: {new Date(intelligenceData.lastUpdated).toLocaleDateString()}</span>
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="pt-3 border-t">
-                <p className="text-xs text-warning">Using backup health data</p>
-              </div>
-            )}
+          )}
+          
+          {error && (
+            <div className="pt-3 border-t">
+              <p className="text-xs text-danger">Unable to load system health data</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* System Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>System Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {actualSystems.map((system) => (
+      {actualSystems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>System Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {actualSystems.map((system) => (
             <div key={system.system} className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg gap-3 md:gap-0">
               <div className="flex items-center gap-3 flex-1">
                 <div className={`p-2 rounded-full bg-muted ${getStatusColor(system.status)} flex-shrink-0`}>
@@ -246,9 +204,10 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
                 <Progress value={system.score} className="w-20 md:w-16" />
               </div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Fixes */}
       {systemsWithQuickFixes.length > 0 && (
