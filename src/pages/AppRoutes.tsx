@@ -23,6 +23,7 @@ import PropertyDetail from "./PropertyDetail";
 import ScoringDashboard from "./ScoringDashboard";
 import PropertyLabelingPage from "./PropertyLabelingPage";
 import PropertyReportPage from "./PropertyReportPage";
+import LandingPage from "./LandingPage";
 
 // Removed ClientDashboard demo import to avoid duplicate React contexts
 
@@ -33,6 +34,7 @@ export function AppRoutes() {
         <BrowserRouter>
         <Routes>
           {/* Public routes */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
           {/* <Route path="/demo" element={<ClientDashboard />} /> */}
           
@@ -48,7 +50,6 @@ export function AppRoutes() {
               <AuthenticatedLayout />
             </ProtectedRoute>
           }>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/home/v2" element={<DashboardV2 />} />
             <Route path="/home-profile" element={<HomeProfilePage />} />
