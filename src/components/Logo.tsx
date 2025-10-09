@@ -1,4 +1,5 @@
 import React from 'react';
+import logo from '@/assets/habitta-logo.png';
 
 interface LogoProps {
   className?: string;
@@ -15,35 +16,11 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', animated = fal
   };
 
   return (
-    <div className={`${sizeMap[size]} ${className} ${animated ? 'animate-pulse' : ''}`}>
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-        <path 
-          d="M50 20L75 35V60C75 63 73 65 70 65H60V45C60 40 55 35 50 35C45 35 40 40 40 45V65H30C27 65 25 63 25 60V35L50 20Z" 
-          stroke="currentColor" 
-          strokeWidth="2.5" 
-          fill="none"
-          className="text-primary transition-colors duration-300"
-        />
-        <rect 
-          x="40" 
-          y="45" 
-          width="10" 
-          height="20" 
-          fill="currentColor" 
-          opacity="0.9"
-          className="text-primary transition-colors duration-300"
-        />
-        <rect 
-          x="50" 
-          y="45" 
-          width="10" 
-          height="20" 
-          fill="currentColor" 
-          opacity="0.9"
-          className="text-primary transition-colors duration-300"
-        />
-      </svg>
-    </div>
+    <img 
+      src={logo} 
+      alt="Habitta Logo" 
+      className={`${sizeMap[size]} ${className} ${animated ? 'animate-pulse' : ''}`}
+    />
   );
 };
 
