@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { WaitlistForm } from '@/components/WaitlistForm';
 import Logo from '@/components/Logo';
+import appPreview from '@/assets/app-preview.png';
 import { 
   Brain, 
   Wrench, 
@@ -170,14 +171,12 @@ export default function LandingPage() {
             </div>
 
             <div className="flex items-center justify-center">
-              <div className="w-full max-w-sm aspect-[9/16] bg-gradient-to-br from-primary to-primary/70 rounded-3xl shadow-2xl p-4 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-accent/20 to-transparent" />
-                <div className="relative z-10 flex flex-col items-center justify-center h-full text-primary-foreground">
-                  <Logo size="xl" className="mb-6" />
-                  <p className="text-center text-lg font-medium px-4">
-                    App Preview<br />Coming Soon
-                  </p>
-                </div>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+                <img 
+                  src={appPreview} 
+                  alt="Habitta Home Intelligence App Preview" 
+                  className="w-full h-auto object-cover"
+                />
               </div>
             </div>
           </div>
