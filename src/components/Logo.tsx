@@ -2,25 +2,27 @@ import React from 'react';
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  animated?: boolean;
 }
 
-const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
+const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', animated = false }) => {
   const sizeMap = {
     sm: 'w-8 h-8',
     md: 'w-10 h-10',
-    lg: 'w-12 h-12'
+    lg: 'w-12 h-12',
+    xl: 'w-20 h-20'
   };
 
   return (
-    <div className={`${sizeMap[size]} ${className}`}>
+    <div className={`${sizeMap[size]} ${className} ${animated ? 'animate-pulse' : ''}`}>
       <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
         <path 
           d="M50 20L75 35V60C75 63 73 65 70 65H60V45C60 40 55 35 50 35C45 35 40 40 40 45V65H30C27 65 25 63 25 60V35L50 20Z" 
           stroke="currentColor" 
           strokeWidth="2.5" 
           fill="none"
-          className="text-primary"
+          className="text-primary transition-colors duration-300"
         />
         <rect 
           x="40" 
@@ -29,7 +31,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
           height="20" 
           fill="currentColor" 
           opacity="0.9"
-          className="text-primary"
+          className="text-primary transition-colors duration-300"
         />
         <rect 
           x="50" 
@@ -38,7 +40,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
           height="20" 
           fill="currentColor" 
           opacity="0.9"
-          className="text-primary"
+          className="text-primary transition-colors duration-300"
         />
       </svg>
     </div>

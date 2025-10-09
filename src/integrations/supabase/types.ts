@@ -760,6 +760,675 @@ export type Database = {
         }
         Relationships: []
       }
+      habitta_home_systems: {
+        Row: {
+          created_at: string
+          current_age: number | null
+          data_source: string | null
+          estimated_replacement_cost: number
+          evidence_sources: string[] | null
+          expected_lifespan: number
+          expected_lifespan_years: number
+          has_evidence: boolean | null
+          health_score: number | null
+          id: string
+          install_date: string
+          instance_key: string | null
+          last_maintenance: string | null
+          location_hint: string | null
+          name: string
+          next_maintenance_date: string | null
+          normalized_address: string | null
+          priority: Database["public"]["Enums"]["habitta_priority_level"] | null
+          property_address: string | null
+          type: Database["public"]["Enums"]["habitta_system_type"]
+          updated_at: string
+          user_id: string
+          verification_status:
+            | Database["public"]["Enums"]["habitta_verification_status"]
+            | null
+        }
+        Insert: {
+          created_at?: string
+          current_age?: number | null
+          data_source?: string | null
+          estimated_replacement_cost?: number
+          evidence_sources?: string[] | null
+          expected_lifespan: number
+          expected_lifespan_years?: number
+          has_evidence?: boolean | null
+          health_score?: number | null
+          id?: string
+          install_date: string
+          instance_key?: string | null
+          last_maintenance?: string | null
+          location_hint?: string | null
+          name: string
+          next_maintenance_date?: string | null
+          normalized_address?: string | null
+          priority?:
+            | Database["public"]["Enums"]["habitta_priority_level"]
+            | null
+          property_address?: string | null
+          type: Database["public"]["Enums"]["habitta_system_type"]
+          updated_at?: string
+          user_id: string
+          verification_status?:
+            | Database["public"]["Enums"]["habitta_verification_status"]
+            | null
+        }
+        Update: {
+          created_at?: string
+          current_age?: number | null
+          data_source?: string | null
+          estimated_replacement_cost?: number
+          evidence_sources?: string[] | null
+          expected_lifespan?: number
+          expected_lifespan_years?: number
+          has_evidence?: boolean | null
+          health_score?: number | null
+          id?: string
+          install_date?: string
+          instance_key?: string | null
+          last_maintenance?: string | null
+          location_hint?: string | null
+          name?: string
+          next_maintenance_date?: string | null
+          normalized_address?: string | null
+          priority?:
+            | Database["public"]["Enums"]["habitta_priority_level"]
+            | null
+          property_address?: string | null
+          type?: Database["public"]["Enums"]["habitta_system_type"]
+          updated_at?: string
+          user_id?: string
+          verification_status?:
+            | Database["public"]["Enums"]["habitta_verification_status"]
+            | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_home_systems_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_maintenance_intelligence: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          estimated_cost: number | null
+          frequency_months: number | null
+          id: string
+          is_diy: boolean | null
+          last_performed: string | null
+          maintenance_type: string
+          next_due: string | null
+          priority: Database["public"]["Enums"]["priority_level"] | null
+          source: string | null
+          system_type: Database["public"]["Enums"]["system_category"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          estimated_cost?: number | null
+          frequency_months?: number | null
+          id?: string
+          is_diy?: boolean | null
+          last_performed?: string | null
+          maintenance_type: string
+          next_due?: string | null
+          priority?: Database["public"]["Enums"]["priority_level"] | null
+          source?: string | null
+          system_type: Database["public"]["Enums"]["system_category"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          estimated_cost?: number | null
+          frequency_months?: number | null
+          id?: string
+          is_diy?: boolean | null
+          last_performed?: string | null
+          maintenance_type?: string
+          next_due?: string | null
+          priority?: Database["public"]["Enums"]["priority_level"] | null
+          source?: string | null
+          system_type?: Database["public"]["Enums"]["system_category"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_maintenance_intelligence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_maintenance_tasks: {
+        Row: {
+          anchor_date: string | null
+          cadence_days: number | null
+          completed: boolean
+          completed_at: string | null
+          created_at: string
+          description: string
+          due_date: string
+          estimated_cost: number
+          estimated_time: string
+          fingerprint: string | null
+          id: string
+          is_diy: boolean
+          normalized_address: string | null
+          priority: Database["public"]["Enums"]["habitta_priority_level"]
+          property_address: string | null
+          superseded_by: string | null
+          system_id: string
+          task_code: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anchor_date?: string | null
+          cadence_days?: number | null
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          description: string
+          due_date: string
+          estimated_cost?: number
+          estimated_time: string
+          fingerprint?: string | null
+          id?: string
+          is_diy?: boolean
+          normalized_address?: string | null
+          priority?: Database["public"]["Enums"]["habitta_priority_level"]
+          property_address?: string | null
+          superseded_by?: string | null
+          system_id: string
+          task_code?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anchor_date?: string | null
+          cadence_days?: number | null
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          description?: string
+          due_date?: string
+          estimated_cost?: number
+          estimated_time?: string
+          fingerprint?: string | null
+          id?: string
+          is_diy?: boolean
+          normalized_address?: string | null
+          priority?: Database["public"]["Enums"]["habitta_priority_level"]
+          property_address?: string | null
+          superseded_by?: string | null
+          system_id?: string
+          task_code?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_maintenance_tasks_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "habitta_maintenance_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habitta_maintenance_tasks_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_home_systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habitta_maintenance_tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_permit_insights: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          event_type: Database["public"]["Enums"]["event_type"] | null
+          id: string
+          lifecycle_impact: string | null
+          maintenance_recommendations: Json | null
+          metadata: Json | null
+          permit_id: string
+          processed_date: string | null
+          system_type: Database["public"]["Enums"]["system_category"] | null
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          event_type?: Database["public"]["Enums"]["event_type"] | null
+          id?: string
+          lifecycle_impact?: string | null
+          maintenance_recommendations?: Json | null
+          metadata?: Json | null
+          permit_id: string
+          processed_date?: string | null
+          system_type?: Database["public"]["Enums"]["system_category"] | null
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          event_type?: Database["public"]["Enums"]["event_type"] | null
+          id?: string
+          lifecycle_impact?: string | null
+          maintenance_recommendations?: Json | null
+          metadata?: Json | null
+          permit_id?: string
+          processed_date?: string | null
+          system_type?: Database["public"]["Enums"]["system_category"] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_permit_insights_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_permits: {
+        Row: {
+          city: string | null
+          contractor_license: string | null
+          contractor_name: string | null
+          created_at: string | null
+          data_source: string
+          description: string | null
+          estimated_cost: number | null
+          expiration_date: string | null
+          final_inspection_date: string | null
+          id: string
+          issue_date: string | null
+          last_fetched_at: string | null
+          normalized_address: string | null
+          permit_number: string
+          permit_status: string | null
+          permit_type: string
+          property_address: string
+          raw_data: Json | null
+          related_system_id: string | null
+          related_system_type: string | null
+          state: string | null
+          street_address: string | null
+          updated_at: string | null
+          user_id: string
+          work_description: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          city?: string | null
+          contractor_license?: string | null
+          contractor_name?: string | null
+          created_at?: string | null
+          data_source?: string
+          description?: string | null
+          estimated_cost?: number | null
+          expiration_date?: string | null
+          final_inspection_date?: string | null
+          id?: string
+          issue_date?: string | null
+          last_fetched_at?: string | null
+          normalized_address?: string | null
+          permit_number: string
+          permit_status?: string | null
+          permit_type: string
+          property_address: string
+          raw_data?: Json | null
+          related_system_id?: string | null
+          related_system_type?: string | null
+          state?: string | null
+          street_address?: string | null
+          updated_at?: string | null
+          user_id: string
+          work_description?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          city?: string | null
+          contractor_license?: string | null
+          contractor_name?: string | null
+          created_at?: string | null
+          data_source?: string
+          description?: string | null
+          estimated_cost?: number | null
+          expiration_date?: string | null
+          final_inspection_date?: string | null
+          id?: string
+          issue_date?: string | null
+          last_fetched_at?: string | null
+          normalized_address?: string | null
+          permit_number?: string
+          permit_status?: string | null
+          permit_type?: string
+          property_address?: string
+          raw_data?: Json | null
+          related_system_id?: string | null
+          related_system_type?: string | null
+          state?: string | null
+          street_address?: string | null
+          updated_at?: string | null
+          user_id?: string
+          work_description?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_permits_related_system_id_fkey"
+            columns: ["related_system_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_home_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          home_address: string | null
+          home_type: string | null
+          id: string
+          normalized_address: string | null
+          property_address: string | null
+          square_footage: number | null
+          updated_at: string
+          year_built: number | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          home_address?: string | null
+          home_type?: string | null
+          id: string
+          normalized_address?: string | null
+          property_address?: string | null
+          square_footage?: number | null
+          updated_at?: string
+          year_built?: number | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          home_address?: string | null
+          home_type?: string | null
+          id?: string
+          normalized_address?: string | null
+          property_address?: string | null
+          square_footage?: number | null
+          updated_at?: string
+          year_built?: number | null
+        }
+        Relationships: []
+      }
+      habitta_rec_instances: {
+        Row: {
+          created_at: string | null
+          description: string
+          dismissed_at: string | null
+          expires_at: string | null
+          id: string
+          normalized_address: string | null
+          placement: string
+          priority_score: number
+          property_address: string | null
+          status: string
+          system_id: string | null
+          task_id: string | null
+          template_key: string
+          title: string
+          trigger_context: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description: string
+          dismissed_at?: string | null
+          expires_at?: string | null
+          id?: string
+          normalized_address?: string | null
+          placement: string
+          priority_score: number
+          property_address?: string | null
+          status?: string
+          system_id?: string | null
+          task_id?: string | null
+          template_key: string
+          title: string
+          trigger_context?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string
+          dismissed_at?: string | null
+          expires_at?: string | null
+          id?: string
+          normalized_address?: string | null
+          placement?: string
+          priority_score?: number
+          property_address?: string | null
+          status?: string
+          system_id?: string | null
+          task_id?: string | null
+          template_key?: string
+          title?: string
+          trigger_context?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_rec_instances_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_home_systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habitta_rec_instances_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_maintenance_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_rec_templates: {
+        Row: {
+          action_type: string
+          base_priority_score: number
+          created_at: string | null
+          description_template: string
+          id: string
+          placement_tags: string[]
+          template_key: string
+          title_template: string
+          trigger_dsl: Json
+          updated_at: string | null
+        }
+        Insert: {
+          action_type: string
+          base_priority_score?: number
+          created_at?: string | null
+          description_template: string
+          id?: string
+          placement_tags?: string[]
+          template_key: string
+          title_template: string
+          trigger_dsl: Json
+          updated_at?: string | null
+        }
+        Update: {
+          action_type?: string
+          base_priority_score?: number
+          created_at?: string | null
+          description_template?: string
+          id?: string
+          placement_tags?: string[]
+          template_key?: string
+          title_template?: string
+          trigger_dsl?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      habitta_system_events: {
+        Row: {
+          confidence: number | null
+          contractor: string | null
+          cost: number | null
+          created_at: string | null
+          description: string | null
+          event_date: string
+          event_type: Database["public"]["Enums"]["event_type"]
+          home_id: string | null
+          id: string
+          is_canonical: boolean | null
+          metadata: Json | null
+          normalized_address: string | null
+          source: Database["public"]["Enums"]["event_source"]
+          source_id: string | null
+          system_subtype: string | null
+          system_type: Database["public"]["Enums"]["system_category"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          contractor?: string | null
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          event_date: string
+          event_type: Database["public"]["Enums"]["event_type"]
+          home_id?: string | null
+          id?: string
+          is_canonical?: boolean | null
+          metadata?: Json | null
+          normalized_address?: string | null
+          source: Database["public"]["Enums"]["event_source"]
+          source_id?: string | null
+          system_subtype?: string | null
+          system_type: Database["public"]["Enums"]["system_category"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          contractor?: string | null
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          event_date?: string
+          event_type?: Database["public"]["Enums"]["event_type"]
+          home_id?: string | null
+          id?: string
+          is_canonical?: boolean | null
+          metadata?: Json | null
+          normalized_address?: string | null
+          source?: Database["public"]["Enums"]["event_source"]
+          source_id?: string | null
+          system_subtype?: string | null
+          system_type?: Database["public"]["Enums"]["system_category"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_system_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habitta_user_verifications: {
+        Row: {
+          confidence_boost: number | null
+          created_at: string | null
+          id: string
+          question_asked: string
+          response_date: string | null
+          system_event_id: string | null
+          user_id: string
+          user_response: string
+        }
+        Insert: {
+          confidence_boost?: number | null
+          created_at?: string | null
+          id?: string
+          question_asked: string
+          response_date?: string | null
+          system_event_id?: string | null
+          user_id: string
+          user_response: string
+        }
+        Update: {
+          confidence_boost?: number | null
+          created_at?: string | null
+          id?: string
+          question_asked?: string
+          response_date?: string | null
+          system_event_id?: string | null
+          user_id?: string
+          user_response?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habitta_user_verifications_system_event_id_fkey"
+            columns: ["system_event_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_system_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habitta_user_verifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "habitta_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       home_systems: {
         Row: {
           brand: string | null
@@ -2940,6 +3609,30 @@ export type Database = {
           },
         ]
       }
+      waitlist: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          metadata: Json | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          metadata?: Json | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          metadata?: Json | null
+          name?: string
+        }
+        Relationships: []
+      }
       weather_alerts: {
         Row: {
           alert_type: string
@@ -3218,6 +3911,10 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_expired_recommendations: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       compute_canonical_hash: {
         Args: {
           city: string
@@ -3226,6 +3923,108 @@ export type Database = {
           state: string
         }
         Returns: string
+      }
+      get_permits_by_property: {
+        Args: { p_property_address: string; p_user_id: string }
+        Returns: {
+          description: string
+          estimated_cost: number
+          id: string
+          issue_date: string
+          permit_number: string
+          permit_type: string
+          related_system_type: string
+        }[]
+      }
+      get_system_age_from_events: {
+        Args: {
+          p_system_subtype?: string
+          p_system_type: Database["public"]["Enums"]["system_category"]
+          p_user_id: string
+        }
+        Returns: number
+      }
+      get_systems_by_property: {
+        Args: { p_property_address: string; p_user_id: string }
+        Returns: {
+          data_source: string
+          health_score: number
+          id: string
+          name: string
+          priority: string
+          type: string
+          verification_status: Database["public"]["Enums"]["habitta_verification_status"]
+        }[]
+      }
+      get_user_recommendations: {
+        Args: {
+          p_limit?: number
+          p_normalized_address: string
+          p_placement?: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          placement: string
+          priority_score: number
+          system_id: string
+          task_id: string
+          template_key: string
+          title: string
+          trigger_context: Json
+        }[]
+      }
+      get_user_systems_by_address: {
+        Args: { p_address: string; p_user_id: string }
+        Returns: {
+          created_at: string
+          current_age: number | null
+          data_source: string | null
+          estimated_replacement_cost: number
+          evidence_sources: string[] | null
+          expected_lifespan: number
+          expected_lifespan_years: number
+          has_evidence: boolean | null
+          health_score: number | null
+          id: string
+          install_date: string
+          instance_key: string | null
+          last_maintenance: string | null
+          location_hint: string | null
+          name: string
+          next_maintenance_date: string | null
+          normalized_address: string | null
+          priority: Database["public"]["Enums"]["habitta_priority_level"] | null
+          property_address: string | null
+          type: Database["public"]["Enums"]["habitta_system_type"]
+          updated_at: string
+          user_id: string
+          verification_status:
+            | Database["public"]["Enums"]["habitta_verification_status"]
+            | null
+        }[]
+      }
+      habitta_calculate_health_score: {
+        Args: { p_current_age: number; p_expected_lifespan_years: number }
+        Returns: number
+      }
+      habitta_generate_maintenance_tasks: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      habitta_parse_date: {
+        Args: { p_text: string }
+        Returns: string
+      }
+      habitta_recompute_system_metrics: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      habitta_update_system_priorities: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       has_role: {
         Args: {
@@ -3237,6 +4036,22 @@ export type Database = {
       link_home_to_property: {
         Args: { p_home_id: string }
         Returns: Json
+      }
+      normalize_address: {
+        Args: { address: string }
+        Returns: string
+      }
+      process_permit_to_system_event: {
+        Args: {
+          p_contractor?: string
+          p_cost?: number
+          p_description: string
+          p_event_date: string
+          p_permit_id: string
+          p_permit_type: string
+          p_user_id: string
+        }
+        Returns: string
       }
       promote_validation_to_production: {
         Args: { p_property_id: string }
@@ -3263,6 +4078,48 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
+      event_source:
+        | "permit"
+        | "user_verified"
+        | "attom"
+        | "manual_entry"
+        | "estimated"
+      event_type: "install" | "replace" | "service" | "repair" | "inspection"
+      habitta_priority_level: "low" | "medium" | "high" | "critical"
+      habitta_system_type:
+        | "hvac"
+        | "roof"
+        | "water_heater"
+        | "appliance"
+        | "plumbing"
+        | "electrical"
+      habitta_verification_status:
+        | "ai_generated"
+        | "user_added"
+        | "user_verified"
+        | "permit_verified"
+      priority_level: "low" | "medium" | "high" | "critical"
+      system_category:
+        | "hvac"
+        | "roof"
+        | "water_heater"
+        | "electrical_panel"
+        | "plumbing"
+        | "appliance"
+        | "pool"
+        | "spa"
+        | "solar"
+        | "generator"
+        | "irrigation"
+        | "septic"
+        | "water_softener"
+        | "security"
+        | "garage_door"
+        | "deck"
+        | "fence"
+        | "windows"
+        | "siding"
+        | "flooring"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3391,6 +4248,52 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
+      event_source: [
+        "permit",
+        "user_verified",
+        "attom",
+        "manual_entry",
+        "estimated",
+      ],
+      event_type: ["install", "replace", "service", "repair", "inspection"],
+      habitta_priority_level: ["low", "medium", "high", "critical"],
+      habitta_system_type: [
+        "hvac",
+        "roof",
+        "water_heater",
+        "appliance",
+        "plumbing",
+        "electrical",
+      ],
+      habitta_verification_status: [
+        "ai_generated",
+        "user_added",
+        "user_verified",
+        "permit_verified",
+      ],
+      priority_level: ["low", "medium", "high", "critical"],
+      system_category: [
+        "hvac",
+        "roof",
+        "water_heater",
+        "electrical_panel",
+        "plumbing",
+        "appliance",
+        "pool",
+        "spa",
+        "solar",
+        "generator",
+        "irrigation",
+        "septic",
+        "water_softener",
+        "security",
+        "garage_door",
+        "deck",
+        "fence",
+        "windows",
+        "siding",
+        "flooring",
+      ],
     },
   },
 } as const

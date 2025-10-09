@@ -1,286 +1,301 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import Logo from '@/components/Logo';
-import { Camera, CheckSquare, FolderOpen, Home, Shield, Clock, DollarSign } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { WaitlistForm } from '@/components/WaitlistForm';
+import Logo from '@/components/Logo';
+import { 
+  Brain, 
+  Wrench, 
+  DollarSign, 
+  Hammer,
+  CheckCircle2,
+  Calendar,
+  FileText,
+  Instagram,
+  Linkedin
+} from 'lucide-react';
 
-const LandingPage = () => {
+export default function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [isVisible, setIsVisible] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       navigate('/dashboard');
     }
   }, [user, navigate]);
 
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    element?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Logo size="md" />
-              <h1 className="text-2xl font-bold text-primary">Habitta</h1>
-            </div>
-            
-            <nav className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
-              <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
-              <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
-            </nav>
-
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate('/auth')}>Sign In</Button>
-              <Button onClick={() => navigate('/auth')} className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-semibold">
-                Get Started
-              </Button>
-            </div>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Logo size="md" />
+            <span className="text-xl font-bold text-primary">Habitta</span>
           </div>
+          <nav className="flex items-center gap-4">
+            <Button 
+              variant="ghost" 
+              onClick={() => scrollToSection('preview')}
+              className="text-foreground hover:text-primary"
+            >
+              Preview
+            </Button>
+            <Button 
+              variant="ghost" 
+              onClick={() => scrollToSection('why')}
+              className="text-foreground hover:text-primary"
+            >
+              Why Habitta
+            </Button>
+            <Button 
+              variant="default"
+              onClick={() => scrollToSection('waitlist')}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+            >
+              Join Waitlist
+            </Button>
+          </nav>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6">
-            Your Home's <span className="text-primary">AI-Powered Guardian</span>
+      <section className="relative pt-32 pb-20 px-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-muted/30" />
+        <div 
+          className={`container mx-auto max-w-4xl text-center relative z-10 transition-all duration-1000 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
+          }`}
+        >
+          <div className="mb-8 flex justify-center">
+            <Logo size="xl" animated />
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold text-primary mb-6 leading-tight">
+            Your Home. Smarter.
           </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-            Prevent costly repairs with predictive maintenance, instant AI diagnosis, and smart scheduling
+          <p className="text-xl md:text-2xl text-muted-foreground mb-10 leading-relaxed max-w-2xl mx-auto">
+            Habitta helps you understand, maintain, and improve your home — from looking to living.
           </p>
-          <Button
-            size="lg"
-            className="bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal font-bold text-lg px-8 py-6"
-            onClick={() => navigate('/auth')}
-          >
-            Start Free Trial
-          </Button>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section id="features" className="py-20 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Everything You Need to Protect Your Home</h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Comprehensive home management tools powered by artificial intelligence
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-8 text-center">
-                <Camera className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">AI Diagnosis</h3>
-                <p className="text-muted-foreground">Upload a photo, get instant answers. Our AI identifies issues and provides expert recommendations.</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-8 text-center">
-                <CheckSquare className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">Smart Maintenance</h3>
-                <p className="text-muted-foreground">Never miss important tasks. Automated scheduling based on your home's specific needs.</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-8 text-center">
-                <FolderOpen className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">Document Vault</h3>
-                <p className="text-muted-foreground">All your home records, organized. Warranties, receipts, manuals – everything in one place.</p>
-              </CardContent>
-            </Card>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button 
+              size="lg"
+              onClick={() => scrollToSection('waitlist')}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground text-lg h-14 px-8"
+            >
+              Join the Waitlist
+            </Button>
+            <Button 
+              size="lg"
+              variant="outline"
+              onClick={() => scrollToSection('preview')}
+              className="text-lg h-14 px-8 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              Preview the App
+            </Button>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-foreground mb-4">How It Works</h2>
-            <p className="text-xl text-muted-foreground">Get started in minutes, protect your home for years</p>
-          </div>
+      {/* Preview Section */}
+      <section id="preview" className="py-20 px-6 bg-card">
+        <div className="container mx-auto max-w-6xl">
+          <h2 className="text-4xl md:text-5xl font-bold text-center text-primary mb-4">
+            A complete picture of your home's health.
+          </h2>
+          <p className="text-xl text-center text-muted-foreground mb-16 max-w-2xl mx-auto">
+            Everything you need to care for your home, powered by intelligent insights.
+          </p>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Home className="w-8 h-8 text-primary" />
+          <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
+            <div className="space-y-8">
+              <div className="flex gap-4 items-start group hover:scale-105 transition-transform duration-300">
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors">
+                  <Brain className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">Predictive Insights</h3>
+                  <p className="text-muted-foreground">
+                    Know when to repair or replace major systems before they fail.
+                  </p>
+                </div>
               </div>
-              <h3 className="text-xl font-semibold mb-3">1. Create Your Home Profile</h3>
-              <p className="text-muted-foreground">Simple setup in minutes. Add your home details and we'll customize everything for you.</p>
+
+              <div className="flex gap-4 items-start group hover:scale-105 transition-transform duration-300">
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors">
+                  <Wrench className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">Smart Maintenance</h3>
+                  <p className="text-muted-foreground">
+                    Get proactive tasks and seasonal recommendations tailored to your home.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start group hover:scale-105 transition-transform duration-300">
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors">
+                  <Hammer className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">DIY + Pros</h3>
+                  <p className="text-muted-foreground">
+                    Guided help for every home project — or connect with local professionals.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start group hover:scale-105 transition-transform duration-300">
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors">
+                  <DollarSign className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">Financial Forecasts</h3>
+                  <p className="text-muted-foreground">
+                    Plan future costs with confidence using AI-powered predictions.
+                  </p>
+                </div>
+              </div>
             </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Camera className="w-8 h-8 text-primary" />
+
+            <div className="flex items-center justify-center">
+              <div className="w-full max-w-sm aspect-[9/16] bg-gradient-to-br from-primary to-primary/70 rounded-3xl shadow-2xl p-4 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-t from-accent/20 to-transparent" />
+                <div className="relative z-10 flex flex-col items-center justify-center h-full text-primary-foreground">
+                  <Logo size="xl" className="mb-6" />
+                  <p className="text-center text-lg font-medium px-4">
+                    App Preview<br />Coming Soon
+                  </p>
+                </div>
               </div>
-              <h3 className="text-xl font-semibold mb-3">2. Get AI Insights</h3>
-              <p className="text-muted-foreground">Upload photos of any issues and get instant, expert diagnosis and recommendations.</p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Shield className="w-8 h-8 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-3">3. Stay Protected</h3>
-              <p className="text-muted-foreground">Prevent issues before they happen with smart scheduling and predictive maintenance.</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="py-20 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Simple, Transparent Pricing</h2>
-            <p className="text-xl text-muted-foreground">Choose the plan that's right for your home</p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <Card className="relative">
-              <CardContent className="p-8">
-                <h3 className="text-2xl font-bold mb-2">Basic</h3>
-                <div className="text-3xl font-bold mb-4">
-                  $0<span className="text-lg text-muted-foreground">/mo</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>3 AI diagnoses per month</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Basic maintenance tracking</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Document storage</span>
-                  </li>
-                </ul>
-                <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>Get Started</Button>
-              </CardContent>
-            </Card>
-            
-            <Card className="relative border-primary shadow-lg">
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
-                  Most Popular
-                </span>
+      {/* Why Habitta Section */}
+      <section id="why" className="py-20 px-6 bg-muted/30">
+        <div className="container mx-auto max-w-6xl">
+          <h2 className="text-4xl md:text-5xl font-bold text-center text-primary mb-4">
+            Built for every homeowner.
+          </h2>
+          <p className="text-xl text-center text-muted-foreground mb-16 max-w-2xl mx-auto">
+            From first-time buyers to seasoned owners, Habitta makes home care simple.
+          </p>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-card p-6 rounded-2xl border border-border hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+                <CheckCircle2 className="w-6 h-6 text-accent" />
               </div>
-              <CardContent className="p-8">
-                <h3 className="text-2xl font-bold mb-2">Plus</h3>
-                <div className="text-3xl font-bold mb-4">
-                  $9.99<span className="text-lg text-muted-foreground">/mo</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Unlimited AI diagnoses</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Smart maintenance scheduling</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Unlimited document storage</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Priority support</span>
-                  </li>
-                </ul>
-                <Button className="w-full bg-chatdiy-yellow hover:bg-chatdiy-yellow/90 text-charcoal" onClick={() => navigate('/auth')}>
-                  Start Free Trial
-                </Button>
-              </CardContent>
-            </Card>
-            
-            <Card className="relative">
-              <CardContent className="p-8">
-                <h3 className="text-2xl font-bold mb-2">Premium</h3>
-                <div className="text-3xl font-bold mb-4">
-                  $19.99<span className="text-lg text-muted-foreground">/mo</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Everything in Plus</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Virtual Pro access</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-success-green" />
-                    <span>Advanced analytics</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-muted-foreground" />
-                    <span className="text-muted-foreground">Coming soon</span>
-                  </li>
-                </ul>
-                <Button variant="outline" className="w-full" onClick={() => navigate('/auth')}>Get Started</Button>
-              </CardContent>
-            </Card>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Prevent Surprises</h3>
+              <p className="text-muted-foreground">
+                AI-powered predictions help you avoid costly emergencies.
+              </p>
+            </div>
+
+            <div className="bg-card p-6 rounded-2xl border border-border hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+                <Calendar className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Track Everything</h3>
+              <p className="text-muted-foreground">
+                Monitor every system from roof to water heater in one place.
+              </p>
+            </div>
+
+            <div className="bg-card p-6 rounded-2xl border border-border hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+                <Hammer className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Plan Projects</h3>
+              <p className="text-muted-foreground">
+                Get step-by-step guidance from ChatDIY for any home task.
+              </p>
+            </div>
+
+            <div className="bg-card p-6 rounded-2xl border border-border hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+                <FileText className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Organized History</h3>
+              <p className="text-muted-foreground">
+                All your home's records, maintenance logs, and receipts together.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Waitlist CTA Section */}
+      <section id="waitlist" className="py-20 px-6 bg-card">
+        <div className="container mx-auto max-w-2xl text-center">
+          <h2 className="text-4xl md:text-5xl font-bold text-primary mb-4">
+            Get early access.
+          </h2>
+          <p className="text-xl text-muted-foreground mb-10">
+            Join the waitlist to be the first to experience the Habitta app.
+          </p>
+          
+          <WaitlistForm />
+
+          <div className="mt-12 flex justify-center gap-6">
+            <a 
+              href="https://instagram.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-12 h-12 rounded-full bg-muted hover:bg-accent/20 flex items-center justify-center transition-colors"
+              aria-label="Instagram"
+            >
+              <Instagram className="w-5 h-5 text-foreground" />
+            </a>
+            <a 
+              href="https://linkedin.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-12 h-12 rounded-full bg-muted hover:bg-accent/20 flex items-center justify-center transition-colors"
+              aria-label="LinkedIn"
+            >
+              <Linkedin className="w-5 h-5 text-foreground" />
+            </a>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-card border-t py-12">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <Logo size="sm" />
-                <span className="text-lg font-bold text-primary">Habitta</span>
-              </div>
-              <p className="text-muted-foreground">Your home's AI-powered guardian</p>
+      <footer className="bg-primary text-primary-foreground py-12 px-6">
+        <div className="container mx-auto max-w-6xl">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <Logo size="md" className="text-primary-foreground" />
+              <span className="text-xl font-bold">Habitta</span>
             </div>
             
-            <div>
-              <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><a href="#features" className="hover:text-foreground transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">FAQ</a></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><a href="#" className="hover:text-foreground transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Privacy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Terms</a></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Powered by</h4>
-              <p className="text-sm text-muted-foreground">
-                <a href="#" className="hover:text-foreground transition-colors">ChatDIY</a>
-              </p>
+            <div className="flex items-center gap-6 text-sm">
+              <a href="#" className="hover:text-accent transition-colors">Terms</a>
+              <span className="text-primary-foreground/40">|</span>
+              <a href="#" className="hover:text-accent transition-colors">Privacy</a>
+              <span className="text-primary-foreground/40">|</span>
+              <a href="#" className="hover:text-accent transition-colors">Contact</a>
             </div>
           </div>
           
-          <div className="border-t mt-8 pt-8 text-center text-muted-foreground">
-            <p>&copy; 2024 Habitta. All rights reserved.</p>
+          <div className="mt-8 pt-8 border-t border-primary-foreground/20 text-center text-sm text-primary-foreground/60">
+            © {new Date().getFullYear()} Habitta. All rights reserved.
           </div>
         </div>
       </footer>
     </div>
   );
-};
-
-export default LandingPage;
+}
