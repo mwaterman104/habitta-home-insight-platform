@@ -3,6 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, DollarSign, CheckCircle, PlayCircle, Pause } from "lucide-react";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
+import { useRiskDeltaMap } from "@/hooks/useRiskDeltas";
+import { RiskDeltaDisplay } from "@/components/RiskDeltaDisplay";
+import { ImpactCalculatingState } from "./ImpactCalculatingState";
+import { ImpactUnavailableState } from "./ImpactUnavailableState";
+import { CALCULATION_WINDOW_MS } from "@/types/riskDelta";
 
 interface MaintenanceTask {
   id: string;
@@ -23,11 +28,12 @@ interface MaintenanceTimelineViewProps {
   tasks: MaintenanceTask[];
   loading: boolean;
   onTaskUpdate: (taskId: string, updates: Partial<MaintenanceTask>) => void;
+  homeId?: string;
 }
 
-export function MaintenanceTimelineView({ tasks, loading, onTaskUpdate }: MaintenanceTimelineViewProps) {
+export function MaintenanceTimelineView({ tasks, loading, onTaskUpdate, homeId }: MaintenanceTimelineViewProps) {
   const today = startOfDay(new Date());
-
+  const { deltaMap, isLoading: deltasLoading } = useRiskDeltaMap(homeId);
   const getTasksByTimeframe = () => {
     const overdue = tasks.filter(task => 
       task.status !== "completed" && 
@@ -72,6 +78,15 @@ export function MaintenanceTimelineView({ tasks, loading, onTaskUpdate }: Mainte
 
   const TaskCard = ({ task }: { task: MaintenanceTask }) => {
     const isOverdue = task.status !== "completed" && isBefore(new Date(task.due_date), today);
+    
+    // Risk delta integration for completed tasks
+    const impact = deltaMap.get(task.id);
+    const completedTime = task.completed_date 
+      ? new Date(task.completed_date).getTime() 
+      : 0;
+    const isCalculating = task.status === "completed" && 
+      !impact && 
+      Date.now() - completedTime < CALCULATION_WINDOW_MS;
     
     return (
       <Card className={`mb-4 ${isOverdue ? 'border-red-200 bg-red-50' : ''}`}>
@@ -152,6 +167,26 @@ export function MaintenanceTimelineView({ tasks, loading, onTaskUpdate }: Mainte
               )}
             </div>
           </div>
+          
+          {/* Risk Delta Display for completed tasks */}
+          {task.status === "completed" && (
+            <div className="mt-4 pt-4 border-t">
+              {isCalculating && (
+                <ImpactCalculatingState startedAt={task.completed_date} />
+              )}
+              {impact && (
+                <RiskDeltaDisplay 
+                  systemType={impact.systemType}
+                  before={impact.before}
+                  after={impact.after}
+                  completedDate={task.completed_date}
+                />
+              )}
+              {!impact && !isCalculating && task.category && (
+                <ImpactUnavailableState />
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     );
