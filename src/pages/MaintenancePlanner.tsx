@@ -143,21 +143,40 @@ export default function MaintenancePlanner() {
   };
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<MaintenanceTask>) => {
-    const { error } = await supabase
-      .from("maintenance_tasks")
-      .update(updates)
-      .eq("id", taskId);
+    console.log('Updating task:', taskId, updates);
+    
+    try {
+      const { data, error } = await supabase
+        .from("maintenance_tasks")
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", taskId)
+        .select();
 
-    if (error) {
-      toast({
-        title: "Error Updating Task",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
+      console.log('Update result:', { data, error });
+
+      if (error) {
+        console.error('Task update error:', error);
+        toast({
+          title: "Error Updating Task",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      
       toast({
         title: "Task Updated",
-        description: "Task has been updated successfully.",
+        description: `Task status changed to ${updates.status || 'updated'}.`,
+      });
+    } catch (err: any) {
+      console.error('Task update exception:', err);
+      toast({
+        title: "Error Updating Task",
+        description: err.message || "Failed to update task.",
+        variant: "destructive",
       });
     }
   };
