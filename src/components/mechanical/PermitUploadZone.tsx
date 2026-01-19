@@ -22,6 +22,15 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
   const processFile = useCallback(async (file: File) => {
     console.log('Processing file:', file.name, 'size:', file.size);
     
+    // Check file size - limit to 10MB for browser processing
+    const MAX_SIZE_MB = 10;
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+    
+    if (file.size > MAX_SIZE_BYTES) {
+      toast.error(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is ${MAX_SIZE_MB}MB. Please filter your CSV to HVAC-related permits only.`);
+      return;
+    }
+    
     if (!file.name.endsWith('.csv')) {
       toast.error('Please upload a CSV file');
       return;
@@ -34,7 +43,10 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
 
     try {
       const text = await file.text();
-      console.log('File content length:', text.length, 'First 200 chars:', text.substring(0, 200));
+      console.log('File content length:', text.length, 'chars');
+      
+      // Use setTimeout to prevent blocking the main thread
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       const { records, errors } = parseAndEnrichCSV(text);
       console.log('Parsed records:', records.length, 'Errors:', errors.length);
