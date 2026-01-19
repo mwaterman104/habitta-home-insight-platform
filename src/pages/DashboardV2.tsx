@@ -8,6 +8,7 @@ import { HomePulse } from '@/components/HomePulse';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserHome } from '@/contexts/UserHomeContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useTaskCompletion } from '@/components/TaskCompletionHandler';
 import {
   Home,
   Bell,
@@ -532,7 +533,13 @@ const DashboardV2: React.FC = () => {
     return null;
   }, [systems, tasks]);
 
-  const handleTaskToggle = (taskId: string) => {
+  const { toggleTaskCompletion, completingTasks } = useTaskCompletion();
+
+  const handleTaskToggle = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    const isCurrentlyCompleted = completedTasks.has(taskId);
+    
+    // Optimistic UI update
     setCompletedTasks(prev => {
       const newSet = new Set(prev);
       if (newSet.has(taskId)) {
@@ -542,6 +549,14 @@ const DashboardV2: React.FC = () => {
       }
       return newSet;
     });
+    
+    // Persist to database with risk tracking
+    await toggleTaskCompletion(
+      taskId, 
+      !isCurrentlyCompleted,
+      task?.category,
+      userHome?.id
+    );
   };
 
   if (homeLoading) {
