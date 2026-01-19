@@ -116,48 +116,54 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
                   )}
                 </div>
               </div>
-              <label className="cursor-pointer">
+              <div>
                 <input 
                   type="file" 
                   accept=".csv" 
                   onChange={handleFileInput} 
                   className="hidden"
+                  id="csv-reupload"
                 />
                 <Button variant="outline" size="sm" asChild>
-                  <span>Upload Different File</span>
+                  <label htmlFor="csv-reupload" className="cursor-pointer">
+                    Upload Different File
+                  </label>
                 </Button>
-              </label>
+              </div>
             </div>
           ) : (
-            <label className="cursor-pointer flex flex-col items-center gap-4">
+            <div className="cursor-pointer flex flex-col items-center gap-4">
               <input 
                 type="file" 
                 accept=".csv" 
                 onChange={handleFileInput} 
                 className="hidden"
+                id="csv-upload"
               />
-              <div className={cn(
-                'p-4 rounded-full transition-colors',
-                isDragging ? 'bg-primary/10' : 'bg-muted'
-              )}>
-                <Upload className={cn(
-                  'h-8 w-8 transition-colors',
-                  isDragging ? 'text-primary' : 'text-muted-foreground'
-                )} />
-              </div>
-              <div className="space-y-1">
-                <p className="font-medium">
-                  {isDragging ? 'Drop your CSV here' : 'Upload Miami-Dade Permit CSV'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Drag & drop or click to browse
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FileText className="h-3 w-3" />
-                <span>Required: Address, Work_Description, Issue_Date</span>
-              </div>
-            </label>
+              <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center gap-4 w-full">
+                <div className={cn(
+                  'p-4 rounded-full transition-colors',
+                  isDragging ? 'bg-primary/10' : 'bg-muted'
+                )}>
+                  <Upload className={cn(
+                    'h-8 w-8 transition-colors',
+                    isDragging ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                </div>
+                <div className="space-y-1 text-center">
+                  <p className="font-medium">
+                    {isDragging ? 'Drop your CSV here' : 'Upload Miami-Dade Permit CSV'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Drag & drop or click to browse
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <FileText className="h-3 w-3" />
+                  <span>Required: Address, Work_Description, Issue_Date</span>
+                </div>
+              </label>
+            </div>
           )}
         </div>
         
