@@ -1,5 +1,11 @@
 // Mechanical Intelligence - Heuristic Enrichment & Risk Scoring Engine
 
+export type PermitSegment = 
+  | 'replacement_wave'   // AC CHANGE OUTs from 2016-2018 (8-10 years old, EOL approaching)
+  | 'repair_loop'        // Multiple permits on same folio within 3 years
+  | 'new_homeowner'      // Permits from late 2024-2025 (preventative care targets)
+  | 'standard';          // Everything else
+
 export interface PermitRecord {
   id: string;
   address: string;
@@ -14,6 +20,11 @@ export interface PermitRecord {
   riskScore: number;
   riskLevel: 'critical' | 'high' | 'medium' | 'low';
   riskFactors: string[];
+  // New investor-ready fields
+  segment: PermitSegment;
+  equityAtRisk: number;
+  isRepairLoopCandidate?: boolean;
+  repairLoopCount?: number;
   // For mapping
   latitude?: number;
   longitude?: number;
@@ -34,10 +45,20 @@ const CONTRACTOR_BRAND_MAP: Record<string, { brand: string; confidence: 'high' |
   'ameri-temp': { brand: 'Carrier', confidence: 'high' },
   'air around the clock': { brand: 'Rheem', confidence: 'high' },
   'air around clock': { brand: 'Rheem', confidence: 'high' },
+  // Direct A/C -> Lennox (high-risk coil corrosion target)
+  'direct a/c': { brand: 'Lennox', confidence: 'high' },
+  'direct ac': { brand: 'Lennox', confidence: 'high' },
+  'direct air': { brand: 'Lennox', confidence: 'high' },
+  'direct a c': { brand: 'Lennox', confidence: 'high' },
+  // Other mappings
   'one hour air': { brand: 'Bryant', confidence: 'medium' },
   'one hour heating': { brand: 'Bryant', confidence: 'medium' },
   'cool today': { brand: 'Trane', confidence: 'medium' },
   'service experts': { brand: 'Lennox', confidence: 'medium' },
+  // Additional Florida contractors
+  'all year cooling': { brand: 'Goodman', confidence: 'medium' },
+  'cousins air': { brand: 'Carrier', confidence: 'medium' },
+  'ars rescue rooter': { brand: 'American Standard', confidence: 'medium' },
 };
 
 // Brand keywords to search in descriptions
@@ -121,6 +142,84 @@ export function isRepairWork(workDescription: string): boolean {
   }
   
   return false;
+}
+
+/**
+ * Classify permit into high-value segment
+ */
+export function classifyPermitSegment(
+  issueDate: string,
+  workDescription: string,
+  systemAge: number
+): PermitSegment {
+  const year = new Date(issueDate).getFullYear();
+  const descLower = workDescription.toLowerCase();
+  
+  // "New Homeowner" - Permits from late 2024 or 2025
+  // These users need preventative wellness plans
+  if (year >= 2024) {
+    return 'new_homeowner';
+  }
+  
+  // "Replacement Wave" - AC CHANGE OUTs from 2016-2018
+  // In Miami's humidity, these units are 8-10 years old and approaching EOL
+  const isChangeOut = descLower.includes('change out') || 
+                      descLower.includes('changeout') ||
+                      descLower.includes('replace') ||
+                      descLower.includes('new install');
+  
+  if (isChangeOut && year >= 2016 && year <= 2018) {
+    return 'replacement_wave';
+  }
+  
+  // Default segment
+  return 'standard';
+}
+
+/**
+ * Calculate Equity at Risk - dollar value of potential home damage
+ * if HVAC fails, including secondary damage (mold risk in Miami's humidity)
+ */
+export function calculateEquityAtRisk(
+  systemAge: number,
+  riskLevel: 'critical' | 'high' | 'medium' | 'low',
+  brand: string | null
+): number {
+  // Base replacement cost range
+  const BASE_REPLACEMENT_MIN = 8000;
+  const BASE_REPLACEMENT_MAX = 15000;
+  const baseReplacement = (BASE_REPLACEMENT_MIN + BASE_REPLACEMENT_MAX) / 2;
+  
+  // Miami humidity mold risk multiplier
+  const MOLD_MULTIPLIER: Record<string, number> = {
+    critical: 3.0, // High risk of secondary water/mold damage
+    high: 2.2,
+    medium: 1.5,
+    low: 1.0,
+  };
+  
+  // Brand-specific risk adjustment
+  let brandMultiplier = 1.0;
+  if (brand?.toLowerCase() === 'lennox') {
+    brandMultiplier = 1.3; // Known coil issues in humid climates
+  } else if (brand?.toLowerCase() === 'goodman' && systemAge > 8) {
+    brandMultiplier = 1.2;
+  }
+  
+  // Age-based probability of failure
+  let ageFactor = 1.0;
+  if (systemAge > 12) {
+    ageFactor = 1.5;
+  } else if (systemAge > 10) {
+    ageFactor = 1.3;
+  } else if (systemAge > 8) {
+    ageFactor = 1.1;
+  }
+  
+  const totalRisk = baseReplacement * MOLD_MULTIPLIER[riskLevel] * brandMultiplier * ageFactor;
+  
+  // Round to nearest 100
+  return Math.round(totalRisk / 100) * 100;
 }
 
 /**
@@ -291,6 +390,46 @@ function findDescriptionColumns(headers: string[]): number[] {
 }
 
 /**
+ * Detect "Repair Loop" candidates - folios with multiple permits within 3 years
+ */
+function detectRepairLoops(records: PermitRecord[]): Map<string, number> {
+  const folioPermitCounts = new Map<string, { count: number; dates: Date[] }>();
+  
+  for (const record of records) {
+    if (!record.folioNumber) continue;
+    
+    const existing = folioPermitCounts.get(record.folioNumber);
+    const issueDate = new Date(record.issueDate);
+    
+    if (existing) {
+      existing.count++;
+      existing.dates.push(issueDate);
+    } else {
+      folioPermitCounts.set(record.folioNumber, { count: 1, dates: [issueDate] });
+    }
+  }
+  
+  // Filter to folios with 2+ permits within 3 years
+  const repairLoops = new Map<string, number>();
+  
+  for (const [folio, data] of folioPermitCounts.entries()) {
+    if (data.count >= 2) {
+      // Check if any two permits are within 3 years of each other
+      const sortedDates = data.dates.sort((a, b) => a.getTime() - b.getTime());
+      for (let i = 0; i < sortedDates.length - 1; i++) {
+        const yearsDiff = (sortedDates[i + 1].getTime() - sortedDates[i].getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+        if (yearsDiff <= 3) {
+          repairLoops.set(folio, data.count);
+          break;
+        }
+      }
+    }
+  }
+  
+  return repairLoops;
+}
+
+/**
  * Parse full CSV and enrich with Habitta Brain
  */
 export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; errors: string[] } {
@@ -380,6 +519,8 @@ export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; e
       const systemAge = calculateSystemAge(issueDate);
       const riskInfo = calculateRiskScore(systemAge, brandInfo.brand, workDescription);
       const riskLevel = getRiskLevel(riskInfo.score);
+      const segment = classifyPermitSegment(issueDate, workDescription, systemAge);
+      const equityAtRisk = calculateEquityAtRisk(systemAge, riskLevel, brandInfo.brand);
       
       records.push({
         id: `permit-${i}-${Date.now()}`,
@@ -394,13 +535,30 @@ export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; e
         riskScore: riskInfo.score,
         riskLevel,
         riskFactors: riskInfo.factors,
+        segment,
+        equityAtRisk,
       });
     } catch (err) {
       if (i < 5) errors.push(`Row ${i + 1}: Parse error - ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
   
+  // Post-process: Detect repair loops
+  const repairLoops = detectRepairLoops(records);
+  
+  for (const record of records) {
+    if (repairLoops.has(record.folioNumber)) {
+      record.isRepairLoopCandidate = true;
+      record.repairLoopCount = repairLoops.get(record.folioNumber);
+      // Override segment to repair_loop if applicable
+      if (record.segment === 'standard') {
+        record.segment = 'repair_loop';
+      }
+    }
+  }
+  
   console.log('Parsed', records.length, 'records from', lines.length - 1, 'data rows');
+  console.log('Repair loop candidates:', repairLoops.size);
   
   return { records, errors };
 }
@@ -415,12 +573,16 @@ export function generateChatDIYAlert(record: PermitRecord): string {
     ? ' due to known coil issues in Miami\'s humid climate'
     : '';
   
+  const equityWarning = record.equityAtRisk > 20000 
+    ? ` Estimated equity at risk: $${record.equityAtRisk.toLocaleString()}.`
+    : '';
+  
   if (record.riskLevel === 'critical') {
-    return `🚨 URGENT: ${ageText} ${brandText}HVAC system at ${record.address} is in a critical risk zone${climateWarning}. Risk Score: ${record.riskScore}/100. Schedule a professional inspection immediately or perform a DIY diagnostic check now.`;
+    return `🚨 URGENT: ${ageText} ${brandText}HVAC system at ${record.address} is in a critical risk zone${climateWarning}. Risk Score: ${record.riskScore}/100.${equityWarning} Schedule a professional inspection immediately or perform a DIY diagnostic check now.`;
   }
   
   if (record.riskLevel === 'high') {
-    return `⚠️ ATTENTION: ${ageText} ${brandText}HVAC system at ${record.address} shows elevated failure risk${climateWarning}. Risk Score: ${record.riskScore}/100. Consider scheduling preventive maintenance within the next 30 days.`;
+    return `⚠️ ATTENTION: ${ageText} ${brandText}HVAC system at ${record.address} shows elevated failure risk${climateWarning}. Risk Score: ${record.riskScore}/100.${equityWarning} Consider scheduling preventive maintenance within the next 30 days.`;
   }
   
   if (record.riskLevel === 'medium') {
@@ -431,7 +593,76 @@ export function generateChatDIYAlert(record: PermitRecord): string {
 }
 
 /**
- * Export high-risk records to CSV
+ * Calculate brand market share from records
+ */
+export function calculateBrandMarketShare(records: PermitRecord[]): {
+  brandCounts: Record<string, number>;
+  totalWithBrand: number;
+  totalRecords: number;
+  dataMoatStrength: number;
+} {
+  const brandCounts: Record<string, number> = {};
+  let totalWithBrand = 0;
+  
+  for (const record of records) {
+    const brand = record.brand || 'Unknown';
+    brandCounts[brand] = (brandCounts[brand] || 0) + 1;
+    if (record.brand) totalWithBrand++;
+  }
+  
+  const dataMoatStrength = records.length > 0 
+    ? Math.round((totalWithBrand / records.length) * 100) 
+    : 0;
+  
+  return {
+    brandCounts,
+    totalWithBrand,
+    totalRecords: records.length,
+    dataMoatStrength,
+  };
+}
+
+/**
+ * Calculate segment statistics
+ */
+export function calculateSegmentStats(records: PermitRecord[]): {
+  replacementWave: number;
+  repairLoop: number;
+  newHomeowner: number;
+  standard: number;
+  totalEquityAtRisk: number;
+} {
+  const stats = {
+    replacementWave: 0,
+    repairLoop: 0,
+    newHomeowner: 0,
+    standard: 0,
+    totalEquityAtRisk: 0,
+  };
+  
+  for (const record of records) {
+    stats.totalEquityAtRisk += record.equityAtRisk;
+    
+    switch (record.segment) {
+      case 'replacement_wave':
+        stats.replacementWave++;
+        break;
+      case 'repair_loop':
+        stats.repairLoop++;
+        break;
+      case 'new_homeowner':
+        stats.newHomeowner++;
+        break;
+      default:
+        stats.standard++;
+    }
+  }
+  
+  return stats;
+}
+
+/**
+ * Export high-risk records to CSV with new investor-ready fields
  */
 export function exportHighRiskCSV(records: PermitRecord[], threshold: number = 60): string {
   const highRisk = records.filter(r => r.riskScore >= threshold);
@@ -444,6 +675,9 @@ export function exportHighRiskCSV(records: PermitRecord[], threshold: number = 6
     'System Age (Years)',
     'Risk Score',
     'Risk Level',
+    'Segment',
+    'Equity at Risk ($)',
+    'Repair Loop',
     'Risk Factors',
     'Contractor',
     'Issue Date',
@@ -458,6 +692,9 @@ export function exportHighRiskCSV(records: PermitRecord[], threshold: number = 6
     r.systemAge.toFixed(1),
     r.riskScore.toString(),
     r.riskLevel.toUpperCase(),
+    r.segment,
+    r.equityAtRisk.toString(),
+    r.isRepairLoopCandidate ? `Yes (${r.repairLoopCount} permits)` : 'No',
     `"${r.riskFactors.join('; ').replace(/"/g, '""')}"`,
     `"${r.contractorName.replace(/"/g, '""')}"`,
     r.issueDate,
