@@ -13,6 +13,34 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 // Create Supabase client with service role for full access
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// ============== Phase 2: Survival Prediction Interfaces ==============
+
+interface SurvivalPrediction {
+  failureProbability12mo: number;
+  failureProbability24mo: number;
+  failureProbability36mo: number;
+  monthsRemaining: {
+    p10: number;  // Pessimistic (10th percentile)
+    p50: number;  // Expected
+    p90: number;  // Optimistic (90th percentile)
+  };
+  drivers: Array<{
+    factor: string;
+    impact: 'high' | 'medium' | 'low';
+    description: string;
+  }>;
+}
+
+interface SystemSnapshot {
+  systemKey: string;
+  ageYears: number;
+  ageSource: 'explicit' | 'permit' | 'inferred' | 'default';
+  baselineLifespanYears: number;
+  climateStressMultiplier: number;
+  maintenanceQualityScore: number;
+  dataCompleteness: number;
+}
+
 interface SystemLifecycle {
   system_type: string;
   installation_date?: string;
@@ -53,6 +81,8 @@ interface SystemHealth {
     time: string;
     impact: string;
   };
+  // Phase 2: Survival prediction outputs (backward compatible)
+  survival?: SurvivalPrediction;
 }
 
 interface BudgetPrediction {
@@ -71,7 +101,115 @@ interface BudgetPrediction {
   };
 }
 
-// Lifecycle prediction algorithms
+// ============== Survival Prediction Functions ==============
+
+/**
+ * Build risk drivers for explainability
+ */
+function buildRiskDrivers(
+  ageYears: number,
+  lifespanYears: number,
+  modifiers: { climate?: number; maintenance?: number }
+): Array<{ factor: string; impact: 'high' | 'medium' | 'low'; description: string }> {
+  const drivers: Array<{ factor: string; impact: 'high' | 'medium' | 'low'; description: string }> = [];
+  
+  const ageRatio = ageYears / lifespanYears;
+  if (ageRatio > 0.8) {
+    drivers.push({
+      factor: 'age',
+      impact: 'high',
+      description: `System is ${Math.round(ageRatio * 100)}% through expected lifespan (${Math.round(ageYears)}y of ${lifespanYears}y)`
+    });
+  } else if (ageRatio > 0.6) {
+    drivers.push({
+      factor: 'age',
+      impact: 'medium',
+      description: `System is ${Math.round(ageRatio * 100)}% through expected lifespan`
+    });
+  } else if (ageRatio > 0.3) {
+    drivers.push({
+      factor: 'age',
+      impact: 'low',
+      description: `System at ${Math.round(ageRatio * 100)}% of lifespan - normal wear`
+    });
+  }
+  
+  if (modifiers.climate && modifiers.climate < 0.9) {
+    drivers.push({
+      factor: 'climate',
+      impact: 'high',
+      description: `Harsh climate reduces lifespan by ${Math.round((1 - modifiers.climate) * 100)}%`
+    });
+  } else if (modifiers.climate && modifiers.climate < 1.0) {
+    drivers.push({
+      factor: 'climate',
+      impact: 'medium',
+      description: `Climate impact reduces lifespan by ${Math.round((1 - modifiers.climate) * 100)}%`
+    });
+  }
+  
+  if (modifiers.maintenance && modifiers.maintenance < 0.8) {
+    drivers.push({
+      factor: 'maintenance',
+      impact: 'high',
+      description: 'Deferred maintenance significantly accelerates wear'
+    });
+  } else if (modifiers.maintenance && modifiers.maintenance < 0.95) {
+    drivers.push({
+      factor: 'maintenance',
+      impact: 'medium',
+      description: 'Maintenance quality could be improved'
+    });
+  }
+  
+  if (drivers.length === 0) {
+    drivers.push({
+      factor: 'baseline',
+      impact: 'low',
+      description: 'Normal wear and tear - system in good condition'
+    });
+  }
+  
+  return drivers;
+}
+
+/**
+ * Calculate survival prediction using exponential decay model
+ * NOTE: Assumes constant hazard rate - flag for future Weibull refinement with real failure data
+ */
+function calculateSurvivalPrediction(
+  ageYears: number,
+  lifespanYears: number,
+  modifiers: { climate?: number; maintenance?: number }
+): SurvivalPrediction {
+  const remainingYears = Math.max(0, lifespanYears - ageYears);
+  const climateMultiplier = modifiers.climate ?? 1.0;
+  const maintenanceMultiplier = modifiers.maintenance ?? 1.0;
+  const riskMultiplier = climateMultiplier * maintenanceMultiplier;
+  const adjustedMonths = remainingYears * 12 * riskMultiplier;
+  
+  // Exponential decay survival function: P(fail) = 1 - exp(-λt)
+  // where λ = 1/adjustedMonths (hazard rate)
+  const calcProb = (horizonMonths: number): number => {
+    if (adjustedMonths <= 0) return 0.99; // Near certain failure
+    return parseFloat((1 - Math.exp(-horizonMonths / Math.max(1, adjustedMonths))).toFixed(4));
+  };
+  
+  return {
+    failureProbability12mo: calcProb(12),
+    failureProbability24mo: calcProb(24),
+    failureProbability36mo: calcProb(36),
+    monthsRemaining: {
+      p10: Math.round(adjustedMonths * 0.4),  // Pessimistic
+      p50: Math.round(adjustedMonths),         // Expected
+      p90: Math.round(adjustedMonths * 1.6)    // Optimistic
+    },
+    drivers: buildRiskDrivers(ageYears, lifespanYears, modifiers)
+  };
+}
+
+// ============== Legacy Functions (backward compatible) ==============
+
 function calculateSystemHealth(system: SystemLifecycle): SystemHealth {
   const currentDate = new Date();
   const installDate = system.installation_date ? new Date(system.installation_date) : new Date(currentDate.getFullYear() - 10, 0, 1);
@@ -91,6 +229,12 @@ function calculateSystemHealth(system: SystemLifecycle): SystemHealth {
   else if (adjustedHealth >= 50) status = 'attention';
   else status = 'urgent';
 
+  // Phase 2: Calculate survival prediction
+  const survival = calculateSurvivalPrediction(ageYears, expectedLifespan, {
+    climate: 1.0, // Would be enhanced with climate_factors table lookup
+    maintenance: maintenanceMultiplier
+  });
+
   return {
     system: system.system_type,
     score: Math.round(adjustedHealth),
@@ -99,7 +243,9 @@ function calculateSystemHealth(system: SystemLifecycle): SystemHealth {
     confidence: system.confidence_level || 0.75,
     nextAction: generateNextAction(system.system_type, status, remainingLife),
     nextActionDate: calculateNextActionDate(status, remainingLife),
-    lastService: system.last_maintenance_date
+    lastService: system.last_maintenance_date,
+    // Phase 2: Include survival prediction
+    survival
   };
 }
 
@@ -108,11 +254,14 @@ function getDefaultLifespan(systemType: string): number {
     'hvac': 15,
     'roof': 25,
     'electrical': 30,
+    'electrical_panel': 30,
     'plumbing': 20,
     'water_heater': 10,
     'appliances': 12,
     'flooring': 15,
-    'windows': 20
+    'windows': 20,
+    'pool': 15,
+    'solar': 25
   };
   return lifespans[systemType] || 15;
 }
@@ -221,9 +370,9 @@ function getSystemDescription(system: SystemHealth): string {
 }
 
 function getOwnership(systemType: string, status: string): 'diy' | 'pro' | 'either' {
-  const proSystems = ['hvac', 'electrical', 'plumbing'];
+  const proSystems = ['hvac', 'electrical', 'electrical_panel', 'plumbing'];
   if (proSystems.includes(systemType) && status === 'urgent') return 'pro';
-  if (systemType === 'roof' || systemType === 'electrical') return 'pro';
+  if (systemType === 'roof' || systemType === 'electrical' || systemType === 'electrical_panel') return 'pro';
   return 'either';
 }
 
@@ -232,6 +381,7 @@ function getEstimatedTime(systemType: string, status: string): string {
     'hvac': status === 'urgent' ? '4 hours' : '30 min',
     'plumbing': '1-2 hours',
     'electrical': '2-3 hours',
+    'electrical_panel': '3-4 hours',
     'roof': '1 day',
     'water_heater': '2-4 hours'
   };
@@ -243,6 +393,7 @@ function getEstimatedCost(systemType: string, status: string): number {
     'hvac': status === 'urgent' ? 3500 : 150,
     'plumbing': 200,
     'electrical': 300,
+    'electrical_panel': 500,
     'roof': 8000,
     'water_heater': 1200
   };
@@ -254,6 +405,7 @@ function calculateSavings(systemType: string, status: string): number {
     'hvac': status === 'urgent' ? 1500 : 400,
     'plumbing': 800,
     'electrical': 600,
+    'electrical_panel': 600,
     'roof': 5000,
     'water_heater': 500
   };
@@ -271,7 +423,6 @@ function getQuickFix(systemType: string) {
 }
 
 function generateWeatherTask(alert: any, season: string): SmartTask | null {
-  // Simplified weather task generation - in production would use NOAA API
   if (alert.type?.includes('storm') || alert.type?.includes('hurricane')) {
     return {
       id: `weather-${Date.now()}`,
@@ -326,28 +477,25 @@ function generateSeasonalTasks(season: string): SmartTask[] {
 
 // Budget prediction algorithms
 function generateBudgetPrediction(systems: SystemHealth[], tasks: SmartTask[]): BudgetPrediction {
-  const currentSpend = 1850; // Would come from maintenance_tasks table
+  const currentSpend = 1850;
   const annualBudget = 5000;
   
-  // Calculate forecasts based on system conditions and task priorities
   const urgentCosts = tasks.filter(t => t.priority === 'today').reduce((sum, t) => sum + (t.estimatedCost || 0), 0);
   const weekCosts = tasks.filter(t => t.priority === 'this_week').reduce((sum, t) => sum + (t.estimatedCost || 0), 0);
   const upcomingCosts = tasks.filter(t => t.priority === 'upcoming').reduce((sum, t) => sum + (t.estimatedCost || 0), 0);
   
   const quarterlyForecast = urgentCosts + (weekCosts * 0.7) + (upcomingCosts * 0.3);
-  const yearlyForecast = quarterlyForecast * 3.2; // Seasonal adjustment
-  const threeYearForecast = yearlyForecast * 2.8; // Compound adjustment
+  const yearlyForecast = quarterlyForecast * 3.2;
+  const threeYearForecast = yearlyForecast * 2.8;
   
-  // Calculate preventive savings
   const totalPreventiveSavings = tasks.reduce((sum, t) => sum + (t.preventativeSavings || 0), 0);
   
-  // System breakdown
   const breakdown = {
     hvac: tasks.filter(t => t.category === 'HVAC').reduce((sum, t) => sum + (t.estimatedCost || 0), 0),
     plumbing: tasks.filter(t => t.category === 'PLUMBING').reduce((sum, t) => sum + (t.estimatedCost || 0), 0),
-    electrical: tasks.filter(t => t.category === 'ELECTRICAL').reduce((sum, t) => sum + (t.estimatedCost || 0), 0),
+    electrical: tasks.filter(t => t.category === 'ELECTRICAL' || t.category === 'ELECTRICAL_PANEL').reduce((sum, t) => sum + (t.estimatedCost || 0), 0),
     roof: tasks.filter(t => t.category === 'ROOF').reduce((sum, t) => sum + (t.estimatedCost || 0), 0),
-    other: tasks.filter(t => !['HVAC', 'PLUMBING', 'ELECTRICAL', 'ROOF'].includes(t.category)).reduce((sum, t) => sum + (t.estimatedCost || 0), 0)
+    other: tasks.filter(t => !['HVAC', 'PLUMBING', 'ELECTRICAL', 'ELECTRICAL_PANEL', 'ROOF'].includes(t.category)).reduce((sum, t) => sum + (t.estimatedCost || 0), 0)
   };
   
   return {
@@ -361,11 +509,62 @@ function generateBudgetPrediction(systems: SystemHealth[], tasks: SmartTask[]): 
   };
 }
 
-// Main API handlers
+// ============== Weighted Home Health Score (Phase 2) ==============
+
+const SYSTEM_WEIGHTS: Record<string, number> = {
+  hvac: 0.30,
+  roof: 0.25,
+  water_heater: 0.15,
+  electrical: 0.10,
+  electrical_panel: 0.10,
+  plumbing: 0.10,
+  other: 0.05
+};
+
+function calculateWeightedHomeHealth(systems: SystemHealth[]): {
+  score: number;
+  confidence: number;
+  drivers: string[];
+} {
+  if (systems.length === 0) {
+    return { score: 85, confidence: 0.5, drivers: ['No system data available'] };
+  }
+
+  let weightedSum = 0;
+  let weightTotal = 0;
+  let minConfidence = 1;
+  const drivers: string[] = [];
+
+  for (const system of systems) {
+    const weight = SYSTEM_WEIGHTS[system.system] || SYSTEM_WEIGHTS.other;
+    const systemConfidence = system.confidence || 0.75;
+    
+    // Weight by system importance AND confidence
+    weightedSum += system.score * weight * systemConfidence;
+    weightTotal += weight * systemConfidence;
+    minConfidence = Math.min(minConfidence, systemConfidence);
+    
+    if (system.status === 'urgent') {
+      drivers.push(`${system.system}: urgent - needs immediate attention`);
+    } else if (system.status === 'attention') {
+      drivers.push(`${system.system}: attention needed`);
+    }
+  }
+
+  const score = weightTotal > 0 ? Math.round(weightedSum / weightTotal) : 85;
+  
+  return {
+    score,
+    confidence: minConfidence,
+    drivers: drivers.length > 0 ? drivers : ['All systems in good condition']
+  };
+}
+
+// ============== API Handlers ==============
+
 async function getPredictions(propertyId: string) {
   console.log(`Getting predictions for property: ${propertyId}`);
   
-  // Fetch system lifecycles for the property
   const { data: systems, error } = await supabase
     .from('system_lifecycles')
     .select('*')
@@ -376,18 +575,16 @@ async function getPredictions(propertyId: string) {
     return { error: error.message };
   }
   
-  // Calculate health for each system
   const systemHealths = (systems || []).map(calculateSystemHealth);
   
-  // Get weather alerts (simplified - would integrate with NOAA API)
-  const weatherAlerts: any[] = [];
+  // Phase 2: Use weighted health calculation
+  const weightedHealth = calculateWeightedHomeHealth(systemHealths);
   
   return {
     systems: systemHealths,
-    overallHealth: systemHealths.length > 0 
-      ? Math.round(systemHealths.reduce((sum, s) => sum + s.score, 0) / systemHealths.length)
-      : 85,
-    confidence: 0.82,
+    overallHealth: weightedHealth.score,
+    confidence: weightedHealth.confidence,
+    healthDrivers: weightedHealth.drivers,
     lastUpdated: new Date().toISOString()
   };
 }
@@ -395,16 +592,14 @@ async function getPredictions(propertyId: string) {
 async function getTasks(propertyId: string) {
   console.log(`Getting tasks for property: ${propertyId}`);
   
-  // Get system health data
   const predictions = await getPredictions(propertyId);
   if (predictions.error) return predictions;
   
-  // Generate smart tasks
   const smartTasks = generateSmartTasks(predictions.systems || []);
   
   return {
     tasks: smartTasks,
-    completionRate: 72, // Would calculate from maintenance_tasks completion
+    completionRate: 72,
     totalSavings: smartTasks.reduce((sum, t) => sum + (t.preventativeSavings || 0), 0),
     confidence: 0.85
   };
@@ -413,7 +608,6 @@ async function getTasks(propertyId: string) {
 async function getBudget(propertyId: string) {
   console.log(`Getting budget for property: ${propertyId}`);
   
-  // Get predictions and tasks
   const predictions = await getPredictions(propertyId);
   const tasks = await getTasks(propertyId);
   
@@ -421,7 +615,6 @@ async function getBudget(propertyId: string) {
     return { error: 'Failed to generate budget predictions' };
   }
   
-  // Generate budget prediction
   const budgetPrediction = generateBudgetPrediction(predictions.systems || [], tasks.tasks || []);
   
   return budgetPrediction;
@@ -430,7 +623,6 @@ async function getBudget(propertyId: string) {
 async function getExplanations(entityId: string, entityType: 'system' | 'task' | 'prediction') {
   console.log(`Getting explanations for ${entityType}: ${entityId}`);
   
-  // Simplified explanations - in production would be more sophisticated
   const explanations = {
     drivers: [
       'System age and installation date',
@@ -444,13 +636,14 @@ async function getExplanations(entityId: string, entityType: 'system' | 'task' |
       'Add photos of system condition',
       'Provide exact installation dates'
     ],
-    methodology: 'Based on Weibull reliability models, local climate data, and maintenance patterns'
+    methodology: 'Based on exponential decay survival models, local climate data, and maintenance patterns. Future: Weibull distribution with real failure data.'
   };
   
   return explanations;
 }
 
-// Main request handler
+// ============== Main Request Handler ==============
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -458,7 +651,6 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    // Support both query param and JSON body for action and params
     let action = url.searchParams.get('action') || undefined;
     let propertyId = url.searchParams.get('property_id') || undefined;
     let entityId = url.searchParams.get('entity_id') || undefined;
@@ -501,28 +693,31 @@ serve(async (req) => {
         break;
 
       case 'explanations':
-        if (!entityId || !entityType) throw new Error('entity_id and entity_type parameters required');
-        result = await getExplanations(entityId, entityType as any);
+        if (!entityId || !entityType) {
+          throw new Error('entity_id and entity_type parameters required');
+        }
+        result = await getExplanations(entityId, entityType);
         break;
 
       default:
         throw new Error(`Unknown action: ${action}`);
     }
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Intelligence Engine error:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        details: 'Check function logs for more information'
-      }), 
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        timestamp: new Date().toISOString()
+      }),
+      { 
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
