@@ -236,23 +236,33 @@ export function normalizeHeader(header: string): string {
 }
 
 /**
- * Find column mappings from headers
+ * Find column mappings from headers - supports Miami-Dade permit format
  */
 export function findColumnMappings(headers: string[]): Record<string, number> {
   const mapping: Record<string, number> = {};
   const normalizedHeaders = headers.map(h => normalizeHeader(h));
   
   const fieldMappings: Record<string, string[]> = {
-    address: ['address', 'property_address', 'site_address', 'location', 'street_address', 'property_location'],
-    workDescription: ['work_description', 'description', 'scope', 'work_scope', 'permit_description', 'job_description', 'work'],
-    contractorName: ['contractor_name', 'contractor', 'company', 'company_name', 'business_name', 'licensed_contractor'],
-    issueDate: ['issue_date', 'issued_date', 'date_issued', 'permit_date', 'date', 'issued'],
-    folioNumber: ['folio_number', 'folio', 'parcel', 'parcel_number', 'apn', 'property_id', 'folio_no'],
+    // Address fields - Miami-Dade uses ADDRESS and STNDADDR
+    address: ['stndaddr', 'address', 'property_address', 'site_address', 'location', 'street_address', 'property_location'],
+    // Work description - Miami-Dade uses DESC1 through DESC10
+    workDescription: ['desc1', 'desc2', 'desc3', 'work_description', 'description', 'scope', 'work_scope', 'permit_description', 'job_description', 'work'],
+    // Contractor - Miami-Dade uses CONTRNAME
+    contractorName: ['contrname', 'contractor_name', 'contractor', 'company', 'company_name', 'business_name', 'licensed_contractor'],
+    // Issue date - Miami-Dade uses ISSUDATE
+    issueDate: ['issudate', 'issue_date', 'issued_date', 'date_issued', 'permit_date', 'date', 'issued'],
+    // Folio number - Miami-Dade uses FOLIO
+    folioNumber: ['folio', 'geofolio', 'folio_number', 'parcel', 'parcel_number', 'apn', 'property_id', 'folio_no'],
   };
   
   for (const [field, variations] of Object.entries(fieldMappings)) {
     for (const variation of variations) {
-      const index = normalizedHeaders.findIndex(h => h.includes(variation) || variation.includes(h));
+      // Exact match first
+      let index = normalizedHeaders.findIndex(h => h === variation);
+      // Then partial match
+      if (index === -1) {
+        index = normalizedHeaders.findIndex(h => h.includes(variation) || variation.includes(h));
+      }
       if (index !== -1) {
         mapping[field] = index;
         break;
@@ -260,7 +270,24 @@ export function findColumnMappings(headers: string[]): Record<string, number> {
     }
   }
   
+  console.log('Column mapping found:', mapping, 'from headers:', normalizedHeaders.slice(0, 15));
+  
   return mapping;
+}
+
+/**
+ * Find all DESC columns (DESC1-DESC10) for Miami-Dade format
+ */
+function findDescriptionColumns(headers: string[]): number[] {
+  const normalizedHeaders = headers.map(h => normalizeHeader(h));
+  const descCols: number[] = [];
+  
+  for (let i = 1; i <= 10; i++) {
+    const idx = normalizedHeaders.findIndex(h => h === `desc${i}`);
+    if (idx !== -1) descCols.push(idx);
+  }
+  
+  return descCols;
 }
 
 /**
@@ -277,13 +304,27 @@ export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; e
   
   const headers = parseCsvRow(lines[0]);
   const mapping = findColumnMappings(headers);
+  const descColumns = findDescriptionColumns(headers);
   
-  // Check required fields
-  const requiredFields = ['address', 'workDescription', 'issueDate'];
-  const missingFields = requiredFields.filter(f => mapping[f] === undefined);
+  console.log('Headers found:', headers.length, 'DESC columns:', descColumns.length);
   
-  if (missingFields.length > 0) {
-    errors.push(`Missing required columns: ${missingFields.join(', ')}. Found headers: ${headers.join(', ')}`);
+  // Check required fields - for Miami-Dade, we might have DESC columns instead of workDescription
+  const hasWorkDescription = mapping.workDescription !== undefined || descColumns.length > 0;
+  const hasAddress = mapping.address !== undefined;
+  const hasIssueDate = mapping.issueDate !== undefined;
+  
+  if (!hasAddress) {
+    errors.push(`Missing ADDRESS column. Found headers: ${headers.slice(0, 10).join(', ')}...`);
+    return { records: [], errors };
+  }
+  
+  if (!hasIssueDate) {
+    errors.push(`Missing ISSUDATE/Issue_Date column. Found headers: ${headers.slice(0, 10).join(', ')}...`);
+    return { records: [], errors };
+  }
+  
+  if (!hasWorkDescription) {
+    errors.push(`Missing DESC1 or Work_Description column. Found headers: ${headers.slice(0, 10).join(', ')}...`);
     return { records: [], errors };
   }
   
@@ -297,13 +338,40 @@ export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; e
       const values = parseCsvRow(line);
       
       const address = values[mapping.address] || '';
-      const workDescription = values[mapping.workDescription] || '';
+      
+      // Combine all DESC columns for Miami-Dade format, or use single workDescription
+      let workDescription = '';
+      if (descColumns.length > 0) {
+        workDescription = descColumns
+          .map(idx => values[idx] || '')
+          .filter(v => v.trim())
+          .join(' | ');
+      } else if (mapping.workDescription !== undefined) {
+        workDescription = values[mapping.workDescription] || '';
+      }
+      
       const contractorName = mapping.contractorName !== undefined ? values[mapping.contractorName] || '' : '';
-      const issueDate = values[mapping.issueDate] || '';
+      const issueDateRaw = values[mapping.issueDate] || '';
       const folioNumber = mapping.folioNumber !== undefined ? values[mapping.folioNumber] || '' : '';
       
-      if (!address || !issueDate) {
-        errors.push(`Row ${i + 1}: Missing required data (address or issue date)`);
+      if (!address) {
+        if (i < 5) errors.push(`Row ${i + 1}: Missing address`);
+        continue;
+      }
+      
+      // Parse date - handle various formats
+      let issueDate = issueDateRaw;
+      // Miami-Dade might use MM/DD/YYYY or YYYY-MM-DD
+      if (issueDateRaw && !issueDateRaw.includes('-')) {
+        // Try to parse MM/DD/YYYY format
+        const parts = issueDateRaw.split('/');
+        if (parts.length === 3) {
+          issueDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+        }
+      }
+      
+      if (!issueDate) {
+        if (i < 5) errors.push(`Row ${i + 1}: Missing issue date`);
         continue;
       }
       
@@ -328,9 +396,11 @@ export function parseAndEnrichCSV(csvText: string): { records: PermitRecord[]; e
         riskFactors: riskInfo.factors,
       });
     } catch (err) {
-      errors.push(`Row ${i + 1}: Parse error - ${err instanceof Error ? err.message : 'Unknown error'}`);
+      if (i < 5) errors.push(`Row ${i + 1}: Parse error - ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
+  
+  console.log('Parsed', records.length, 'records from', lines.length - 1, 'data rows');
   
   return { records, errors };
 }
