@@ -44,6 +44,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
 }) => {
   const { userHome } = useUserHome();
   const propertyId = userHome?.property_id;
+  const homeId = userHome?.id;
   const { toggleTaskCompletion, completingTasks } = useTaskCompletion();
   
   // Use Intelligence Engine for real data
@@ -84,7 +85,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
             variant="ghost"
             size="sm"
             className="p-0 h-5 w-5"
-            onClick={() => toggleTaskCompletion(task.id, true)}
+            onClick={() => toggleTaskCompletion(task.id, true, task.category, homeId)}
             disabled={isCompleting}
           >
             <CheckCircle2 className={`h-5 w-5 ${isCompleting ? 'text-accent animate-pulse' : 'text-muted-foreground hover:text-accent'}`} />
