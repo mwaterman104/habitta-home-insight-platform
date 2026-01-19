@@ -444,6 +444,7 @@ export default function MaintenancePlanner() {
             tasks={tasks} 
             loading={loading}
             onTaskUpdate={handleTaskUpdate}
+            homeId={selectedHome}
           />
         </TabsContent>
 
