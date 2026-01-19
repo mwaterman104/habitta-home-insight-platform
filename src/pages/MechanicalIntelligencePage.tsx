@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react';
-import { Download, Brain, AlertTriangle, TrendingUp, Zap } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { Download, Brain, AlertTriangle, TrendingUp, Zap, DollarSign, RefreshCcw, Home, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PermitUploadZone } from '@/components/mechanical/PermitUploadZone';
 import { PermitDataTable } from '@/components/mechanical/PermitDataTable';
 import { RiskMapView } from '@/components/mechanical/RiskMapView';
-import { type PermitRecord, exportHighRiskCSV } from '@/lib/mechanicalIntelligence';
+import { BrandMarketShare } from '@/components/mechanical/BrandMarketShare';
+import { type PermitRecord, exportHighRiskCSV, calculateSegmentStats } from '@/lib/mechanicalIntelligence';
 import { toast } from 'sonner';
 
 export default function MechanicalIntelligencePage() {
@@ -40,16 +41,21 @@ export default function MechanicalIntelligencePage() {
     toast.success(`Exported ${highRiskCount} high-risk leads`);
   }, [records]);
 
-  // Calculate summary stats
-  const stats = {
-    total: records.length,
-    critical: records.filter(r => r.riskLevel === 'critical').length,
-    high: records.filter(r => r.riskLevel === 'high').length,
-    avgAge: records.length > 0 
-      ? (records.reduce((sum, r) => sum + r.systemAge, 0) / records.length).toFixed(1)
-      : '0',
-    brandsIdentified: records.filter(r => r.brand).length,
-  };
+  // Calculate summary stats including new investor-ready metrics
+  const stats = useMemo(() => {
+    const segmentStats = calculateSegmentStats(records);
+    
+    return {
+      total: records.length,
+      critical: records.filter(r => r.riskLevel === 'critical').length,
+      high: records.filter(r => r.riskLevel === 'high').length,
+      avgAge: records.length > 0 
+        ? (records.reduce((sum, r) => sum + r.systemAge, 0) / records.length).toFixed(1)
+        : '0',
+      brandsIdentified: records.filter(r => r.brand).length,
+      ...segmentStats,
+    };
+  }, [records]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -76,61 +82,137 @@ export default function MechanicalIntelligencePage() {
       {/* Upload Zone */}
       <PermitUploadZone onDataProcessed={setRecords} />
 
-      {/* Stats Cards */}
+      {/* Investor-Ready Stats Cards */}
       {records.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Permits
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.total}</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="border-red-200 dark:border-red-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Critical Risk
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-red-600">{stats.critical}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Avg System Age
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.avgAge} <span className="text-sm font-normal">yrs</span></p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <Zap className="h-3.5 w-3.5" />
-                Brands Identified
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">
-                {stats.brandsIdentified}
-                <span className="text-sm font-normal text-muted-foreground ml-1">
-                  ({Math.round((stats.brandsIdentified / stats.total) * 100)}%)
-                </span>
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          {/* Primary Stats Row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Total Permits
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{stats.total.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-red-200 dark:border-red-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Critical Risk
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-red-600">{stats.critical}</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-green-200 dark:border-green-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Total Equity at Risk
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  ${(stats.totalEquityAtRisk / 1000000).toFixed(2)}M
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                  <Zap className="h-3.5 w-3.5" />
+                  Brands Identified
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {stats.brandsIdentified}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">
+                    ({Math.round((stats.brandsIdentified / stats.total) * 100)}%)
+                  </span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Segment Stats Row - Investor Priority Segments */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Replacement Wave
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                  {stats.replacementWave}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  2016-2018 installs at EOL
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-400 flex items-center gap-1">
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                  Repair Loop
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">
+                  {stats.repairLoop}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Multiple permits on folio
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                  <Home className="h-3.5 w-3.5" />
+                  New Homeowner
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+                  {stats.newHomeowner}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  2024-2025 permits
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                  <Users className="h-3.5 w-3.5" />
+                  Avg System Age
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {stats.avgAge} <span className="text-sm font-normal">yrs</span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Brand Market Share Analytics */}
+          <BrandMarketShare records={records} />
+        </>
       )}
 
       {/* Data Views */}
@@ -172,19 +254,19 @@ export default function MechanicalIntelligencePage() {
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <p className="font-medium">Brand Detection</p>
                   <p className="text-muted-foreground text-xs mt-1">
-                    Maps contractors to HVAC brands (Ameri Temp → Carrier)
+                    Maps contractors to HVAC brands (Ameri Temp → Carrier, Direct A/C → Lennox)
                   </p>
                 </div>
                 <div className="p-4 bg-muted/50 rounded-lg">
-                  <p className="font-medium">Age Analysis</p>
+                  <p className="font-medium">Segment Classification</p>
                   <p className="text-muted-foreground text-xs mt-1">
-                    Calculates system age from permit issue dates
+                    Identifies Replacement Wave, Repair Loop, and New Homeowner segments
                   </p>
                 </div>
                 <div className="p-4 bg-muted/50 rounded-lg">
-                  <p className="font-medium">Risk Scoring</p>
+                  <p className="font-medium">Equity at Risk</p>
                   <p className="text-muted-foreground text-xs mt-1">
-                    0-100 score based on age, brand, and work type
+                    Calculates home value at risk including mold damage potential
                   </p>
                 </div>
               </div>
