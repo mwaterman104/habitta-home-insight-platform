@@ -12,7 +12,8 @@ const corsHeaders = {
 const endpoints = {
   street: "https://us-street.api.smarty.com/street-address",
   rooftop: "https://us-rooftop-geo.api.smarty.com/lookup",
-  enrich: "https://us-enrichment.api.smarty.com/lookup",
+  // Enrichment requires /search/ path when using address fields (not SmartyKey)
+  enrich: "https://us-enrichment.api.smarty.com/lookup/search/property/principal",
   financial: "https://us-enrichment.api.smarty.com/lookup/search/property/financial",
 };
 
@@ -118,7 +119,7 @@ serve(async (req) => {
     }
 
     if (action === "enrich") {
-      console.log(`[${stepId}] Calling enrichment`);
+      console.log(`[${stepId}] Calling enrichment (property/principal)`);
       
       // Validate required fields
       if (!payload.street || !payload.city || !payload.state) {
@@ -134,14 +135,27 @@ serve(async (req) => {
         zipcode: payload.postal_code
       })}`;
       
+      console.log(`[${stepId}] Enrichment URL:`, enrUrl.replace(AUTH_TOKEN, '***'));
+      
       const enrRes = await fetch(enrUrl);
+      
+      // Handle 404 gracefully - address may not have enrichment data
+      if (enrRes.status === 404) {
+        console.log(`[${stepId}] No enrichment data found for address`);
+        return new Response(JSON.stringify({ results: [], message: 'No enrichment data available for this address' }), { 
+          headers: { ...corsHeaders, "content-type": "application/json" } 
+        });
+      }
+      
       if (!enrRes.ok) {
+        const errorText = await enrRes.text();
+        console.error(`[${stepId}] Enrichment API error:`, enrRes.status, errorText);
         throw new Error(`Enrichment failed: ${enrRes.status}`);
       }
       const enrichment = await enrRes.json();
       
       const latency = Date.now() - startTime;
-      console.log(`[${stepId}] Enrichment complete:`, latency + 'ms', 'records:', enrichment?.length || 0);
+      console.log(`[${stepId}] Enrichment complete:`, latency + 'ms', 'records:', enrichment?.results?.length || enrichment?.length || 0);
       
       return new Response(JSON.stringify(enrichment), { 
         headers: { ...corsHeaders, "content-type": "application/json" } 
@@ -149,7 +163,7 @@ serve(async (req) => {
     }
 
     if (action === "financial_lookup") {
-      console.log(`[${stepId}] Calling financial lookup`);
+      console.log(`[${stepId}] Calling financial lookup (property/financial)`);
       
       // Validate required fields
       if (!payload.street || !payload.city || !payload.state) {
@@ -165,11 +179,21 @@ serve(async (req) => {
         zipcode: payload.postal_code
       })}`;
       
-      console.log(`[${stepId}] Financial URL:`, finUrl);
+      console.log(`[${stepId}] Financial URL:`, finUrl.replace(AUTH_TOKEN, '***'));
       
       const finRes = await fetch(finUrl);
+      
+      // Handle 404 gracefully - address may not have financial data
+      if (finRes.status === 404) {
+        console.log(`[${stepId}] No financial data found for address`);
+        return new Response(JSON.stringify({ results: [], message: 'No financial data available for this address' }), { 
+          headers: { ...corsHeaders, "content-type": "application/json" } 
+        });
+      }
+      
       if (!finRes.ok) {
-        console.error(`[${stepId}] Financial API response:`, finRes.status, await finRes.text());
+        const errorText = await finRes.text();
+        console.error(`[${stepId}] Financial API error:`, finRes.status, errorText);
         throw new Error(`Financial lookup failed: ${finRes.status}`);
       }
       const financial = await finRes.json();
