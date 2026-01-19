@@ -24,6 +24,7 @@ import ScoringDashboard from "./ScoringDashboard";
 import PropertyLabelingPage from "./PropertyLabelingPage";
 import PropertyReportPage from "./PropertyReportPage";
 import LandingPage from "./LandingPage";
+import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 
 // Removed ClientDashboard demo import to avoid duplicate React contexts
 
@@ -69,6 +70,7 @@ export function AppRoutes() {
             <Route path="/validation/property/:addressId" element={<PropertyDetail />} />
             <Route path="/validation/report/:id" element={<PropertyReportPage />} />
             <Route path="/validation/scoring" element={<ScoringDashboard />} />
+            <Route path="/mechanical-intelligence" element={<MechanicalIntelligencePage />} />
             
             {/* Legacy routes */}
             <Route path="/home" element={<Dashboard />} />

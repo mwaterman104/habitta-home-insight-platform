@@ -3911,10 +3911,7 @@ export type Database = {
       }
     }
     Functions: {
-      cleanup_expired_recommendations: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_expired_recommendations: { Args: never; Returns: undefined }
       compute_canonical_hash: {
         Args: {
           city: string
@@ -4005,27 +4002,21 @@ export type Database = {
             | Database["public"]["Enums"]["habitta_verification_status"]
             | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "habitta_home_systems"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       habitta_calculate_health_score: {
         Args: { p_current_age: number; p_expected_lifespan_years: number }
         Returns: number
       }
-      habitta_generate_maintenance_tasks: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      habitta_parse_date: {
-        Args: { p_text: string }
-        Returns: string
-      }
-      habitta_recompute_system_metrics: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      habitta_update_system_priorities: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      habitta_generate_maintenance_tasks: { Args: never; Returns: undefined }
+      habitta_parse_date: { Args: { p_text: string }; Returns: string }
+      habitta_recompute_system_metrics: { Args: never; Returns: undefined }
+      habitta_update_system_priorities: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -4033,14 +4024,8 @@ export type Database = {
         }
         Returns: boolean
       }
-      link_home_to_property: {
-        Args: { p_home_id: string }
-        Returns: Json
-      }
-      normalize_address: {
-        Args: { address: string }
-        Returns: string
-      }
+      link_home_to_property: { Args: { p_home_id: string }; Returns: Json }
+      normalize_address: { Args: { address: string }; Returns: string }
       process_permit_to_system_event: {
         Args: {
           p_contractor?: string
@@ -4058,14 +4043,14 @@ export type Database = {
         Returns: Json
       }
       rpc_accuracy_by_field: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           accuracy: number
           field: string
         }[]
       }
       rpc_confidence_calibration: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           accuracy: number
           avg_confidence: number
@@ -4093,6 +4078,11 @@ export type Database = {
         | "appliance"
         | "plumbing"
         | "electrical"
+        | "pool_equipment"
+        | "sprinkler"
+        | "garage_door"
+        | "security"
+        | "other"
       habitta_verification_status:
         | "ai_generated"
         | "user_added"
@@ -4264,6 +4254,11 @@ export const Constants = {
         "appliance",
         "plumbing",
         "electrical",
+        "pool_equipment",
+        "sprinkler",
+        "garage_door",
+        "security",
+        "other",
       ],
       habitta_verification_status: [
         "ai_generated",
