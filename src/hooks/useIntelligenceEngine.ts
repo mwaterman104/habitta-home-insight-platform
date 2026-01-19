@@ -1,7 +1,25 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-interface SystemHealth {
+// ============== Phase 2: Survival Prediction Types ==============
+
+export interface SurvivalPrediction {
+  failureProbability12mo: number;
+  failureProbability24mo: number;
+  failureProbability36mo: number;
+  monthsRemaining: {
+    p10: number;  // Pessimistic
+    p50: number;  // Expected
+    p90: number;  // Optimistic
+  };
+  drivers: Array<{
+    factor: string;
+    impact: 'high' | 'medium' | 'low';
+    description: string;
+  }>;
+}
+
+export interface SystemHealth {
   system: string;
   score: number;
   status: 'excellent' | 'good' | 'attention' | 'urgent';
@@ -15,9 +33,11 @@ interface SystemHealth {
     time: string;
     impact: string;
   };
+  // Phase 2: Survival prediction (optional for backward compat)
+  survival?: SurvivalPrediction;
 }
 
-interface SmartTask {
+export interface SmartTask {
   id: string;
   title: string;
   description: string;
@@ -33,7 +53,7 @@ interface SmartTask {
   drivers?: string[];
 }
 
-interface BudgetPrediction {
+export interface BudgetPrediction {
   quarterlyForecast: number;
   yearlyForecast: number;
   threeYearForecast: number;
@@ -49,21 +69,23 @@ interface BudgetPrediction {
   };
 }
 
-interface PredictionsData {
+export interface PredictionsData {
   systems: SystemHealth[];
   overallHealth: number;
   confidence: number;
   lastUpdated: string;
+  // Phase 2: Additional fields
+  healthDrivers?: string[];
 }
 
-interface TasksData {
+export interface TasksData {
   tasks: SmartTask[];
   completionRate: number;
   totalSavings: number;
   confidence: number;
 }
 
-interface ExplanationsData {
+export interface ExplanationsData {
   drivers: string[];
   confidence: number;
   missingData: string[];

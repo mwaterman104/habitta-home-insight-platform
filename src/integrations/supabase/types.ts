@@ -3911,6 +3911,14 @@ export type Database = {
       }
     }
     Functions: {
+      append_event_metadata: {
+        Args: {
+          p_home_id: string
+          p_new_data: Json
+          p_system_type: Database["public"]["Enums"]["system_category"]
+        }
+        Returns: undefined
+      }
       cleanup_expired_recommendations: { Args: never; Returns: undefined }
       compute_canonical_hash: {
         Args: {
@@ -4069,7 +4077,15 @@ export type Database = {
         | "attom"
         | "manual_entry"
         | "estimated"
-      event_type: "install" | "replace" | "service" | "repair" | "inspection"
+        | "app"
+      event_type:
+        | "install"
+        | "replace"
+        | "service"
+        | "repair"
+        | "inspection"
+        | "maintenance_completed"
+        | "delta_capture_failed"
       habitta_priority_level: "low" | "medium" | "high" | "critical"
       habitta_system_type:
         | "hvac"
@@ -4244,8 +4260,17 @@ export const Constants = {
         "attom",
         "manual_entry",
         "estimated",
+        "app",
       ],
-      event_type: ["install", "replace", "service", "repair", "inspection"],
+      event_type: [
+        "install",
+        "replace",
+        "service",
+        "repair",
+        "inspection",
+        "maintenance_completed",
+        "delta_capture_failed",
+      ],
       habitta_priority_level: ["low", "medium", "high", "critical"],
       habitta_system_type: [
         "hvac",
