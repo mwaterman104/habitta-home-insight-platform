@@ -1,4 +1,15 @@
 import { supabase } from '@/integrations/supabase/client';
+import { 
+  type RiskSnapshot, 
+  type RiskDelta, 
+  type ValidationResult,
+  DELTA_BOUNDS,
+  CALCULATION_TIMEOUT_MS,
+  POLL_INTERVAL_MS
+} from '@/types/riskDelta';
+
+// Re-export types for convenience
+export type { RiskSnapshot, RiskDelta, ValidationResult };
 
 interface BeforeSnapshot {
   score: number;
@@ -7,7 +18,7 @@ interface BeforeSnapshot {
   status: string;
 }
 
-interface RiskDelta {
+interface InternalRiskDelta {
   score: number;
   failureProbability12mo: number | null;
   monthsAdded: number | null;
@@ -15,6 +26,99 @@ interface RiskDelta {
     from: string;
     to: string;
   } | null;
+}
+
+/**
+ * Validate calculated delta for sanity and consistency
+ * Returns validation result with flags for suspicious or invalid data
+ */
+export function validateDelta(
+  delta: RiskDelta,
+  before: RiskSnapshot,
+  after: RiskSnapshot
+): ValidationResult {
+  // Check for zero scores (indicates bad data)
+  if (after.score === 0 || before.score === 0) {
+    return { 
+      isValid: false, 
+      isSuspicious: true,
+      reason: 'Invalid zero score detected', 
+      shouldUseEstimate: true 
+    };
+  }
+
+  // Check upper bounds
+  if (delta.scoreChange > DELTA_BOUNDS.maxScoreChange) {
+    return { 
+      isValid: false, 
+      isSuspicious: true, 
+      reason: 'Unusually large score improvement', 
+      shouldUseEstimate: true 
+    };
+  }
+  
+  // Check lower bounds
+  if (delta.scoreChange < DELTA_BOUNDS.minScoreChange) {
+    return { 
+      isValid: true, 
+      isSuspicious: true, 
+      reason: 'Maintenance may have revealed hidden issues' 
+    };
+  }
+
+  // Check months added bounds
+  if (delta.monthsAdded !== null) {
+    if (delta.monthsAdded > DELTA_BOUNDS.maxMonthsAdded) {
+      return { 
+        isValid: false, 
+        isSuspicious: true,
+        reason: 'Unusually large lifespan extension', 
+        shouldUseEstimate: true 
+      };
+    }
+    if (delta.monthsAdded < DELTA_BOUNDS.minMonthsAdded) {
+      return { 
+        isValid: true, 
+        isSuspicious: true,
+        reason: 'Maintenance reduced expected system life' 
+      };
+    }
+  }
+
+  // Check failure probability reduction bounds
+  if (delta.failureProbReduction !== null && 
+      delta.failureProbReduction > DELTA_BOUNDS.maxFailureReduction) {
+    return { 
+      isValid: false, 
+      isSuspicious: true,
+      reason: 'Unusually large risk reduction', 
+      shouldUseEstimate: true 
+    };
+  }
+
+  // Consistency check: score change direction
+  if (delta.scoreChange > 0 && after.score <= before.score) {
+    return { 
+      isValid: false, 
+      isSuspicious: true,
+      reason: 'Score delta direction mismatch', 
+      shouldUseEstimate: true 
+    };
+  }
+
+  // Consistency check: failure probability direction
+  if (delta.failureProbReduction !== null && delta.failureProbReduction > 0 &&
+      after.failureProbability12mo !== null && before.failureProbability12mo !== null &&
+      after.failureProbability12mo >= before.failureProbability12mo) {
+    return { 
+      isValid: false, 
+      isSuspicious: true,
+      reason: 'Failure probability mismatch', 
+      shouldUseEstimate: true 
+    };
+  }
+
+  return { isValid: true, isSuspicious: false };
 }
 
 /**
@@ -123,7 +227,7 @@ export async function captureRiskDelta(
     }
     
     // Step 5: Calculate delta
-    const delta: RiskDelta = {
+    const delta: InternalRiskDelta = {
       score: afterSnapshot.score - beforeSnapshot.score,
       failureProbability12mo: 
         beforeSnapshot.failureProbability12mo !== undefined && 
@@ -186,7 +290,7 @@ export async function captureRiskDelta(
 export async function getLatestRiskDelta(
   homeId: string,
   systemType: string
-): Promise<{ before: BeforeSnapshot; after: any; delta: RiskDelta } | null> {
+): Promise<{ before: BeforeSnapshot; after: any; delta: InternalRiskDelta } | null> {
   try {
     const { data, error } = await supabase
       .from('habitta_system_events')
