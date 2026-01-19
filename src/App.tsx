@@ -1,6 +1,7 @@
 import { AppRoutes } from "@/pages/AppRoutes";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useEffect } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Global error logging for runtime errors
 const setupGlobalErrorHandlers = () => {
@@ -22,14 +23,25 @@ const setupGlobalErrorHandlers = () => {
   });
 };
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      retry: 2,
+    },
+  },
+});
+
 export default function App() {
   useEffect(() => {
     setupGlobalErrorHandlers();
   }, []);
 
   return (
-    <ErrorBoundary>
-      <AppRoutes />
-    </ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
+    </QueryClientProvider>
   );
 }
