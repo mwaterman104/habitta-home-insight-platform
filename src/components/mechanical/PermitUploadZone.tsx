@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +17,11 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
   const [isProcessing, setIsProcessing] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [stats, setStats] = useState<{ total: number; critical: number; high: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const processFile = useCallback(async (file: File) => {
+    console.log('Processing file:', file.name, 'size:', file.size);
+    
     if (!file.name.endsWith('.csv')) {
       toast.error('Please upload a CSV file');
       return;
@@ -26,12 +29,18 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
 
     setIsProcessing(true);
     setFileName(file.name);
+    setError(null);
+    setStats(null);
 
     try {
       const text = await file.text();
+      console.log('File content length:', text.length, 'First 200 chars:', text.substring(0, 200));
+      
       const { records, errors } = parseAndEnrichCSV(text);
+      console.log('Parsed records:', records.length, 'Errors:', errors.length);
 
       if (errors.length > 0) {
+        console.warn('Parsing warnings:', errors);
         errors.slice(0, 3).forEach(err => toast.warning(err));
         if (errors.length > 3) {
           toast.warning(`...and ${errors.length - 3} more warnings`);
@@ -39,7 +48,10 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
       }
 
       if (records.length === 0) {
-        toast.error('No valid records found in CSV');
+        const errorMsg = errors.length > 0 ? errors[0] : 'No valid records found in CSV';
+        setError(errorMsg);
+        toast.error(errorMsg);
+        setIsProcessing(false);
         return;
       }
 
@@ -51,8 +63,10 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
       
       toast.success(`Processed ${records.length} permits - ${critical} critical, ${high} high risk`);
     } catch (err) {
-      toast.error('Failed to process CSV file');
       console.error('CSV processing error:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to process CSV file';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -100,6 +114,28 @@ export function PermitUploadZone({ onDataProcessed, className }: PermitUploadZon
             <div className="flex flex-col items-center gap-3">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
               <p className="text-sm text-muted-foreground">Processing {fileName}...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-4">
+              <XCircle className="h-10 w-10 text-destructive" />
+              <div className="space-y-2 text-center">
+                <p className="font-medium text-destructive">Upload Failed</p>
+                <p className="text-sm text-muted-foreground max-w-md">{error}</p>
+              </div>
+              <div>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleFileInput} 
+                  className="hidden"
+                  id="csv-retry"
+                />
+                <Button variant="outline" size="sm" asChild>
+                  <label htmlFor="csv-retry" className="cursor-pointer">
+                    Try Again
+                  </label>
+                </Button>
+              </div>
             </div>
           ) : stats ? (
             <div className="flex flex-col items-center gap-4">
