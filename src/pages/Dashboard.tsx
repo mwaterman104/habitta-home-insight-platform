@@ -4,8 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Home, Plus, RefreshCw } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Home, Plus } from "lucide-react";
 import HomePulsePage from "./HomePulsePage";
 
 interface UserHome {
@@ -15,80 +14,47 @@ interface UserHome {
   state: string;
   zip_code: string;
   property_id?: string;
+  pulse_status?: string;
+  confidence?: number;
 }
 
 /**
  * Dashboard - Router wrapper for Home Pulse
  * 
  * Handles:
- * 1. No home → Onboarding prompt
- * 2. No property_id → Connection prompt  
- * 3. Has home → HomePulsePage (canonical dashboard)
+ * 1. No home → Onboarding redirect
+ * 2. Has home → HomePulsePage (canonical dashboard)
  */
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [userHome, setUserHome] = useState<UserHome | null>(null);
   const [loading, setLoading] = useState(true);
-  const [linking, setLinking] = useState(false);
-
-  const fetchUserHome = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('homes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      setUserHome(data);
-    } catch (error) {
-      console.error('Error fetching user home:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
+    if (!user) return;
+
+    const fetchUserHome = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('homes')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        setUserHome(data);
+      } catch (error) {
+        console.error('Error fetching user home:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchUserHome();
   }, [user]);
-
-  const handleLinkValidationData = async () => {
-    if (!user || !userHome) return;
-
-    setLinking(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('link-home-validation', {
-        headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-        },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success!",
-        description: "Your home has been connected. The dashboard should now show live data.",
-      });
-
-      await fetchUserHome();
-      
-    } catch (error) {
-      console.error('Error linking validation data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to connect validation data. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLinking(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -127,42 +93,8 @@ export default function Dashboard() {
     );
   }
 
-  // If user has home but no property_id, show connection prompt
-  if (userHome && !userHome.property_id) {
-    return (
-      <div className="flex items-center justify-center min-h-screen p-6">
-        <Card className="max-w-md w-full rounded-2xl">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 p-3 bg-blue-100 rounded-full w-fit">
-              <RefreshCw className="w-8 h-8 text-blue-600" />
-            </div>
-            <CardTitle className="text-2xl">Connect Your Home Data</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <p className="text-muted-foreground">
-              <strong>{userHome.address}, {userHome.city}, {userHome.state} {userHome.zip_code}</strong>
-            </p>
-            <p className="text-muted-foreground text-sm">
-              Connect your home to see system health, maintenance recommendations, and more.
-            </p>
-            <Button 
-              onClick={handleLinkValidationData}
-              disabled={linking}
-              className="w-full"
-              size="lg"
-            >
-              {linking ? (
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
-              )}
-              {linking ? 'Connecting...' : 'Connect Home Data'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // If user has home, go straight to Home Pulse (no intermediate connection screen)
+  // The Home Pulse will show "Still analyzing..." if enrichment is pending
 
   // User has a home with property_id, show Home Pulse
   return <HomePulsePage />;

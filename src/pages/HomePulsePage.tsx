@@ -25,6 +25,8 @@ interface UserHome {
   latitude?: number;
   longitude?: number;
   user_id: string;
+  pulse_status?: string;
+  confidence?: number;
 }
 
 /**
@@ -192,8 +194,20 @@ export default function HomePulsePage() {
       }] 
     : [];
 
+  // Check if still enriching
+  const isEnriching = userHome?.pulse_status === 'enriching' || userHome?.pulse_status === 'initializing';
+  const confidenceScore = userHome?.confidence || 35;
+
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto pb-24 md:pb-6">
+      {/* Enriching indicator */}
+      {isEnriching && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+          <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          Still analyzing your home...
+        </div>
+      )}
+
       {/* 1. Greeting with clickable address */}
       <HomePulseGreeting 
         address={userHome ? `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}` : undefined}
@@ -211,6 +225,7 @@ export default function HomePulsePage() {
         whyExpanded={whyExpanded}
         onToggleWhy={() => setWhyExpanded(!whyExpanded)}
         whyBullets={getWhyBullets()}
+        confidenceScore={confidenceScore}
       />
 
       {/* 3. Coming Up - Systems that matter */}
