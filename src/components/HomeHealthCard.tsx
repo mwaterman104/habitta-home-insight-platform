@@ -1,9 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ChevronRight } from "lucide-react";
 
 interface HomeHealthCardProps {
   overallScore: number;
   systemsNeedingAttention: number;
   lastUpdated?: string;
+  scoreDrivers?: string;
+  onViewDetails?: () => void;
 }
 
 /**
@@ -13,7 +17,9 @@ interface HomeHealthCardProps {
 export function HomeHealthCard({ 
   overallScore, 
   systemsNeedingAttention,
-  lastUpdated 
+  lastUpdated,
+  scoreDrivers,
+  onViewDetails
 }: HomeHealthCardProps) {
   // Determine score color based on value
   const getScoreColor = () => {
@@ -45,9 +51,24 @@ export function HomeHealthCard({
         <p className="text-gray-700 mb-3 leading-relaxed">
           {getMessage()}
         </p>
+        {onViewDetails && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="mb-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-0 h-auto font-medium"
+            onClick={onViewDetails}
+          >
+            See why your home is doing well <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        )}
         <p className="text-xs text-muted-foreground">
           {lastUpdated ? `Updated ${lastUpdated}` : 'Updated today'} · Based on permits, maintenance, and local conditions
         </p>
+        {scoreDrivers && (
+          <p className="text-xs text-muted-foreground mt-1 italic">
+            Driven primarily by {scoreDrivers}.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

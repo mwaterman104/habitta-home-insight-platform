@@ -141,26 +141,36 @@ export function buildHVACSystemPrediction(
     high: 'High Risk',
   };
   
+  // Generate seasonal next review hint
+  const currentMonth = new Date().getMonth();
+  const nextReview = currentMonth >= 3 && currentMonth <= 8 
+    ? 'Next review after summer season'
+    : 'Next review after winter season';
+
   // Forecast copy (generated server-side, UI just renders)
   const forecasts: Record<HVACSurvivalCore['status'], { 
     summary: string; 
     reassurance?: string; 
-    state: 'reassuring' | 'watch' | 'urgent' 
+    state: 'reassuring' | 'watch' | 'urgent';
+    nextReview: string;
   }> = {
     low: {
       summary: "Low risk over the next year.",
       reassurance: "No urgent action is required right now.",
       state: 'reassuring',
+      nextReview,
     },
     moderate: {
       summary: "Likely to need attention in 6–12 months.",
       reassurance: "This is a watch item, not an emergency.",
       state: 'watch',
+      nextReview,
     },
     high: {
       summary: "Likely to need attention within the next 3–6 months.",
       reassurance: undefined,
       state: 'urgent',
+      nextReview: 'Review recommended soon',
     },
   };
   

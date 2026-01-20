@@ -249,11 +249,16 @@ export default function DashboardOverview() {
                 overallScore={hvacPrediction ? (hvacPrediction.status === 'low' ? 85 : hvacPrediction.status === 'moderate' ? 70 : 55) : 82}
                 systemsNeedingAttention={hvacPrediction?.status !== 'low' ? 1 : 0}
                 lastUpdated="today"
+                scoreDrivers="HVAC age, recent maintenance, and local climate"
+                onViewDetails={hvacPrediction?.status === 'low' ? () => setSelectedSystem('hvac') : undefined}
               />
 
               {/* Coming Up Section */}
               <section>
-                <h2 className="text-xs uppercase text-muted-foreground mb-3 font-medium tracking-wider">Coming Up</h2>
+                <h2 className="text-xs uppercase text-muted-foreground mb-1 font-medium tracking-wider">Coming Up</h2>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tracking HVAC in detail. More systems coming soon.
+                </p>
                 <div className="space-y-3">
                   {hvacLoading ? (
                     <>
@@ -266,6 +271,7 @@ export default function DashboardOverview() {
                       summary={hvacPrediction.forecast.summary}
                       recommendation={hvacPrediction.actions[0]?.title ? `Recommended: ${hvacPrediction.actions[0].title}` : undefined}
                       status={hvacPrediction.status}
+                      nextReview={hvacPrediction.status === 'low' ? 'Next review after summer season' : undefined}
                       onClick={() => setSelectedSystem('hvac')}
                     />
                   ) : (
