@@ -1,31 +1,37 @@
 project_id = "vbcsuoubxyhjhxcgrqco"
 
+# Internal enrichment pipeline functions (verify_jwt = false, protected by x-internal-secret header)
+[functions.property-enrichment]
+verify_jwt = false
+
+[functions.permit-enrichment]
+verify_jwt = false
+
+[functions.intelligence-engine]
+verify_jwt = false
+
 [functions.shovels-permits]
-verify_jwt = true
-
-[functions.admin-users]
-verify_jwt = true
-
-[functions.smarty-proxy]
-verify_jwt = true
-
-[functions.smarty-autocomplete]
 verify_jwt = false
 
 [functions.attom-property]
+verify_jwt = false
+
+[functions.smarty-proxy]
+verify_jwt = false
+
+# User-facing functions (verify_jwt = true or handled in code)
+[functions.admin-users]
 verify_jwt = true
 
-[functions.google-weather-insights]
+[functions.create-home]
 verify_jwt = true
 
-[functions.google-solar-analysis]
-verify_jwt = true
+# Public functions (no JWT required)
+[functions.smarty-autocomplete]
+verify_jwt = false
 
 [functions.solar-imagery-proxy]
 verify_jwt = false
-
-[functions.enrich-property]
-verify_jwt = true
 
 [functions.google-places-autocomplete]
 verify_jwt = false
@@ -33,5 +39,12 @@ verify_jwt = false
 [functions.google-places-details]
 verify_jwt = false
 
-[functions.create-home]
+# Other functions
+[functions.google-weather-insights]
+verify_jwt = true
+
+[functions.google-solar-analysis]
+verify_jwt = true
+
+[functions.enrich-property]
 verify_jwt = true
