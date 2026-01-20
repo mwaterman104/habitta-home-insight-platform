@@ -104,6 +104,15 @@ serve(async (req) => {
   }
 
   try {
+    // Check for internal secret (for chained calls from enrichment pipeline)
+    const internalSecret = req.headers.get('x-internal-secret');
+    const expectedSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
+    const isInternalCall = expectedSecret && internalSecret === expectedSecret;
+    
+    if (isInternalCall) {
+      console.log('[attom-property] Internal call validated via secret');
+    }
+    
     const { address, endpoint = 'property/detail' } = await req.json();
     
     if (!address) {
