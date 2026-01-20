@@ -1,0 +1,169 @@
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { SystemDetailView } from "@/components/SystemDetailView";
+import type { SystemPrediction } from "@/types/systemPrediction";
+import { useToast } from "@/hooks/use-toast";
+
+interface UserHome {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  property_id?: string;
+}
+
+/**
+ * SystemPage - Route-based system detail view
+ * 
+ * Accessed via /system/:systemKey
+ * Deep-linkable, refreshable, shareable.
+ * 
+ * HVAC is the canonical template - all future systems
+ * must match this structure.
+ */
+export default function SystemPage() {
+  const { systemKey } = useParams<{ systemKey: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  
+  const [loading, setLoading] = useState(true);
+  const [userHome, setUserHome] = useState<UserHome | null>(null);
+  const [prediction, setPrediction] = useState<SystemPrediction | null>(null);
+
+  // Fetch user home first
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUserHome = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('homes')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        setUserHome(data);
+      } catch (error) {
+        console.error('Error fetching user home:', error);
+      }
+    };
+
+    fetchUserHome();
+  }, [user]);
+
+  // Fetch system prediction when home is available
+  useEffect(() => {
+    if (!userHome?.id || !systemKey) return;
+
+    const fetchPrediction = async () => {
+      setLoading(true);
+      try {
+        // Currently only HVAC is supported
+        if (systemKey !== 'hvac') {
+          toast({
+            title: 'System not available',
+            description: 'Only HVAC intelligence is available in this pilot.',
+            variant: 'destructive',
+          });
+          navigate('/dashboard');
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('intelligence-engine', {
+          body: { 
+            action: 'hvac-prediction', 
+            property_id: userHome.id 
+          }
+        });
+
+        if (error) throw error;
+        if (data) {
+          setPrediction(data);
+        }
+      } catch (error) {
+        console.error('Error fetching system prediction:', error);
+        toast({
+          title: 'Unable to load system data',
+          description: 'Please try again later.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPrediction();
+  }, [userHome?.id, systemKey, navigate, toast]);
+
+  // Handle back navigation - always goes to Home Pulse
+  const handleBack = () => {
+    navigate('/dashboard');
+  };
+
+  // Handle action completion - refresh prediction
+  const handleActionComplete = async (actionSlug: string) => {
+    if (!userHome?.id) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('intelligence-engine', {
+        body: { 
+          action: 'hvac-prediction', 
+          property_id: userHome.id,
+          forceRefresh: true
+        }
+      });
+
+      if (error) throw error;
+      if (data) {
+        setPrediction(data);
+        toast({
+          title: 'Maintenance logged',
+          description: 'Your HVAC outlook has improved.',
+        });
+      }
+    } catch (error) {
+      console.error('Error refreshing prediction:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 max-w-3xl mx-auto animate-pulse">
+        <Skeleton className="h-8 w-48 rounded" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-32 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!prediction) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="text-center py-12 text-muted-foreground">
+          <p className="text-lg mb-2">No data available for this system</p>
+          <p className="text-sm">We're still analyzing your home.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-3xl mx-auto pb-24 md:pb-6">
+      <SystemDetailView 
+        prediction={prediction}
+        onBack={handleBack}
+        onActionComplete={handleActionComplete}
+      />
+    </div>
+  );
+}

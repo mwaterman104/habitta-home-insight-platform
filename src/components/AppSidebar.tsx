@@ -1,19 +1,11 @@
-import { useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom";
 import { 
   Home, 
-  Building,
-  Brain,
-  Calendar, 
-  Hammer,
-  ShoppingBag,
-  Users,
-  MessageCircle,
   Settings,
-  ClipboardCheck,
-} from "lucide-react"
-import { useAuth } from "@/contexts/AuthContext"
-import { useIsMobile } from "@/hooks/use-mobile"
+  MessageCircle,
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Sidebar,
   SidebarContent,
@@ -25,18 +17,11 @@ import {
   SidebarFooter,
   SidebarHeader,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
+// Phase 1: Simplified navigation - Home Pulse only
 const navigation = [
-  { title: "Dashboard", url: "/dashboard", icon: Home },
-  { title: "Home Profile", url: "/home-profile", icon: Building },
-  { title: "Property Intelligence", url: "/property-intelligence", icon: Brain },
-  { title: "Maintenance Planner", url: "/maintenance-planner", icon: Calendar },
-  { title: "Projects", url: "/projects", icon: Hammer },
-  { title: "Validation Cockpit", url: "/validation", icon: ClipboardCheck },
-  { title: "Marketplace", url: "/marketplace", icon: ShoppingBag },
-  { title: "Pro Network", url: "/pro-network", icon: Users },
-  { title: "ChatDIY Assistant", url: "/chatdiy", icon: MessageCircle },
+  { title: "Home Pulse", url: "/dashboard", icon: Home },
 ];
 
 export default function AppSidebar() {
@@ -46,7 +31,7 @@ export default function AppSidebar() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith('/system');
   const collapsed = state === 'collapsed' || isMobile;
 
   return (
@@ -89,6 +74,12 @@ export default function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => navigate("/chatdiy")}>
+              <MessageCircle className="mr-2 h-4 w-4" />
+              {!collapsed && <span>Help</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => navigate("/settings")}>
               <Settings className="mr-2 h-4 w-4" />

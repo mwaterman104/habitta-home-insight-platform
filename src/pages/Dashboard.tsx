@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Home, Plus, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import DashboardOverview from "./DashboardOverview";
+import HomePulsePage from "./HomePulsePage";
 
 interface UserHome {
   id: string;
@@ -17,6 +17,14 @@ interface UserHome {
   property_id?: string;
 }
 
+/**
+ * Dashboard - Router wrapper for Home Pulse
+ * 
+ * Handles:
+ * 1. No home → Onboarding prompt
+ * 2. No property_id → Connection prompt  
+ * 3. Has home → HomePulsePage (canonical dashboard)
+ */
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -65,10 +73,9 @@ export default function Dashboard() {
 
       toast({
         title: "Success!",
-        description: "Your home has been connected to validation data. The dashboard should now show live data.",
+        description: "Your home has been connected. The dashboard should now show live data.",
       });
 
-      // Refresh the home data
       await fetchUserHome();
       
     } catch (error) {
@@ -95,16 +102,16 @@ export default function Dashboard() {
   if (!userHome) {
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
-        <Card className="max-w-md w-full">
+        <Card className="max-w-md w-full rounded-2xl">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 p-3 bg-primary/10 rounded-full w-fit">
               <Home className="w-8 h-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Welcome to your Home Intelligence Dashboard</CardTitle>
+            <CardTitle className="text-2xl">Welcome to Home Pulse</CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p className="text-muted-foreground">
-              To get started with live data and personalized insights, please add your home address.
+              To get started with personalized insights, please add your home address.
             </p>
             <Button 
               onClick={() => navigate('/onboarding')} 
@@ -124,7 +131,7 @@ export default function Dashboard() {
   if (userHome && !userHome.property_id) {
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
-        <Card className="max-w-md w-full">
+        <Card className="max-w-md w-full rounded-2xl">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 p-3 bg-blue-100 rounded-full w-fit">
               <RefreshCw className="w-8 h-8 text-blue-600" />
@@ -133,10 +140,10 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p className="text-muted-foreground">
-              Your home address: <strong>{userHome.address}, {userHome.city}, {userHome.state} {userHome.zip_code}</strong>
+              <strong>{userHome.address}, {userHome.city}, {userHome.state} {userHome.zip_code}</strong>
             </p>
-            <p className="text-muted-foreground">
-              Connect your home to our validation data to see live insights, system health, and maintenance recommendations.
+            <p className="text-muted-foreground text-sm">
+              Connect your home to see system health, maintenance recommendations, and more.
             </p>
             <Button 
               onClick={handleLinkValidationData}
@@ -149,7 +156,7 @@ export default function Dashboard() {
               ) : (
                 <RefreshCw className="w-4 h-4 mr-2" />
               )}
-              {linking ? 'Connecting...' : 'Connect Validation Data'}
+              {linking ? 'Connecting...' : 'Connect Home Data'}
             </Button>
           </CardContent>
         </Card>
@@ -157,6 +164,6 @@ export default function Dashboard() {
     );
   }
 
-  // User has a home with property_id, show the full dashboard
-  return <DashboardOverview />;
+  // User has a home with property_id, show Home Pulse
+  return <HomePulsePage />;
 }
