@@ -10,7 +10,7 @@ import Dashboard from "./Dashboard";
 import SystemPage from "./SystemPage";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
-import OnboardingPage from "./OnboardingPage";
+import OnboardingFlow from "./OnboardingFlow";
 import HomeProfilePage from "./HomeProfilePage";
 import MaintenancePlanner from "./MaintenancePlanner";
 import PropertyIntelligence from "./PropertyIntelligence";
@@ -38,7 +38,7 @@ export function AppRoutes() {
           
           <Route path="/onboarding" element={
             <ProtectedRoute>
-              <OnboardingPage />
+              <OnboardingFlow />
             </ProtectedRoute>
           } />
           

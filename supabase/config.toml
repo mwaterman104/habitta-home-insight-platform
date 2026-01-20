@@ -26,3 +26,12 @@ verify_jwt = false
 
 [functions.enrich-property]
 verify_jwt = true
+
+[functions.google-places-autocomplete]
+verify_jwt = false
+
+[functions.google-places-details]
+verify_jwt = false
+
+[functions.create-home]
+verify_jwt = true
