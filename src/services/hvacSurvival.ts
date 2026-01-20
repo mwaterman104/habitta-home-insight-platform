@@ -174,14 +174,30 @@ export function buildHVACSystemPrediction(
     },
   };
   
-  // Why bullets (Step 9: generated, not raw numbers)
-  const whyBullets: string[] = [];
-  if (remainingYears <= 3) {
-    whyBullets.push("System age is approaching typical replacement range.");
+  // PROTECTIVE factors - why things are going well (for Home Health card)
+  // Canonical rule: Home Health card may only explain stability, not risk
+  const protectiveBullets: string[] = [];
+  
+  if (remainingYears > 3) {
+    protectiveBullets.push("HVAC system age is well within expected lifespan");
   }
-  whyBullets.push("Miami-Dade heat and humidity increase wear.");
   if (hasRecentMaintenance) {
-    whyBullets.push("Recent maintenance helps extend expected life.");
+    protectiveBullets.push("Recent maintenance activity is extending system life");
+  }
+  if (installSource.includes('permit')) {
+    protectiveBullets.push("Install date verified through permit records");
+  }
+  // Always add baseline reassurance
+  protectiveBullets.push("Local climate conditions are continuously monitored");
+  
+  // RISK context - for system drill-down only (never in Home Health card)
+  const riskBullets: string[] = [];
+  riskBullets.push("Miami-Dade heat and humidity increase wear over time");
+  if (ageYears > 10) {
+    riskBullets.push("System age increases likelihood of component fatigue");
+  }
+  if (remainingYears <= 3) {
+    riskBullets.push("System age is approaching typical replacement range");
   }
   
   // Actions (max 2, only if not low risk)
@@ -239,7 +255,8 @@ export function buildHVACSystemPrediction(
       ...forecasts[status],
     },
     why: {
-      bullets: whyBullets,
+      bullets: protectiveBullets,
+      riskContext: riskBullets,
       sourceLabel: installSource.includes('permit') ? 'Based on permit records' : undefined,
     },
     factors: {
