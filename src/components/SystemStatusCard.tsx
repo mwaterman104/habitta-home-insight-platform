@@ -6,6 +6,7 @@ interface SystemStatusCardProps {
   summary: string;
   recommendation?: string;
   status: 'low' | 'moderate' | 'high';
+  nextReview?: string;
   onClick?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function SystemStatusCard({
   summary, 
   recommendation,
   status,
+  nextReview,
   onClick 
 }: SystemStatusCardProps) {
   // Status to border color mapping (standardized vocabulary)
@@ -65,7 +67,9 @@ export function SystemStatusCard({
                 {statusLabel.text}
               </span>
             </div>
-            <p className="text-sm text-gray-600 mb-2">{summary}</p>
+            <p className="text-sm text-gray-600 mb-2">
+              {summary}{nextReview && <span className="text-muted-foreground"> · {nextReview}</span>}
+            </p>
             {recommendation && (
               <p className="text-xs text-muted-foreground">
                 {recommendation}

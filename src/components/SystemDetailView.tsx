@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench } from "lucide-react";
 import type { SystemPrediction } from "@/types/systemPrediction";
+import { ChatDIYBanner } from "@/components/ChatDIYBanner";
 
 interface SystemDetailViewProps {
   prediction: SystemPrediction;
@@ -92,12 +93,23 @@ export function SystemDetailView({
         </CardContent>
       </Card>
 
+      {/* Low-risk reassurance card */}
+      {prediction.status === 'low' && (
+        <Card className="rounded-xl border-gray-100 bg-gray-50/50">
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-600">
+              No action needed right now. We'll alert you if conditions change or when it's time for seasonal review.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Why Section */}
       <Card className="rounded-xl">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Info className="h-4 w-4 text-muted-foreground" />
-            Why we're showing this
+            {prediction.status === 'low' ? 'Why low risk' : "Why we're showing this"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -222,6 +234,12 @@ export function SystemDetailView({
           </CardContent>
         </Card>
       )}
+
+      {/* ChatDIY Handoff */}
+      <ChatDIYBanner 
+        topic={prediction.actions[0]?.chatdiySlug} 
+        message="Need help with any of these actions?"
+      />
     </div>
   );
 }

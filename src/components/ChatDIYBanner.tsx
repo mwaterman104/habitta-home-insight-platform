@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 interface ChatDIYBannerProps {
   topic?: string;
+  message?: string;
 }
 
 /**
  * ChatDIYBanner - Teal action bar linking to ChatDIY
  */
-export function ChatDIYBanner({ topic }: ChatDIYBannerProps) {
+export function ChatDIYBanner({ topic, message }: ChatDIYBannerProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -21,7 +22,7 @@ export function ChatDIYBanner({ topic }: ChatDIYBannerProps) {
       onClick={handleClick}
       className="w-full bg-teal-600 hover:bg-teal-700 text-white p-4 rounded-xl flex items-center justify-between transition-colors"
     >
-      <span className="font-medium">Need to take action? → See how with ChatDIY</span>
+      <span className="font-medium">{message || "Need to take action? → See how with ChatDIY"}</span>
       <ArrowRight className="h-5 w-5" />
     </button>
   );
