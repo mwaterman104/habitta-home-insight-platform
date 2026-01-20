@@ -140,9 +140,11 @@ serve(async (req) => {
       const enrRes = await fetch(enrUrl);
       
       // Handle 404 gracefully - address may not have enrichment data
-      if (enrRes.status === 404) {
-        console.log(`[${stepId}] No enrichment data found for address`);
-        return new Response(JSON.stringify({ results: [], message: 'No enrichment data available for this address' }), { 
+      // Handle 402 gracefully - billing/subscription issue with Smarty API
+      if (enrRes.status === 404 || enrRes.status === 402) {
+        const reason = enrRes.status === 404 ? 'not found' : 'billing/subscription required';
+        console.log(`[${stepId}] Enrichment unavailable (${enrRes.status} - ${reason})`);
+        return new Response(JSON.stringify({ results: [], message: `Enrichment data unavailable: ${reason}` }), { 
           headers: { ...corsHeaders, "content-type": "application/json" } 
         });
       }
@@ -184,9 +186,11 @@ serve(async (req) => {
       const finRes = await fetch(finUrl);
       
       // Handle 404 gracefully - address may not have financial data
-      if (finRes.status === 404) {
-        console.log(`[${stepId}] No financial data found for address`);
-        return new Response(JSON.stringify({ results: [], message: 'No financial data available for this address' }), { 
+      // Handle 402 gracefully - billing/subscription issue with Smarty API
+      if (finRes.status === 404 || finRes.status === 402) {
+        const reason = finRes.status === 404 ? 'not found' : 'billing/subscription required';
+        console.log(`[${stepId}] Financial data unavailable (${finRes.status} - ${reason})`);
+        return new Response(JSON.stringify({ results: [], message: `Financial data unavailable: ${reason}` }), { 
           headers: { ...corsHeaders, "content-type": "application/json" } 
         });
       }
