@@ -173,9 +173,22 @@ serve(async (req) => {
       )
     }
 
-    // Regular mode - save to database (existing code)
-    // For database operations, we need a user - if no user, skip database operations
-    if (!user) {
+    // Regular mode - save to database
+    // For internal calls, get user_id from the home record
+    let effectiveUserId = user?.id;
+    
+    if (!effectiveUserId && isInternalCall && homeId) {
+      console.log('[shovels-permits] Internal call - fetching user_id from home record');
+      const { data: homeData } = await supabaseClient
+        .from('homes')
+        .select('user_id')
+        .eq('id', homeId)
+        .single();
+      effectiveUserId = homeData?.user_id;
+      console.log('[shovels-permits] Got user_id from home:', effectiveUserId);
+    }
+    
+    if (!effectiveUserId) {
       console.log('No user found - skipping database operations, returning data only')
       return new Response(
         JSON.stringify({ 
@@ -196,7 +209,7 @@ serve(async (req) => {
     if (permitsItems && permitsItems.length) {
       for (const permit of permitsItems) {
         const permitData = {
-          user_id: user.id,
+          user_id: effectiveUserId,
           home_id: homeId,
           permit_number: permit.number || null,
           permit_type: permit.type || null,
@@ -238,7 +251,7 @@ serve(async (req) => {
     if (violationsData?.violations) {
       for (const violation of violationsData.violations) {
         const violationData = {
-          user_id: user!.id,
+          user_id: effectiveUserId,
           home_id: homeId,
           violation_number: violation.violation_number,
           violation_type: violation.violation_type,
@@ -312,7 +325,7 @@ serve(async (req) => {
             .from('systems')
             .insert({
               home_id: homeId,
-              user_id: user!.id,
+              user_id: effectiveUserId,
               kind: 'hvac',
               install_year: permitYear,
               install_source: 'permit',
