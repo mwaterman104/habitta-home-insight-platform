@@ -52,10 +52,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Today's Tasks",
-      "short_name": "Tasks",
-      "description": "View today's priority tasks",
-      "url": "/dashboard?tab=overview",
+      "name": "Home Pulse",
+      "short_name": "Home",
+      "description": "View your home intelligence dashboard",
+      "url": "/dashboard",
       "icons": [
         {
           "src": "/favicon.ico",
@@ -64,10 +64,10 @@
       ]
     },
     {
-      "name": "Home Health",
-      "short_name": "Health",
-      "description": "Check home system health",
-      "url": "/dashboard?tab=overview",
+      "name": "HVAC Health",
+      "short_name": "HVAC",
+      "description": "Check your HVAC system status",
+      "url": "/system/hvac",
       "icons": [
         {
           "src": "/favicon.ico",

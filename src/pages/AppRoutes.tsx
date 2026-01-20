@@ -7,7 +7,7 @@ import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
 import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
-import DashboardV2 from "./DashboardV2";
+import SystemPage from "./SystemPage";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingPage from "./OnboardingPage";
@@ -26,8 +26,6 @@ import PropertyReportPage from "./PropertyReportPage";
 import LandingPage from "./LandingPage";
 import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 
-// Removed ClientDashboard demo import to avoid duplicate React contexts
-
 export function AppRoutes() {
   return (
     <AuthProvider>
@@ -37,13 +35,12 @@ export function AppRoutes() {
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
-          {/* <Route path="/demo" element={<ClientDashboard />} /> */}
           
-            <Route path="/onboarding" element={
-              <ProtectedRoute>
-                <OnboardingPage />
-              </ProtectedRoute>
-            } />
+          <Route path="/onboarding" element={
+            <ProtectedRoute>
+              <OnboardingPage />
+            </ProtectedRoute>
+          } />
           
           {/* Protected routes with unified layout */}
           <Route element={
@@ -51,20 +48,27 @@ export function AppRoutes() {
               <AuthenticatedLayout />
             </ProtectedRoute>
           }>
+            {/* PRIMARY: Home Pulse */}
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/home/v2" element={<DashboardV2 />} />
+            
+            {/* SECONDARY: System Drilldowns (route-based) */}
+            <Route path="/system/:systemKey" element={<SystemPage />} />
+            
+            {/* TERTIARY: Accessible via contextual links */}
             <Route path="/home-profile" element={<HomeProfilePage />} />
-            <Route path="/property-intelligence" element={<PropertyIntelligence />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant</h1><p className="text-muted-foreground mt-2">Get help with home maintenance tasks.</p></div>} />
+            
+            {/* ARCHIVED: Still accessible but removed from navigation */}
+            <Route path="/property-intelligence" element={<Navigate to="/dashboard" replace />} />
             <Route path="/maintenance-planner" element={<MaintenancePlanner />} />
             <Route path="/projects" element={<ProjectDashboard />} />
             <Route path="/project/:projectId" element={<ProjectWorkspace />} />
             <Route path="/templates" element={<TemplateSelection />} />
-            <Route path="/marketplace" element={<div className="p-6"><h1 className="text-2xl font-bold">Marketplace - Coming Soon</h1></div>} />
-            <Route path="/pro-network" element={<div className="p-6"><h1 className="text-2xl font-bold">Pro Network - Coming Soon</h1></div>} />
-            <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant - Coming Soon</h1></div>} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/marketplace" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/pro-network" element={<Navigate to="/dashboard" replace />} />
             
-            {/* Validation Cockpit routes */}
+            {/* Validation Cockpit routes (admin/internal) */}
             <Route path="/validation" element={<ValidationCockpit />} />
             <Route path="/validation/label/:id" element={<PropertyLabelingPage />} />
             <Route path="/validation/property/:addressId" element={<PropertyDetail />} />
@@ -72,8 +76,9 @@ export function AppRoutes() {
             <Route path="/validation/scoring" element={<ScoringDashboard />} />
             <Route path="/mechanical-intelligence" element={<MechanicalIntelligencePage />} />
             
-            {/* Legacy routes */}
-            <Route path="/home" element={<Dashboard />} />
+            {/* Legacy routes - redirect to Home Pulse */}
+            <Route path="/home" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/home/v2" element={<Navigate to="/dashboard" replace />} />
             <Route path="/home/new" element={<AddHomePage />} />
             <Route path="/home/:homeId" element={<HomeIntelligenceDashboard />} />
             <Route path="/admin" element={<AdminPage />} />
