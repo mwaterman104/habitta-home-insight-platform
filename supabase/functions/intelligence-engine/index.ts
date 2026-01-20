@@ -889,24 +889,41 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     .eq('id', homeId)
     .single();
   
-  // 2. Fetch home systems for explicit HVAC install date
-  const { data: homeSystems } = await supabase
-    .from('home_systems')
-    .select('manufacture_year, install_date')
+  // 2. Fetch HVAC system from canonical 'systems' table (NOT home_systems)
+  const { data: systemsData, error: systemsError } = await supabase
+    .from('systems')
+    .select('install_year, install_source, confidence')
     .eq('home_id', homeId)
-    .ilike('system_key', '%hvac%')
+    .eq('kind', 'hvac')
     .limit(1);
   
-  const hvacSystem = homeSystems?.[0];
-  const explicitInstallYear = hvacSystem?.manufacture_year || 
-    (hvacSystem?.install_date ? new Date(hvacSystem.install_date).getFullYear() : null);
+  if (systemsError) {
+    console.warn(`[getHVACPrediction] Error fetching systems: ${systemsError.message}`);
+  }
   
-  // 3. Fetch permit history
-  const { data: permits } = await supabase
-    .from('habitta_permits')
+  const hvacSystem = systemsData?.[0];
+  const explicitInstallYear = hvacSystem?.install_year || null;
+  const installSource = hvacSystem?.install_source || 'unknown';
+  
+  // IMPORTANT: No fallback to home_systems - log if missing
+  if (!hvacSystem) {
+    console.warn(`[getHVACPrediction] No HVAC system record found in systems table for home: ${homeId}`);
+  } else {
+    console.log(`[getHVACPrediction] Found HVAC system: install_year=${explicitInstallYear}, source=${installSource}`);
+  }
+  
+  // 3. Fetch permit history from canonical 'permits' table (NOT habitta_permits)
+  const { data: permits, error: permitsError } = await supabase
+    .from('permits')
     .select('*')
-    .or(`property_address.ilike.%${homeId}%,user_id.eq.${homeId}`)
-    .order('issue_date', { ascending: false });
+    .eq('home_id', homeId)
+    .order('date_issued', { ascending: false });
+  
+  if (permitsError) {
+    console.warn(`[getHVACPrediction] Error fetching permits: ${permitsError.message}`);
+  } else {
+    console.log(`[getHVACPrediction] Found ${permits?.length || 0} permits for home`);
+  }
   
   // 4. Check recent maintenance (last 12 months)
   const twelveMonthsAgo = new Date();

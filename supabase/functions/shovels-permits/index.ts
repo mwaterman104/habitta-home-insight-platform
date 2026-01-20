@@ -265,6 +265,102 @@ serve(async (req) => {
 
     console.log(`Successfully synced ${permitsInserted} permits and ${violationsInserted} violations`)
 
+    // ========== PHASE 3: Permit-to-System Enrichment ==========
+    // Update systems table when HVAC replacement permits are found
+    if (homeId && permitsInserted > 0 && permitsData?.permits) {
+      const hvacReplacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout', 'change-out'];
+      
+      const hvacPermits = permitsData.permits.filter((p: ShovelsPermit) => {
+        const desc = (p.description || '').toLowerCase();
+        const permitType = (p.type || '').toLowerCase();
+        const workClass = (p.work_class || '').toLowerCase();
+        
+        const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
+                       desc.includes('a/c') || desc.includes('ac unit') ||
+                       desc.includes('heat pump') || desc.includes('condenser') ||
+                       permitType.includes('mechanical') || workClass.includes('mechanical');
+        const isReplacement = hvacReplacementKeywords.some(kw => desc.includes(kw));
+        return isHVAC && isReplacement && p.issue_date;
+      });
+
+      if (hvacPermits.length > 0) {
+        // Sort by date, get most recent
+        hvacPermits.sort((a: ShovelsPermit, b: ShovelsPermit) => 
+          new Date(b.issue_date!).getTime() - new Date(a.issue_date!).getTime()
+        );
+        const latestPermit = hvacPermits[0];
+        const permitYear = new Date(latestPermit.issue_date!).getFullYear();
+
+        console.log(`[shovels-permits] Found HVAC replacement permit from ${permitYear}`);
+
+        // Check existing system to apply override hierarchy
+        const { data: existingSystem } = await supabaseClient
+          .from('systems')
+          .select('id, install_year, install_source')
+          .eq('home_id', homeId)
+          .eq('kind', 'hvac')
+          .single();
+
+        if (!existingSystem) {
+          // No system record exists - create one from permit
+          const { error: insertError } = await supabaseClient
+            .from('systems')
+            .insert({
+              home_id: homeId,
+              user_id: user!.id,
+              kind: 'hvac',
+              install_year: permitYear,
+              install_source: 'permit',
+              confidence: 0.85,
+              status: 'VERIFIED',
+            });
+          
+          if (!insertError) {
+            console.log('[shovels-permits] Created HVAC system from permit, year:', permitYear);
+          } else {
+            console.error('[shovels-permits] Error creating system:', insertError);
+          }
+        } else {
+          // System exists - apply override hierarchy
+          // Permit > Inferred, but User > Permit only if user input is NEWER
+          let shouldUpdate = false;
+          const existingSource = existingSystem.install_source || 'inferred';
+          
+          if (existingSource === 'inferred' || existingSource === 'unknown') {
+            // Permit overrides inferred
+            shouldUpdate = true;
+            console.log('[shovels-permits] Permit overrides inferred source');
+          } else if (existingSource === 'user' && existingSystem.install_year) {
+            // User input only wins if it's NEWER than permit date
+            if (existingSystem.install_year < permitYear) {
+              shouldUpdate = true;
+              console.log('[shovels-permits] Permit is more recent than user input, overriding');
+            } else {
+              console.log('[shovels-permits] User input is more recent, keeping user data');
+            }
+          }
+
+          if (shouldUpdate) {
+            const { error: updateError } = await supabaseClient
+              .from('systems')
+              .update({
+                install_year: permitYear,
+                install_source: 'permit',
+                confidence: 0.85,
+                status: 'VERIFIED',
+              })
+              .eq('id', existingSystem.id);
+            
+            if (!updateError) {
+              console.log('[shovels-permits] Updated HVAC system from permit, year:', permitYear);
+            } else {
+              console.error('[shovels-permits] Error updating system:', updateError);
+            }
+          }
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
