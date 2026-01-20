@@ -153,9 +153,12 @@ export function useTaskCompletion() {
         }
       }
 
+      // Calm confirmation (not celebratory - per QC feedback)
       toast({
-        title: 'Task completed',
-        description: 'Task status has been updated successfully.',
+        title: 'Maintenance logged',
+        description: systemType === 'hvac' 
+          ? 'Your HVAC outlook has improved.' 
+          : 'Task status has been updated successfully.',
       });
 
     } catch (error: any) {
