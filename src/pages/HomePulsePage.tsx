@@ -139,14 +139,14 @@ export default function HomePulsePage() {
     return hvacPrediction.status !== 'low' ? 1 : 0;
   };
 
-  // Get "why" bullets from HVAC prediction
+  // Get "why" bullets from HVAC prediction (protective factors only)
   const getWhyBullets = (): string[] => {
     if (!hvacPrediction?.why?.bullets) {
-      // Default bullets when no prediction available
+      // Default protective bullets when no prediction available
       return [
-        "HVAC system installed within expected lifespan",
-        "Regular maintenance detected from permit records",
-        "Local climate conditions factored into assessment"
+        "HVAC system age is well within expected lifespan",
+        "No abnormal usage or stress indicators detected",
+        "Local climate conditions are continuously monitored"
       ];
     }
     return hvacPrediction.why.bullets;

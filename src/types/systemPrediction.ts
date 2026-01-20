@@ -36,7 +36,8 @@ export interface SystemPrediction {
   };
 
   why: {
-    bullets: string[];          // Human-readable reasons
+    bullets: string[];          // Protective factors (for Home Health card)
+    riskContext?: string[];     // Risk factors (for system drill-down only)
     sourceLabel?: string;       // e.g., "Based on permit records"
   };
 
