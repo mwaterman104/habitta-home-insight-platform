@@ -979,29 +979,77 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    let action = url.searchParams.get('action') || undefined;
-    let propertyId = url.searchParams.get('property_id') || undefined;
-    let entityId = url.searchParams.get('entity_id') || undefined;
-    let entityType = url.searchParams.get('entity_type') as 'system' | 'task' | 'prediction' | undefined;
-
+    // ========== HYBRID AUTH: Internal secret OR User JWT ==========
+    const internalSecret = req.headers.get('x-internal-secret');
+    const expectedSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
+    const authHeader = req.headers.get('Authorization');
+    
+    const isInternal = expectedSecret && internalSecret === expectedSecret;
+    const isUserAuth = authHeader?.startsWith('Bearer ');
+    
+    if (!isInternal && !isUserAuth) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // For internal calls, log the trigger reason
     let body: any = null;
     try {
       body = await req.json();
     } catch (_) {
       // no body provided
     }
+    
+    if (isInternal && body?.reason) {
+      console.log(`[intelligence-engine] Internal trigger: ${body.reason} for home: ${body.home_id || body.property_id}`);
+    }
+
+    const url = new URL(req.url);
+    let action = url.searchParams.get('action') || undefined;
+    let propertyId = url.searchParams.get('property_id') || undefined;
+    let entityId = url.searchParams.get('entity_id') || undefined;
+    let entityType = url.searchParams.get('entity_type') as 'system' | 'task' | 'prediction' | undefined;
 
     if (body) {
       action = body.action || action;
-      propertyId = body.property_id || propertyId;
+      propertyId = body.property_id || body.home_id || propertyId;
       entityId = body.entity_id || entityId;
       entityType = (body.entity_type as any) || entityType;
+    }
+    
+    // For user-authenticated calls, validate ownership
+    if (isUserAuth && propertyId) {
+      const token = authHeader!.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Verify the home belongs to the user
+      const { data: home, error: homeError } = await supabase
+        .from('homes')
+        .select('id')
+        .eq('id', propertyId)
+        .eq('user_id', user.id)
+        .single();
+      
+      if (homeError || !home) {
+        return new Response(
+          JSON.stringify({ error: 'Home not found or access denied' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     if (!action) throw new Error('Missing action. Use one of: predictions, tasks, budget, explanations');
 
-    console.log(`Intelligence Engine action: ${action}`);
+    console.log(`[intelligence-engine] Action: ${action}, Property: ${propertyId}, Internal: ${isInternal}`);
 
     let result;
 

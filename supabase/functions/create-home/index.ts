@@ -7,11 +7,13 @@ const corsHeaders = {
 };
 
 /**
- * create-home: Canonical home lifecycle start function
+ * create-home: Canonical home lifecycle bootstrap ("fuse lighter")
  * 
  * Creates property record immediately on address selection.
  * Generates instant snapshot for immediate Home Pulse display.
- * Triggers background enrichment without blocking.
+ * Fires background enrichment chain without blocking response.
+ * 
+ * Chain: create-home → property-enrichment → permit-enrichment → intelligence-engine
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -26,6 +28,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const internalSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user
@@ -102,10 +105,10 @@ serve(async (req) => {
 
     const snapshot = {
       home_id: home.id,
-      cooling_type: isMiamiDade ? 'central_ac' : 'central_ac',
+      cooling_type: 'central_ac',
       climate_stress: isMiamiDade ? 'high' : 'moderate',
-      roof_type: isMiamiDade ? 'tile' : 'asphalt_shingle', // Miami typical
-      roof_age_band: 'unknown', // Will be enriched
+      roof_type: isMiamiDade ? 'tile' : 'asphalt_shingle',
+      roof_age_band: 'unknown',
       confidence_score: 35,
     };
 
@@ -127,7 +130,7 @@ serve(async (req) => {
         status: 'UNKNOWN',
         confidence: 0.3,
         install_source: 'inferred',
-        material: isMiamiDade ? 'central_ac' : 'central_ac',
+        material: 'central_ac',
       })
       .select()
       .single();
@@ -136,127 +139,29 @@ serve(async (req) => {
       console.error('[create-home] Error creating HVAC system:', systemError);
     }
 
-    // 5. Update pulse_status to 'enriching' and trigger background jobs
+    // 5. Update pulse_status to 'enriching'
     await supabase
       .from('homes')
       .update({ pulse_status: 'enriching' })
       .eq('id', home.id);
 
-    // 6. Trigger background enrichment and update status when complete
-    // Using EdgeRuntime.waitUntil to ensure completion without blocking response
-    const enrichmentTask = async () => {
-      try {
-        // 6a. Property enrichment via Smarty for year_built, sqft
-        const smartyTask = async () => {
-          try {
-            const { data: enrichment, error: enrichError } = await supabase.functions.invoke('smarty-proxy', {
-              body: {
-                action: 'enrich',
-                payload: {
-                  street: address_line1,
-                  city,
-                  state,
-                  postal_code,
-                }
-              }
-            });
+    // 6. Fire background enrichment chain via property-enrichment
+    // This is the "fuse lighter" - we don't block on enrichment
+    if (internalSecret) {
+      EdgeRuntime.waitUntil(
+        supabase.functions.invoke('property-enrichment', {
+          body: { home_id: home.id },
+          headers: { 'x-internal-secret': internalSecret },
+        }).catch(err => {
+          console.error('[create-home] property-enrichment failed:', err);
+        })
+      );
+      console.log('[create-home] Fired property-enrichment background task');
+    } else {
+      console.error('[create-home] INTERNAL_ENRICH_SECRET not configured - skipping enrichment');
+    }
 
-            if (enrichError) {
-              console.log('[create-home] Smarty enrichment error:', enrichError);
-              return;
-            }
-
-            // Extract year_built from Smarty property/principal response
-            const principal = enrichment?.results?.[0]?.attributes || enrichment?.[0]?.attributes;
-            const yearBuilt = principal?.year_built;
-            const sqft = principal?.living_area || principal?.gross_area;
-
-            if (yearBuilt || sqft) {
-              const { error: updateError } = await supabase
-                .from('homes')
-                .update({
-                  year_built: yearBuilt || null,
-                  square_feet: sqft || null,
-                })
-                .eq('id', home.id);
-
-              if (updateError) {
-                console.log('[create-home] Error updating home with enrichment:', updateError);
-              } else {
-                console.log('[create-home] Enriched home with year_built:', yearBuilt, 'sqft:', sqft);
-              }
-            }
-          } catch (err) {
-            console.log('[create-home] Smarty enrichment failed (non-fatal):', err);
-          }
-        };
-
-        // 6b. Permits enrichment via Shovels
-        const shovelsTask = async () => {
-          try {
-            const res = await supabase.functions.invoke('shovels-permits', {
-              body: {
-                address: address_line1,
-                city,
-                state,
-                zip: postal_code,
-                homeId: home.id,
-              },
-            });
-            console.log('[create-home] Shovels permits completed:', res.data ? 'success' : 'no data');
-          } catch (err) {
-            console.error('[create-home] Shovels permits error:', err);
-          }
-        };
-
-        // Run both enrichment tasks in parallel
-        await Promise.all([smartyTask(), shovelsTask()]);
-        
-      } catch (err) {
-        console.error('[create-home] Enrichment error:', err);
-      } finally {
-        // Always update pulse_status to 'live' after enrichment attempt
-        // Also recalculate confidence based on available data
-        const { data: updatedHome } = await supabase
-          .from('homes')
-          .select('year_built')
-          .eq('id', home.id)
-          .single();
-        
-        const { data: systemData } = await supabase
-          .from('systems')
-          .select('install_source')
-          .eq('home_id', home.id)
-          .eq('kind', 'hvac')
-          .single();
-        
-        const { count: permitsCount } = await supabase
-          .from('permits')
-          .select('*', { count: 'exact', head: true })
-          .eq('home_id', home.id);
-        
-        // Calculate confidence based on available data
-        let confidence = 30; // Base: address only
-        if (updatedHome?.year_built) confidence += 10;
-        if (systemData?.install_source === 'permit') confidence += 25;
-        if (permitsCount && permitsCount > 0) confidence += 5;
-        confidence = Math.min(confidence, 85);
-        
-        await supabase
-          .from('homes')
-          .update({ 
-            pulse_status: 'live',
-            confidence: confidence 
-          })
-          .eq('id', home.id);
-        console.log('[create-home] pulse_status set to live, confidence:', confidence);
-      }
-    };
-
-    // Run enrichment in background without blocking response
-    EdgeRuntime.waitUntil(enrichmentTask());
-
-    console.log('[create-home] Complete, returning response');
+    console.log('[create-home] Complete, returning immediate response');
 
     // 7. Return immediate response for frontend
     return new Response(

@@ -47,7 +47,12 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Handle authentication - support both direct calls and internal function calls
+    // Check for internal secret (for chained calls from enrichment pipeline)
+    const internalSecret = req.headers.get('x-internal-secret');
+    const expectedSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
+    const isInternalCall = expectedSecret && internalSecret === expectedSecret;
+
+    // Handle authentication - support both internal calls and user calls
     let user = null
     const authHeader = req.headers.get('Authorization')
     
@@ -57,12 +62,13 @@ serve(async (req) => {
       user = authUser
     }
 
-    // For internal function calls, we might not have a user but we should still allow the call
-    // We'll use a default user ID for internal operations or skip user-specific operations
-    if (!user) {
-      console.log('No authenticated user found - this might be an internal function call')
-      // For validation mode or internal calls, we don't need authentication
+    // For internal function calls with valid secret, we proceed without user
+    if (!user && !isInternalCall) {
+      console.log('No authenticated user and no internal secret - this might be a validation call')
+      // For validation mode, we don't need authentication
       // But for database operations, we'll need to handle this differently
+    } else if (isInternalCall) {
+      console.log('[shovels-permits] Internal call validated via secret')
     }
 
     const { address, homeId } = await req.json()
@@ -361,11 +367,47 @@ serve(async (req) => {
       }
     }
 
+    // Extract HVAC enrichment signal for downstream consumers
+    let hvac_permit_found = false;
+    let hvac_install_year: number | null = null;
+    let hvac_permit_confidence = 0;
+
+    // Check if we found and processed any HVAC replacement permits
+    if (permitsItems && permitsItems.length > 0) {
+      const hvacReplacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout', 'change-out', 'install'];
+      
+      const hvacPermits = permitsItems.filter((p: any) => {
+        const desc = (p.description || '').toLowerCase();
+        const permitType = (p.type || '').toLowerCase();
+        
+        const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
+                       desc.includes('a/c') || desc.includes('ac unit') ||
+                       desc.includes('heat pump') || desc.includes('condenser') ||
+                       permitType.includes('mechanical');
+        const isReplacement = hvacReplacementKeywords.some(kw => desc.includes(kw));
+        return isHVAC && isReplacement && p.issue_date;
+      });
+
+      if (hvacPermits.length > 0) {
+        // Sort by date, get most recent
+        hvacPermits.sort((a: any, b: any) => 
+          new Date(b.issue_date!).getTime() - new Date(a.issue_date!).getTime()
+        );
+        hvac_permit_found = true;
+        hvac_install_year = new Date(hvacPermits[0].issue_date!).getFullYear();
+        hvac_permit_confidence = 0.85;
+        console.log(`[shovels-permits] HVAC signal: found=${hvac_permit_found}, year=${hvac_install_year}`);
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
         permitsInserted,
         violationsInserted,
+        hvac_permit_found,
+        hvac_install_year,
+        hvac_permit_confidence,
         message: `Synced ${permitsInserted} permits and ${violationsInserted} violations`
       }),
       {
