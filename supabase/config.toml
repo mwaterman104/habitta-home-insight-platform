@@ -19,6 +19,9 @@ verify_jwt = false
 [functions.smarty-proxy]
 verify_jwt = false
 
+[functions.seed-maintenance-plan]
+verify_jwt = false
+
 # User-facing functions (verify_jwt = true or handled in code)
 [functions.admin-users]
 verify_jwt = true

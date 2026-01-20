@@ -136,6 +136,22 @@ serve(async (req) => {
       console.log('[permit-enrichment] Skipping intelligence-engine (no significant data)');
     }
 
+    // 7. Chain to seed-maintenance-plan to auto-generate tasks
+    try {
+      console.log('[permit-enrichment] Triggering seed-maintenance-plan');
+      const { error: seedError } = await supabase.functions.invoke('seed-maintenance-plan', {
+        body: { homeId: home_id, months: 12, force: false },
+        headers: { 'x-internal-secret': internalSecret },
+      });
+      if (seedError) {
+        console.error('[permit-enrichment] seed-maintenance-plan error:', seedError);
+      } else {
+        console.log('[permit-enrichment] seed-maintenance-plan triggered successfully');
+      }
+    } catch (seedErr) {
+      console.error('[permit-enrichment] seed-maintenance-plan call failed:', seedErr);
+    }
+
     console.log('[permit-enrichment] Complete for home:', home_id);
 
     return new Response(

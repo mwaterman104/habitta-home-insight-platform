@@ -65,6 +65,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   
   try {
+    // Check for internal secret (for chained calls from enrichment pipeline)
+    const internalSecret = req.headers.get('x-internal-secret');
+    const expectedSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
+    const isInternalCall = expectedSecret && internalSecret === expectedSecret;
+
     const { homeId, months=12, force=false } = await req.json().catch(()=>({}));
     if (!homeId) {
       return new Response(JSON.stringify({ error:"homeId required" }), { 
@@ -73,35 +78,58 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Generating seasonal plan for home ${homeId}, months: ${months}, force: ${force}`);
-
-    // Get authenticated user
-    const supaUser = createClient(SUPABASE_URL, ANON_KEY, { 
-      global:{ headers:{ Authorization: req.headers.get("Authorization")! } } 
-    });
-    const { data:{ user } } = await supaUser.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ error:"Unauthorized" }), { 
-        status:401, 
-        headers:{...cors,"Content-Type":"application/json"} 
-      });
-    }
+    console.log(`Generating seasonal plan for home ${homeId}, months: ${months}, force: ${force}, internal: ${isInternalCall}`);
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-    
-    // Get home details
-    const { data: home } = await admin
-      .from("homes")
-      .select("*")
-      .eq("id", homeId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    
-    if (!home) {
-      return new Response(JSON.stringify({ error:"Home not found" }), { 
-        status:404, 
-        headers:{...cors,"Content-Type":"application/json"} 
+    let userId: string | null = null;
+    let home: any = null;
+
+    if (isInternalCall) {
+      // Internal call - get home and user_id directly
+      console.log('[seed-maintenance-plan] Internal call validated via secret');
+      const { data: homeData } = await admin
+        .from("homes")
+        .select("*")
+        .eq("id", homeId)
+        .maybeSingle();
+      
+      if (!homeData) {
+        return new Response(JSON.stringify({ error:"Home not found" }), { 
+          status:404, 
+          headers:{...cors,"Content-Type":"application/json"} 
+        });
+      }
+      home = homeData;
+      userId = homeData.user_id;
+    } else {
+      // User call - validate JWT
+      const supaUser = createClient(SUPABASE_URL, ANON_KEY, { 
+        global:{ headers:{ Authorization: req.headers.get("Authorization")! } } 
       });
+      const { data:{ user } } = await supaUser.auth.getUser();
+      if (!user) {
+        return new Response(JSON.stringify({ error:"Unauthorized" }), { 
+          status:401, 
+          headers:{...cors,"Content-Type":"application/json"} 
+        });
+      }
+      userId = user.id;
+      
+      // Get home details - must belong to user
+      const { data: homeData } = await admin
+        .from("homes")
+        .select("*")
+        .eq("id", homeId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (!homeData) {
+        return new Response(JSON.stringify({ error:"Home not found" }), { 
+          status:404, 
+          headers:{...cors,"Content-Type":"application/json"} 
+        });
+      }
+      home = homeData;
     }
 
     console.log("Found home:", home.address);
@@ -199,7 +227,7 @@ serve(async (req) => {
       .filter(t => force || !exists.has(`${String(t.title).toLowerCase()}|${t.due_date}`))
       .map(t => ({
         home_id: home.id,
-        user_id: user.id,
+        user_id: userId,
         title: t.title,
         description: t.description ?? null,
         category: t.category,
