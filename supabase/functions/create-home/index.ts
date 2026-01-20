@@ -146,25 +146,110 @@ serve(async (req) => {
     // Using EdgeRuntime.waitUntil to ensure completion without blocking response
     const enrichmentTask = async () => {
       try {
-        const res = await supabase.functions.invoke('shovels-permits', {
-          body: {
-            address: address_line1,
-            city,
-            state,
-            zip: postal_code,
-            homeId: home.id,
-          },
-        });
-        console.log('[create-home] Shovels permits completed:', res.data ? 'success' : 'no data');
+        // 6a. Property enrichment via Smarty for year_built, sqft
+        const smartyTask = async () => {
+          try {
+            const { data: enrichment, error: enrichError } = await supabase.functions.invoke('smarty-proxy', {
+              body: {
+                action: 'enrich',
+                payload: {
+                  street: address_line1,
+                  city,
+                  state,
+                  postal_code,
+                }
+              }
+            });
+
+            if (enrichError) {
+              console.log('[create-home] Smarty enrichment error:', enrichError);
+              return;
+            }
+
+            // Extract year_built from Smarty property/principal response
+            const principal = enrichment?.results?.[0]?.attributes || enrichment?.[0]?.attributes;
+            const yearBuilt = principal?.year_built;
+            const sqft = principal?.living_area || principal?.gross_area;
+
+            if (yearBuilt || sqft) {
+              const { error: updateError } = await supabase
+                .from('homes')
+                .update({
+                  year_built: yearBuilt || null,
+                  square_feet: sqft || null,
+                })
+                .eq('id', home.id);
+
+              if (updateError) {
+                console.log('[create-home] Error updating home with enrichment:', updateError);
+              } else {
+                console.log('[create-home] Enriched home with year_built:', yearBuilt, 'sqft:', sqft);
+              }
+            }
+          } catch (err) {
+            console.log('[create-home] Smarty enrichment failed (non-fatal):', err);
+          }
+        };
+
+        // 6b. Permits enrichment via Shovels
+        const shovelsTask = async () => {
+          try {
+            const res = await supabase.functions.invoke('shovels-permits', {
+              body: {
+                address: address_line1,
+                city,
+                state,
+                zip: postal_code,
+                homeId: home.id,
+              },
+            });
+            console.log('[create-home] Shovels permits completed:', res.data ? 'success' : 'no data');
+          } catch (err) {
+            console.error('[create-home] Shovels permits error:', err);
+          }
+        };
+
+        // Run both enrichment tasks in parallel
+        await Promise.all([smartyTask(), shovelsTask()]);
+        
       } catch (err) {
-        console.error('[create-home] Shovels permits error:', err);
+        console.error('[create-home] Enrichment error:', err);
       } finally {
         // Always update pulse_status to 'live' after enrichment attempt
+        // Also recalculate confidence based on available data
+        const { data: updatedHome } = await supabase
+          .from('homes')
+          .select('year_built')
+          .eq('id', home.id)
+          .single();
+        
+        const { data: systemData } = await supabase
+          .from('systems')
+          .select('install_source')
+          .eq('home_id', home.id)
+          .eq('kind', 'hvac')
+          .single();
+        
+        const { count: permitsCount } = await supabase
+          .from('permits')
+          .select('*', { count: 'exact', head: true })
+          .eq('home_id', home.id);
+        
+        // Calculate confidence based on available data
+        let confidence = 30; // Base: address only
+        if (updatedHome?.year_built) confidence += 10;
+        if (systemData?.install_source === 'permit') confidence += 25;
+        if (permitsCount && permitsCount > 0) confidence += 5;
+        confidence = Math.min(confidence, 85);
+        
         await supabase
           .from('homes')
-          .update({ pulse_status: 'live' })
+          .update({ 
+            pulse_status: 'live',
+            confidence: confidence 
+          })
           .eq('id', home.id);
-        console.log('[create-home] pulse_status set to live for home:', home.id);
+        console.log('[create-home] pulse_status set to live, confidence:', confidence);
       }
     };
 
