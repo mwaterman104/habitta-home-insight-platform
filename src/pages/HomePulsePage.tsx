@@ -85,6 +85,27 @@ export default function HomePulsePage() {
     fetchUserHome();
   }, [user]);
 
+  // Fallback: auto-transition pulse_status to 'live' after 30 seconds
+  useEffect(() => {
+    if (!userHome?.id) return;
+    const status = userHome.pulse_status;
+    
+    if (status === 'enriching' || status === 'initializing') {
+      const timeout = setTimeout(async () => {
+        console.log('[HomePulsePage] Fallback: setting pulse_status to live');
+        await supabase
+          .from('homes')
+          .update({ pulse_status: 'live' })
+          .eq('id', userHome.id);
+        
+        // Update local state
+        setUserHome(prev => prev ? { ...prev, pulse_status: 'live' } : null);
+      }, 30000); // 30 seconds
+
+      return () => clearTimeout(timeout);
+    }
+  }, [userHome?.id, userHome?.pulse_status]);
+
   // Fetch HVAC prediction when home is available
   useEffect(() => {
     if (!userHome?.id) return;

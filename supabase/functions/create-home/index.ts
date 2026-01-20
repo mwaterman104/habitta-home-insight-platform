@@ -142,21 +142,34 @@ serve(async (req) => {
       .update({ pulse_status: 'enriching' })
       .eq('id', home.id);
 
-    // 6. Trigger background enrichment (non-blocking)
-    // Fire and forget - don't await
-    supabase.functions.invoke('shovels-permits', {
-      body: {
-        address: address_line1,
-        city,
-        state,
-        zip: postal_code,
-        homeId: home.id,
-      },
-    }).then(res => {
-      console.log('[create-home] Shovels permits triggered:', res.data ? 'success' : 'no data');
-    }).catch(err => {
-      console.error('[create-home] Shovels permits error:', err);
-    });
+    // 6. Trigger background enrichment and update status when complete
+    // Using EdgeRuntime.waitUntil to ensure completion without blocking response
+    const enrichmentTask = async () => {
+      try {
+        const res = await supabase.functions.invoke('shovels-permits', {
+          body: {
+            address: address_line1,
+            city,
+            state,
+            zip: postal_code,
+            homeId: home.id,
+          },
+        });
+        console.log('[create-home] Shovels permits completed:', res.data ? 'success' : 'no data');
+      } catch (err) {
+        console.error('[create-home] Shovels permits error:', err);
+      } finally {
+        // Always update pulse_status to 'live' after enrichment attempt
+        await supabase
+          .from('homes')
+          .update({ pulse_status: 'live' })
+          .eq('id', home.id);
+        console.log('[create-home] pulse_status set to live for home:', home.id);
+      }
+    };
+
+    // Run enrichment in background without blocking response
+    EdgeRuntime.waitUntil(enrichmentTask());
 
     console.log('[create-home] Complete, returning response');
 
