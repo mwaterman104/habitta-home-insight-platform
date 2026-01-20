@@ -642,6 +642,300 @@ async function getExplanations(entityId: string, entityType: 'system' | 'task' |
   return explanations;
 }
 
+// ============== V1 HVAC Survival Logic (Miami-Dade Specific) ==============
+
+const HVAC_BASELINE_LIFESPAN = 14;      // South Florida realistic average (years)
+const HVAC_CLIMATE_MULTIPLIER = 0.85;   // Miami-Dade heat/humidity penalty (~15% reduction)
+const HVAC_MAINTENANCE_BOOST = 1.1;     // ~10% extension for recent maintenance
+
+interface HVACSurvivalCore {
+  ageYears: number;
+  remainingYears: number;
+  adjustedLifespanYears: number;
+  status: 'low' | 'moderate' | 'high';
+  hasRecentMaintenance: boolean;
+  installSource: 'permit_replacement' | 'permit_install' | 'inferred' | 'default';
+}
+
+interface HVACSystemPrediction {
+  systemKey: 'hvac';
+  status: 'low' | 'moderate' | 'high';
+  header: {
+    name: 'HVAC';
+    installedLine: string;
+    statusLabel: string;
+  };
+  forecast: {
+    headline: 'What to Expect';
+    summary: string;
+    reassurance?: string;
+    state: 'reassuring' | 'watch' | 'urgent';
+  };
+  why: {
+    bullets: string[];
+    sourceLabel?: string;
+  };
+  factors: {
+    helps: string[];
+    hurts: string[];
+  };
+  actions: Array<{
+    title: string;
+    metaLine: string;
+    priority: 'standard' | 'high';
+    diyOrPro: 'DIY' | 'PRO' | 'Either';
+    chatdiySlug: string;
+  }>;
+  planning?: {
+    text: string;
+  };
+  history?: Array<{
+    date: string;
+    description: string;
+    source: string;
+  }>;
+}
+
+function determineHVACSystemAge(
+  explicitInstallYear: number | null,
+  homeYearBuilt: number | null,
+  permits: any[]
+): { ageYears: number; installSource: HVACSurvivalCore['installSource'] } {
+  const currentYear = new Date().getFullYear();
+  
+  if (explicitInstallYear) {
+    return { ageYears: currentYear - explicitInstallYear, installSource: 'permit_replacement' };
+  }
+  
+  // Priority 2: HVAC replacement permit (includes "change out", "upgrade")
+  const replacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout'];
+  const hvacReplacementPermit = permits.find(p => {
+    const desc = (p.description || p.work_description || '').toLowerCase();
+    const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
+                   desc.includes('a/c') || desc.includes('ac unit') ||
+                   (p.permit_type || '').toLowerCase().includes('mechanical');
+    return isHVAC && replacementKeywords.some(kw => desc.includes(kw));
+  });
+  
+  if (hvacReplacementPermit?.issue_date) {
+    return { 
+      ageYears: currentYear - new Date(hvacReplacementPermit.issue_date).getFullYear(),
+      installSource: 'permit_replacement'
+    };
+  }
+  
+  // Priority 3: Any HVAC permit (install, new)
+  const hvacInstallPermit = permits.find(p => {
+    const desc = (p.description || p.work_description || '').toLowerCase();
+    const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
+                   desc.includes('a/c') || desc.includes('ac unit') ||
+                   (p.permit_type || '').toLowerCase().includes('mechanical');
+    return isHVAC && (desc.includes('install') || desc.includes('new'));
+  });
+  
+  if (hvacInstallPermit?.issue_date) {
+    return { 
+      ageYears: currentYear - new Date(hvacInstallPermit.issue_date).getFullYear(),
+      installSource: 'permit_install'
+    };
+  }
+  
+  // Priority 4: Inferred from home age
+  if (homeYearBuilt) {
+    const homeAge = currentYear - homeYearBuilt;
+    return { ageYears: homeAge < 15 ? homeAge : 7, installSource: 'inferred' };
+  }
+  
+  return { ageYears: 8, installSource: 'default' };
+}
+
+function calculateHVACSurvivalCore(
+  installYear: number | null,
+  homeYearBuilt: number | null,
+  hasRecentMaintenance: boolean,
+  permits: any[]
+): HVACSurvivalCore {
+  const { ageYears, installSource } = determineHVACSystemAge(installYear, homeYearBuilt, permits);
+  
+  const maintenanceMultiplier = hasRecentMaintenance ? HVAC_MAINTENANCE_BOOST : 1.0;
+  const adjustedLifespanYears = HVAC_BASELINE_LIFESPAN * HVAC_CLIMATE_MULTIPLIER * maintenanceMultiplier;
+  const remainingYears = Math.max(0, adjustedLifespanYears - ageYears);
+  
+  const status: HVACSurvivalCore['status'] = 
+    remainingYears > 3 ? 'low' : 
+    remainingYears > 1 ? 'moderate' : 
+    'high';
+
+  return { ageYears, remainingYears, adjustedLifespanYears, status, hasRecentMaintenance, installSource };
+}
+
+function buildHVACPredictionOutput(
+  core: HVACSurvivalCore,
+  context: { installYear?: number; permits: any[]; history?: any[] }
+): HVACSystemPrediction {
+  const { status, remainingYears, hasRecentMaintenance, installSource, ageYears } = core;
+  
+  const statusLabels: Record<string, string> = {
+    low: 'Low Risk',
+    moderate: 'Moderate Risk',
+    high: 'High Risk',
+  };
+  
+  const forecasts: Record<string, { summary: string; reassurance?: string; state: 'reassuring' | 'watch' | 'urgent' }> = {
+    low: {
+      summary: "Low risk over the next year.",
+      reassurance: "No urgent action is required right now.",
+      state: 'reassuring',
+    },
+    moderate: {
+      summary: "Likely to need attention in 6–12 months.",
+      reassurance: "This is a watch item, not an emergency.",
+      state: 'watch',
+    },
+    high: {
+      summary: "Likely to need attention within the next 3–6 months.",
+      reassurance: undefined,
+      state: 'urgent',
+    },
+  };
+  
+  const whyBullets: string[] = [];
+  if (remainingYears <= 3) {
+    whyBullets.push("System age is approaching typical replacement range.");
+  }
+  whyBullets.push("Miami-Dade heat and humidity increase wear.");
+  if (hasRecentMaintenance) {
+    whyBullets.push("Recent maintenance helps extend expected life.");
+  }
+  
+  const actions: HVACSystemPrediction['actions'] = status !== 'low' ? [
+    {
+      title: "Replace HVAC filter",
+      metaLine: "$20 · 30 min DIY",
+      priority: 'standard',
+      diyOrPro: 'DIY',
+      chatdiySlug: 'hvac-filter-replacement',
+    },
+    {
+      title: "Seasonal HVAC inspection",
+      metaLine: "$80–$120 · Schedule PRO",
+      priority: status === 'high' ? 'high' : 'standard',
+      diyOrPro: 'PRO',
+      chatdiySlug: 'hvac-seasonal-inspection',
+    },
+  ] : [];
+  
+  const planning = remainingYears <= 3 ? {
+    text: "If replacement is needed, typical costs range from $6,000–$12,000 depending on size and efficiency."
+  } : undefined;
+  
+  const computedInstallYear = context.installYear || (new Date().getFullYear() - ageYears);
+  const sourceNote = installSource === 'permit_replacement' || installSource === 'permit_install'
+    ? '(based on permit)'
+    : '(estimated)';
+  
+  const helps: string[] = hasRecentMaintenance ? ['Recent maintenance logged'] : [];
+  const hurts: string[] = ['Miami-Dade climate stress'];
+  if (ageYears > 10) hurts.push('System age > 10 years');
+  
+  return {
+    systemKey: 'hvac',
+    status,
+    header: {
+      name: 'HVAC',
+      installedLine: `Installed ~${computedInstallYear} ${sourceNote}`,
+      statusLabel: statusLabels[status],
+    },
+    forecast: {
+      headline: 'What to Expect',
+      ...forecasts[status],
+    },
+    why: {
+      bullets: whyBullets,
+      sourceLabel: installSource.includes('permit') ? 'Based on permit records' : undefined,
+    },
+    factors: { helps, hurts },
+    actions,
+    planning,
+    history: context.history,
+  };
+}
+
+async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> {
+  console.log(`Getting HVAC prediction for home: ${homeId}`);
+  
+  // 1. Fetch home data for year_built
+  const { data: home } = await supabase
+    .from('homes')
+    .select('year_built')
+    .eq('id', homeId)
+    .single();
+  
+  // 2. Fetch home systems for explicit HVAC install date
+  const { data: homeSystems } = await supabase
+    .from('home_systems')
+    .select('manufacture_year, install_date')
+    .eq('home_id', homeId)
+    .ilike('system_key', '%hvac%')
+    .limit(1);
+  
+  const hvacSystem = homeSystems?.[0];
+  const explicitInstallYear = hvacSystem?.manufacture_year || 
+    (hvacSystem?.install_date ? new Date(hvacSystem.install_date).getFullYear() : null);
+  
+  // 3. Fetch permit history
+  const { data: permits } = await supabase
+    .from('habitta_permits')
+    .select('*')
+    .or(`property_address.ilike.%${homeId}%,user_id.eq.${homeId}`)
+    .order('issue_date', { ascending: false });
+  
+  // 4. Check recent maintenance (last 12 months)
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+  
+  const { data: recentMaintenance } = await supabase
+    .from('habitta_system_events')
+    .select('id, event_date, description')
+    .eq('home_id', homeId)
+    .eq('system_type', 'hvac')
+    .eq('event_type', 'maintenance')
+    .gte('event_date', twelveMonthsAgo.toISOString().split('T')[0])
+    .limit(5);
+  
+  const hasRecentMaintenance = (recentMaintenance?.length || 0) > 0;
+  
+  // 5. Get maintenance history for display
+  const { data: historyEvents } = await supabase
+    .from('habitta_system_events')
+    .select('event_date, description, source')
+    .eq('home_id', homeId)
+    .eq('system_type', 'hvac')
+    .order('event_date', { ascending: false })
+    .limit(5);
+  
+  const history = historyEvents?.map(e => ({
+    date: e.event_date,
+    description: e.description || 'Maintenance performed',
+    source: e.source || 'user'
+  }));
+  
+  // 6. Calculate core survival
+  const core = calculateHVACSurvivalCore(
+    explicitInstallYear,
+    home?.year_built,
+    hasRecentMaintenance,
+    permits || []
+  );
+  
+  // 7. Build presentation
+  return buildHVACPredictionOutput(core, {
+    installYear: explicitInstallYear ?? undefined,
+    permits: permits || [],
+    history,
+  });
+}
+
 // ============== Main Request Handler ==============
 
 serve(async (req) => {
@@ -697,6 +991,11 @@ serve(async (req) => {
           throw new Error('entity_id and entity_type parameters required');
         }
         result = await getExplanations(entityId, entityType);
+        break;
+
+      case 'hvac-prediction':
+        if (!propertyId) throw new Error('property_id parameter required');
+        result = await getHVACPrediction(propertyId);
         break;
 
       default:
