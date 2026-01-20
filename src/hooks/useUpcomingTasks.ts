@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export function useUpcomingTasks(homeId?: string, days: 30 | 60 | 90 = 30, refreshKey: number = 0) {
+export function useUpcomingTasks(homeId?: string, days: number = 30, refreshKey: number = 0) {
   const [data, setData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   

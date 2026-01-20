@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 
 // Canonical Home Pulse Components
 import { HomeHealthCard } from "@/components/HomeHealthCard";
@@ -55,6 +56,9 @@ export default function HomePulsePage() {
   
   // Why expansion state (for HomeHealthCard)
   const [whyExpanded, setWhyExpanded] = useState(false);
+
+  // Fetch maintenance tasks from database
+  const { data: maintenanceTasks, loading: tasksLoading } = useUpcomingTasks(userHome?.id, 365);
 
   // Fetch user home
   useEffect(() => {
@@ -187,33 +191,75 @@ export default function HomePulsePage() {
     );
   }
 
-  // Build maintenance timeline from HVAC prediction
-  const nowTasks = hvacPrediction?.actions
-    .filter(a => a.priority === 'high')
-    .map((a, i) => ({
-      id: `now-${i}`,
-      title: a.title,
-      metaLine: a.metaLine,
-      completed: false,
-    })) || [];
-
-  const thisYearTasks = hvacPrediction?.actions
-    .filter(a => a.priority === 'standard')
-    .map((a, i) => ({
-      id: `year-${i}`,
-      title: a.title,
-      metaLine: a.metaLine,
-      completed: false,
-    })) || [];
-
-  const futureYearsTasks = hvacPrediction?.planning 
-    ? [{
-        id: 'planning-1',
-        title: 'Consider HVAC replacement planning',
-        metaLine: '$6,000–$12,000',
+  // Build maintenance timeline from database tasks + HVAC prediction fallback
+  const { nowTasks, thisYearTasks, futureYearsTasks } = useMemo(() => {
+    const now = new Date();
+    const threeMonthsLater = new Date(now);
+    threeMonthsLater.setMonth(now.getMonth() + 3);
+    const yearEnd = new Date(now.getFullYear(), 11, 31);
+    
+    // If we have real tasks from the database, use them
+    if (maintenanceTasks && maintenanceTasks.length > 0) {
+      const nowItems = maintenanceTasks
+        .filter(t => new Date(t.due_date) <= threeMonthsLater)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          metaLine: t.due_date ? new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined,
+          completed: t.status === 'completed',
+        }));
+      
+      const thisYearItems = maintenanceTasks
+        .filter(t => new Date(t.due_date) > threeMonthsLater && new Date(t.due_date) <= yearEnd)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          metaLine: t.due_date ? new Date(t.due_date).toLocaleDateString('en-US', { month: 'short' }) : undefined,
+          completed: t.status === 'completed',
+        }));
+      
+      const futureItems = maintenanceTasks
+        .filter(t => new Date(t.due_date) > yearEnd)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          metaLine: t.due_date ? new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : undefined,
+          completed: t.status === 'completed',
+        }));
+      
+      return { nowTasks: nowItems, thisYearTasks: thisYearItems, futureYearsTasks: futureItems };
+    }
+    
+    // Fallback: use HVAC prediction actions if no database tasks
+    const fallbackNow = hvacPrediction?.actions
+      .filter(a => a.priority === 'high')
+      .map((a, i) => ({
+        id: `now-${i}`,
+        title: a.title,
+        metaLine: a.metaLine,
         completed: false,
-      }] 
-    : [];
+      })) || [];
+
+    const fallbackYear = hvacPrediction?.actions
+      .filter(a => a.priority === 'standard')
+      .map((a, i) => ({
+        id: `year-${i}`,
+        title: a.title,
+        metaLine: a.metaLine,
+        completed: false,
+      })) || [];
+
+    const fallbackFuture = hvacPrediction?.planning 
+      ? [{
+          id: 'planning-1',
+          title: 'Consider HVAC replacement planning',
+          metaLine: '$6,000–$12,000',
+          completed: false,
+        }] 
+      : [];
+      
+    return { nowTasks: fallbackNow, thisYearTasks: fallbackYear, futureYearsTasks: fallbackFuture };
+  }, [maintenanceTasks, hvacPrediction]);
 
   // Check if still enriching
   const isEnriching = userHome?.pulse_status === 'enriching' || userHome?.pulse_status === 'initializing';
