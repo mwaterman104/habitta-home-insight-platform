@@ -273,25 +273,24 @@ serve(async (req) => {
 
     // ========== PHASE 3: Permit-to-System Enrichment ==========
     // Update systems table when HVAC replacement permits are found
-    if (homeId && permitsInserted > 0 && permitsData?.permits) {
+    if (homeId && permitsInserted > 0 && permitsItems && permitsItems.length > 0) {
       const hvacReplacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout', 'change-out'];
       
-      const hvacPermits = permitsData.permits.filter((p: ShovelsPermit) => {
+      const hvacPermits = permitsItems.filter((p: any) => {
         const desc = (p.description || '').toLowerCase();
         const permitType = (p.type || '').toLowerCase();
-        const workClass = (p.work_class || '').toLowerCase();
         
         const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
                        desc.includes('a/c') || desc.includes('ac unit') ||
                        desc.includes('heat pump') || desc.includes('condenser') ||
-                       permitType.includes('mechanical') || workClass.includes('mechanical');
+                       permitType.includes('mechanical');
         const isReplacement = hvacReplacementKeywords.some(kw => desc.includes(kw));
         return isHVAC && isReplacement && p.issue_date;
       });
 
       if (hvacPermits.length > 0) {
         // Sort by date, get most recent
-        hvacPermits.sort((a: ShovelsPermit, b: ShovelsPermit) => 
+        hvacPermits.sort((a: any, b: any) => 
           new Date(b.issue_date!).getTime() - new Date(a.issue_date!).getTime()
         );
         const latestPermit = hvacPermits[0];
