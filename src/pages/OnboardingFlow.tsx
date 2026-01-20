@@ -32,6 +32,8 @@ interface SnapshotData {
   roof_age_band: string;
   cooling_type: string;
   climate_stress: string;
+  year_built?: number | null;
+  hvac_permit_year?: number | null;
 }
 
 interface OnboardingState {
@@ -41,6 +43,7 @@ interface OnboardingState {
   confidence: number;
   selectedAddress: PlaceDetails | null;
   hvacAgeBand: string | null;
+  isEnriching: boolean;
 }
 
 type Step = 'address' | 'snapshot' | 'hvac';
@@ -57,6 +60,7 @@ export default function OnboardingFlow() {
     confidence: 0,
     selectedAddress: null,
     hvacAgeBand: null,
+    isEnriching: false,
   });
 
   // Redirect to dashboard if already has a home
@@ -77,6 +81,80 @@ export default function OnboardingFlow() {
 
     checkExistingHome();
   }, [user, navigate]);
+
+  // Subscribe to real-time updates for confidence changes during enrichment
+  useEffect(() => {
+    if (!state.home_id) return;
+
+    // Mark as enriching initially
+    setState(prev => ({ ...prev, isEnriching: true }));
+
+    const channel = supabase
+      .channel(`home-enrichment-${state.home_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'homes',
+          filter: `id=eq.${state.home_id}`,
+        },
+        async (payload) => {
+          const newConfidence = payload.new.confidence as number;
+          const pulseStatus = payload.new.pulse_status as string;
+          const yearBuilt = payload.new.year_built as number | null;
+
+          console.log('[OnboardingFlow] Home update received:', { newConfidence, pulseStatus, yearBuilt });
+
+          // Update confidence if it increased
+          if (newConfidence > state.confidence) {
+            setState(prev => ({
+              ...prev,
+              confidence: newConfidence,
+              snapshot: prev.snapshot ? {
+                ...prev.snapshot,
+                year_built: yearBuilt,
+              } : null,
+            }));
+          }
+
+          // Check if enrichment is complete
+          if (pulseStatus === 'live') {
+            // Also fetch any HVAC permit data
+            const { data: hvacSystem } = await supabase
+              .from('systems')
+              .select('install_year, install_source')
+              .eq('home_id', state.home_id)
+              .eq('kind', 'hvac')
+              .single();
+
+            if (hvacSystem?.install_source === 'permit' && hvacSystem?.install_year) {
+              setState(prev => ({
+                ...prev,
+                isEnriching: false,
+                snapshot: prev.snapshot ? {
+                  ...prev.snapshot,
+                  hvac_permit_year: hvacSystem.install_year,
+                } : null,
+              }));
+            } else {
+              setState(prev => ({ ...prev, isEnriching: false }));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // Auto-stop enriching indicator after 10 seconds regardless
+    const timeout = setTimeout(() => {
+      setState(prev => ({ ...prev, isEnriching: false }));
+    }, 10000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearTimeout(timeout);
+    };
+  }, [state.home_id]);
 
   // Handle address selection - immediately creates home
   const handleAddressSelect = async (details: PlaceDetails) => {
@@ -107,6 +185,7 @@ export default function OnboardingFlow() {
         confidence: data.confidence,
         selectedAddress: details,
         hvacAgeBand: null,
+        isEnriching: true, // Start enriching indicator
       });
 
       // Immediately move to snapshot (no loading spinner between)
@@ -231,6 +310,7 @@ export default function OnboardingFlow() {
             <InstantSnapshot
               snapshot={state.snapshot}
               confidence={state.confidence}
+              isEnriching={state.isEnriching}
             />
 
             <Button
