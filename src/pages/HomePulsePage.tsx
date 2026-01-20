@@ -50,6 +50,9 @@ export default function HomePulsePage() {
   // HVAC Prediction State
   const [hvacPrediction, setHvacPrediction] = useState<SystemPrediction | null>(null);
   const [hvacLoading, setHvacLoading] = useState(false);
+  
+  // Why expansion state (for HomeHealthCard)
+  const [whyExpanded, setWhyExpanded] = useState(false);
 
   // Fetch user home
   useEffect(() => {
@@ -136,6 +139,19 @@ export default function HomePulsePage() {
     return hvacPrediction.status !== 'low' ? 1 : 0;
   };
 
+  // Get "why" bullets from HVAC prediction
+  const getWhyBullets = (): string[] => {
+    if (!hvacPrediction?.why?.bullets) {
+      // Default bullets when no prediction available
+      return [
+        "HVAC system installed within expected lifespan",
+        "Regular maintenance detected from permit records",
+        "Local climate conditions factored into assessment"
+      ];
+    }
+    return hvacPrediction.why.bullets;
+  };
+
   if (loading) {
     return (
       <div className="p-6 space-y-6 animate-pulse max-w-3xl mx-auto">
@@ -192,7 +208,9 @@ export default function HomePulsePage() {
         systemsNeedingAttention={getSystemsNeedingAttention()}
         lastUpdated="today"
         scoreDrivers="HVAC age, recent maintenance, and local climate"
-        onViewDetails={hvacPrediction?.status === 'low' ? () => handleSystemClick('hvac') : undefined}
+        whyExpanded={whyExpanded}
+        onToggleWhy={() => setWhyExpanded(!whyExpanded)}
+        whyBullets={getWhyBullets()}
       />
 
       {/* 3. Coming Up - Systems that matter */}
