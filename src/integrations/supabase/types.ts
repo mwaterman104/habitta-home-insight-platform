@@ -1535,8 +1535,10 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           photo_url: string | null
+          place_id: string | null
           property_id: string | null
           property_type: string | null
+          pulse_status: string | null
           square_feet: number | null
           state: string
           status: string | null
@@ -1557,8 +1559,10 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
+          place_id?: string | null
           property_id?: string | null
           property_type?: string | null
+          pulse_status?: string | null
           square_feet?: number | null
           state: string
           status?: string | null
@@ -1579,8 +1583,10 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
+          place_id?: string | null
           property_id?: string | null
           property_type?: string | null
+          pulse_status?: string | null
           square_feet?: number | null
           state?: string
           status?: string | null
@@ -2841,6 +2847,54 @@ export type Database = {
         }
         Relationships: []
       }
+      property_address_source: {
+        Row: {
+          components: Json | null
+          created_at: string | null
+          geometry: Json | null
+          home_id: string | null
+          id: string
+          place_id: string | null
+          raw_address: string
+          source: string
+        }
+        Insert: {
+          components?: Json | null
+          created_at?: string | null
+          geometry?: Json | null
+          home_id?: string | null
+          id?: string
+          place_id?: string | null
+          raw_address: string
+          source: string
+        }
+        Update: {
+          components?: Json | null
+          created_at?: string | null
+          geometry?: Json | null
+          home_id?: string | null
+          id?: string
+          place_id?: string | null
+          raw_address?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_address_source_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_address_source_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       property_climate_data: {
         Row: {
           average_humidity: number | null
@@ -2923,6 +2977,60 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "addresses"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_snapshot: {
+        Row: {
+          climate_stress: string | null
+          confidence_score: number | null
+          cooling_type: string | null
+          created_at: string | null
+          home_id: string | null
+          id: string
+          roof_age_band: string | null
+          roof_type: string | null
+          square_feet: number | null
+          year_built: number | null
+        }
+        Insert: {
+          climate_stress?: string | null
+          confidence_score?: number | null
+          cooling_type?: string | null
+          created_at?: string | null
+          home_id?: string | null
+          id?: string
+          roof_age_band?: string | null
+          roof_type?: string | null
+          square_feet?: number | null
+          year_built?: number | null
+        }
+        Update: {
+          climate_stress?: string | null
+          confidence_score?: number | null
+          cooling_type?: string | null
+          created_at?: string | null
+          home_id?: string | null
+          id?: string
+          roof_age_band?: string | null
+          roof_type?: string | null
+          square_feet?: number | null
+          year_built?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_snapshot_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: true
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_snapshot_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: true
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
           },
         ]
       }
