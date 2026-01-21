@@ -107,7 +107,7 @@ export function HomeHealthCard({
         <div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-              Home Health
+              Home Health Forecast
             </span>
             <TooltipProvider>
               <Tooltip>
@@ -118,12 +118,7 @@ export function HomeHealthCard({
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs p-3">
                   <p className="text-sm">
-                    <strong>Why does this change over time?</strong>
-                    <br /><br />
-                    Home systems naturally age and require attention. This projection 
-                    is based on your HVAC age, climate, and maintenance patterns. 
-                    <br /><br />
-                    Proactive tracking helps slow this decay.
+                    This forecast reflects patterns observed across similar homes in your area.
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -142,20 +137,20 @@ export function HomeHealthCard({
           </div>
           
           {/* Trajectory qualifier - probabilistic language */}
-          <p className="text-sm text-muted-foreground mt-1 italic">
+          <p className="text-sm text-muted-foreground mt-1">
             {trajectoryQualifier}
           </p>
         </div>
         
         {/* 2. Control Subheadline */}
         <p className="text-gray-700">
-          With Habitta Care, your score stays stable at{' '}
+          With Habitta Care, your home stays stable and predictable at{' '}
           <strong className="text-green-700">
             {withHabittaCare.score12mo}–{withHabittaCare.score24mo}
           </strong>.
           <br />
           <span className="text-sm text-muted-foreground">
-            If left untracked, gradual wear accumulates—often unnoticed.
+            If left untracked, gradual wear accumulates — often unnoticed.
           </span>
         </p>
         
@@ -167,12 +162,17 @@ export function HomeHealthCard({
         />
         
         {/* 4. Primary CTA - Always visible */}
-        <Button 
-          onClick={handleProtectClick} 
-          className="w-full bg-primary hover:bg-primary/90"
-        >
-          Protect my home's future
-        </Button>
+        <div className="text-center">
+          <Button 
+            onClick={handleProtectClick} 
+            className="w-full bg-primary hover:bg-primary/90"
+          >
+            What should I do next?
+          </Button>
+          <p className="text-xs text-muted-foreground mt-1">
+            Based on your home's forecast
+          </p>
+        </div>
         
         {/* 5. Expand for details - Progressive disclosure */}
         <Button 
