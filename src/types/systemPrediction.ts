@@ -4,6 +4,65 @@
 import type { HVACFailureProvenance } from './hvacFailure';
 
 /**
+ * Home Forecast - Trajectory-based conversion contract
+ * 
+ * RULES:
+ * - Maintenance slows decay, does NOT reverse it
+ * - Score increases only after verified repair/replacement
+ * - Missing factor impacts are illustrative ("up to ~X%"), not additive
+ * - All projections are "typical" / "most likely", never absolute
+ */
+export interface HomeForecast {
+  /** Current composite score (0-100) */
+  currentScore: number;
+  
+  /** Trajectory if left untracked (not "without maintenance") */
+  ifLeftUntracked: {
+    score12mo: number;
+    score24mo: number;
+    drivers: string[];  // What causes decay
+  };
+  
+  /** Trajectory with proactive tracking + recommended actions */
+  withHabittaCare: {
+    score12mo: number;    // Flat or very slight decay
+    score24mo: number;    // Stabilized
+    stabilizers: string[];
+  };
+  
+  /** Forecast completeness (NOT additive precision) */
+  forecastCompleteness: {
+    percentage: number;   // 0-100 from existing confidence calc
+    missingFactors: Array<{
+      label: string;
+      impactLabel: string;   // "up to ~18%" (illustrative)
+      ctaRoute?: string;
+    }>;
+    summary: string;        // "Your forecast is 62% complete"
+  };
+  
+  /** Silent risks - emerging, not urgent */
+  silentRisks: Array<{
+    component: string;
+    riskContext: string;        // "Stress from humidity cycles"
+    typicalCost: string;
+    preventability: 'high' | 'medium' | 'low';
+  }>;
+  
+  /** Financial anchor with regional personalization */
+  financialOutlook: {
+    preventiveCost12mo: string;
+    avoidedRepairs12mo: string;
+    riskReductionPercent: number;
+    roiStatement: string;       // Regionalized
+    region: string;             // For copy personalization
+  };
+  
+  /** Trajectory qualifier - always shown */
+  trajectoryQualifier: string;  // "Typical for South Florida homes like yours"
+}
+
+/**
  * Core survival output (pure math, no presentation)
  * This is the testable, reusable calculation result
  */

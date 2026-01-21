@@ -13,7 +13,7 @@ import { FinancialOutlookCard } from "@/components/FinancialOutlookCard";
 import { HomeValueImpact } from "@/components/HomeValueImpact";
 import { ChatDIYBanner } from "@/components/ChatDIYBanner";
 import { HomePulseGreeting } from "@/components/HomePulseGreeting";
-import type { SystemPrediction } from "@/types/systemPrediction";
+import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserHome {
@@ -54,7 +54,11 @@ export default function HomePulsePage() {
   const [hvacPrediction, setHvacPrediction] = useState<SystemPrediction | null>(null);
   const [hvacLoading, setHvacLoading] = useState(false);
   
-  // Why expansion state (for HomeHealthCard)
+  // Home Forecast State (conversion-optimized)
+  const [homeForecast, setHomeForecast] = useState<HomeForecast | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  
+  // Why expansion state (for legacy HomeHealthCard fallback)
   const [whyExpanded, setWhyExpanded] = useState(false);
 
   // Fetch maintenance tasks from database
@@ -110,7 +114,7 @@ export default function HomePulsePage() {
     }
   }, [userHome?.id, userHome?.pulse_status]);
 
-  // Fetch HVAC prediction when home is available
+  // Fetch HVAC prediction and Home Forecast when home is available
   useEffect(() => {
     if (!userHome?.id) return;
 
@@ -136,7 +140,31 @@ export default function HomePulsePage() {
       }
     };
 
+    const fetchHomeForecast = async () => {
+      setForecastLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('intelligence-engine', {
+          body: { 
+            action: 'home-forecast', 
+            property_id: userHome.id 
+          }
+        });
+
+        if (error) throw error;
+        if (data) {
+          setHomeForecast(data as HomeForecast);
+        }
+      } catch (error) {
+        console.error('Error fetching home forecast:', error);
+        // Silent failure - will fall back to legacy card
+      } finally {
+        setForecastLoading(false);
+      }
+    };
+
+    // Fetch both in parallel
     fetchHvacPrediction();
+    fetchHomeForecast();
   }, [userHome?.id]);
 
   // Build maintenance timeline from database tasks + HVAC prediction fallback
@@ -284,17 +312,35 @@ export default function HomePulsePage() {
         longitude={userHome?.longitude}
       />
 
-      {/* 2. Home Health Summary */}
-      <HomeHealthCard 
-        overallScore={getOverallScore()}
-        systemsNeedingAttention={getSystemsNeedingAttention()}
-        lastUpdated="today"
-        scoreDrivers="HVAC age, recent maintenance, and local climate"
-        whyExpanded={whyExpanded}
-        onToggleWhy={() => setWhyExpanded(!whyExpanded)}
-        whyBullets={getWhyBullets()}
-        confidenceScore={confidenceScore}
-      />
+      {/* 2. Home Health Summary - Conversion Optimized */}
+      {forecastLoading ? (
+        <Skeleton className="h-64 rounded-2xl" />
+      ) : homeForecast ? (
+        <HomeHealthCard 
+          forecast={homeForecast}
+          onProtectClick={() => {
+            const params = new URLSearchParams({
+              topic: 'protection-plan',
+              score: String(homeForecast.currentScore),
+              projected: String(homeForecast.ifLeftUntracked.score24mo),
+              topRisk: homeForecast.silentRisks[0]?.component || 'system-wear',
+              region: homeForecast.financialOutlook.region
+            });
+            navigate(`/chatdiy?${params.toString()}`);
+          }}
+        />
+      ) : (
+        <HomeHealthCard 
+          overallScore={getOverallScore()}
+          systemsNeedingAttention={getSystemsNeedingAttention()}
+          lastUpdated="today"
+          scoreDrivers="HVAC age, recent maintenance, and local climate"
+          whyExpanded={whyExpanded}
+          onToggleWhy={() => setWhyExpanded(!whyExpanded)}
+          whyBullets={getWhyBullets()}
+          confidenceScore={confidenceScore}
+        />
+      )}
 
       {/* 3. Coming Up - Systems that matter */}
       <section>
@@ -342,8 +388,17 @@ export default function HomePulsePage() {
       {/* 6. Home Value Impact */}
       <HomeValueImpact isVerified={hvacPrediction?.status === 'low'} />
 
-      {/* 7. ChatDIY Action CTA */}
-      <ChatDIYBanner topic={hvacPrediction?.actions[0]?.chatdiySlug} />
+      {/* 7. ChatDIY Action CTA - Elevated to Advisor */}
+      <ChatDIYBanner 
+        topic={hvacPrediction?.actions[0]?.chatdiySlug}
+        variant="advisor"
+        context={homeForecast ? {
+          score: homeForecast.currentScore,
+          projected: homeForecast.ifLeftUntracked.score24mo,
+          topRisk: homeForecast.silentRisks[0]?.component,
+          region: homeForecast.financialOutlook.region
+        } : undefined}
+      />
     </div>
   );
 }
