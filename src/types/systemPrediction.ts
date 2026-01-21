@@ -1,6 +1,8 @@
 // ============== V1 HVAC Survival Types ==============
 // Miami-Dade specific, deterministic survival model
 
+import type { HVACFailureProvenance } from './hvacFailure';
+
 /**
  * Core survival output (pure math, no presentation)
  * This is the testable, reusable calculation result
@@ -12,6 +14,25 @@ export interface HVACSurvivalCore {
   status: 'low' | 'moderate' | 'high';
   hasRecentMaintenance: boolean;
   installSource: 'permit_replacement' | 'permit_install' | 'inferred' | 'default';
+}
+
+/**
+ * Lifespan prediction block - SEMANTIC ONLY (no formatting)
+ * UI-layer formatting lives in src/utils/lifespanFormatters.ts
+ */
+export interface LifespanPrediction {
+  /** Early failure date - 10th percentile (ISO string) */
+  p10_failure_date: string;
+  /** Most likely failure date - 50th percentile (ISO string) */
+  p50_failure_date: string;
+  /** Late failure date - 90th percentile (ISO string) */
+  p90_failure_date: string;
+  /** Years remaining until most likely failure */
+  years_remaining_p50: number;
+  /** Confidence score (0-1) based on data quality, NOT system condition */
+  confidence_0_1: number;
+  /** Full provenance for auditability (optional for backward compat) */
+  provenance?: HVACFailureProvenance;
 }
 
 /**
@@ -63,6 +84,13 @@ export interface SystemPrediction {
     description: string;
     source: string;
   }>;
+
+  /** 
+   * Lifespan prediction block - SEMANTIC ONLY
+   * For p10/p50/p90 failure window display
+   * UI formatting via src/utils/lifespanFormatters.ts
+   */
+  lifespan?: LifespanPrediction;
 }
 
 /**
