@@ -1341,6 +1341,233 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
   });
 }
 
+// ============== Home Forecast (Conversion-Optimized) ==============
+
+interface HomeForecastOutput {
+  currentScore: number;
+  ifLeftUntracked: {
+    score12mo: number;
+    score24mo: number;
+    drivers: string[];
+  };
+  withHabittaCare: {
+    score12mo: number;
+    score24mo: number;
+    stabilizers: string[];
+  };
+  forecastCompleteness: {
+    percentage: number;
+    missingFactors: Array<{
+      label: string;
+      impactLabel: string;
+      ctaRoute?: string;
+    }>;
+    summary: string;
+  };
+  silentRisks: Array<{
+    component: string;
+    riskContext: string;
+    typicalCost: string;
+    preventability: 'high' | 'medium' | 'low';
+  }>;
+  financialOutlook: {
+    preventiveCost12mo: string;
+    avoidedRepairs12mo: string;
+    riskReductionPercent: number;
+    roiStatement: string;
+    region: string;
+  };
+  trajectoryQualifier: string;
+}
+
+/**
+ * Build home forecast for conversion-optimized HomeHealthCard
+ * 
+ * RULES:
+ * - Maintenance slows decay, does NOT reverse it
+ * - Score increases only after verified repair/replacement
+ * - Missing factor impacts are illustrative ("up to ~X%"), not additive
+ */
+function buildHomeForecast(
+  currentScore: number,
+  context: {
+    remainingYears: number;
+    hasRecentMaintenance: boolean;
+    permitVerified: boolean;
+    featureCompleteness: number;
+    region: 'south_florida' | 'other';
+  }
+): HomeForecastOutput {
+  // CORRECTED: Decay model (maintenance SLOWS decay, doesn't reverse)
+  const baseDecayRate = context.remainingYears < 5 ? 0.06 : 0.03;
+  
+  // Without tracking: full decay
+  const score12moUntracked = Math.max(55, Math.round(currentScore * (1 - baseDecayRate)));
+  const score24moUntracked = Math.max(50, Math.round(currentScore * (1 - baseDecayRate * 2.1)));
+  
+  // With Habitta: decay slowed by ~60%, never increases without repair
+  const trackedDecayRate = baseDecayRate * 0.4;
+  const score12moTracked = Math.max(currentScore - 2, Math.round(currentScore * (1 - trackedDecayRate)));
+  const score24moTracked = Math.max(currentScore - 4, Math.round(currentScore * (1 - trackedDecayRate * 2)));
+  
+  // CORRECTED: Missing factors are ILLUSTRATIVE, not additive
+  const missingFactors: Array<{ label: string; impactLabel: string; ctaRoute?: string }> = [];
+  if (!context.hasRecentMaintenance) {
+    missingFactors.push({ 
+      label: 'Service history', 
+      impactLabel: 'up to ~18%',
+      ctaRoute: '/add-maintenance' 
+    });
+  }
+  if (!context.permitVerified) {
+    missingFactors.push({ 
+      label: 'Permit verification', 
+      impactLabel: 'up to ~12%',
+      ctaRoute: undefined  // Cannot add manually
+    });
+  }
+  if (context.featureCompleteness < 0.5) {
+    missingFactors.push({
+      label: 'Equipment details',
+      impactLabel: 'up to ~10%',
+      ctaRoute: '/system/hvac'
+    });
+  }
+  
+  // Silent risks (South Florida specific)
+  const silentRisks = context.region === 'south_florida' ? [
+    { 
+      component: 'Capacitor', 
+      riskContext: 'Stress from high humidity cycles',
+      typicalCost: '$150–$400', 
+      preventability: 'medium' as const
+    },
+    { 
+      component: 'Drain line', 
+      riskContext: 'Clog probability increases after year 3',
+      typicalCost: '$75–$200', 
+      preventability: 'high' as const
+    },
+    {
+      component: 'Condensate pump',
+      riskContext: 'Moisture buildup accelerates wear',
+      typicalCost: '$200–$400',
+      preventability: 'medium' as const
+    }
+  ] : [
+    {
+      component: 'Filter efficiency',
+      riskContext: 'Reduced airflow increases strain',
+      typicalCost: '$25–$50',
+      preventability: 'high' as const
+    }
+  ];
+  
+  // CORRECTED: Regionalized ROI statement
+  const roiStatement = context.region === 'south_florida'
+    ? 'For South Florida homes like yours, avoiding just one HVAC repair typically offsets a year of Habitta.'
+    : 'Habitta pays for itself if it helps avoid just one repair.';
+  
+  // Convert featureCompleteness (0-1) to percentage
+  const completenessPercent = Math.round(context.featureCompleteness * 100);
+  
+  return {
+    currentScore,
+    ifLeftUntracked: {
+      score12mo: score12moUntracked,
+      score24mo: score24moUntracked,
+      drivers: ['System wear from daily use', 'Accumulated component stress', 'Climate impact']
+    },
+    withHabittaCare: {
+      score12mo: score12moTracked,
+      score24mo: score24moTracked,
+      stabilizers: ['Proactive monitoring', 'Timely maintenance reminders', 'Early risk detection']
+    },
+    forecastCompleteness: {
+      percentage: completenessPercent,
+      missingFactors,
+      summary: `Your forecast is ${completenessPercent}% complete`
+    },
+    silentRisks,
+    financialOutlook: {
+      preventiveCost12mo: '$140',
+      avoidedRepairs12mo: '$900–$1,400',
+      riskReductionPercent: 18,
+      roiStatement,
+      region: context.region
+    },
+    trajectoryQualifier: context.region === 'south_florida'
+      ? 'Typical trajectory for South Florida homes like yours'
+      : 'Typical trajectory for homes like yours'
+  };
+}
+
+/**
+ * Get home forecast for conversion-optimized HomeHealthCard
+ */
+async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
+  console.log(`[getHomeForecast] Building forecast for home: ${homeId}`);
+  
+  // 1. Get HVAC prediction to derive current score and context
+  const hvacPrediction = await getHVACPrediction(homeId);
+  
+  // 2. Get home details for region detection
+  const { data: home } = await supabase
+    .from('homes')
+    .select('year_built, state, city, confidence')
+    .eq('id', homeId)
+    .single();
+  
+  // 3. Check for recent maintenance
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+  
+  const { data: recentMaintenance } = await supabase
+    .from('habitta_system_events')
+    .select('id')
+    .eq('home_id', homeId)
+    .eq('system_type', 'hvac')
+    .eq('event_type', 'maintenance')
+    .gte('event_date', twelveMonthsAgo.toISOString().split('T')[0])
+    .limit(1);
+  
+  // 4. Derive current score from HVAC status
+  const currentScore = 
+    hvacPrediction.status === 'low' ? 85 :
+    hvacPrediction.status === 'moderate' ? 70 : 55;
+  
+  // 5. Determine region
+  const isSouthFlorida = home?.state === 'FL' || 
+    home?.city?.toLowerCase().includes('miami') ||
+    home?.city?.toLowerCase().includes('fort lauderdale') ||
+    home?.city?.toLowerCase().includes('west palm');
+  
+  // 6. Calculate feature completeness
+  let featureCompleteness = 0.25; // Base
+  if (hvacPrediction.lifespan?.install_year) featureCompleteness += 0.30;
+  if (hvacPrediction.lifespan?.confidence_0_1 && hvacPrediction.lifespan.confidence_0_1 > 0.5) featureCompleteness += 0.20;
+  if ((recentMaintenance?.length || 0) > 0) featureCompleteness += 0.15;
+  featureCompleteness = Math.min(featureCompleteness, 1);
+  
+  // 7. Build forecast
+  const forecast = buildHomeForecast(currentScore, {
+    remainingYears: hvacPrediction.lifespan?.years_remaining_p50 || 8,
+    hasRecentMaintenance: (recentMaintenance?.length || 0) > 0,
+    permitVerified: hvacPrediction.optimization?.signals?.permitVerified || false,
+    featureCompleteness,
+    region: isSouthFlorida ? 'south_florida' : 'other'
+  });
+  
+  console.log(`[getHomeForecast] Built forecast:`, {
+    currentScore: forecast.currentScore,
+    projected24mo: forecast.ifLeftUntracked.score24mo,
+    completeness: forecast.forecastCompleteness.percentage,
+    region: forecast.financialOutlook.region
+  });
+  
+  return forecast;
+}
+
 // ============== Main Request Handler ==============
 
 serve(async (req) => {
@@ -1468,6 +1695,11 @@ serve(async (req) => {
       case 'hvac-prediction':
         if (!propertyId) throw new Error('property_id parameter required');
         result = await getHVACPrediction(propertyId);
+        break;
+
+      case 'home-forecast':
+        if (!propertyId) throw new Error('property_id parameter required');
+        result = await getHomeForecast(propertyId);
         break;
 
       default:
