@@ -1,9 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock } from "lucide-react";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { ChatDIYBanner } from "@/components/ChatDIYBanner";
+import { LifespanProgressBar } from "@/components/LifespanProgressBar";
+import { 
+  formatReplacementWindow, 
+  formatMostLikelyYear, 
+  mapConfidenceLabel,
+  formatAge,
+  generateWindowExplanation
+} from "@/utils/lifespanFormatters";
 
 interface SystemDetailViewProps {
   prediction: SystemPrediction;
@@ -92,6 +100,56 @@ export function SystemDetailView({
           )}
         </CardContent>
       </Card>
+
+      {/* System Lifespan Outlook - NEW */}
+      {prediction.lifespan && (
+        <Card className="rounded-xl border-blue-100 bg-blue-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Clock className="h-4 w-4 text-blue-600" />
+              System Lifespan Outlook
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Current age */}
+            <p className="text-sm text-muted-foreground">
+              Current age: {formatAge(new Date(new Date().getFullYear() - (prediction.lifespan.years_remaining_p50 > 0 ? 
+                new Date(prediction.lifespan.p50_failure_date).getFullYear() - new Date().getFullYear() - prediction.lifespan.years_remaining_p50 : 
+                0), 0, 1))}
+            </p>
+            
+            {/* Main prediction */}
+            <div>
+              <p className="font-medium text-gray-900">
+                Expected replacement window: {formatReplacementWindow(prediction.lifespan.p10_failure_date, prediction.lifespan.p90_failure_date)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Most likely: {formatMostLikelyYear(prediction.lifespan.p50_failure_date)}
+              </p>
+            </div>
+            
+            {/* Progress bar */}
+            <LifespanProgressBar
+              installDate={new Date(new Date(prediction.lifespan.p50_failure_date).getFullYear() - 13, 0, 1).toISOString()}
+              p10Date={prediction.lifespan.p10_failure_date}
+              p50Date={prediction.lifespan.p50_failure_date}
+              p90Date={prediction.lifespan.p90_failure_date}
+              currentAge={13 - prediction.lifespan.years_remaining_p50}
+            />
+            
+            {/* Confidence */}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Estimate confidence:</span>
+              <Badge variant="outline" className="text-xs">
+                {mapConfidenceLabel(prediction.lifespan.confidence_0_1)}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Confidence reflects data completeness — not system condition.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Low-risk reassurance card */}
       {prediction.status === 'low' && (

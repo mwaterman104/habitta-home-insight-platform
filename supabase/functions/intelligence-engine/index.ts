@@ -648,6 +648,171 @@ const HVAC_BASELINE_LIFESPAN = 14;      // South Florida realistic average (year
 const HVAC_CLIMATE_MULTIPLIER = 0.85;   // Miami-Dade heat/humidity penalty (~15% reduction)
 const HVAC_MAINTENANCE_BOOST = 1.1;     // ~10% extension for recent maintenance
 
+// ============== HVAC Failure Window Scoring (v1) ==============
+// Inline implementation - edge functions can't import from src/
+
+/**
+ * ARCHITECTURE NOTE: Data Flow
+ * 
+ * intelligence-engine = AUTHORITATIVE GENERATOR
+ * - Computes predictions on-demand
+ * - Returns fresh data to caller
+ * 
+ * predictions table = CACHED READ MODEL (future)
+ * - Persisted for dashboard queries
+ * - Invalidated when home data changes
+ */
+
+const HVAC_FAILURE_CONSTANTS = {
+  model_version: 'hvac_failure_v1',
+  baseline: {
+    median_lifespan_years: 13,
+    sigma_years: 2.5
+  },
+  clamps: {
+    multiplier_min: 0.6,
+    multiplier_max: 1.3
+  }
+};
+
+function normalizeIndex(value: number | undefined): number {
+  return Math.min(Math.max(value ?? 0, 0), 1);
+}
+
+function clampValue(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function yearsBetween(from: Date, to: Date): number {
+  return (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+}
+
+function addYears(date: Date, years: number): Date {
+  return new Date(date.getTime() + years * 365.25 * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * v1: Hardcoded climate stress mapping - CENTRALIZED for future upgrade
+ * v2: Will use NOAA / ASHRAE / zone-based lookup
+ */
+function deriveClimateStressIndex(home: { 
+  state?: string; 
+  city?: string; 
+  zip_code?: string 
+}): number {
+  const SOUTH_FLORIDA_ZIP_PREFIXES = ['330', '331', '332', '333', '334', '335'];
+  const isSouthFlorida = home.state === 'FL' && 
+    (home.city?.toLowerCase().includes('miami') || 
+     home.city?.toLowerCase().includes('fort lauderdale') ||
+     home.city?.toLowerCase().includes('hollywood') ||
+     home.city?.toLowerCase().includes('hialeah') ||
+     SOUTH_FLORIDA_ZIP_PREFIXES.some(prefix => home.zip_code?.startsWith(prefix)));
+  
+  return isSouthFlorida ? 0.80 : 0.40; // Default moderate for non-FL
+}
+
+interface HVACFailureInputs {
+  installDate: Date;
+  climateStressIndex: number;
+  maintenanceScore: number;
+  featureCompleteness: number;
+  usageIndex?: number;
+  environmentIndex?: number;
+  installVerified: boolean;
+  hasUsageSignal: boolean;
+}
+
+interface HVACFailureResult {
+  p10_failure_date: string;
+  p50_failure_date: string;
+  p90_failure_date: string;
+  years_remaining_p50: number;
+  confidence_0_1: number;
+  provenance: any;
+}
+
+function scoreHVACFailureWindow(
+  inputs: HVACFailureInputs,
+  now: Date = new Date()
+): HVACFailureResult {
+  const {
+    installDate,
+    climateStressIndex,
+    maintenanceScore,
+    featureCompleteness,
+    usageIndex,
+    environmentIndex,
+    installVerified,
+    hasUsageSignal
+  } = inputs;
+
+  // Normalize all indices
+  const normClimate = normalizeIndex(climateStressIndex);
+  const normMaintenance = normalizeIndex(maintenanceScore);
+  const normCompleteness = normalizeIndex(featureCompleteness);
+  const normUsage = normalizeIndex(usageIndex);
+  const normEnvironment = normalizeIndex(environmentIndex);
+
+  // Calculate multipliers
+  const M_climate = 1 - 0.18 * normClimate;
+  const M_maintenance = 0.85 + 0.25 * normMaintenance;
+  const M_install = 0.97 + (installVerified ? 0.06 : 0);
+  const M_usage = 1 - 0.12 * normUsage;
+  const M_environment = 1 - 0.10 * normEnvironment;
+  const M_unknowns = 0.90 + 0.10 * normCompleteness;
+
+  let M_total = M_climate * M_maintenance * M_install * M_usage * M_environment * M_unknowns;
+  M_total = clampValue(M_total, HVAC_FAILURE_CONSTANTS.clamps.multiplier_min, HVAC_FAILURE_CONSTANTS.clamps.multiplier_max);
+
+  // Lifespan calculations
+  const L50_base = HVAC_FAILURE_CONSTANTS.baseline.median_lifespan_years;
+  const sigma_base = HVAC_FAILURE_CONSTANTS.baseline.sigma_years;
+  const L50_effective = L50_base * M_total;
+
+  const age_years = Math.max(yearsBetween(installDate, now), 0);
+  const years_remaining_p50 = Math.max(L50_effective - age_years, 0);
+
+  // Dynamic uncertainty expansion
+  const sigma_effective = sigma_base * (1 + 0.9 * (1 - normCompleteness));
+  const Z_10 = 1.2816;
+
+  let L10 = L50_effective - Z_10 * sigma_effective;
+  let L90 = L50_effective + Z_10 * sigma_effective;
+  L10 = clampValue(L10, 3, 30);
+  L90 = clampValue(L90, 3, 30);
+
+  // Calculate failure dates
+  const p10_failure_date = addYears(installDate, L10);
+  const p50_failure_date = addYears(installDate, L50_effective);
+  const p90_failure_date = addYears(installDate, L90);
+
+  const ensureFutureDate = (date: Date): Date => date < now ? now : date;
+
+  // Confidence score
+  const confidence = clampValue(
+    0.25 +
+    (installVerified ? 0.30 : 0) +
+    0.25 * normMaintenance +
+    0.10 * normCompleteness +
+    0.10 * (hasUsageSignal ? 1 : 0),
+    0, 1
+  );
+
+  return {
+    p10_failure_date: ensureFutureDate(p10_failure_date).toISOString(),
+    p50_failure_date: ensureFutureDate(p50_failure_date).toISOString(),
+    p90_failure_date: ensureFutureDate(p90_failure_date).toISOString(),
+    years_remaining_p50: Number(years_remaining_p50.toFixed(1)),
+    confidence_0_1: Number(confidence.toFixed(2)),
+    provenance: {
+      model_version: HVAC_FAILURE_CONSTANTS.model_version,
+      multipliers: { M_climate, M_maintenance, M_install, M_usage, M_environment, M_unknowns, M_total },
+      baseline: { L50_base, sigma_base },
+      effective: { L50_effective, sigma_effective }
+    }
+  };
+}
+
 interface HVACSurvivalCore {
   ageYears: number;
   remainingYears: number;
@@ -673,6 +838,7 @@ interface HVACSystemPrediction {
   };
   why: {
     bullets: string[];
+    riskContext?: string[];
     sourceLabel?: string;
   };
   factors: {
@@ -694,6 +860,14 @@ interface HVACSystemPrediction {
     description: string;
     source: string;
   }>;
+  lifespan?: {
+    p10_failure_date: string;
+    p50_failure_date: string;
+    p90_failure_date: string;
+    years_remaining_p50: number;
+    confidence_0_1: number;
+    provenance?: any;
+  };
 }
 
 function determineHVACSystemAge(
@@ -771,7 +945,14 @@ function calculateHVACSurvivalCore(
 
 function buildHVACPredictionOutput(
   core: HVACSurvivalCore,
-  context: { installYear?: number; permits: any[]; history?: any[] }
+  context: { 
+    installYear?: number; 
+    permits: any[]; 
+    history?: any[];
+    lifespan?: HVACFailureResult;
+    isSouthFlorida?: boolean;
+    hasLimitedHistory?: boolean;
+  }
 ): HVACSystemPrediction {
   const { status, remainingYears, hasRecentMaintenance, installSource, ageYears } = core;
   
@@ -817,12 +998,17 @@ function buildHVACPredictionOutput(
   
   // RISK context - for system drill-down only (never in Home Health card)
   const riskBullets: string[] = [];
-  riskBullets.push("Miami-Dade heat and humidity increase wear over time");
+  if (context.isSouthFlorida !== false) {
+    riskBullets.push("High heat & humidity accelerate wear over time");
+  }
   if (ageYears > 10) {
     riskBullets.push("System age increases likelihood of component fatigue");
   }
   if (remainingYears <= 3) {
     riskBullets.push("System age is approaching typical replacement range");
+  }
+  if (context.hasLimitedHistory) {
+    riskBullets.push("Limited service history adds uncertainty");
   }
   
   const actions: HVACSystemPrediction['actions'] = status !== 'low' ? [
@@ -852,8 +1038,18 @@ function buildHVACPredictionOutput(
     : '(estimated)';
   
   const helps: string[] = hasRecentMaintenance ? ['Recent maintenance logged'] : [];
-  const hurts: string[] = ['Miami-Dade climate stress'];
+  const hurts: string[] = context.isSouthFlorida !== false ? ['South Florida climate stress'] : [];
   if (ageYears > 10) hurts.push('System age > 10 years');
+  
+  // Build lifespan block from failure window result (semantic only)
+  const lifespan = context.lifespan ? {
+    p10_failure_date: context.lifespan.p10_failure_date,
+    p50_failure_date: context.lifespan.p50_failure_date,
+    p90_failure_date: context.lifespan.p90_failure_date,
+    years_remaining_p50: context.lifespan.years_remaining_p50,
+    confidence_0_1: context.lifespan.confidence_0_1,
+    provenance: context.lifespan.provenance,
+  } : undefined;
   
   return {
     systemKey: 'hvac',
@@ -876,16 +1072,17 @@ function buildHVACPredictionOutput(
     actions,
     planning,
     history: context.history,
+    lifespan,
   };
 }
 
 async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> {
   console.log(`Getting HVAC prediction for home: ${homeId}`);
   
-  // 1. Fetch home data for year_built
+  // 1. Fetch home data for year_built, state, city, zip
   const { data: home } = await supabase
     .from('homes')
-    .select('year_built')
+    .select('year_built, state, city, zip_code')
     .eq('id', homeId)
     .single();
   
@@ -939,6 +1136,7 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     .limit(5);
   
   const hasRecentMaintenance = (recentMaintenance?.length || 0) > 0;
+  const maintenanceCount = recentMaintenance?.length || 0;
   
   // 5. Get maintenance history for display
   const { data: historyEvents } = await supabase
@@ -955,7 +1153,7 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     source: e.source || 'user'
   }));
   
-  // 6. Calculate core survival
+  // 6. Calculate core survival (existing logic)
   const core = calculateHVACSurvivalCore(
     explicitInstallYear,
     home?.year_built,
@@ -963,11 +1161,60 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     permits || []
   );
   
-  // 7. Build presentation
+  // 7. Calculate failure window using new scoring model
+  const currentYear = new Date().getFullYear();
+  const computedInstallYear = explicitInstallYear || (currentYear - core.ageYears);
+  const installDate = new Date(computedInstallYear, 0, 1); // Jan 1 of install year
+  
+  // Derive climate stress using centralized function
+  const climateStressIndex = deriveClimateStressIndex({
+    state: home?.state,
+    city: home?.city,
+    zip_code: home?.zip_code
+  });
+  
+  // Calculate maintenance score (0-1 based on recent events)
+  const maintenanceScore = Math.min(maintenanceCount / 2, 1); // 2+ events = max score
+  
+  // Calculate feature completeness (what data do we have?)
+  let featureCompleteness = 0.25; // Base
+  if (explicitInstallYear) featureCompleteness += 0.30;
+  if (permits && permits.length > 0) featureCompleteness += 0.20;
+  if (maintenanceCount > 0) featureCompleteness += 0.15;
+  if (hvacSystem?.confidence) featureCompleteness += 0.10;
+  featureCompleteness = Math.min(featureCompleteness, 1);
+  
+  const installVerified = core.installSource === 'permit_replacement' || core.installSource === 'permit_install';
+  
+  const failureWindow = scoreHVACFailureWindow({
+    installDate,
+    climateStressIndex,
+    maintenanceScore,
+    featureCompleteness,
+    installVerified,
+    hasUsageSignal: false, // v1: no telemetry
+    usageIndex: 0,
+    environmentIndex: 0
+  });
+  
+  console.log(`[getHVACPrediction] Failure window calculated:`, {
+    p50_year: new Date(failureWindow.p50_failure_date).getFullYear(),
+    years_remaining: failureWindow.years_remaining_p50,
+    confidence: failureWindow.confidence_0_1
+  });
+  
+  // 8. Determine if South Florida
+  const isSouthFlorida = climateStressIndex >= 0.7;
+  const hasLimitedHistory = maintenanceCount < 2;
+  
+  // 9. Build presentation with lifespan block
   return buildHVACPredictionOutput(core, {
     installYear: explicitInstallYear ?? undefined,
     permits: permits || [],
     history,
+    lifespan: failureWindow,
+    isSouthFlorida,
+    hasLimitedHistory,
   });
 }
 
