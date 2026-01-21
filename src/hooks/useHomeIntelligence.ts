@@ -32,12 +32,12 @@ export interface HomeIntelligenceData {
 export function useHomeIntelligence(): HomeIntelligenceData {
   const { userHome, loading: homeLoading, error: homeError, refreshHome } = useUserHome();
   const { systems, loading: systemsLoading, error: systemsError, refetch: refetchSystems } = useSystemsData(userHome?.id);
-  const { insights, loading: insightsLoading, error: insightsError, refetch: refetchInsights } = useValidationInsights(userHome?.property_id);
+  const { insights, loading: insightsLoading, error: insightsError, refetch: refetchInsights } = useValidationInsights(userHome?.id);
   
-  // Intelligence Engine hooks
-  const { data: predictions, loading: predictionsLoading, refetch: refetchPredictions } = useIntelligencePredictions(userHome?.property_id);
-  const { data: smartTasks, loading: tasksLoading, refetch: refetchTasks } = useIntelligenceTasks(userHome?.property_id);
-  const { data: budgetPredictions, loading: budgetLoading, refetch: refetchBudget } = useIntelligenceBudget(userHome?.property_id);
+  // Intelligence Engine hooks - use home's primary ID, not property_id foreign key
+  const { data: predictions, loading: predictionsLoading, refetch: refetchPredictions } = useIntelligencePredictions(userHome?.id);
+  const { data: smartTasks, loading: tasksLoading, refetch: refetchTasks } = useIntelligenceTasks(userHome?.id);
+  const { data: budgetPredictions, loading: budgetLoading, refetch: refetchBudget } = useIntelligenceBudget(userHome?.id);
 
   const [error, setError] = useState<string | null>(null);
 
