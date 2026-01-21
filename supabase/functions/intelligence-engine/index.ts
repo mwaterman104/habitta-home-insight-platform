@@ -1,6 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.51.0';
+import { deriveHVACPermitSignal, type HVACPermitSignal } from '../_shared/permitSignal.ts';
+import { SYSTEM_CONFIGS } from '../_shared/systemConfigs.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -720,6 +722,8 @@ interface HVACFailureInputs {
   environmentIndex?: number;
   installVerified: boolean;
   hasUsageSignal: boolean;
+  /** Install context classification for quality penalty */
+  installSource?: 'permit_replacement' | 'permit_install' | 'inferred' | 'default';
 }
 
 interface HVACFailureResult {
@@ -743,7 +747,8 @@ function scoreHVACFailureWindow(
     usageIndex,
     environmentIndex,
     installVerified,
-    hasUsageSignal
+    hasUsageSignal,
+    installSource
   } = inputs;
 
   // Normalize all indices
@@ -756,7 +761,12 @@ function scoreHVACFailureWindow(
   // Calculate multipliers
   const M_climate = 1 - 0.18 * normClimate;
   const M_maintenance = 0.85 + 0.25 * normMaintenance;
-  const M_install = 0.97 + (installVerified ? 0.06 : 0);
+  
+  // Replacement installs have slightly lower quality certainty
+  // This affects install quality, NOT lifespan baseline or confidence directly
+  const installQualityPenalty = installSource === 'permit_replacement' ? 0.03 : 0;
+  const M_install = 0.97 + (installVerified ? 0.06 : 0) - installQualityPenalty;
+  
   const M_usage = 1 - 0.12 * normUsage;
   const M_environment = 1 - 0.10 * normEnvironment;
   const M_unknowns = 0.90 + 0.10 * normCompleteness;
@@ -954,6 +964,7 @@ function buildHVACPredictionOutput(
     lifespan?: HVACFailureResult;
     isSouthFlorida?: boolean;
     hasLimitedHistory?: boolean;
+    permitSignal?: HVACPermitSignal;  // Centralized permit signal
   }
 ): HVACSystemPrediction {
   const { status, remainingYears, hasRecentMaintenance, installSource, ageYears } = core;
@@ -1000,6 +1011,21 @@ function buildHVACPredictionOutput(
   
   // RISK context - for system drill-down only (never in Home Health card)
   const riskBullets: string[] = [];
+  
+  // TWEAK #3: Order bullets - permit absence FIRST, then low-confidence
+  // Users first ask "why is data missing?" then "how does it improve?"
+  
+  // 1. Permit absence reassurance (if applicable)
+  if (!context.permitSignal?.verified) {
+    riskBullets.push("No permit records found for this system. Estimate based on property characteristics and regional data.");
+  }
+  
+  // 2. Low-confidence improvement note (if applicable)
+  if (context.lifespan?.confidence_0_1 && context.lifespan.confidence_0_1 < 0.5) {
+    riskBullets.push("This estimate will improve as service history and usage data are added.");
+  }
+  
+  // 3. Then add existing contextual bullets
   if (context.isSouthFlorida !== false) {
     riskBullets.push("High heat & humidity accelerate wear over time");
   }
@@ -1126,6 +1152,10 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     console.log(`[getHVACPrediction] Found ${permits?.length || 0} permits for home`);
   }
   
+  // 3.5 Derive HVAC permit signal using CENTRALIZED extractor (SINGLE SOURCE OF TRUTH)
+  const permitSignal = deriveHVACPermitSignal(permits || []);
+  console.log(`[getHVACPrediction] HVAC permit signal: verified=${permitSignal.verified}, year=${permitSignal.installYear}, source=${permitSignal.installSource}`);
+  
   // 4. Check recent maintenance (last 12 months)
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
@@ -1198,7 +1228,9 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     installVerified,
     hasUsageSignal: false, // v1: no telemetry
     usageIndex: 0,
-    environmentIndex: 0
+    environmentIndex: 0,
+    // Pass install source for replacement penalty calculation
+    installSource: permitSignal.installSource || core.installSource
   });
   
   console.log(`[getHVACPrediction] Failure window calculated:`, {
@@ -1211,7 +1243,7 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
   const isSouthFlorida = climateStressIndex >= 0.7;
   const hasLimitedHistory = maintenanceCount < 2;
   
-  // 9. Build presentation with lifespan block
+  // 9. Build presentation with lifespan block and permit signal
   return buildHVACPredictionOutput(core, {
     installYear: explicitInstallYear ?? undefined,
     permits: permits || [],
@@ -1219,6 +1251,7 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
     lifespan: failureWindow,
     isSouthFlorida,
     hasLimitedHistory,
+    permitSignal,  // Pass centralized signal for UI messaging
   });
 }
 

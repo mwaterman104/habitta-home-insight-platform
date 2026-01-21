@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { deriveHVACPermitSignal, type HVACPermitSignal } from '../_shared/permitSignal.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -284,131 +285,80 @@ serve(async (req) => {
 
     console.log(`Successfully synced ${permitsInserted} permits and ${violationsInserted} violations`)
 
-    // ========== PHASE 3: Permit-to-System Enrichment ==========
-    // Update systems table when HVAC replacement permits are found
-    if (homeId && permitsInserted > 0 && permitsItems && permitsItems.length > 0) {
-      const hvacReplacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout', 'change-out'];
-      
-      const hvacPermits = permitsItems.filter((p: any) => {
-        const desc = (p.description || '').toLowerCase();
-        const permitType = (p.type || '').toLowerCase();
-        
-        const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
-                       desc.includes('a/c') || desc.includes('ac unit') ||
-                       desc.includes('heat pump') || desc.includes('condenser') ||
-                       permitType.includes('mechanical');
-        const isReplacement = hvacReplacementKeywords.some(kw => desc.includes(kw));
-        return isHVAC && isReplacement && p.issue_date;
-      });
+    // ========== PERMIT SIGNAL EXTRACTION (Centralized) ==========
+    // Use centralized permit signal extractor - SINGLE SOURCE OF TRUTH
+    const permitSignal = deriveHVACPermitSignal(permitsItems);
+    
+    console.log(`[shovels-permits] HVAC signal: verified=${permitSignal.verified}, year=${permitSignal.installYear}, source=${permitSignal.installSource}`);
 
-      if (hvacPermits.length > 0) {
-        // Sort by date, get most recent
-        hvacPermits.sort((a: any, b: any) => 
-          new Date(b.issue_date!).getTime() - new Date(a.issue_date!).getTime()
-        );
-        const latestPermit = hvacPermits[0];
-        const permitYear = new Date(latestPermit.issue_date!).getFullYear();
+    // Update systems table when HVAC permit found
+    if (homeId && permitsInserted > 0 && permitSignal.verified && permitSignal.installYear) {
+      console.log(`[shovels-permits] Found HVAC permit from ${permitSignal.installYear}, source: ${permitSignal.installSource}`);
 
-        console.log(`[shovels-permits] Found HVAC replacement permit from ${permitYear}`);
+      // Check existing system to apply override hierarchy
+      const { data: existingSystem } = await supabaseClient
+        .from('systems')
+        .select('id, install_year, install_source')
+        .eq('home_id', homeId)
+        .eq('kind', 'hvac')
+        .single();
 
-        // Check existing system to apply override hierarchy
-        const { data: existingSystem } = await supabaseClient
+      if (!existingSystem) {
+        // No system record exists - create one from permit
+        const { error: insertError } = await supabaseClient
           .from('systems')
-          .select('id, install_year, install_source')
-          .eq('home_id', homeId)
-          .eq('kind', 'hvac')
-          .single();
+          .insert({
+            home_id: homeId,
+            user_id: effectiveUserId,
+            kind: 'hvac',
+            install_year: permitSignal.installYear,
+            install_source: 'permit',
+            confidence: 0.85,
+            status: 'VERIFIED',
+          });
+        
+        if (!insertError) {
+          console.log('[shovels-permits] Created HVAC system from permit, year:', permitSignal.installYear);
+        } else {
+          console.error('[shovels-permits] Error creating system:', insertError);
+        }
+      } else {
+        // System exists - apply override hierarchy
+        // Permit > Inferred, but User > Permit only if user input is NEWER
+        let shouldUpdate = false;
+        const existingSource = existingSystem.install_source || 'inferred';
+        
+        if (existingSource === 'inferred' || existingSource === 'unknown') {
+          // Permit overrides inferred
+          shouldUpdate = true;
+          console.log('[shovels-permits] Permit overrides inferred source');
+        } else if (existingSource === 'user' && existingSystem.install_year) {
+          // User input only wins if it's NEWER than permit date
+          if (existingSystem.install_year < permitSignal.installYear) {
+            shouldUpdate = true;
+            console.log('[shovels-permits] Permit is more recent than user input, overriding');
+          } else {
+            console.log('[shovels-permits] User input is more recent, keeping user data');
+          }
+        }
 
-        if (!existingSystem) {
-          // No system record exists - create one from permit
-          const { error: insertError } = await supabaseClient
+        if (shouldUpdate) {
+          const { error: updateError } = await supabaseClient
             .from('systems')
-            .insert({
-              home_id: homeId,
-              user_id: effectiveUserId,
-              kind: 'hvac',
-              install_year: permitYear,
+            .update({
+              install_year: permitSignal.installYear,
               install_source: 'permit',
               confidence: 0.85,
               status: 'VERIFIED',
-            });
+            })
+            .eq('id', existingSystem.id);
           
-          if (!insertError) {
-            console.log('[shovels-permits] Created HVAC system from permit, year:', permitYear);
+          if (!updateError) {
+            console.log('[shovels-permits] Updated HVAC system from permit, year:', permitSignal.installYear);
           } else {
-            console.error('[shovels-permits] Error creating system:', insertError);
-          }
-        } else {
-          // System exists - apply override hierarchy
-          // Permit > Inferred, but User > Permit only if user input is NEWER
-          let shouldUpdate = false;
-          const existingSource = existingSystem.install_source || 'inferred';
-          
-          if (existingSource === 'inferred' || existingSource === 'unknown') {
-            // Permit overrides inferred
-            shouldUpdate = true;
-            console.log('[shovels-permits] Permit overrides inferred source');
-          } else if (existingSource === 'user' && existingSystem.install_year) {
-            // User input only wins if it's NEWER than permit date
-            if (existingSystem.install_year < permitYear) {
-              shouldUpdate = true;
-              console.log('[shovels-permits] Permit is more recent than user input, overriding');
-            } else {
-              console.log('[shovels-permits] User input is more recent, keeping user data');
-            }
-          }
-
-          if (shouldUpdate) {
-            const { error: updateError } = await supabaseClient
-              .from('systems')
-              .update({
-                install_year: permitYear,
-                install_source: 'permit',
-                confidence: 0.85,
-                status: 'VERIFIED',
-              })
-              .eq('id', existingSystem.id);
-            
-            if (!updateError) {
-              console.log('[shovels-permits] Updated HVAC system from permit, year:', permitYear);
-            } else {
-              console.error('[shovels-permits] Error updating system:', updateError);
-            }
+            console.error('[shovels-permits] Error updating system:', updateError);
           }
         }
-      }
-    }
-
-    // Extract HVAC enrichment signal for downstream consumers
-    let hvac_permit_found = false;
-    let hvac_install_year: number | null = null;
-    let hvac_permit_confidence = 0;
-
-    // Check if we found and processed any HVAC replacement permits
-    if (permitsItems && permitsItems.length > 0) {
-      const hvacReplacementKeywords = ['replace', 'change out', 'upgrade', 'new unit', 'changeout', 'change-out', 'install'];
-      
-      const hvacPermits = permitsItems.filter((p: any) => {
-        const desc = (p.description || '').toLowerCase();
-        const permitType = (p.type || '').toLowerCase();
-        
-        const isHVAC = desc.includes('hvac') || desc.includes('air condition') || 
-                       desc.includes('a/c') || desc.includes('ac unit') ||
-                       desc.includes('heat pump') || desc.includes('condenser') ||
-                       permitType.includes('mechanical');
-        const isReplacement = hvacReplacementKeywords.some(kw => desc.includes(kw));
-        return isHVAC && isReplacement && p.issue_date;
-      });
-
-      if (hvacPermits.length > 0) {
-        // Sort by date, get most recent
-        hvacPermits.sort((a: any, b: any) => 
-          new Date(b.issue_date!).getTime() - new Date(a.issue_date!).getTime()
-        );
-        hvac_permit_found = true;
-        hvac_install_year = new Date(hvacPermits[0].issue_date!).getFullYear();
-        hvac_permit_confidence = 0.85;
-        console.log(`[shovels-permits] HVAC signal: found=${hvac_permit_found}, year=${hvac_install_year}`);
       }
     }
 
@@ -417,9 +367,11 @@ serve(async (req) => {
         success: true,
         permitsInserted,
         violationsInserted,
-        hvac_permit_found,
-        hvac_install_year,
-        hvac_permit_confidence,
+        // Return normalized signal fields for downstream consumers
+        hvac_permit_found: permitSignal.verified,
+        hvac_install_year: permitSignal.installYear,
+        hvac_permit_confidence: permitSignal.verified ? 0.85 : 0,
+        hvac_install_source: permitSignal.installSource,
         message: `Synced ${permitsInserted} permits and ${violationsInserted} violations`
       }),
       {
