@@ -1032,14 +1032,33 @@ serve(async (req) => {
       }
       
       // Verify the home belongs to the user
+      console.log(`[intelligence-engine] Verifying ownership: propertyId=${propertyId}, userId=${user.id}`);
+      
       const { data: home, error: homeError } = await supabase
         .from('homes')
-        .select('id')
+        .select('id, user_id')
         .eq('id', propertyId)
         .eq('user_id', user.id)
         .single();
       
       if (homeError || !home) {
+        console.error(`[intelligence-engine] Home verification failed:`, {
+          homeError: homeError?.message,
+          homeErrorCode: homeError?.code,
+          propertyId,
+          userId: user.id,
+          homeFound: !!home
+        });
+        
+        // Debug: Check if home exists at all
+        const { data: anyHome } = await supabase
+          .from('homes')
+          .select('id, user_id')
+          .eq('id', propertyId)
+          .single();
+        
+        console.log(`[intelligence-engine] Debug - home exists: ${!!anyHome}, actual user_id: ${anyHome?.user_id}`);
+        
         return new Response(
           JSON.stringify({ error: 'Home not found or access denied' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
