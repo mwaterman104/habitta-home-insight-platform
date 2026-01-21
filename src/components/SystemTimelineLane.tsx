@@ -28,16 +28,24 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
   
   // Color based on how soon the likely replacement is
   const yearsToLikely = likelyYear - startYear;
-  const getBarColor = () => {
-    if (yearsToLikely <= 3) return 'from-red-200 via-red-400 to-red-200';
-    if (yearsToLikely <= 6) return 'from-amber-200 via-amber-400 to-amber-200';
-    return 'from-green-200 via-green-400 to-green-200';
+  
+  // Solid colors matching the reference design aesthetic
+  const getWindowColor = () => {
+    if (yearsToLikely <= 3) return 'bg-red-200';
+    if (yearsToLikely <= 6) return 'bg-amber-200';
+    return 'bg-emerald-200';
+  };
+  
+  const getLikelyColor = () => {
+    if (yearsToLikely <= 3) return 'bg-red-500';
+    if (yearsToLikely <= 6) return 'bg-amber-500';
+    return 'bg-emerald-500';
   };
   
   const getMarkerColor = () => {
     if (yearsToLikely <= 3) return 'bg-red-600';
-    if (yearsToLikely <= 6) return 'bg-amber-600';
-    return 'bg-green-600';
+    if (yearsToLikely <= 6) return 'bg-teal-600';
+    return 'bg-teal-600';
   };
   
   // Format cost range
@@ -70,10 +78,10 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
             
             {/* Timeline bar container */}
             <div className="flex-1 h-7 bg-muted/30 rounded-lg relative overflow-hidden">
-              {/* The replacement window bar */}
+              {/* The replacement window bar - light solid color */}
               {earlyPos < 100 && (
                 <div 
-                  className={`absolute inset-y-1 bg-gradient-to-r ${getBarColor()} rounded-md transition-all`}
+                  className={`absolute inset-y-1 ${getWindowColor()} rounded-md transition-all`}
                   style={{ 
                     left: `${earlyPos}%`, 
                     width: `${barWidth}%`,
@@ -81,22 +89,27 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
                 />
               )}
               
-              {/* Most likely marker */}
-              {likelyPos <= 100 && likelyPos >= 0 && (
+              {/* "Most likely" filled portion - darker solid from early to likely */}
+              {earlyPos < 100 && likelyPos >= earlyPos && (
                 <div 
-                  className={`absolute inset-y-0 w-1 ${getMarkerColor()} rounded-sm`}
-                  style={{ left: `${likelyPos}%` }}
+                  className={`absolute inset-y-1 ${getLikelyColor()} rounded-md transition-all`}
+                  style={{ 
+                    left: `${earlyPos}%`, 
+                    width: `${Math.max(0, likelyPos - earlyPos)}%`,
+                  }}
                 />
               )}
               
-              {/* Year label on the bar if room */}
-              {likelyPos > 10 && likelyPos < 90 && (
-                <span 
-                  className="absolute top-1/2 -translate-y-1/2 text-[10px] font-medium text-foreground/70"
-                  style={{ left: `${likelyPos + 2}%` }}
-                >
-                  {likelyYear}
-                </span>
+              {/* Most likely marker - taller vertical line */}
+              {likelyPos <= 100 && likelyPos >= 0 && (
+                <div 
+                  className={`absolute w-1 ${getMarkerColor()} rounded-sm`}
+                  style={{ 
+                    left: `${likelyPos}%`,
+                    top: '0',
+                    height: '100%'
+                  }}
+                />
               )}
             </div>
             
