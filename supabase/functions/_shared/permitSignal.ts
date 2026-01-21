@@ -60,31 +60,33 @@ export function deriveHVACPermitSignal(permits: any[]): HVACPermitSignal {
   if (!permits?.length) return emptySignal;
 
   // Find HVAC permits with dates
+  // IMPORTANT: This function is source-agnostic. It only sees NormalizedPermit[].
+  // It does NOT know about ArcGIS, Shovels, or Miami-Dade.
   const hvacPermits = permits.filter(p => {
-    const text = `${p.description || ''} ${p.permit_type || p.type || ''} ${p.work_class || ''}`.toLowerCase();
+    const text = `${p.description || ''} ${p.permit_type || ''} ${p.work_class || ''}`.toLowerCase();
     const isHVAC = HVAC_KEYWORDS.some(kw => text.includes(kw)) || text.includes('mechanical');
-    // TWEAK #1: Prefer finalization date for date availability check
-    const hasDate = p.final_date || p.date_finaled || p.approval_date || p.issue_date || p.date_issued;
+    // Check for date availability using normalized field names
+    const hasDate = p.date_finaled || p.final_date || p.approval_date || p.date_issued || p.issue_date;
     return isHVAC && hasDate;
   });
 
   if (!hvacPermits.length) return emptySignal;
 
   // Sort by most authoritative date, get most recent
-  // TWEAK #1: Prefer completion/finalization dates for accuracy
+  // Priority: finalization > approval > issuance (for install accuracy)
   hvacPermits.sort((a, b) => {
     const getDate = (p: any) => 
-      p.final_date || p.date_finaled || p.approval_date || p.issue_date || p.date_issued;
+      p.date_finaled || p.final_date || p.approval_date || p.date_issued || p.issue_date;
     return new Date(getDate(b)).getTime() - new Date(getDate(a)).getTime();
   });
 
   const latest = hvacPermits[0];
   const desc = (latest.description || '').toLowerCase();
   
-  // TWEAK #1: Prefer final_date > approval_date > issue_date for install year accuracy
-  const permitDate = latest.final_date || latest.date_finaled || 
+  // Use most authoritative date for install year
+  const permitDate = latest.date_finaled || latest.final_date || 
                      latest.approval_date || 
-                     latest.issue_date || latest.date_issued;
+                     latest.date_issued || latest.issue_date;
 
   // Classify: replacement vs new install
   const isReplacement = REPLACEMENT_KEYWORDS.some(kw => desc.includes(kw));
@@ -105,7 +107,7 @@ export function deriveHVACPermitSignal(permits: any[]): HVACPermitSignal {
     : 0.15;
 
   return {
-    verified: true, // TWEAK #2: This means "finalized HVAC permit exists" not "full install verified"
+    verified: true, // This means "finalized HVAC permit exists" not "full install verified"
     installYear: permitDate ? new Date(permitDate).getFullYear() : null,
     installSource,
     permitNumber: latest.permit_number || latest.number,
