@@ -204,10 +204,14 @@ serve(async (req) => {
       address2: address2,
     });
     
-    const attomResponse = await fetch(`https://search.onboard-apis.com/propertyapi/v1.0.0/${endpoint}?${searchParams}`, {
+    // Use ATTOM's current API gateway endpoint
+    const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/${endpoint}?${searchParams}`;
+    console.log('[attom-property] Calling ATTOM API:', attomUrl.replace(attomApiKey, '***'));
+    
+    const attomResponse = await fetch(attomUrl, {
       method: 'GET',
       headers: {
-        'accept': 'application/json',
+        'Accept': 'application/json',
         'apikey': attomApiKey,
       },
     });
