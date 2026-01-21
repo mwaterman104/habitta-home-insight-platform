@@ -94,6 +94,7 @@ serve(async (req) => {
     // 4. Extract and update home record
     let updated = false;
     if (attomData && !attomError) {
+      // Enhanced extraction with logging to trace data flow issues
       const yearBuilt = attomData.propertyDetails?.yearBuilt || 
                         attomData._attomData?.summary?.yearbuilt ||
                         attomData._attomData?.building?.summary?.yearBuilt;
@@ -102,15 +103,37 @@ serve(async (req) => {
                          attomData._attomData?.building?.size?.livingsize ||
                          attomData._attomData?.building?.size?.bldgsize;
 
+      // CRITICAL: Log what we extracted to debug persistence issues
+      console.log('[property-enrichment] ATTOM extracted values:', {
+        yearBuilt,
+        squareFeet,
+        existingYearBuilt: home.year_built,
+        existingSquareFeet: home.square_feet,
+        rawPropertyDetails: attomData.propertyDetails ? 'present' : 'missing',
+        rawAttomData: attomData._attomData ? 'present' : 'missing',
+      });
+
       const updates: any = {};
       if (yearBuilt && !home.year_built) {
         updates.year_built = yearBuilt;
+        console.log(`[property-enrichment] Will update year_built to: ${yearBuilt}`);
+      } else if (yearBuilt && home.year_built) {
+        console.log(`[property-enrichment] year_built already set to ${home.year_built}, not overwriting with ${yearBuilt}`);
+      } else if (!yearBuilt) {
+        console.warn(`[property-enrichment] ATTOM did not return yearBuilt for home: ${home_id}`);
       }
+      
       if (squareFeet && !home.square_feet) {
         updates.square_feet = squareFeet;
+        console.log(`[property-enrichment] Will update square_feet to: ${squareFeet}`);
+      } else if (squareFeet && home.square_feet) {
+        console.log(`[property-enrichment] square_feet already set to ${home.square_feet}, not overwriting with ${squareFeet}`);
+      } else if (!squareFeet) {
+        console.warn(`[property-enrichment] ATTOM did not return squareFeet for home: ${home_id}`);
       }
 
       if (Object.keys(updates).length > 0) {
+        console.log(`[property-enrichment] Updating home ${home_id} with:`, updates);
         const { error: updateError } = await supabase
           .from('homes')
           .update(updates)
@@ -118,11 +141,18 @@ serve(async (req) => {
 
         if (!updateError) {
           updated = true;
-          console.log('[property-enrichment] Updated home with:', updates);
+          console.log('[property-enrichment] Successfully updated home with:', updates);
         } else {
-          console.error('[property-enrichment] Update error:', updateError);
+          console.error('[property-enrichment] FAILED to update home:', updateError);
         }
+      } else {
+        console.log('[property-enrichment] No updates needed - either data already exists or ATTOM returned nothing');
       }
+    } else {
+      console.warn(`[property-enrichment] No ATTOM data to process for home: ${home_id}`, {
+        attomData: attomData ? 'present' : 'missing',
+        attomError: attomError ? attomError.message : 'none'
+      });
     }
 
     // 5. Chain to permit-enrichment
