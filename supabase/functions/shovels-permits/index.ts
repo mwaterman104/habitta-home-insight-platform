@@ -1,40 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { deriveHVACPermitSignal, type HVACPermitSignal } from '../_shared/permitSignal.ts'
+import { deriveHVACPermitSignal } from '../_shared/permitSignal.ts'
+import { 
+  normalizeShovelsPermit, 
+  normalizeMiamiDadePermit, 
+  toPermitDbRecord,
+  type NormalizedPermit,
+  type PermitSource 
+} from '../_shared/permitNormalizers.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface ShovelsPermit {
-  permit_number?: string;
-  permit_type?: string;
-  work_class?: string;
-  description?: string;
-  status?: string;
-  date_issued?: string;
-  date_finaled?: string;
-  valuation?: number;
-  contractor_name?: string;
-  contractor_license?: string;
-  jurisdiction?: string;
-  source_url?: string;
-  // ... other fields from Shovels API
-}
-
-interface ShovelsViolation {
-  violation_number?: string;
-  violation_type?: string;
-  description?: string;
-  status?: string;
-  severity?: string;
-  date_reported?: string;
-  date_resolved?: string;
-  jurisdiction?: string;
-  source_url?: string;
-  // ... other fields from Shovels API
-}
+// Miami-Dade ArcGIS API endpoint
+const MIAMI_DADE_API = 'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/arcgis/rest/services/BuildingPermit_gdb/FeatureServer/0/query';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -66,106 +47,74 @@ serve(async (req) => {
     // For internal function calls with valid secret, we proceed without user
     if (!user && !isInternalCall) {
       console.log('No authenticated user and no internal secret - this might be a validation call')
-      // For validation mode, we don't need authentication
-      // But for database operations, we'll need to handle this differently
     } else if (isInternalCall) {
       console.log('[shovels-permits] Internal call validated via secret')
     }
 
-    const { address, homeId } = await req.json()
-    console.log('Syncing permits for address:', address, 'homeId:', homeId)
+    const { address, homeId, folio, source: requestedSource } = await req.json()
+    console.log('Syncing permits for address:', address, 'homeId:', homeId, 'folio:', folio, 'source:', requestedSource)
 
-    const shovelsApiKey = Deno.env.get('SHOVELS_API_KEY')
-    if (!shovelsApiKey) {
-      throw new Error('Shovels API key not configured')
+    // Determine which source(s) to query
+    // Priority: explicit source > folio detection > default to shovels
+    let sources: PermitSource[] = ['shovels'];
+    
+    if (requestedSource === 'miami_dade' || folio) {
+      sources = ['miami_dade'];
+    } else if (requestedSource === 'both') {
+      sources = ['shovels', 'miami_dade'];
+    }
+    
+    // For Florida addresses, prefer Miami-Dade when available
+    const isMiamiDade = address?.toLowerCase().includes('miami') || 
+                        address?.toLowerCase().includes('fl 33') ||
+                        folio;
+    if (isMiamiDade && !requestedSource) {
+      sources = ['miami_dade', 'shovels']; // Try Miami-Dade first
     }
 
-    // Resolve address to geo_id via Shovels V2 Addresses API
-    const addrSearchResp = await fetch(`https://api.shovels.ai/v2/addresses/search?q=${encodeURIComponent(address)}`, {
-      headers: {
-        'X-API-Key': shovelsApiKey,
-        'Content-Type': 'application/json'
+    let normalizedPermits: NormalizedPermit[] = [];
+
+    // ========== MIAMI-DADE SOURCE ==========
+    if (sources.includes('miami_dade')) {
+      try {
+        const miamiPermits = await fetchMiamiDadePermits(address, folio);
+        normalizedPermits.push(...miamiPermits);
+        console.log(`[miami-dade] Retrieved ${miamiPermits.length} permits`);
+      } catch (err) {
+        console.error('[miami-dade] Error fetching permits:', err);
+        // Continue to try other sources
       }
-    })
-
-    let geoId: string | null = null
-    if (addrSearchResp.ok) {
-      const addrJson = await addrSearchResp.json()
-      geoId = addrJson?.items?.[0]?.geo_id || null
-      console.log('Shovels address search items:', addrJson?.items?.length || 0, 'geo_id:', geoId)
-    } else {
-      console.log(`Shovels address search returned ${addrSearchResp.status}`)
     }
 
-    // Default date range required by V2 permits search
-    const to = new Date()
-    const from = new Date()
-    from.setFullYear(to.getFullYear() - 20) // last 20 years
-    const permit_from = from.toISOString().split('T')[0]
-    const permit_to = to.toISOString().split('T')[0]
-
-    // Fetch permits from Shovels V2 API using geo_id and date range
-    let permitsItems: any[] = []
-    if (geoId) {
-      const params = new URLSearchParams({
-        geo_id: geoId,
-        permit_from,
-        permit_to,
-        size: '100'
-      })
-      const permitsResponse = await fetch(`https://api.shovels.ai/v2/permits/search?${params.toString()}`, {
-        headers: {
-          'X-API-Key': shovelsApiKey,
-          'Content-Type': 'application/json'
-        }
-      })
-      if (permitsResponse.ok) {
-        const permitsJson = await permitsResponse.json()
-        permitsItems = permitsJson?.items || []
-        console.log('Received Shovels permits items:', permitsItems.length)
-      } else {
-        console.log(`Shovels permits search returned ${permitsResponse.status}`)
+    // ========== SHOVELS SOURCE ==========
+    if (sources.includes('shovels')) {
+      try {
+        const shovelsPermits = await fetchShovelsPermits(address);
+        normalizedPermits.push(...shovelsPermits);
+        console.log(`[shovels] Retrieved ${shovelsPermits.length} permits`);
+      } catch (err) {
+        console.error('[shovels] Error fetching permits:', err);
       }
-    } else {
-      console.log('No geo_id found for address; skipping permits search')
     }
 
-    // Violations endpoint not available in V2 docs; leaving empty for now
+    // Deduplicate by permit number (prefer more complete records)
+    normalizedPermits = deduplicatePermits(normalizedPermits);
+    console.log(`Total normalized permits after dedup: ${normalizedPermits.length}`);
+
+    // Violations endpoint not available; leaving empty for now
     const violationsData = { violations: [] as any[] }
 
     // If no homeId provided (validation mode), just return the data without saving
     if (!homeId) {
       console.log('Validation mode - returning data without saving to database')
       
-      // Process permits for return data (map V2 items to unified shape)
-      const processedPermits = (permitsItems || []).map((p: any) => {
-        const compat = { description: p.description || '', permit_type: p.type || '', work_class: null } as ShovelsPermit;
-        return {
-          permit_number: p.number || null,
-          permit_type: p.type || null,
-          work_class: null,
-          description: p.description || null,
-          status: p.status || null,
-          date_issued: p.issue_date ? new Date(p.issue_date).toISOString().split('T')[0] : null,
-          date_finaled: p.final_date ? new Date(p.final_date).toISOString().split('T')[0] : null,
-          valuation: p.job_value != null ? Number(p.job_value) : null,
-          contractor_name: null,
-          contractor_license: null,
-          jurisdiction: p.jurisdiction || null,
-          source_url: p.source_url || null,
-          source: 'shovels',
-          is_energy_related: isEnergyRelated(compat),
-          system_tags: extractSystemTags(compat),
-          raw: p
-        };
-      });
-
       return new Response(
         JSON.stringify({ 
           success: true,
-          permits: processedPermits,
+          permits: normalizedPermits,
           violations: violationsData?.violations || [],
-          message: `Retrieved ${processedPermits.length} permits and ${violationsData?.violations?.length || 0} violations (validation mode)`
+          sources_queried: sources,
+          message: `Retrieved ${normalizedPermits.length} permits (validation mode)`
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -194,8 +143,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true,
-          permits: [],
+          permits: normalizedPermits,
           violations: [],
+          sources_queried: sources,
           message: 'No user authentication - data retrieved but not saved'
         }),
         {
@@ -207,47 +157,34 @@ serve(async (req) => {
 
     // Process and insert permits
     let permitsInserted = 0
-    if (permitsItems && permitsItems.length) {
-      for (const permit of permitsItems) {
-        const permitData = {
-          user_id: effectiveUserId,
-          home_id: homeId,
-          permit_number: permit.number || null,
-          permit_type: permit.type || null,
-          work_class: null,
-          description: permit.description || null,
-          status: permit.status || null,
-          date_issued: permit.issue_date ? new Date(permit.issue_date).toISOString().split('T')[0] : null,
-          date_finaled: permit.final_date ? new Date(permit.final_date).toISOString().split('T')[0] : null,
-          valuation: permit.job_value != null ? Number(permit.job_value) : null,
-          contractor_name: null,
-          contractor_license: null,
-          jurisdiction: permit.jurisdiction || null,
-          source_url: permit.source_url || null,
-          source: 'shovels',
-          is_energy_related: isEnergyRelated(permit),
-          system_tags: extractSystemTags(permit),
-          hash: generateHash({ number: permit.number, issue_date: permit.issue_date, jurisdiction: permit.jurisdiction }),
-          raw: permit
-        }
+    for (const permit of normalizedPermits) {
+      const isEnergy = isEnergyRelated(permit);
+      const tags = extractSystemTags(permit);
+      const hash = generateHash({ 
+        number: permit.permit_number, 
+        issue_date: permit.date_issued, 
+        jurisdiction: permit.jurisdiction,
+        source: permit.source 
+      });
 
-        // Use upsert to avoid duplicates
-        const { error } = await supabaseClient
-          .from('permits')
-          .upsert(permitData, { 
-            onConflict: 'hash',
-            ignoreDuplicates: true 
-          })
+      const permitData = toPermitDbRecord(permit, effectiveUserId, homeId, isEnergy, tags, hash);
 
-        if (!error) {
-          permitsInserted++
-        } else {
-          console.error('Error inserting permit:', error)
-        }
+      // Use upsert to avoid duplicates
+      const { error } = await supabaseClient
+        .from('permits')
+        .upsert(permitData, { 
+          onConflict: 'hash',
+          ignoreDuplicates: true 
+        })
+
+      if (!error) {
+        permitsInserted++
+      } else {
+        console.error('Error inserting permit:', error)
       }
     }
 
-    // Process and insert violations
+    // Process and insert violations (placeholder)
     let violationsInserted = 0
     if (violationsData?.violations) {
       for (const violation of violationsData.violations) {
@@ -287,13 +224,14 @@ serve(async (req) => {
 
     // ========== PERMIT SIGNAL EXTRACTION (Centralized) ==========
     // Use centralized permit signal extractor - SINGLE SOURCE OF TRUTH
-    const permitSignal = deriveHVACPermitSignal(permitsItems);
+    // IMPORTANT: This function is source-agnostic. It only sees NormalizedPermit[].
+    const permitSignal = deriveHVACPermitSignal(normalizedPermits);
     
-    console.log(`[shovels-permits] HVAC signal: verified=${permitSignal.verified}, year=${permitSignal.installYear}, source=${permitSignal.installSource}`);
+    console.log(`[permits] HVAC signal: verified=${permitSignal.verified}, year=${permitSignal.installYear}, source=${permitSignal.installSource}`);
 
     // Update systems table when HVAC permit found
     if (homeId && permitsInserted > 0 && permitSignal.verified && permitSignal.installYear) {
-      console.log(`[shovels-permits] Found HVAC permit from ${permitSignal.installYear}, source: ${permitSignal.installSource}`);
+      console.log(`[permits] Found HVAC permit from ${permitSignal.installYear}, source: ${permitSignal.installSource}`);
 
       // Check existing system to apply override hierarchy
       const { data: existingSystem } = await supabaseClient
@@ -318,9 +256,9 @@ serve(async (req) => {
           });
         
         if (!insertError) {
-          console.log('[shovels-permits] Created HVAC system from permit, year:', permitSignal.installYear);
+          console.log('[permits] Created HVAC system from permit, year:', permitSignal.installYear);
         } else {
-          console.error('[shovels-permits] Error creating system:', insertError);
+          console.error('[permits] Error creating system:', insertError);
         }
       } else {
         // System exists - apply override hierarchy
@@ -331,14 +269,14 @@ serve(async (req) => {
         if (existingSource === 'inferred' || existingSource === 'unknown') {
           // Permit overrides inferred
           shouldUpdate = true;
-          console.log('[shovels-permits] Permit overrides inferred source');
+          console.log('[permits] Permit overrides inferred source');
         } else if (existingSource === 'user' && existingSystem.install_year) {
           // User input only wins if it's NEWER than permit date
           if (existingSystem.install_year < permitSignal.installYear) {
             shouldUpdate = true;
-            console.log('[shovels-permits] Permit is more recent than user input, overriding');
+            console.log('[permits] Permit is more recent than user input, overriding');
           } else {
-            console.log('[shovels-permits] User input is more recent, keeping user data');
+            console.log('[permits] User input is more recent, keeping user data');
           }
         }
 
@@ -354,9 +292,9 @@ serve(async (req) => {
             .eq('id', existingSystem.id);
           
           if (!updateError) {
-            console.log('[shovels-permits] Updated HVAC system from permit, year:', permitSignal.installYear);
+            console.log('[permits] Updated HVAC system from permit, year:', permitSignal.installYear);
           } else {
-            console.error('[shovels-permits] Error updating system:', updateError);
+            console.error('[permits] Error updating system:', updateError);
           }
         }
       }
@@ -367,6 +305,7 @@ serve(async (req) => {
         success: true,
         permitsInserted,
         violationsInserted,
+        sources_queried: sources,
         // Return normalized signal fields for downstream consumers
         hvac_permit_found: permitSignal.verified,
         hvac_install_year: permitSignal.installYear,
@@ -395,8 +334,158 @@ serve(async (req) => {
   }
 })
 
-// Helper functions
-function isEnergyRelated(permit: ShovelsPermit): boolean {
+// ========== SOURCE FETCHERS ==========
+
+/**
+ * Fetch permits from Miami-Dade ArcGIS API
+ */
+async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<NormalizedPermit[]> {
+  let whereClause = '1=1';
+  
+  if (folio) {
+    // Direct FOLIO lookup is most reliable
+    whereClause = `FOLIO='${folio.replace(/'/g, "''")}'`;
+  } else if (address) {
+    // Parse address for search - Miami-Dade uses STNDADDR field
+    const cleanAddr = address.replace(/'/g, "''").toUpperCase();
+    // Extract street number and name for matching
+    const streetMatch = cleanAddr.match(/^(\d+)\s+(.+?)(?:,|\s+MIAMI|\s+FL|$)/i);
+    if (streetMatch) {
+      const streetNum = streetMatch[1];
+      const streetName = streetMatch[2].trim();
+      whereClause = `STNDADDR LIKE '${streetNum} ${streetName}%'`;
+    } else {
+      // Fallback to broader search
+      whereClause = `STNDADDR LIKE '%${cleanAddr.split(',')[0].trim()}%'`;
+    }
+  }
+
+  // Build query with reasonable limits
+  const params = new URLSearchParams({
+    where: whereClause,
+    outFields: '*',
+    outSR: '4326',
+    f: 'json',
+    resultRecordCount: '100', // Limit results
+    orderByFields: 'ISSUDATE DESC' // Most recent first
+  });
+
+  const response = await fetch(`${MIAMI_DADE_API}?${params.toString()}`);
+  
+  if (!response.ok) {
+    throw new Error(`Miami-Dade API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(`Miami-Dade API error: ${data.error.message}`);
+  }
+
+  const features = data.features || [];
+  console.log(`[miami-dade] Query: ${whereClause}, Results: ${features.length}`);
+
+  return features.map((f: any) => normalizeMiamiDadePermit(f.attributes || f));
+}
+
+/**
+ * Fetch permits from Shovels V2 API
+ */
+async function fetchShovelsPermits(address: string): Promise<NormalizedPermit[]> {
+  const shovelsApiKey = Deno.env.get('SHOVELS_API_KEY')
+  if (!shovelsApiKey) {
+    throw new Error('Shovels API key not configured')
+  }
+
+  // Resolve address to geo_id via Shovels V2 Addresses API
+  const addrSearchResp = await fetch(`https://api.shovels.ai/v2/addresses/search?q=${encodeURIComponent(address)}`, {
+    headers: {
+      'X-API-Key': shovelsApiKey,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  let geoId: string | null = null
+  if (addrSearchResp.ok) {
+    const addrJson = await addrSearchResp.json()
+    geoId = addrJson?.items?.[0]?.geo_id || null
+    console.log('[shovels] Address search items:', addrJson?.items?.length || 0, 'geo_id:', geoId)
+  } else {
+    console.log(`[shovels] Address search returned ${addrSearchResp.status}`)
+    return [];
+  }
+
+  if (!geoId) {
+    console.log('[shovels] No geo_id found for address; skipping permits search')
+    return [];
+  }
+
+  // Default date range - last 20 years
+  const to = new Date()
+  const from = new Date()
+  from.setFullYear(to.getFullYear() - 20)
+  const permit_from = from.toISOString().split('T')[0]
+  const permit_to = to.toISOString().split('T')[0]
+
+  const params = new URLSearchParams({
+    geo_id: geoId,
+    permit_from,
+    permit_to,
+    size: '100'
+  })
+  
+  const permitsResponse = await fetch(`https://api.shovels.ai/v2/permits/search?${params.toString()}`, {
+    headers: {
+      'X-API-Key': shovelsApiKey,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!permitsResponse.ok) {
+    console.log(`[shovels] Permits search returned ${permitsResponse.status}`)
+    return [];
+  }
+
+  const permitsJson = await permitsResponse.json()
+  const permitsItems = permitsJson?.items || []
+  console.log('[shovels] Received permits items:', permitsItems.length)
+
+  return permitsItems.map((p: any) => normalizeShovelsPermit(p));
+}
+
+// ========== HELPER FUNCTIONS ==========
+
+/**
+ * Deduplicate permits by permit number, preferring records with more data
+ */
+function deduplicatePermits(permits: NormalizedPermit[]): NormalizedPermit[] {
+  const seen = new Map<string, NormalizedPermit>();
+  
+  for (const permit of permits) {
+    const key = permit.permit_number || `${permit.date_issued}-${permit.description?.slice(0, 50)}`;
+    
+    if (!seen.has(key)) {
+      seen.set(key, permit);
+    } else {
+      // Prefer record with more complete data
+      const existing = seen.get(key)!;
+      const existingScore = countFields(existing);
+      const newScore = countFields(permit);
+      
+      if (newScore > existingScore) {
+        seen.set(key, permit);
+      }
+    }
+  }
+  
+  return Array.from(seen.values());
+}
+
+function countFields(permit: NormalizedPermit): number {
+  return Object.values(permit).filter(v => v != null && v !== '').length;
+}
+
+function isEnergyRelated(permit: NormalizedPermit): boolean {
   const energyKeywords = [
     'solar', 'hvac', 'heat pump', 'insulation', 'window', 'door', 
     'electrical', 'energy', 'efficient', 'panel', 'battery'
@@ -406,15 +495,15 @@ function isEnergyRelated(permit: ShovelsPermit): boolean {
   return energyKeywords.some(keyword => text.includes(keyword))
 }
 
-function extractSystemTags(permit: ShovelsPermit): string[] {
+function extractSystemTags(permit: NormalizedPermit): string[] {
   const tags: string[] = []
   const text = `${permit.description || ''} ${permit.permit_type || ''} ${permit.work_class || ''}`.toLowerCase()
   
-  const systemMap = {
-    'hvac': ['hvac', 'heat', 'air', 'furnace', 'ac'],
+  const systemMap: Record<string, string[]> = {
+    'hvac': ['hvac', 'heat', 'air', 'furnace', 'ac', 'mechanical', 'a/c', 'condenser'],
     'electrical': ['electrical', 'electric', 'panel', 'wiring'],
     'plumbing': ['plumb', 'water', 'sewer', 'pipe'],
-    'roofing': ['roof', 'shingle', 'gutter'],
+    'roofing': ['roof', 'shingle', 'gutter', 're-roof'],
     'solar': ['solar', 'photovoltaic', 'pv'],
     'windows': ['window', 'glass'],
     'insulation': ['insulation', 'insulate']
