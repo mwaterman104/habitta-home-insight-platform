@@ -43,7 +43,7 @@ export const SmartToDoEngine: React.FC<SmartToDoEngineProps> = ({
   completionRate
 }) => {
   const { userHome } = useUserHome();
-  const propertyId = userHome?.property_id;
+  const propertyId = userHome?.id; // Use home's primary ID for intelligence-engine
   const homeId = userHome?.id;
   const { toggleTaskCompletion, completingTasks } = useTaskCompletion();
   

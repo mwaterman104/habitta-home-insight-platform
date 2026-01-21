@@ -44,7 +44,7 @@ export const FinancialInsights: React.FC<FinancialInsightsProps> = ({
   data = defaultFinancialData
 }) => {
   const { userHome, fullAddress } = useUserHome();
-  const propertyId = userHome?.property_id;
+  const propertyId = userHome?.id; // Use home's primary ID, not property_id foreign key
   
   // Use Intelligence Engine for budget predictions
   const { data: budgetData, loading, error } = useIntelligenceBudget(propertyId);

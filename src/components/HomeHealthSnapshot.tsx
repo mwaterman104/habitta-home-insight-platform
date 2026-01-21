@@ -40,7 +40,7 @@ export const HomeHealthSnapshot: React.FC<HomeHealthSnapshotProps> = ({
   systems
 }) => {
   const { userHome } = useUserHome();
-  const propertyId = userHome?.property_id;
+  const propertyId = userHome?.id; // Use home's primary ID, not property_id foreign key
   
   // Use Intelligence Engine for real data
   const { data: intelligenceData, loading, error } = useIntelligencePredictions(propertyId);
