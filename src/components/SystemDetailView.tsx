@@ -111,11 +111,9 @@ export function SystemDetailView({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Current age */}
+            {/* Current age - USE PROVIDED DATA */}
             <p className="text-sm text-muted-foreground">
-              Current age: {formatAge(new Date(new Date().getFullYear() - (prediction.lifespan.years_remaining_p50 > 0 ? 
-                new Date(prediction.lifespan.p50_failure_date).getFullYear() - new Date().getFullYear() - prediction.lifespan.years_remaining_p50 : 
-                0), 0, 1))}
+              Current age: {formatAge(prediction.lifespan.install_date)}
             </p>
             
             {/* Main prediction */}
@@ -130,11 +128,11 @@ export function SystemDetailView({
             
             {/* Progress bar */}
             <LifespanProgressBar
-              installDate={new Date(new Date(prediction.lifespan.p50_failure_date).getFullYear() - 13, 0, 1).toISOString()}
+              installDate={prediction.lifespan.install_date}
               p10Date={prediction.lifespan.p10_failure_date}
               p50Date={prediction.lifespan.p50_failure_date}
               p90Date={prediction.lifespan.p90_failure_date}
-              currentAge={13 - prediction.lifespan.years_remaining_p50}
+              currentAge={prediction.lifespan.current_age_years}
             />
             
             {/* Confidence */}

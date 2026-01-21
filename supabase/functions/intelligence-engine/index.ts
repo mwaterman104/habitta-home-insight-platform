@@ -799,6 +799,8 @@ function scoreHVACFailureWindow(
   );
 
   return {
+    install_date: installDate.toISOString(),
+    current_age_years: Number(age_years.toFixed(1)),
     p10_failure_date: ensureFutureDate(p10_failure_date).toISOString(),
     p50_failure_date: ensureFutureDate(p50_failure_date).toISOString(),
     p90_failure_date: ensureFutureDate(p90_failure_date).toISOString(),
