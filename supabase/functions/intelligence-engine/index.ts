@@ -1559,11 +1559,21 @@ async function getRoofPrediction(homeId: string): Promise<SystemPredictionOutput
     .maybeSingle();
 
   // SEMANTIC SEPARATION: These are different concepts, don't conflate
-  const systemInstallYear = roofSystem?.install_year ?? null;
+  const rawSystemInstallYear = roofSystem?.install_year ?? null;
   const homeYearBuilt = home?.year_built ?? null;
   const currentYear = new Date().getFullYear();
 
-  // Priority: systems.install_year > homes.year_built > dynamic fallback
+  // VALIDATION: systems.install_year must be >= homes.year_built (can't install before home exists)
+  // If systems table has invalid data (install before home built), prefer home year
+  const systemInstallYear = (rawSystemInstallYear && homeYearBuilt && rawSystemInstallYear < homeYearBuilt)
+    ? null  // Discard invalid systems data
+    : rawSystemInstallYear;
+
+  if (rawSystemInstallYear && homeYearBuilt && rawSystemInstallYear < homeYearBuilt) {
+    console.warn(`[getRoofPrediction] Invalid systems.install_year (${rawSystemInstallYear}) < homes.year_built (${homeYearBuilt}), discarding`);
+  }
+
+  // Priority: valid systems.install_year > homes.year_built > dynamic fallback
   let effectiveYearBuilt: number;
   let installSource: 'systems_table' | 'home_year_built' | 'fallback';
   
@@ -1574,7 +1584,7 @@ async function getRoofPrediction(homeId: string): Promise<SystemPredictionOutput
   } else if (homeYearBuilt) {
     effectiveYearBuilt = homeYearBuilt;
     installSource = 'home_year_built';
-    console.log(`[getRoofPrediction] Using homes.year_built: ${homeYearBuilt}`);
+    console.log(`[getRoofPrediction] Using homes.year_built: ${homeYearBuilt} (roof assumed original)`);
   } else {
     effectiveYearBuilt = currentYear - 15;  // Dynamic fallback, NOT 1990
     installSource = 'fallback';
@@ -1779,11 +1789,21 @@ async function getWaterHeaterPrediction(homeId: string): Promise<SystemPredictio
     .maybeSingle();
 
   // SEMANTIC SEPARATION: These are different concepts
-  const systemInstallYear = whSystem?.install_year ?? null;
+  const rawSystemInstallYear = whSystem?.install_year ?? null;
   const homeYearBuilt = home?.year_built ?? null;
   const currentYear = new Date().getFullYear();
 
-  // Priority: systems.install_year > homes.year_built > dynamic fallback
+  // VALIDATION: systems.install_year must be >= homes.year_built (can't install before home exists)
+  // If systems table has invalid data (install before home built), prefer home year
+  const systemInstallYear = (rawSystemInstallYear && homeYearBuilt && rawSystemInstallYear < homeYearBuilt)
+    ? null  // Discard invalid systems data
+    : rawSystemInstallYear;
+
+  if (rawSystemInstallYear && homeYearBuilt && rawSystemInstallYear < homeYearBuilt) {
+    console.warn(`[getWaterHeaterPrediction] Invalid systems.install_year (${rawSystemInstallYear}) < homes.year_built (${homeYearBuilt}), discarding`);
+  }
+
+  // Priority: valid systems.install_year > homes.year_built > dynamic fallback
   let effectiveYearBuilt: number;
   let installSource: 'systems_table' | 'home_year_built' | 'fallback';
   
@@ -1794,7 +1814,7 @@ async function getWaterHeaterPrediction(homeId: string): Promise<SystemPredictio
   } else if (homeYearBuilt) {
     effectiveYearBuilt = homeYearBuilt;
     installSource = 'home_year_built';
-    console.log(`[getWaterHeaterPrediction] Using homes.year_built: ${homeYearBuilt}`);
+    console.log(`[getWaterHeaterPrediction] Using homes.year_built: ${homeYearBuilt} (water heater assumed original)`);
   } else {
     effectiveYearBuilt = currentYear - 10;  // Dynamic fallback for water heaters (shorter lifespan)
     installSource = 'fallback';
