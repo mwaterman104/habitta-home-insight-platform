@@ -21,10 +21,7 @@ export function DualPathForecast({ current, withCare, ifUntracked }: DualPathFor
     <div className="bg-white/60 rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
-          24-Month Outlook
-        </span>
-        <span className="text-xs text-muted-foreground">
-          (relative health index)
+          24-Month Outlook (Relative Home Health Index)
         </span>
       </div>
       

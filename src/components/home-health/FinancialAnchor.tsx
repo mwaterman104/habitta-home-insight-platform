@@ -15,8 +15,7 @@ interface FinancialAnchorProps {
 export function FinancialAnchor({ 
   preventiveCost12mo, 
   avoidedRepairs12mo, 
-  riskReductionPercent, 
-  roiStatement 
+  riskReductionPercent
 }: FinancialAnchorProps) {
   return (
     <div className="bg-green-50/50 border border-green-100 rounded-lg p-3 space-y-2">
@@ -31,7 +30,7 @@ export function FinancialAnchor({
         </div>
         <div>
           <div className="text-lg font-bold text-green-700">{avoidedRepairs12mo}</div>
-          <div className="text-xs text-muted-foreground">Likely avoided</div>
+          <div className="text-xs text-muted-foreground">Repairs likely avoided</div>
         </div>
         <div>
           <div className="text-lg font-bold text-blue-700">{riskReductionPercent}%</div>
@@ -39,8 +38,8 @@ export function FinancialAnchor({
         </div>
       </div>
       
-      <p className="text-xs text-center text-green-700 font-medium pt-1">
-        {roiStatement}
+      <p className="text-xs text-center text-muted-foreground pt-1">
+        For South Florida homes like yours, avoiding one common HVAC repair typically covers a year of Habitta.
       </p>
     </div>
   );
