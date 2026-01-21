@@ -21,6 +21,10 @@ export interface HVACSurvivalCore {
  * UI-layer formatting lives in src/utils/lifespanFormatters.ts
  */
 export interface LifespanPrediction {
+  /** System install date (ISO string) */
+  install_date: string;
+  /** Current age in years (calculated from install date) */
+  current_age_years: number;
   /** Early failure date - 10th percentile (ISO string) */
   p10_failure_date: string;
   /** Most likely failure date - 50th percentile (ISO string) */
