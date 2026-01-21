@@ -955,6 +955,81 @@ function calculateHVACSurvivalCore(
   return { ageYears, remainingYears, adjustedLifespanYears, status, hasRecentMaintenance, installSource };
 }
 
+/**
+ * Build optimization signals (SEMANTIC ONLY - no copy)
+ * Frontend derives all copy from these signals via optimizationCopy.ts
+ */
+interface OptimizationSignals {
+  confidenceState: 'low' | 'medium' | 'high';
+  signals: {
+    permitVerified: boolean;
+    installSource: 'permit_install' | 'permit_replacement' | 'inferred' | 'default';
+    maintenanceState: 'good' | 'unknown' | 'needs_attention';
+    hasLimitedHistory: boolean;
+    climateRegion: 'south_florida' | 'other';
+    usageState: 'typical' | 'heavy' | 'unknown';
+  };
+  planningEligibility: {
+    remainingYears: number;
+    isForeseeable: boolean;
+  };
+  tipsContext: {
+    season: 'spring' | 'summer' | 'fall' | 'winter';
+    climateRegion: 'south_florida' | 'other';
+  };
+}
+
+function buildOptimizationSignals(
+  core: HVACSurvivalCore,
+  context: {
+    confidence_0_1: number;
+    permitVerified: boolean;
+    installSource: string;
+    hasRecentMaintenance: boolean;
+    hasLimitedHistory: boolean;
+    isSouthFlorida: boolean;
+  }
+): OptimizationSignals {
+  // Derive confidence state from raw score
+  const confidenceState: 'low' | 'medium' | 'high' =
+    context.confidence_0_1 >= 0.8 ? 'high' :
+    context.confidence_0_1 >= 0.4 ? 'medium' : 'low';
+
+  // Derive maintenance state from signals
+  const maintenanceState: 'good' | 'unknown' | 'needs_attention' =
+    context.hasRecentMaintenance ? 'good' :
+    context.hasLimitedHistory ? 'unknown' : 'needs_attention';
+
+  // Derive current season
+  const month = new Date().getMonth();
+  const season: 'spring' | 'summer' | 'fall' | 'winter' = 
+    month >= 2 && month <= 4 ? 'spring' :
+    month >= 5 && month <= 7 ? 'summer' :
+    month >= 8 && month <= 10 ? 'fall' : 'winter';
+
+  const climateRegion = context.isSouthFlorida ? 'south_florida' : 'other';
+
+  return {
+    confidenceState,
+    signals: {
+      permitVerified: context.permitVerified,
+      installSource: context.installSource as 'permit_install' | 'permit_replacement' | 'inferred' | 'default',
+      maintenanceState,
+      hasLimitedHistory: context.hasLimitedHistory,
+      climateRegion,
+      usageState: 'typical', // v1: estimated
+    },
+    planningEligibility: {
+      remainingYears: core.remainingYears,
+      isForeseeable: core.remainingYears <= 5,
+    },
+    tipsContext: {
+      season,
+      climateRegion,
+    }
+  };
+}
+
 function buildHVACPredictionOutput(
   core: HVACSurvivalCore,
   context: { 
@@ -1081,6 +1156,16 @@ function buildHVACPredictionOutput(
     provenance: context.lifespan.provenance,
   } : undefined;
   
+  // Build optimization signals (SEMANTIC ONLY - no copy)
+  const optimization = buildOptimizationSignals(core, {
+    confidence_0_1: context.lifespan?.confidence_0_1 || 0.5,
+    permitVerified: context.permitSignal?.verified || false,
+    installSource: core.installSource,
+    hasRecentMaintenance,
+    hasLimitedHistory: context.hasLimitedHistory || false,
+    isSouthFlorida: context.isSouthFlorida !== false
+  });
+  
   return {
     systemKey: 'hvac',
     status,
@@ -1103,6 +1188,7 @@ function buildHVACPredictionOutput(
     planning,
     history: context.history,
     lifespan,
+    optimization,
   };
 }
 

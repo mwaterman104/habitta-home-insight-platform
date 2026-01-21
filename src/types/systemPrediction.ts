@@ -95,6 +95,44 @@ export interface SystemPrediction {
    * UI formatting via src/utils/lifespanFormatters.ts
    */
   lifespan?: LifespanPrediction;
+  
+  /** 
+   * Optimization signals - SEMANTIC ONLY (no copy)
+   * Frontend derives presentation from these signals
+   * Mirrors lifespan pattern: semantic data here, formatting in optimizationCopy.ts
+   */
+  optimization?: SystemOptimizationSignals;
+}
+
+/**
+ * System Optimization Signals - SEMANTIC ONLY (no copy)
+ * Frontend derives presentation from these signals
+ */
+export interface SystemOptimizationSignals {
+  /** Confidence bucket for copy selection */
+  confidenceState: 'low' | 'medium' | 'high';
+
+  /** Raw signals for UI composition */
+  signals: {
+    permitVerified: boolean;
+    installSource: 'permit_install' | 'permit_replacement' | 'inferred' | 'default';
+    maintenanceState: 'good' | 'unknown' | 'needs_attention';
+    hasLimitedHistory: boolean;
+    climateRegion: 'south_florida' | 'other';
+    usageState: 'typical' | 'heavy' | 'unknown';
+  };
+
+  /** Planning eligibility (UI decides visibility/gating) */
+  planningEligibility: {
+    remainingYears: number;
+    isForeseeable: boolean; // remainingYears <= 5
+  };
+
+  /** Context for tips selection */
+  tipsContext: {
+    season: 'spring' | 'summer' | 'fall' | 'winter';
+    climateRegion: 'south_florida' | 'other';
+  };
 }
 
 /**

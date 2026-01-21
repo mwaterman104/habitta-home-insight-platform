@@ -2,9 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { ChatDIYBanner } from "@/components/ChatDIYBanner";
 import { LifespanProgressBar } from "@/components/LifespanProgressBar";
+import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
+import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
 import { 
   formatReplacementWindow, 
   formatMostLikelyYear, 
@@ -28,6 +31,8 @@ export function SystemDetailView({
   onBack,
   onActionComplete 
 }: SystemDetailViewProps) {
+  const navigate = useNavigate();
+  
   const getStatusIcon = () => {
     switch (prediction.status) {
       case 'low':
@@ -135,18 +140,29 @@ export function SystemDetailView({
               currentAge={prediction.lifespan.current_age_years}
             />
             
-            {/* Confidence */}
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Estimate confidence:</span>
-              <Badge variant="outline" className="text-xs">
-                {mapConfidenceLabel(prediction.lifespan.confidence_0_1)}
-              </Badge>
+            {/* Confidence with dynamic helper text */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Estimate confidence:</span>
+                <Badge variant="outline" className="text-xs">
+                  {mapConfidenceLabel(prediction.lifespan.confidence_0_1)}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                {CONFIDENCE_HELPER_TEXT[prediction.optimization?.confidenceState || 'medium']}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground italic">
-              Confidence reflects data completeness — not system condition.
-            </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* System Optimization Section - NEW */}
+      {prediction.optimization && (
+        <SystemOptimizationSection
+          optimization={prediction.optimization}
+          onMaintenanceCta={() => navigate('/chatdiy?topic=hvac-maintenance-checklist')}
+          onPlanningCta={() => navigate('/planning')}
+        />
       )}
 
       {/* Low-risk reassurance card */}
