@@ -1,16 +1,19 @@
 /**
- * HVACPermitSignal - The ONLY semantic interface for HVAC permit data
+ * PermitSignal - The ONLY semantic interface for permit data
  * 
  * RULE: No keyword matching outside this file.
  * 
- * IMPORTANT: verified === finalized HVAC-related permit exists (not necessarily full install)
- * This distinction matters because mechanical permits can include duct mods, not just installs.
+ * IMPORTANT: verified === finalized permit exists (not necessarily full install)
+ * This distinction matters because mechanical permits can include mods, not just installs.
  * 
- * @version v1
+ * @version v2 - Extended to support Roof and Water Heater
  */
 
-export interface HVACPermitSignal {
-  /** Finalized HVAC-related permit exists (not necessarily full install verified) */
+export type PermitSystemType = 'hvac' | 'roof' | 'water_heater';
+
+export interface SystemPermitSignal {
+  systemType: PermitSystemType;
+  /** Finalized permit exists */
   verified: boolean;
   /** Install year from permit date (prefers finalization date) */
   installYear: number | null;
@@ -23,8 +26,11 @@ export interface HVACPermitSignal {
   /** Bounded confidence boost for scoring */
   confidenceBoost: 0 | 0.15 | 0.25 | 0.30;
   /** Signal version for reproducibility */
-  signalVersion: 'v1';
+  signalVersion: 'v2';
 }
+
+// Legacy type alias for backward compatibility
+export type HVACPermitSignal = SystemPermitSignal;
 
 // ============== Keywords defined ONCE - single source of truth ==============
 
@@ -33,66 +39,107 @@ const HVAC_KEYWORDS = [
   'condenser', 'air handler', 'furnace', 'cooling', 'heating'
 ];
 
-const REPLACEMENT_KEYWORDS = [
+const HVAC_REPLACEMENT_KEYWORDS = [
   'replace', 'change out', 'changeout', 'change-out', 'upgrade', 'new unit'
 ];
 
-const INSTALL_KEYWORDS = ['install', 'new system', 'conversion'];
+const HVAC_INSTALL_KEYWORDS = ['install', 'new system', 'conversion'];
+
+const ROOF_KEYWORDS = [
+  'roof', 're-roof', 'reroof', 'shingle', 'tile roof', 'metal roof',
+  'roofing', 'tear off', 'tear-off'
+];
+
+const ROOF_REPLACEMENT_KEYWORDS = [
+  're-roof', 'reroof', 'tear off', 'tear-off', 'replacement', 'new roof', 'replace'
+];
+
+const WATER_HEATER_KEYWORDS = [
+  'water heater', 'hot water', 'tankless', 'water heat', 'tank water'
+];
+
+const WATER_HEATER_REPLACEMENT_KEYWORDS = [
+  'replace', 'new', 'install', 'conversion', 'upgrade'
+];
+
+// Keyword map by system type
+const SYSTEM_KEYWORDS: Record<PermitSystemType, string[]> = {
+  hvac: HVAC_KEYWORDS,
+  roof: ROOF_KEYWORDS,
+  water_heater: WATER_HEATER_KEYWORDS,
+};
+
+const REPLACEMENT_KEYWORDS: Record<PermitSystemType, string[]> = {
+  hvac: HVAC_REPLACEMENT_KEYWORDS,
+  roof: ROOF_REPLACEMENT_KEYWORDS,
+  water_heater: WATER_HEATER_REPLACEMENT_KEYWORDS,
+};
+
+const INSTALL_KEYWORDS: Record<PermitSystemType, string[]> = {
+  hvac: HVAC_INSTALL_KEYWORDS,
+  roof: ['new roof', 'install'],
+  water_heater: ['install', 'new'],
+};
 
 // ============== Main export ==============
 
 /**
- * THE authoritative permit signal extractor
+ * THE authoritative permit signal extractor (system-agnostic)
  * All downstream consumers use this - no raw permit inspection elsewhere
  * 
+ * @param systemType - 'hvac' | 'roof' | 'water_heater'
  * @param permits - Array of permit records from any source (Shovels, database, etc.)
- * @returns HVACPermitSignal with normalized, bounded values
+ * @returns SystemPermitSignal with normalized, bounded values
  */
-export function deriveHVACPermitSignal(permits: any[]): HVACPermitSignal {
-  const emptySignal: HVACPermitSignal = {
+export function deriveSystemPermitSignal(
+  systemType: PermitSystemType,
+  permits: any[]
+): SystemPermitSignal {
+  const emptySignal: SystemPermitSignal = {
+    systemType,
     verified: false,
     installYear: null,
     installSource: null,
     confidenceBoost: 0,
-    signalVersion: 'v1'
+    signalVersion: 'v2'
   };
 
   if (!permits?.length) return emptySignal;
 
-  // Find HVAC permits with dates
-  // IMPORTANT: This function is source-agnostic. It only sees NormalizedPermit[].
-  // It does NOT know about ArcGIS, Shovels, or Miami-Dade.
-  const hvacPermits = permits.filter(p => {
+  const keywords = SYSTEM_KEYWORDS[systemType];
+  const replacementKws = REPLACEMENT_KEYWORDS[systemType];
+  const installKws = INSTALL_KEYWORDS[systemType];
+
+  // Find matching permits with dates
+  const matchingPermits = permits.filter(p => {
     const text = `${p.description || ''} ${p.permit_type || ''} ${p.work_class || ''}`.toLowerCase();
-    const isHVAC = HVAC_KEYWORDS.some(kw => text.includes(kw)) || text.includes('mechanical');
-    // Check for date availability using normalized field names
+    const isMatch = keywords.some(kw => text.includes(kw)) || 
+      (systemType === 'hvac' && text.includes('mechanical'));
     const hasDate = p.date_finaled || p.final_date || p.approval_date || p.date_issued || p.issue_date;
-    return isHVAC && hasDate;
+    return isMatch && hasDate;
   });
 
-  if (!hvacPermits.length) return emptySignal;
+  if (!matchingPermits.length) return emptySignal;
 
   // Sort by most authoritative date, get most recent
-  // Priority: finalization > approval > issuance (for install accuracy)
-  hvacPermits.sort((a, b) => {
+  matchingPermits.sort((a, b) => {
     const getDate = (p: any) => 
       p.date_finaled || p.final_date || p.approval_date || p.date_issued || p.issue_date;
     return new Date(getDate(b)).getTime() - new Date(getDate(a)).getTime();
   });
 
-  const latest = hvacPermits[0];
+  const latest = matchingPermits[0];
   const desc = (latest.description || '').toLowerCase();
   
-  // Use most authoritative date for install year
   const permitDate = latest.date_finaled || latest.final_date || 
                      latest.approval_date || 
                      latest.date_issued || latest.issue_date;
 
   // Classify: replacement vs new install
-  const isReplacement = REPLACEMENT_KEYWORDS.some(kw => desc.includes(kw));
-  const isNewInstall = INSTALL_KEYWORDS.some(kw => desc.includes(kw)) && !isReplacement;
+  const isReplacement = replacementKws.some(kw => desc.includes(kw));
+  const isNewInstall = installKws.some(kw => desc.includes(kw)) && !isReplacement;
 
-  const installSource: HVACPermitSignal['installSource'] = 
+  const installSource: SystemPermitSignal['installSource'] = 
     isReplacement ? 'permit_replacement' 
     : isNewInstall ? 'permit_install' 
     : null;
@@ -100,36 +147,54 @@ export function deriveHVACPermitSignal(permits: any[]): HVACPermitSignal {
   // Confidence boost based on classification (bounded values only)
   // - Replacement: 0.25 (verified but slight quality uncertainty)
   // - New install: 0.30 (new system, higher quality confidence)
-  // - Unclassified HVAC permit: 0.15 (verified but unknown context)
-  const confidenceBoost: HVACPermitSignal['confidenceBoost'] = 
+  // - Unclassified permit: 0.15 (verified but unknown context)
+  const confidenceBoost: SystemPermitSignal['confidenceBoost'] = 
     isReplacement ? 0.25 
     : isNewInstall ? 0.30 
     : 0.15;
 
   return {
-    verified: true, // This means "finalized HVAC permit exists" not "full install verified"
+    systemType,
+    verified: true,
     installYear: permitDate ? new Date(permitDate).getFullYear() : null,
     installSource,
     permitNumber: latest.permit_number || latest.number,
     permitDescription: latest.description,
     confidenceBoost,
-    signalVersion: 'v1'
+    signalVersion: 'v2'
   };
 }
 
 /**
- * Check if HVAC permit keywords match (for system enrichment)
- * Used only internally for database enrichment, not for signal derivation
+ * Legacy function - derive HVAC permit signal
+ * @deprecated Use deriveSystemPermitSignal('hvac', permits) instead
+ */
+export function deriveHVACPermitSignal(permits: any[]): SystemPermitSignal {
+  return deriveSystemPermitSignal('hvac', permits);
+}
+
+/**
+ * Check if permit matches a specific system type
+ */
+export function isSystemPermit(systemType: PermitSystemType, permit: any): boolean {
+  const text = `${permit.description || ''} ${permit.permit_type || permit.type || ''} ${permit.work_class || ''}`.toLowerCase();
+  const keywords = SYSTEM_KEYWORDS[systemType];
+  return keywords.some(kw => text.includes(kw)) || 
+    (systemType === 'hvac' && text.includes('mechanical'));
+}
+
+/**
+ * Check if HVAC permit keywords match (backward compatibility)
  */
 export function isHVACPermit(permit: any): boolean {
-  const text = `${permit.description || ''} ${permit.permit_type || permit.type || ''} ${permit.work_class || ''}`.toLowerCase();
-  return HVAC_KEYWORDS.some(kw => text.includes(kw)) || text.includes('mechanical');
+  return isSystemPermit('hvac', permit);
 }
 
 /**
  * Check if permit indicates replacement vs new install
  */
-export function isReplacementPermit(permit: any): boolean {
+export function isReplacementPermit(systemType: PermitSystemType, permit: any): boolean {
   const desc = (permit.description || '').toLowerCase();
-  return REPLACEMENT_KEYWORDS.some(kw => desc.includes(kw));
+  const replacementKws = REPLACEMENT_KEYWORDS[systemType];
+  return replacementKws.some(kw => desc.includes(kw));
 }

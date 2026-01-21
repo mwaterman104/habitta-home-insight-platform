@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
+import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 
 // Canonical Home Pulse Components
 import { HomeHealthCard } from "@/components/HomeHealthCard";
@@ -13,6 +14,8 @@ import { FinancialOutlookCard } from "@/components/FinancialOutlookCard";
 import { HomeValueImpact } from "@/components/HomeValueImpact";
 import { ChatDIYBanner } from "@/components/ChatDIYBanner";
 import { HomePulseGreeting } from "@/components/HomePulseGreeting";
+import { CapitalTimeline } from "@/components/CapitalTimeline";
+import { CapitalOutlookCard } from "@/components/CapitalOutlookCard";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 
@@ -63,6 +66,12 @@ export default function HomePulsePage() {
 
   // Fetch maintenance tasks from database
   const { data: maintenanceTasks, loading: tasksLoading } = useUpcomingTasks(userHome?.id, 365);
+
+  // Fetch capital timeline (Roof + Water Heater + HVAC)
+  const { timeline: capitalTimeline, loading: timelineLoading } = useCapitalTimeline({ 
+    homeId: userHome?.id, 
+    enabled: !!userHome?.id 
+  });
 
   // Fetch user home
   useEffect(() => {
@@ -371,14 +380,27 @@ export default function HomePulsePage() {
         </div>
       </section>
 
-      {/* 4. Maintenance Timeline */}
+      {/* 4. Capital Timeline - Roof + Water Heater + HVAC */}
+      {timelineLoading ? (
+        <Skeleton className="h-48 rounded-2xl" />
+      ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
+        <>
+          <CapitalTimeline 
+            timeline={capitalTimeline} 
+            onSystemClick={handleSystemClick}
+          />
+          <CapitalOutlookCard outlook={capitalTimeline.capitalOutlook} />
+        </>
+      ) : null}
+
+      {/* 5. Maintenance Timeline */}
       <MaintenanceTimeline
         nowTasks={nowTasks}
         thisYearTasks={thisYearTasks}
         futureYearsTasks={futureYearsTasks}
       />
 
-      {/* 5. Financial Outlook */}
+      {/* 6. Financial Outlook */}
       <FinancialOutlookCard
         estimatedCosts={hvacPrediction?.status === 'high' ? '$300–$500' : '$100–$200'}
         avoidedRepairs="~$1,200"
