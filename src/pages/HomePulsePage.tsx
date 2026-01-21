@@ -139,59 +139,8 @@ export default function HomePulsePage() {
     fetchHvacPrediction();
   }, [userHome?.id]);
 
-  // Navigate to system detail page
-  const handleSystemClick = (systemKey: string) => {
-    navigate(`/system/${systemKey}`);
-  };
-
-  // Navigate to home profile
-  const handleAddressClick = () => {
-    navigate('/home-profile');
-  };
-
-  // Derive overall health score from HVAC prediction
-  const getOverallScore = () => {
-    if (!hvacPrediction) return 82; // Default fallback
-    switch (hvacPrediction.status) {
-      case 'low': return 85;
-      case 'moderate': return 70;
-      case 'high': return 55;
-      default: return 82;
-    }
-  };
-
-  // Derive systems needing attention
-  const getSystemsNeedingAttention = () => {
-    if (!hvacPrediction) return 0;
-    return hvacPrediction.status !== 'low' ? 1 : 0;
-  };
-
-  // Get "why" bullets from HVAC prediction (protective factors only)
-  const getWhyBullets = (): string[] => {
-    if (!hvacPrediction?.why?.bullets) {
-      // Default protective bullets when no prediction available
-      return [
-        "HVAC system age is well within expected lifespan",
-        "No abnormal usage or stress indicators detected",
-        "Local climate conditions are continuously monitored"
-      ];
-    }
-    return hvacPrediction.why.bullets;
-  };
-
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6 animate-pulse max-w-3xl mx-auto">
-        <Skeleton className="h-20 rounded-2xl" />
-        <Skeleton className="h-32 rounded-2xl" />
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-24 rounded-xl" />
-      </div>
-    );
-  }
-
   // Build maintenance timeline from database tasks + HVAC prediction fallback
+  // IMPORTANT: This must be called BEFORE any early returns to follow React's rules of hooks
   const { nowTasks, thisYearTasks, futureYearsTasks } = useMemo(() => {
     const now = new Date();
     const threeMonthsLater = new Date(now);
@@ -260,6 +209,58 @@ export default function HomePulsePage() {
       
     return { nowTasks: fallbackNow, thisYearTasks: fallbackYear, futureYearsTasks: fallbackFuture };
   }, [maintenanceTasks, hvacPrediction]);
+
+  // Navigate to system detail page
+  const handleSystemClick = (systemKey: string) => {
+    navigate(`/system/${systemKey}`);
+  };
+
+  // Navigate to home profile
+  const handleAddressClick = () => {
+    navigate('/home-profile');
+  };
+
+  // Derive overall health score from HVAC prediction
+  const getOverallScore = () => {
+    if (!hvacPrediction) return 82; // Default fallback
+    switch (hvacPrediction.status) {
+      case 'low': return 85;
+      case 'moderate': return 70;
+      case 'high': return 55;
+      default: return 82;
+    }
+  };
+
+  // Derive systems needing attention
+  const getSystemsNeedingAttention = () => {
+    if (!hvacPrediction) return 0;
+    return hvacPrediction.status !== 'low' ? 1 : 0;
+  };
+
+  // Get "why" bullets from HVAC prediction (protective factors only)
+  const getWhyBullets = (): string[] => {
+    if (!hvacPrediction?.why?.bullets) {
+      // Default protective bullets when no prediction available
+      return [
+        "HVAC system age is well within expected lifespan",
+        "No abnormal usage or stress indicators detected",
+        "Local climate conditions are continuously monitored"
+      ];
+    }
+    return hvacPrediction.why.bullets;
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 animate-pulse max-w-3xl mx-auto">
+        <Skeleton className="h-20 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-48 rounded-2xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </div>
+    );
+  }
 
   // Check if still enriching
   const isEnriching = userHome?.pulse_status === 'enriching' || userHome?.pulse_status === 'initializing';
