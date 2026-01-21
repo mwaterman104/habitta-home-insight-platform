@@ -1045,6 +1045,8 @@ function buildHVACPredictionOutput(
   
   // Build lifespan block from failure window result (semantic only)
   const lifespan = context.lifespan ? {
+    install_date: context.lifespan.install_date,
+    current_age_years: context.lifespan.current_age_years,
     p10_failure_date: context.lifespan.p10_failure_date,
     p50_failure_date: context.lifespan.p50_failure_date,
     p90_failure_date: context.lifespan.p90_failure_date,

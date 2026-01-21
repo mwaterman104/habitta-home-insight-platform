@@ -87,8 +87,10 @@ export function formatYearsRemainingRange(
 /**
  * Calculate current age from install date
  */
-export function calculateAge(installDate: string | Date): number {
+export function calculateAge(installDate: string | Date | undefined | null): number {
+  if (!installDate) return 0;
   const install = typeof installDate === 'string' ? new Date(installDate) : installDate;
+  if (isNaN(install.getTime())) return 0;
   const now = new Date();
   return Math.max(0, (now.getTime() - install.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
 }
@@ -97,7 +99,8 @@ export function calculateAge(installDate: string | Date): number {
  * Format age for display
  * @example "2 years"
  */
-export function formatAge(installDate: string | Date): string {
+export function formatAge(installDate: string | Date | undefined | null): string {
+  if (!installDate) return 'Unknown';
   const age = calculateAge(installDate);
   const rounded = Math.round(age);
   
