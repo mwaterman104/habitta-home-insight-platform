@@ -346,17 +346,19 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
     // Direct FOLIO lookup is most reliable
     whereClause = `FOLIO='${folio.replace(/'/g, "''")}'`;
   } else if (address) {
-    // Parse address for search - Miami-Dade uses STNDADDR field
-    const cleanAddr = address.replace(/'/g, "''").toUpperCase();
-    // Extract street number and name for matching
-    const streetMatch = cleanAddr.match(/^(\d+)\s+(.+?)(?:,|\s+MIAMI|\s+FL|$)/i);
-    if (streetMatch) {
-      const streetNum = streetMatch[1];
-      const streetName = streetMatch[2].trim();
-      whereClause = `STNDADDR LIKE '${streetNum} ${streetName}%'`;
+    // Miami-Dade uses abbreviated address format: "3082 NW 64 ST" not "NORTHWEST 64TH STREET"
+    // Use the ADDRESS field (not STNDADDR) with normalized abbreviations
+    const normalizedAddr = normalizeMiamiDadeAddress(address);
+    
+    if (normalizedAddr) {
+      // Use ADDRESS field with the normalized format
+      whereClause = `ADDRESS LIKE '${normalizedAddr}%'`;
     } else {
-      // Fallback to broader search
-      whereClause = `STNDADDR LIKE '%${cleanAddr.split(',')[0].trim()}%'`;
+      // Fallback: extract just the street number for broader matching
+      const streetNumMatch = address.match(/^(\d+)/);
+      if (streetNumMatch) {
+        whereClause = `ADDRESS LIKE '${streetNumMatch[1]}%'`;
+      }
     }
   }
 
@@ -386,6 +388,70 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
   console.log(`[miami-dade] Query: ${whereClause}, Results: ${features.length}`);
 
   return features.map((f: any) => normalizeMiamiDadePermit(f.attributes || f));
+}
+
+/**
+ * Normalize address to Miami-Dade format:
+ * - "3082 Northwest 64th Street" -> "3082 NW 64 ST"
+ * - Uses standard abbreviations: NW, NE, SW, SE, ST, AVE, CT, DR, etc.
+ */
+function normalizeMiamiDadeAddress(address: string): string | null {
+  // Remove everything after comma (city, state, zip)
+  const streetPart = address.split(',')[0].trim().toUpperCase();
+  
+  // Extract: street number + direction + street name/number + suffix
+  const match = streetPart.match(/^(\d+)\s+(NORTHWEST|NORTHEAST|SOUTHWEST|SOUTHEAST|NW|NE|SW|SE|N|S|E|W)?\s*(.+)$/i);
+  
+  if (!match) return null;
+  
+  const streetNum = match[1];
+  let direction = (match[2] || '').toUpperCase();
+  let streetName = match[3].toUpperCase();
+  
+  // Normalize direction abbreviations
+  const directionMap: Record<string, string> = {
+    'NORTHWEST': 'NW',
+    'NORTHEAST': 'NE', 
+    'SOUTHWEST': 'SW',
+    'SOUTHEAST': 'SE',
+    'NORTH': 'N',
+    'SOUTH': 'S',
+    'EAST': 'E',
+    'WEST': 'W'
+  };
+  direction = directionMap[direction] || direction;
+  
+  // Normalize street suffixes
+  const suffixMap: Record<string, string> = {
+    'STREET': 'ST',
+    'AVENUE': 'AVE',
+    'COURT': 'CT',
+    'DRIVE': 'DR',
+    'BOULEVARD': 'BLVD',
+    'LANE': 'LN',
+    'PLACE': 'PL',
+    'ROAD': 'RD',
+    'TERRACE': 'TER',
+    'WAY': 'WAY',
+    'CIRCLE': 'CIR'
+  };
+  
+  for (const [full, abbrev] of Object.entries(suffixMap)) {
+    streetName = streetName.replace(new RegExp(`\\b${full}\\b`, 'g'), abbrev);
+  }
+  
+  // Remove ordinal suffixes: 64TH -> 64, 1ST -> 1, 2ND -> 2, 3RD -> 3
+  streetName = streetName.replace(/(\d+)(ST|ND|RD|TH)\b/g, '$1');
+  
+  // Clean up extra spaces
+  streetName = streetName.replace(/\s+/g, ' ').trim();
+  
+  // Build the normalized address
+  const parts = [streetNum];
+  if (direction) parts.push(direction);
+  parts.push(streetName);
+  
+  return parts.join(' ').replace(/'/g, "''"); // Escape for SQL
 }
 
 /**
