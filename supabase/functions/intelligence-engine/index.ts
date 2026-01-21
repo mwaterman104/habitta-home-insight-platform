@@ -1546,27 +1546,74 @@ async function getRoofPrediction(homeId: string): Promise<SystemPredictionOutput
     .select('*')
     .eq('home_id', homeId);
 
-  // 3. Build property context
+  // 3. NEW: Check systems table for explicit roof install data (PRIORITY 1)
+  const { data: roofSystem } = await supabase
+    .from('systems')
+    .select('install_year, install_source, confidence')
+    .eq('home_id', homeId)
+    .ilike('kind', 'roof')  // Case-insensitive match (handles ROOF vs roof)
+    .not('install_year', 'is', null)  // Only rows with install data
+    .order('confidence', { ascending: false })
+    .order('install_year', { ascending: false })  // Newer replacements win
+    .limit(1)
+    .maybeSingle();
+
+  // SEMANTIC SEPARATION: These are different concepts, don't conflate
+  const systemInstallYear = roofSystem?.install_year ?? null;
+  const homeYearBuilt = home?.year_built ?? null;
+  const currentYear = new Date().getFullYear();
+
+  // Priority: systems.install_year > homes.year_built > dynamic fallback
+  let effectiveYearBuilt: number;
+  let installSource: 'systems_table' | 'home_year_built' | 'fallback';
+  
+  if (systemInstallYear) {
+    effectiveYearBuilt = systemInstallYear;
+    installSource = 'systems_table';
+    console.log(`[getRoofPrediction] Using systems table install_year: ${systemInstallYear}`);
+  } else if (homeYearBuilt) {
+    effectiveYearBuilt = homeYearBuilt;
+    installSource = 'home_year_built';
+    console.log(`[getRoofPrediction] Using homes.year_built: ${homeYearBuilt}`);
+  } else {
+    effectiveYearBuilt = currentYear - 15;  // Dynamic fallback, NOT 1990
+    installSource = 'fallback';
+    console.log(`[getRoofPrediction] Using dynamic fallback: ${effectiveYearBuilt} (no data available)`);
+  }
+
+  // 4. Build property context with correct year
   const property: PropertyContext = {
-    yearBuilt: home?.year_built || 1990,
+    yearBuilt: effectiveYearBuilt,
     state: home?.state || 'FL',
     city: home?.city,
     roofMaterial: 'unknown',
   };
 
-  // 4. Get region context
+  // 5. Get region context
   const region = getRegionContext(home?.state || 'FL', home?.city);
 
-  // 5. Use timeline inference (SINGLE SOURCE OF TRUTH)
+  // 6. Use timeline inference (SINGLE SOURCE OF TRUTH)
   const timeline = inferRoofTimeline(property, region, permits || []);
+
+  // 7. Override installSource/dataQuality based on actual data source
+  if (installSource === 'systems_table') {
+    timeline.install.installSource = 'inferred';  // Will show as "estimated" - better than unknown
+    timeline.install.dataQuality = 'medium';
+    timeline.install.rationale = 'Install year from system records';
+  } else if (installSource === 'fallback') {
+    timeline.install.installSource = 'unknown';
+    timeline.install.dataQuality = 'low';
+    timeline.install.rationale = 'Install year estimated due to missing records';
+  }
 
   console.log(`[getRoofPrediction] Timeline computed:`, {
     installYear: timeline.install.installYear,
     likelyYear: timeline.replacementWindow.likelyYear,
     dataQuality: timeline.install.dataQuality,
+    source: installSource,
   });
 
-  // 6. Convert timeline to SystemPrediction format
+  // 8. Convert timeline to SystemPrediction format
   return buildRoofPredictionOutput(timeline, home);
 }
 
@@ -1719,27 +1766,74 @@ async function getWaterHeaterPrediction(homeId: string): Promise<SystemPredictio
     .select('*')
     .eq('home_id', homeId);
 
-  // 3. Build property context
+  // 3. NEW: Check systems table for explicit water heater install data (PRIORITY 1)
+  const { data: whSystem } = await supabase
+    .from('systems')
+    .select('install_year, install_source, confidence')
+    .eq('home_id', homeId)
+    .ilike('kind', 'water_heater')  // Case-insensitive match
+    .not('install_year', 'is', null)
+    .order('confidence', { ascending: false })
+    .order('install_year', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // SEMANTIC SEPARATION: These are different concepts
+  const systemInstallYear = whSystem?.install_year ?? null;
+  const homeYearBuilt = home?.year_built ?? null;
+  const currentYear = new Date().getFullYear();
+
+  // Priority: systems.install_year > homes.year_built > dynamic fallback
+  let effectiveYearBuilt: number;
+  let installSource: 'systems_table' | 'home_year_built' | 'fallback';
+  
+  if (systemInstallYear) {
+    effectiveYearBuilt = systemInstallYear;
+    installSource = 'systems_table';
+    console.log(`[getWaterHeaterPrediction] Using systems table install_year: ${systemInstallYear}`);
+  } else if (homeYearBuilt) {
+    effectiveYearBuilt = homeYearBuilt;
+    installSource = 'home_year_built';
+    console.log(`[getWaterHeaterPrediction] Using homes.year_built: ${homeYearBuilt}`);
+  } else {
+    effectiveYearBuilt = currentYear - 10;  // Dynamic fallback for water heaters (shorter lifespan)
+    installSource = 'fallback';
+    console.log(`[getWaterHeaterPrediction] Using dynamic fallback: ${effectiveYearBuilt} (no data available)`);
+  }
+
+  // 4. Build property context with correct year
   const property: PropertyContext = {
-    yearBuilt: home?.year_built || 1990,
+    yearBuilt: effectiveYearBuilt,
     state: home?.state || 'FL',
     city: home?.city,
     waterHeaterType: 'unknown',
   };
 
-  // 4. Get region context
+  // 5. Get region context
   const region = getRegionContext(home?.state || 'FL', home?.city);
 
-  // 5. Use timeline inference (SINGLE SOURCE OF TRUTH)
+  // 6. Use timeline inference (SINGLE SOURCE OF TRUTH)
   const timeline = inferWaterHeaterTimeline(property, region, permits || []);
+
+  // 7. Override installSource/dataQuality based on actual data source
+  if (installSource === 'systems_table') {
+    timeline.install.installSource = 'inferred';
+    timeline.install.dataQuality = 'medium';
+    timeline.install.rationale = 'Install year from system records';
+  } else if (installSource === 'fallback') {
+    timeline.install.installSource = 'unknown';
+    timeline.install.dataQuality = 'low';
+    timeline.install.rationale = 'Install year estimated due to missing records';
+  }
 
   console.log(`[getWaterHeaterPrediction] Timeline computed:`, {
     installYear: timeline.install.installYear,
     likelyYear: timeline.replacementWindow.likelyYear,
     dataQuality: timeline.install.dataQuality,
+    source: installSource,
   });
 
-  // 6. Convert timeline to SystemPrediction format
+  // 8. Convert timeline to SystemPrediction format
   return buildWaterHeaterPredictionOutput(timeline, home);
 }
 
