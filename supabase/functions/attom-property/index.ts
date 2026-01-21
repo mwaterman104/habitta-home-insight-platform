@@ -216,15 +216,18 @@ serve(async (req) => {
       },
     });
 
-    if (!attomResponse.ok) {
-      console.error(`Attom API error: ${attomResponse.status} - ${attomResponse.statusText}`);
-      const errorText = await attomResponse.text();
-      console.error('Error response:', errorText);
-      
+    // Parse response body - ATTOM returns 400 with "SuccessWithoutResult" for addresses not found
+    const responseText = await attomResponse.text();
+    let attomData: AttomPropertyResponse;
+    
+    try {
+      attomData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse ATTOM response:', responseText);
       return new Response(
         JSON.stringify({ 
           error: `Attom API Error: ${attomResponse.status} - ${attomResponse.statusText}`,
-          details: errorText 
+          details: responseText 
         }),
         { 
           status: attomResponse.status, 
@@ -232,26 +235,43 @@ serve(async (req) => {
         }
       );
     }
-
-    const attomData: AttomPropertyResponse = await attomResponse.json();
     
     console.log('Attom API response received:', {
+      status: attomResponse.status,
       total: attomData.status?.total || 0,
       code: attomData.status?.code || 'unknown',
       msg: attomData.status?.msg || 'unknown'
     });
 
     // Handle "SuccessWithoutResult" - this is Attom's way of saying no data found
+    // ATTOM returns HTTP 400 with this message, which is not a real error
     if (attomData.status?.msg === 'SuccessWithoutResult' || attomData.status?.total === 0) {
-      console.log(`No Attom data found for address: ${address}`);
+      console.log(`[attom-property] No data found for address: ${address}`);
       return new Response(
         JSON.stringify({ 
-          error: 'No property data found in Attom database',
-          searchedAddress: address,
-          attomStatus: attomData.status
+          notFound: true,
+          message: 'No property data found in Attom database',
+          searchedAddress: address
         }),
         { 
-          status: 404, 
+          status: 200, // Return 200 with notFound flag so callers can handle gracefully
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    // Handle actual errors (not SuccessWithoutResult)
+    if (!attomResponse.ok) {
+      console.error(`Attom API error: ${attomResponse.status} - ${attomResponse.statusText}`);
+      console.error('Error response:', responseText);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: `Attom API Error: ${attomResponse.status} - ${attomResponse.statusText}`,
+          details: responseText 
+        }),
+        { 
+          status: attomResponse.status, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
