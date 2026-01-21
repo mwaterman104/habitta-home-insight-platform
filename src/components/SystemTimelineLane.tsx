@@ -18,16 +18,27 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
   const { earlyYear, likelyYear, lateYear } = system.replacementWindow;
   const range = endYear - startYear;
   
-  // Calculate positions as percentages
-  const earlyPos = Math.max(0, ((earlyYear - startYear) / range) * 100);
-  const likelyPos = Math.max(0, Math.min(100, ((likelyYear - startYear) / range) * 100));
-  const latePos = Math.min(100, ((lateYear - startYear) / range) * 100);
+  // Calculate positions as percentages (clamped to visible range)
+  const rawEarlyPos = ((earlyYear - startYear) / range) * 100;
+  const rawLikelyPos = ((likelyYear - startYear) / range) * 100;
+  const rawLatePos = ((lateYear - startYear) / range) * 100;
   
-  // Width of the window bar
-  const barWidth = Math.max(5, latePos - earlyPos); // Minimum 5% width for visibility
+  // Clamp positions for rendering
+  const earlyPos = Math.max(0, Math.min(100, rawEarlyPos));
+  const likelyPos = Math.max(0, Math.min(100, rawLikelyPos));
+  const latePos = Math.max(0, Math.min(100, rawLatePos));
   
-  // Color based on how soon the likely replacement is
-  const yearsToLikely = likelyYear - startYear;
+  // Determine if any part of the window is visible
+  const isWindowVisible = rawEarlyPos < 100 && rawLatePos > 0;
+  
+  // Width of the window bar (clamped to visible portion)
+  const visibleStart = Math.max(0, earlyPos);
+  const visibleEnd = Math.min(100, latePos);
+  const barWidth = Math.max(5, visibleEnd - visibleStart); // Minimum 5% width for visibility
+  
+  // Color based on how soon the likely replacement is (from current year, not startYear)
+  const currentYear = new Date().getFullYear();
+  const yearsToLikely = likelyYear - currentYear;
   
   // Solid colors matching the reference design aesthetic
   const getWindowColor = () => {
@@ -79,28 +90,28 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
             {/* Timeline bar container */}
             <div className="flex-1 h-7 bg-muted/30 rounded-lg relative overflow-hidden">
               {/* The replacement window bar - light solid color */}
-              {earlyPos < 100 && (
+              {isWindowVisible && (
                 <div 
                   className={`absolute inset-y-1 ${getWindowColor()} rounded-md transition-all`}
                   style={{ 
-                    left: `${earlyPos}%`, 
+                    left: `${visibleStart}%`, 
                     width: `${barWidth}%`,
                   }}
                 />
               )}
               
               {/* "Most likely" filled portion - darker solid from early to likely */}
-              {earlyPos < 100 && likelyPos >= earlyPos && (
+              {isWindowVisible && likelyPos > visibleStart && (
                 <div 
                   className={`absolute inset-y-1 ${getLikelyColor()} rounded-md transition-all`}
                   style={{ 
-                    left: `${earlyPos}%`, 
-                    width: `${Math.max(0, likelyPos - earlyPos)}%`,
+                    left: `${visibleStart}%`, 
+                    width: `${Math.max(0, Math.min(likelyPos, visibleEnd) - visibleStart)}%`,
                   }}
                 />
               )}
               
-              {/* Most likely marker - taller vertical line */}
+              {/* Most likely marker - taller vertical line (only if visible) */}
               {likelyPos <= 100 && likelyPos >= 0 && (
                 <div 
                   className={`absolute w-1 ${getMarkerColor()} rounded-sm`}
@@ -110,6 +121,22 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
                     height: '100%'
                   }}
                 />
+              )}
+              
+              {/* "Beyond timeline" indicator for systems entirely past visible range */}
+              {rawEarlyPos >= 100 && (
+                <div className="absolute inset-0 flex items-center justify-end pr-2">
+                  <span className="text-xs text-emerald-600 font-medium">
+                    ~{likelyYear} (beyond horizon)
+                  </span>
+                </div>
+              )}
+              
+              {/* Indicator when likely year extends past visible range but window starts visible */}
+              {isWindowVisible && rawLikelyPos > 100 && (
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground italic">
+                  →{likelyYear}
+                </div>
               )}
             </div>
             
