@@ -58,33 +58,33 @@ export function LifespanProgressBar({
     if (currentAge >= p10Years) {
       return 'bg-amber-500'; // In the warning zone
     }
-    return 'bg-green-500';
+    return 'bg-emerald-500';
   };
   
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("space-y-1", className)}>
       {/* Progress bar container */}
-      <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-        {/* Current age fill */}
+      <div className="relative h-2.5 bg-muted rounded-full">
+        {/* Current age fill - solid color */}
         <div 
-          className={cn("absolute left-0 top-0 h-full rounded-full transition-all", getBarColor())}
+          className={cn("absolute left-0 top-0 h-full rounded-full", getBarColor())}
           style={{ width: `${currentPosition}%` }}
         />
         
-        {/* Markers */}
-        <Marker position={p10Position} color="bg-amber-400" />
-        <Marker position={p50Position} color="bg-blue-500" />
-        <Marker position={p90Position} color="bg-green-400" />
-        
-        {/* Current position indicator */}
+        {/* Current position indicator - black dot */}
         <div 
-          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-foreground rounded-full border-2 border-background shadow-sm"
-          style={{ left: `calc(${currentPosition}% - 8px)` }}
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-foreground rounded-full shadow-md z-10"
+          style={{ left: `calc(${currentPosition}% - 6px)` }}
         />
+        
+        {/* Markers - taller, extending below the bar */}
+        <Marker position={p10Position} color="bg-amber-500" />
+        <Marker position={p50Position} color="bg-teal-600" />
+        <Marker position={p90Position} color="bg-slate-700" />
       </div>
       
-      {/* Labels */}
-      <div className="relative h-6 text-xs text-muted-foreground">
+      {/* Labels - positioned below markers */}
+      <div className="relative h-5 text-xs text-muted-foreground pt-1">
         <Label position={p10Position} label="Early life" />
         <Label position={p50Position} label="Most likely" />
         <Label position={p90Position} label="Late life" />
@@ -101,8 +101,12 @@ interface MarkerProps {
 function Marker({ position, color }: MarkerProps) {
   return (
     <div 
-      className={cn("absolute top-0 bottom-0 w-0.5", color)}
-      style={{ left: `${position}%` }}
+      className={cn("absolute w-0.5 rounded-full", color)}
+      style={{ 
+        left: `${position}%`,
+        top: '-2px',
+        height: 'calc(100% + 6px)'
+      }}
     />
   );
 }
@@ -115,19 +119,22 @@ interface LabelProps {
 function Label({ position, label }: LabelProps) {
   // Adjust label position to prevent overflow
   const adjustedPosition = 
-    position < 15 ? 0 : 
-    position > 85 ? 100 : 
+    position < 12 ? 0 : 
+    position > 88 ? 100 : 
     position;
   
   const alignment = 
-    position < 15 ? 'left-0' : 
-    position > 85 ? 'right-0' : 
-    '-translate-x-1/2';
+    position < 12 ? 'text-left' : 
+    position > 88 ? 'text-right' : 
+    'text-center -translate-x-1/2';
   
   return (
     <span 
-      className={cn("absolute whitespace-nowrap", alignment)}
-      style={{ left: position < 15 || position > 85 ? undefined : `${adjustedPosition}%` }}
+      className={cn("absolute whitespace-nowrap text-[11px]", alignment)}
+      style={{ 
+        left: position < 12 ? 0 : position > 88 ? undefined : `${adjustedPosition}%`,
+        right: position > 88 ? 0 : undefined
+      }}
     >
       {label}
     </span>
