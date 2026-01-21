@@ -1,8 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.51.0';
-import { deriveHVACPermitSignal, type HVACPermitSignal } from '../_shared/permitSignal.ts';
+import { deriveHVACPermitSignal, deriveSystemPermitSignal, type HVACPermitSignal, type SystemPermitSignal, type PermitSystemType } from '../_shared/permitSignal.ts';
 import { SYSTEM_CONFIGS } from '../_shared/systemConfigs.ts';
+import { inferRoofTimeline, inferWaterHeaterTimeline, getRegionContext, type PropertyContext, type InferredTimeline } from '../_shared/systemInference.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1341,6 +1342,407 @@ async function getHVACPrediction(homeId: string): Promise<HVACSystemPrediction> 
   });
 }
 
+// ============== Roof Prediction ==============
+
+interface SystemPredictionOutput {
+  systemKey: 'hvac' | 'roof' | 'water_heater';
+  status: 'low' | 'moderate' | 'high';
+  header: {
+    name: string;
+    installedLine: string;
+    statusLabel: string;
+  };
+  forecast: {
+    headline: 'What to Expect';
+    summary: string;
+    reassurance?: string;
+    state: 'reassuring' | 'watch' | 'urgent';
+  };
+  why: {
+    bullets: string[];
+    riskContext?: string[];
+    sourceLabel?: string;
+  };
+  factors: {
+    helps: string[];
+    hurts: string[];
+  };
+  actions: Array<{
+    title: string;
+    metaLine: string;
+    priority: 'standard' | 'high';
+    diyOrPro: 'DIY' | 'PRO' | 'Either';
+    chatdiySlug: string;
+  }>;
+  planning?: {
+    text: string;
+  };
+  history?: Array<{
+    date: string;
+    description: string;
+    source: string;
+  }>;
+  lifespan?: {
+    install_date: string;
+    current_age_years: number;
+    p10_failure_date: string;
+    p50_failure_date: string;
+    p90_failure_date: string;
+    years_remaining_p50: number;
+    confidence_0_1: number;
+  };
+  optimization?: any;
+  disclosureNote?: string;
+  capitalContext?: {
+    contributesToOutlook: boolean;
+    estimatedCost: { low: number; high: number };
+  };
+}
+
+/**
+ * Build Roof Prediction from timeline inference
+ * Follows HVAC pattern but with emotionally-sensitive copy
+ */
+function buildRoofPredictionOutput(
+  timeline: InferredTimeline,
+  home: any
+): SystemPredictionOutput {
+  const { install, replacementWindow, capitalCost, lifespanDrivers, disclosureNote } = timeline;
+  const currentYear = new Date().getFullYear();
+  
+  const yearsRemaining = replacementWindow.likelyYear - currentYear;
+  const status: 'low' | 'moderate' | 'high' = 
+    yearsRemaining > 10 ? 'low' :
+    yearsRemaining > 5 ? 'moderate' : 'high';
+
+  // Emotionally sensitive status labels (softer than HVAC)
+  const statusLabels: Record<string, string> = {
+    low: 'Low Risk',
+    moderate: 'Planning Horizon',  // SOFTER than "Moderate Risk"
+    high: 'Nearing End of Life',
+  };
+
+  const forecasts: Record<string, { summary: string; reassurance?: string; state: 'reassuring' | 'watch' | 'urgent' }> = {
+    low: {
+      summary: "Roof is within expected lifespan.",
+      reassurance: "No urgent action required.",
+      state: 'reassuring',
+    },
+    moderate: {
+      summary: "Consider budgeting for roof replacement in the coming years.",
+      reassurance: "This is a planning item, not an emergency.",
+      state: 'watch',
+    },
+    high: {
+      summary: "Roof may need replacement within the next few years.",
+      state: 'urgent',
+    },
+  };
+
+  // Protective bullets for "Why" section
+  const protectiveBullets: string[] = [];
+  if (yearsRemaining > 5) {
+    protectiveBullets.push("Roof age is within expected lifespan");
+  }
+  if (install.installSource === 'permit') {
+    protectiveBullets.push("Install date verified through permit records");
+  }
+  protectiveBullets.push("Regional climate factors are continuously monitored");
+
+  // Risk context
+  const riskBullets: string[] = [];
+  if (install.installSource !== 'permit') {
+    riskBullets.push("No roof permit found. Estimate based on home age and regional patterns.");
+  }
+  if (install.dataQuality === 'low') {
+    riskBullets.push("This estimate will improve as inspection or replacement data is added.");
+  }
+  lifespanDrivers.filter(d => d.impact === 'decrease').forEach(d => {
+    riskBullets.push(d.description || d.factor);
+  });
+
+  // Limited actions (max 2, calming)
+  const actions = status !== 'low' ? [
+    {
+      title: "Schedule roof inspection",
+      metaLine: "$150–$300 · PRO recommended",
+      priority: 'standard' as const,
+      diyOrPro: 'PRO' as const,
+      chatdiySlug: 'roof-inspection',
+    },
+  ] : [];
+
+  const planning = yearsRemaining <= 5 ? {
+    text: `If replacement is needed, typical costs range from $${(capitalCost.low / 1000).toFixed(0)}k–$${(capitalCost.high / 1000).toFixed(0)}k depending on material and complexity.`,
+  } : undefined;
+
+  const computedInstallYear = install.installYear || home?.year_built || (currentYear - 15);
+  const sourceNote = install.installSource === 'permit'
+    ? '(based on permit)'
+    : install.installSource === 'inferred' 
+      ? '(estimated)'
+      : '(estimated from home age)';
+
+  const helps: string[] = install.installSource === 'permit' ? ['Install date verified'] : [];
+  const hurts: string[] = lifespanDrivers
+    .filter(d => d.impact === 'decrease')
+    .map(d => d.factor);
+
+  // Lifespan block for UI
+  const installDate = new Date(computedInstallYear, 0, 1);
+  const lifespan = {
+    install_date: installDate.toISOString(),
+    current_age_years: currentYear - computedInstallYear,
+    p10_failure_date: new Date(replacementWindow.earlyYear, 6, 1).toISOString(),
+    p50_failure_date: new Date(replacementWindow.likelyYear, 6, 1).toISOString(),
+    p90_failure_date: new Date(replacementWindow.lateYear, 6, 1).toISOString(),
+    years_remaining_p50: yearsRemaining,
+    confidence_0_1: install.dataQuality === 'high' ? 0.75 : install.dataQuality === 'medium' ? 0.5 : 0.35,
+  };
+
+  return {
+    systemKey: 'roof',
+    status,
+    header: {
+      name: 'Roof',
+      installedLine: `Installed ~${computedInstallYear} ${sourceNote}`,
+      statusLabel: statusLabels[status],
+    },
+    forecast: {
+      headline: 'What to Expect',
+      ...forecasts[status],
+    },
+    why: {
+      bullets: protectiveBullets,
+      riskContext: riskBullets,
+      sourceLabel: install.installSource === 'permit' ? 'Based on permit records' : 'Based on home age',
+    },
+    factors: { helps, hurts },
+    actions,
+    planning,
+    lifespan,
+    // EMOTIONAL GUARDRAIL - always shown for roof
+    disclosureNote: disclosureNote || "Roofs vary widely; this window reflects typical outcomes for similar homes.",
+    capitalContext: {
+      contributesToOutlook: true,
+      estimatedCost: capitalCost,
+    },
+  };
+}
+
+async function getRoofPrediction(homeId: string): Promise<SystemPredictionOutput> {
+  console.log(`[getRoofPrediction] Getting prediction for home: ${homeId}`);
+  
+  // 1. Fetch home data
+  const { data: home } = await supabase
+    .from('homes')
+    .select('year_built, state, city')
+    .eq('id', homeId)
+    .single();
+
+  // 2. Fetch permits
+  const { data: permits } = await supabase
+    .from('permits')
+    .select('*')
+    .eq('home_id', homeId);
+
+  // 3. Build property context
+  const property: PropertyContext = {
+    yearBuilt: home?.year_built || 1990,
+    state: home?.state || 'FL',
+    city: home?.city,
+    roofMaterial: 'unknown',
+  };
+
+  // 4. Get region context
+  const region = getRegionContext(home?.state || 'FL', home?.city);
+
+  // 5. Use timeline inference (SINGLE SOURCE OF TRUTH)
+  const timeline = inferRoofTimeline(property, region, permits || []);
+
+  console.log(`[getRoofPrediction] Timeline computed:`, {
+    installYear: timeline.install.installYear,
+    likelyYear: timeline.replacementWindow.likelyYear,
+    dataQuality: timeline.install.dataQuality,
+  });
+
+  // 6. Convert timeline to SystemPrediction format
+  return buildRoofPredictionOutput(timeline, home);
+}
+
+// ============== Water Heater Prediction ==============
+
+/**
+ * Build Water Heater Prediction from timeline inference
+ * Follows HVAC pattern with practical maintenance actions
+ */
+function buildWaterHeaterPredictionOutput(
+  timeline: InferredTimeline,
+  home: any
+): SystemPredictionOutput {
+  const { install, replacementWindow, capitalCost, lifespanDrivers, disclosureNote } = timeline;
+  const currentYear = new Date().getFullYear();
+  
+  const yearsRemaining = replacementWindow.likelyYear - currentYear;
+  const status: 'low' | 'moderate' | 'high' = 
+    yearsRemaining > 5 ? 'low' :
+    yearsRemaining > 2 ? 'moderate' : 'high';
+
+  const statusLabels: Record<string, string> = {
+    low: 'Low Risk',
+    moderate: 'Watch Item',
+    high: 'Likely Due Soon',
+  };
+
+  const forecasts: Record<string, { summary: string; reassurance?: string; state: 'reassuring' | 'watch' | 'urgent' }> = {
+    low: {
+      summary: "Water heater is within expected lifespan.",
+      reassurance: "No action needed at this time.",
+      state: 'reassuring',
+    },
+    moderate: {
+      summary: "Water heater is aging but still functional.",
+      reassurance: "Monitoring helps avoid surprise failures.",
+      state: 'watch',
+    },
+    high: {
+      summary: "Water heater may fail within the next 1-2 years.",
+      state: 'urgent',
+    },
+  };
+
+  // Protective bullets
+  const protectiveBullets: string[] = [];
+  if (yearsRemaining > 3) {
+    protectiveBullets.push("Water heater age is within expected lifespan");
+  }
+  if (install.installSource === 'permit') {
+    protectiveBullets.push("Install date verified through permit records");
+  }
+  protectiveBullets.push("Local water quality factors are accounted for");
+
+  // Risk context
+  const riskBullets: string[] = [];
+  if (install.installSource !== 'permit') {
+    riskBullets.push("No water heater permit found. This is common as many replacements don't require permits.");
+  }
+  if (install.dataQuality === 'low') {
+    riskBullets.push("This estimate will improve as replacement or service data is added.");
+  }
+
+  // Practical actions (max 2)
+  const actions = status !== 'low' ? [
+    {
+      title: "Flush water heater tank",
+      metaLine: "$0 · 30 min DIY",
+      priority: 'standard' as const,
+      diyOrPro: 'DIY' as const,
+      chatdiySlug: 'water-heater-flush',
+    },
+    {
+      title: "Check anode rod",
+      metaLine: "$20–$50 · DIY or PRO",
+      priority: 'standard' as const,
+      diyOrPro: 'Either' as const,
+      chatdiySlug: 'water-heater-anode',
+    },
+  ].slice(0, 2) : [];
+
+  const planning = yearsRemaining <= 3 ? {
+    text: `If replacement is needed, typical costs range from $${(capitalCost.low / 1000).toFixed(1)}k–$${(capitalCost.high / 1000).toFixed(1)}k depending on tank type and fuel source.`,
+  } : undefined;
+
+  const computedInstallYear = install.installYear || home?.year_built || (currentYear - 8);
+  const sourceNote = install.installSource === 'permit'
+    ? '(based on permit)'
+    : '(estimated)';
+
+  const helps: string[] = install.installSource === 'permit' ? ['Install date verified'] : [];
+  const hurts: string[] = lifespanDrivers
+    .filter(d => d.impact === 'decrease')
+    .map(d => d.factor);
+
+  // Lifespan block
+  const installDate = new Date(computedInstallYear, 0, 1);
+  const lifespan = {
+    install_date: installDate.toISOString(),
+    current_age_years: currentYear - computedInstallYear,
+    p10_failure_date: new Date(replacementWindow.earlyYear, 6, 1).toISOString(),
+    p50_failure_date: new Date(replacementWindow.likelyYear, 6, 1).toISOString(),
+    p90_failure_date: new Date(replacementWindow.lateYear, 6, 1).toISOString(),
+    years_remaining_p50: yearsRemaining,
+    confidence_0_1: install.dataQuality === 'high' ? 0.75 : install.dataQuality === 'medium' ? 0.5 : 0.35,
+  };
+
+  return {
+    systemKey: 'water_heater',
+    status,
+    header: {
+      name: 'Water Heater',
+      installedLine: `Installed ~${computedInstallYear} ${sourceNote}`,
+      statusLabel: statusLabels[status],
+    },
+    forecast: {
+      headline: 'What to Expect',
+      ...forecasts[status],
+    },
+    why: {
+      bullets: protectiveBullets,
+      riskContext: riskBullets,
+      sourceLabel: install.installSource === 'permit' ? 'Based on permit records' : 'Based on home age',
+    },
+    factors: { helps, hurts },
+    actions,
+    planning,
+    lifespan,
+    disclosureNote: disclosureNote,
+    capitalContext: {
+      contributesToOutlook: true,
+      estimatedCost: capitalCost,
+    },
+  };
+}
+
+async function getWaterHeaterPrediction(homeId: string): Promise<SystemPredictionOutput> {
+  console.log(`[getWaterHeaterPrediction] Getting prediction for home: ${homeId}`);
+  
+  // 1. Fetch home data
+  const { data: home } = await supabase
+    .from('homes')
+    .select('year_built, state, city')
+    .eq('id', homeId)
+    .single();
+
+  // 2. Fetch permits
+  const { data: permits } = await supabase
+    .from('permits')
+    .select('*')
+    .eq('home_id', homeId);
+
+  // 3. Build property context
+  const property: PropertyContext = {
+    yearBuilt: home?.year_built || 1990,
+    state: home?.state || 'FL',
+    city: home?.city,
+    waterHeaterType: 'unknown',
+  };
+
+  // 4. Get region context
+  const region = getRegionContext(home?.state || 'FL', home?.city);
+
+  // 5. Use timeline inference (SINGLE SOURCE OF TRUTH)
+  const timeline = inferWaterHeaterTimeline(property, region, permits || []);
+
+  console.log(`[getWaterHeaterPrediction] Timeline computed:`, {
+    installYear: timeline.install.installYear,
+    likelyYear: timeline.replacementWindow.likelyYear,
+    dataQuality: timeline.install.dataQuality,
+  });
+
+  // 6. Convert timeline to SystemPrediction format
+  return buildWaterHeaterPredictionOutput(timeline, home);
+}
+
 // ============== Home Forecast (Conversion-Optimized) ==============
 
 interface HomeForecastOutput {
@@ -1701,6 +2103,30 @@ serve(async (req) => {
         if (!propertyId) throw new Error('property_id parameter required');
         result = await getHomeForecast(propertyId);
         break;
+
+      // UNIFIED SYSTEM PREDICTION - single action for all system types
+      case 'system-prediction': {
+        if (!propertyId) throw new Error('property_id parameter required');
+        const systemKey = body?.systemKey as string;
+        if (!systemKey) throw new Error('systemKey parameter required');
+        
+        console.log(`[intelligence-engine] system-prediction: systemKey=${systemKey}, propertyId=${propertyId}`);
+        
+        switch (systemKey) {
+          case 'hvac':
+            result = await getHVACPrediction(propertyId);
+            break;
+          case 'roof':
+            result = await getRoofPrediction(propertyId);
+            break;
+          case 'water_heater':
+            result = await getWaterHeaterPrediction(propertyId);
+            break;
+          default:
+            throw new Error(`Unsupported system: ${systemKey}`);
+        }
+        break;
+      }
 
       default:
         throw new Error(`Unknown action: ${action}`);

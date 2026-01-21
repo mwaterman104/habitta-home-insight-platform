@@ -8,6 +8,7 @@ import { ChatDIYBanner } from "@/components/ChatDIYBanner";
 import { LifespanProgressBar } from "@/components/LifespanProgressBar";
 import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
 import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
+import { SYSTEM_META, isValidSystemKey } from "@/lib/systemMeta";
 import { 
   formatReplacementWindow, 
   formatMostLikelyYear, 
@@ -23,7 +24,9 @@ interface SystemDetailViewProps {
 }
 
 /**
- * SystemDetailView - Full HVAC prediction detail display
+ * SystemDetailView - Full system prediction detail display
+ * 
+ * Supports: HVAC, Roof, Water Heater
  * CRITICAL: All copy comes from prediction object, UI just renders
  */
 export function SystemDetailView({ 
@@ -33,7 +36,21 @@ export function SystemDetailView({
 }: SystemDetailViewProps) {
   const navigate = useNavigate();
   
-  const getStatusIcon = () => {
+  // Get system-specific icon
+  const getSystemIcon = () => {
+    if (isValidSystemKey(prediction.systemKey)) {
+      const meta = SYSTEM_META[prediction.systemKey];
+      const Icon = meta.icon;
+      const colorClass = {
+        low: 'text-green-600',
+        moderate: 'text-amber-600',
+        high: 'text-red-600',
+      }[prediction.status];
+      
+      return <Icon className={`h-5 w-5 ${colorClass}`} />;
+    }
+    
+    // Fallback to status-based icon
     switch (prediction.status) {
       case 'low':
         return <CheckCircle2 className="h-5 w-5 text-green-600" />;
@@ -66,6 +83,14 @@ export function SystemDetailView({
     }
   };
 
+  // Get ChatDIY topic prefix for this system
+  const getChatdiyTopic = () => {
+    if (isValidSystemKey(prediction.systemKey)) {
+      return `${SYSTEM_META[prediction.systemKey].chatdiyTopicPrefix}-maintenance-checklist`;
+    }
+    return 'general-maintenance';
+  };
+
   return (
     <div className="space-y-6">
       {/* Back Button */}
@@ -83,7 +108,7 @@ export function SystemDetailView({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            {getStatusIcon()}
+            {getSystemIcon()}
             {prediction.header.name}
           </h1>
           <p className="text-muted-foreground mt-1">{prediction.header.installedLine}</p>
@@ -102,6 +127,12 @@ export function SystemDetailView({
           <p className="text-gray-800">{prediction.forecast.summary}</p>
           {prediction.forecast.reassurance && (
             <p className="text-sm text-muted-foreground">{prediction.forecast.reassurance}</p>
+          )}
+          {/* Emotional guardrail - disclosure note (primarily for roof) */}
+          {prediction.disclosureNote && (
+            <p className="text-xs text-muted-foreground italic pt-2 border-t border-dashed">
+              {prediction.disclosureNote}
+            </p>
           )}
         </CardContent>
       </Card>
@@ -156,11 +187,11 @@ export function SystemDetailView({
         </Card>
       )}
 
-      {/* System Optimization Section - NEW */}
+      {/* System Optimization Section */}
       {prediction.optimization && (
         <SystemOptimizationSection
           optimization={prediction.optimization}
-          onMaintenanceCta={() => navigate('/chatdiy?topic=hvac-maintenance-checklist')}
+          onMaintenanceCta={() => navigate(`/chatdiy?topic=${getChatdiyTopic()}`)}
           onPlanningCta={() => navigate('/planning')}
         />
       )}
@@ -282,6 +313,12 @@ export function SystemDetailView({
           </CardHeader>
           <CardContent>
             <p className="text-sm text-blue-700">{prediction.planning.text}</p>
+            {/* CapEx narrative connection */}
+            {prediction.capitalContext?.contributesToOutlook && (
+              <p className="text-xs text-muted-foreground mt-3">
+                This system contributes to your home's long-term capital outlook.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -307,9 +344,9 @@ export function SystemDetailView({
         </Card>
       )}
 
-      {/* ChatDIY Handoff */}
+      {/* ChatDIY Handoff - uses system-specific topic */}
       <ChatDIYBanner 
-        topic={prediction.actions[0]?.chatdiySlug} 
+        topic={prediction.actions[0]?.chatdiySlug || getChatdiyTopic()} 
         message="Need help with any of these actions?"
       />
     </div>

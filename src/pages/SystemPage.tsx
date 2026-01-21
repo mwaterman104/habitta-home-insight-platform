@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SystemDetailView } from "@/components/SystemDetailView";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
+import { SUPPORTED_SYSTEMS, SYSTEM_META, isValidSystemKey, getSystemLabel } from "@/lib/systemMeta";
 
 interface UserHome {
   id: string;
@@ -22,8 +23,8 @@ interface UserHome {
  * Accessed via /system/:systemKey
  * Deep-linkable, refreshable, shareable.
  * 
- * HVAC is the canonical template - all future systems
- * must match this structure.
+ * Supports: hvac, roof, water_heater
+ * All systems follow HVAC canonical template.
  */
 export default function SystemPage() {
   const { systemKey } = useParams<{ systemKey: string }>();
@@ -66,20 +67,22 @@ export default function SystemPage() {
     const fetchPrediction = async () => {
       setLoading(true);
       try {
-        // Currently only HVAC is supported
-        if (systemKey !== 'hvac') {
+        // Validate system key
+        if (!isValidSystemKey(systemKey)) {
           toast({
             title: 'System not available',
-            description: 'Only HVAC intelligence is available in this pilot.',
+            description: 'This system is not yet supported.',
             variant: 'destructive',
           });
           navigate('/dashboard');
           return;
         }
 
+        // Use unified system-prediction action
         const { data, error } = await supabase.functions.invoke('intelligence-engine', {
           body: { 
-            action: 'hvac-prediction', 
+            action: 'system-prediction',
+            systemKey: systemKey,
             property_id: userHome.id 
           }
         });
@@ -108,14 +111,15 @@ export default function SystemPage() {
     navigate('/dashboard');
   };
 
-  // Handle action completion - refresh prediction
+  // Handle action completion - refresh prediction with softened feedback
   const handleActionComplete = async (actionSlug: string) => {
-    if (!userHome?.id) return;
+    if (!userHome?.id || !systemKey || !isValidSystemKey(systemKey)) return;
 
     try {
       const { data, error } = await supabase.functions.invoke('intelligence-engine', {
         body: { 
-          action: 'hvac-prediction', 
+          action: 'system-prediction',
+          systemKey: systemKey,
           property_id: userHome.id,
           forceRefresh: true
         }
@@ -124,9 +128,15 @@ export default function SystemPage() {
       if (error) throw error;
       if (data) {
         setPrediction(data);
+        
+        // Softened feedback language - avoid over-promising improvement
+        const feedbackMessage = systemKey === 'hvac'
+          ? 'Your HVAC outlook has been updated.'
+          : 'Your system history has been updated. Future forecasts will reflect this.';
+        
         toast({
           title: 'Maintenance logged',
-          description: 'Your HVAC outlook has improved.',
+          description: feedbackMessage,
         });
       }
     } catch (error) {

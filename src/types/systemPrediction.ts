@@ -1,7 +1,13 @@
-// ============== V1 HVAC Survival Types ==============
-// Miami-Dade specific, deterministic survival model
+// ============== V1 System Survival Types ==============
+// Multi-system support: HVAC, Roof, Water Heater
 
 import type { HVACFailureProvenance } from './hvacFailure';
+
+/**
+ * SystemKey - Supported system types
+ * HVAC is canonical template; Roof and Water Heater follow same structure
+ */
+export type SystemKey = 'hvac' | 'roof' | 'water_heater';
 
 /**
  * Home Forecast - Trajectory-based conversion contract
@@ -103,11 +109,11 @@ export interface LifespanPrediction {
  * CRITICAL: UI must not invent copy - it only renders what it receives
  */
 export interface SystemPrediction {
-  systemKey: 'hvac';
+  systemKey: SystemKey;
   status: 'low' | 'moderate' | 'high';
 
   header: {
-    name: 'HVAC';
+    name: string;               // "HVAC" | "Roof" | "Water Heater"
     installedLine: string;      // e.g., "Installed ~2018 (based on permit)"
     statusLabel: string;        // e.g., "Moderate Risk"
   };
@@ -161,6 +167,20 @@ export interface SystemPrediction {
    * Mirrors lifespan pattern: semantic data here, formatting in optimizationCopy.ts
    */
   optimization?: SystemOptimizationSignals;
+  
+  /** 
+   * Emotional guardrail - disclosure note (primarily for roof)
+   * Always shown when present
+   */
+  disclosureNote?: string;
+  
+  /**
+   * CapEx narrative connection - links to capital outlook
+   */
+  capitalContext?: {
+    contributesToOutlook: boolean;
+    estimatedCost: { low: number; high: number };
+  };
 }
 
 /**
