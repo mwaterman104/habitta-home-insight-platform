@@ -14,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 // Dashboard V3 Components
 import { TopHeader } from "@/components/dashboard-v3/TopHeader";
@@ -402,8 +403,67 @@ export default function DashboardV3() {
           />
         </aside>
         
-        {/* Middle Column - Primary Canvas (Flex) with sticky chat */}
-        <main className="flex-1 flex flex-col min-h-0 p-6 pb-0">
+        {/* Resizable Middle + Right Columns (xl screens) */}
+        <ResizablePanelGroup 
+          direction="horizontal" 
+          className="flex-1 hidden xl:flex"
+          onLayout={(sizes) => {
+            localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
+          }}
+        >
+          {/* Middle Column - Primary Canvas */}
+          <ResizablePanel 
+            defaultSize={75} 
+            minSize={50}
+          >
+            <main className="flex flex-col h-full p-6 pb-0">
+              <MiddleColumn
+                homeForecast={homeForecast}
+                forecastLoading={forecastLoading}
+                hvacPrediction={hvacPrediction}
+                hvacLoading={hvacLoading}
+                capitalTimeline={capitalTimeline}
+                timelineLoading={timelineLoading}
+                maintenanceData={maintenanceTimelineData}
+                chatExpanded={shouldChatBeOpen}
+                onChatExpandChange={handleChatExpandChange}
+                hasAgentMessage={hasAgentMessage}
+                propertyId={userHome.id}
+                onSystemClick={handleSystemFocus}
+                isEnriching={isEnriching}
+                advisorState={advisorState}
+                focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+                openingMessage={openingMessage}
+                confidence={confidence}
+                risk={risk}
+                onUserReply={handleUserReply}
+                onTaskComplete={handleTaskComplete}
+              />
+            </main>
+          </ResizablePanel>
+          
+          {/* Drag Handle */}
+          <ResizableHandle withHandle />
+          
+          {/* Right Column - Performance at a Glance */}
+          <ResizablePanel 
+            defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25')} 
+            minSize={15} 
+            maxSize={40}
+          >
+            <aside className="border-l bg-muted/30 h-full overflow-y-auto p-6">
+              <RightColumn
+                homeForecast={homeForecast}
+                hvacPrediction={hvacPrediction}
+                capitalTimeline={capitalTimeline}
+                loading={forecastLoading || hvacLoading || timelineLoading}
+              />
+            </aside>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+        
+        {/* Middle Column only (lg screens without right column) */}
+        <main className="flex-1 flex-col min-h-0 p-6 pb-0 hidden lg:flex xl:hidden">
           <MiddleColumn
             homeForecast={homeForecast}
             forecastLoading={forecastLoading}
@@ -427,16 +487,6 @@ export default function DashboardV3() {
             onTaskComplete={handleTaskComplete}
           />
         </main>
-        
-        {/* Right Column - Performance at a Glance (Fixed 360px) */}
-        <aside className="w-[360px] border-l bg-muted/30 shrink-0 hidden xl:block overflow-y-auto p-6">
-          <RightColumn
-            homeForecast={homeForecast}
-            hvacPrediction={hvacPrediction}
-            capitalTimeline={capitalTimeline}
-            loading={forecastLoading || hvacLoading || timelineLoading}
-          />
-        </aside>
       </div>
     </div>
   );
