@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeHealthCard } from "@/components/HomeHealthCard";
 import { SystemStatusCard } from "@/components/SystemStatusCard";
 import { MaintenanceTimeline } from "@/components/MaintenanceTimeline";
 import { CapitalTimeline } from "@/components/CapitalTimeline";
+import { TodaysHomeBrief } from "@/components/TodaysHomeBrief";
 import { ChatDock } from "./ChatDock";
 import { ChevronDown } from "lucide-react";
+import { trackScrollDepth, trackSystemCardClick } from "@/lib/analytics";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -85,6 +87,17 @@ export function MiddleColumn({
   const chatDockRef = useRef<HTMLDivElement>(null);
   const [showScrollIndicator, setShowScrollIndicator] = useState(false);
 
+  // Track scroll depth for analytics
+  const lastTrackedDepth = useRef(0);
+  const trackScroll = useCallback((percentage: number, reachedChatDock: boolean) => {
+    // Only track significant scroll depth changes (every 25%)
+    const bucket = Math.floor(percentage / 25) * 25;
+    if (bucket > lastTrackedDepth.current) {
+      lastTrackedDepth.current = bucket;
+      trackScrollDepth(bucket, reachedChatDock);
+    }
+  }, []);
+
   // Check if ChatDock is below the fold
   useEffect(() => {
     const checkScrollPosition = () => {
@@ -97,6 +110,10 @@ export function MiddleColumn({
       const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
       const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
       setShowScrollIndicator(!isNearBottom && !chatExpanded);
+      
+      // Track scroll depth
+      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100);
+      trackScroll(scrollPercentage, isNearBottom);
     };
 
     const scrollArea = scrollAreaRef.current;
@@ -113,7 +130,7 @@ export function MiddleColumn({
         viewport.removeEventListener('scroll', checkScrollPosition);
       }
     };
-  }, [chatExpanded]);
+  }, [chatExpanded, trackScroll]);
 
   // Agent-triggered scroll: when chat expands, scroll ChatDock into view
   useEffect(() => {
@@ -149,6 +166,18 @@ export function MiddleColumn({
     return hvacPrediction.why.bullets;
   };
 
+  // Handle system click with analytics
+  const handleSystemClickWithTracking = (systemKey: string) => {
+    trackSystemCardClick(systemKey);
+    onSystemClick(systemKey);
+  };
+
+  // Determine if user is new (no forecast data)
+  const isNewUser = !homeForecast && !hvacPrediction;
+
+  // Check for overdue maintenance
+  const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
+
   return (
     <ScrollArea className="h-full" ref={scrollAreaRef}>
       <div className={`space-y-6 max-w-3xl mx-auto ${chatExpanded ? 'pb-8' : 'pb-32'}`}>
@@ -159,6 +188,17 @@ export function MiddleColumn({
             Still analyzing your home...
           </div>
         )}
+
+        {/* 0. Today's Home Brief - Narrative Anchor */}
+        <section>
+          <TodaysHomeBrief
+            homeForecast={homeForecast}
+            hvacPrediction={hvacPrediction}
+            capitalTimeline={capitalTimeline}
+            isNewUser={isNewUser}
+            hasOverdueMaintenance={hasOverdueMaintenance}
+          />
+        </section>
 
         {/* 1. Home Health Forecast - Primary */}
         <section>
@@ -208,7 +248,7 @@ export function MiddleColumn({
                 recommendation={hvacPrediction.actions[0]?.title ? `Recommended: ${hvacPrediction.actions[0].title}` : undefined}
                 status={hvacPrediction.status}
                 nextReview={hvacPrediction.status === 'low' ? 'Next review after summer season' : undefined}
-                onClick={() => onSystemClick('hvac')}
+                onClick={() => handleSystemClickWithTracking('hvac')}
               />
             ) : (
               <div className="text-center py-8 text-muted-foreground rounded-xl border border-dashed">
@@ -226,7 +266,7 @@ export function MiddleColumn({
           <section>
             <CapitalTimeline 
               timeline={capitalTimeline} 
-              onSystemClick={onSystemClick}
+              onSystemClick={handleSystemClickWithTracking}
             />
           </section>
         ) : null}
