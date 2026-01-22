@@ -1,8 +1,15 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 
+interface ExtendedSystemTimelineEntry extends SystemTimelineEntry {
+  // Pre-formatted labels from server (UI renders blindly)
+  installedLine?: string;
+  confidenceScore?: number;
+  confidenceLevel?: 'low' | 'medium' | 'high';
+}
+
 interface SystemTimelineLaneProps {
-  system: SystemTimelineEntry;
+  system: ExtendedSystemTimelineEntry;
   startYear: number;
   endYear: number;
   onClick?: () => void;
@@ -13,6 +20,9 @@ interface SystemTimelineLaneProps {
  * 
  * Maps p10 (early) → p50 (likely) → p90 (late) onto the timeline.
  * Darker center indicates higher probability.
+ * 
+ * IMPORTANT: Uses server-provided `installedLine` for labels when available.
+ * Falls back to local derivation only for backward compatibility.
  */
 export function SystemTimelineLane({ system, startYear, endYear, onClick }: SystemTimelineLaneProps) {
   const { earlyYear, likelyYear, lateYear } = system.replacementWindow;
@@ -67,6 +77,11 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
     return `$${amount}`;
   };
 
+  // Use server-provided dataQuality OR confidenceLevel for "Estimated" label
+  // Priority: confidenceLevel (new) > dataQuality (legacy)
+  const effectiveQuality = system.confidenceLevel ?? system.dataQuality;
+  const showEstimatedLabel = effectiveQuality === 'low';
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -80,7 +95,7 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
               <span className="text-sm font-medium text-foreground">
                 {system.systemLabel}
               </span>
-              {system.dataQuality === 'low' && (
+              {showEstimatedLabel && (
                 <span className="block text-[10px] text-muted-foreground">
                   Estimated
                 </span>
@@ -151,6 +166,12 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
         <TooltipContent side="bottom" className="max-w-xs">
           <div className="space-y-1.5">
             <p className="font-medium">{system.systemLabel}</p>
+            {/* Use server-provided installedLine if available */}
+            {system.installedLine && (
+              <p className="text-sm text-muted-foreground">
+                {system.installedLine}
+              </p>
+            )}
             <p className="text-sm">
               Likely replacement: <strong>{likelyYear}</strong>
               <br />

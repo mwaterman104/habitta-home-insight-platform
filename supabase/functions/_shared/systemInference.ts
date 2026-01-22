@@ -1,13 +1,19 @@
 /**
- * SystemInference - Deterministic rules for timeline calculation
+ * SystemInference - Pure Lifecycle Calculators
+ * 
+ * ARCHITECTURE:
+ * - This module is a CALCULATOR, not a POLICY ENGINE
+ * - It receives RESOLVED install data from the orchestrator
+ * - It computes lifespans, windows, costs, and disclosures
+ * - It NEVER decides which data source wins (that's capital-timeline's job)
  * 
  * GLOBAL RULES (Non-Negotiable):
- * G1: Permits always win — permit date becomes anchor
- * G2: No permit ≠ no replacement — absence doesn't imply original
- * G3: Inference widens windows, never tightens
- * G4: Climate modifies, never replaces
+ * G1: Accept resolved input, compute lifecycle math
+ * G2: Climate modifies, never replaces
+ * G3: Confidence widens windows, never tightens
+ * G4: Return honest disclosures
  * 
- * @version v1
+ * @version v2 - Authority/Calculator separation
  */
 
 import { SYSTEM_CONFIGS, type SystemType } from './systemConfigs.ts';
@@ -25,6 +31,20 @@ export interface PropertyContext {
 export interface RegionContext {
   isHotHumid: boolean;  // South Florida, Gulf Coast
   climateMultiplier: number;  // 0.85–1.0 (lower = harsher climate)
+}
+
+/**
+ * ResolvedInstallInput - Authority-resolved install data
+ * 
+ * This is the OUTPUT of authority resolution (in capital-timeline)
+ * and the INPUT to lifecycle calculation (here)
+ */
+export interface ResolvedInstallInput {
+  installYear: number | null;
+  installSource: 'permit_verified' | 'owner_reported' | 'inspection' | 'heuristic';
+  confidenceScore: number;
+  replacementStatus: 'original' | 'replaced' | 'unknown';
+  rationale: string;
 }
 
 export interface InferredInstall {
@@ -74,6 +94,20 @@ export interface InferredTimeline {
   disclosureNote: string;
 }
 
+/**
+ * LifecycleOutput - Pure calculation output (no authority decisions)
+ */
+export interface LifecycleOutput {
+  systemId: 'hvac' | 'roof' | 'water_heater';
+  systemLabel: string;
+  category: 'mechanical' | 'structural' | 'utility';
+  replacementWindow: ReplacementWindow;
+  capitalCost: CapitalCostRange;
+  lifespanDrivers: LifespanDriver[];
+  maintenanceEffect: MaintenanceEffect;
+  disclosureNote: string;
+}
+
 // ============== Material-Specific Constants ==============
 
 const ROOF_LIFESPANS: Record<string, { min: number; max: number }> = {
@@ -102,7 +136,44 @@ const WATER_HEATER_COSTS: Record<string, { min: number; max: number }> = {
   unknown: { min: 1800, max: 3500 },
 };
 
-// ============== Permit Helpers ==============
+// ============== Confidence → Quality Mapping ==============
+
+/**
+ * Derive dataQuality from confidence score
+ * Single source of truth - no ad-hoc mappings elsewhere
+ */
+export function dataQualityFromConfidence(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 0.80) return 'high';
+  if (score >= 0.50) return 'medium';
+  return 'low';
+}
+
+/**
+ * Derive window uncertainty from confidence score
+ */
+function windowUncertaintyFromConfidence(score: number): 'narrow' | 'medium' | 'wide' {
+  if (score >= 0.80) return 'narrow';
+  if (score >= 0.50) return 'medium';
+  return 'wide';
+}
+
+/**
+ * Map new install sources to legacy format for backward compatibility
+ */
+function mapInstallSourceToLegacy(source: ResolvedInstallInput['installSource']): 'permit' | 'inferred' | 'unknown' {
+  switch (source) {
+    case 'permit_verified':
+      return 'permit';
+    case 'owner_reported':
+    case 'inspection':
+      return 'inferred'; // These are user-provided but not permit-level
+    case 'heuristic':
+    default:
+      return 'unknown';
+  }
+}
+
+// ============== Permit Helpers (for fallback inference) ==============
 
 interface PermitRecord {
   description?: string;
@@ -114,7 +185,7 @@ interface PermitRecord {
   issue_date?: string;
 }
 
-function hasValidPermit(systemType: 'hvac' | 'roof' | 'water_heater', permits: PermitRecord[]): boolean {
+export function hasValidPermit(systemType: 'hvac' | 'roof' | 'water_heater', permits: PermitRecord[]): boolean {
   if (!permits?.length) return false;
   const config = SYSTEM_CONFIGS[systemType];
   
@@ -126,7 +197,7 @@ function hasValidPermit(systemType: 'hvac' | 'roof' | 'water_heater', permits: P
   });
 }
 
-function extractPermitYear(systemType: 'hvac' | 'roof' | 'water_heater', permits: PermitRecord[]): number | null {
+export function extractPermitYear(systemType: 'hvac' | 'roof' | 'water_heater', permits: PermitRecord[]): number | null {
   if (!permits?.length) return null;
   const config = SYSTEM_CONFIGS[systemType];
   
@@ -155,15 +226,205 @@ function extractPermitYear(systemType: 'hvac' | 'roof' | 'water_heater', permits
   return dateStr ? new Date(dateStr).getFullYear() : null;
 }
 
-// ============== Inference Functions ==============
+// ============== Pure Calculator Functions (NEW) ==============
 
 /**
- * HVAC Inference (Reference - Already Validated)
- * 
- * Cases:
- * - HVAC-1: Permit found → installYear = permit.year, high confidence
- * - HVAC-2: No permit, yearBuilt ≤ 2005 → likely replaced, medium confidence
- * - HVAC-3: No permit, yearBuilt ≥ 2006 → likely original, medium confidence
+ * Calculate HVAC lifecycle from resolved input
+ * PURE MATH - no authority decisions
+ */
+export function calculateHVACLifecycle(
+  resolvedInstall: ResolvedInstallInput,
+  property: PropertyContext,
+  region: RegionContext
+): LifecycleOutput {
+  const lifespan = { min: 12, max: 18 };
+  const climateAdjustment = region.isHotHumid ? -2 : 0;
+  const baseInstall = resolvedInstall.installYear || property.yearBuilt;
+  const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
+  
+  const replacementWindow: ReplacementWindow = {
+    earlyYear: baseInstall + lifespan.min + climateAdjustment,
+    likelyYear: baseInstall + Math.round((lifespan.min + lifespan.max) / 2) + climateAdjustment,
+    lateYear: baseInstall + lifespan.max,
+    windowUncertainty: uncertainty,
+    rationale: resolvedInstall.rationale
+  };
+  
+  const lifespanDrivers: LifespanDriver[] = [];
+  if (region.isHotHumid) {
+    lifespanDrivers.push({
+      factor: 'Hot/humid climate',
+      impact: 'decrease',
+      severity: 'medium',
+      description: 'South Florida climate accelerates wear on HVAC systems'
+    });
+  }
+  
+  return {
+    systemId: 'hvac',
+    systemLabel: 'HVAC System',
+    category: 'mechanical',
+    replacementWindow,
+    capitalCost: {
+      low: 9000,
+      high: 14000,
+      costDrivers: ['System type', 'SEER rating', 'Labor rates']
+    },
+    lifespanDrivers,
+    maintenanceEffect: {
+      shiftsTimeline: true,
+      expectedDelayYears: 3,
+      uncertaintyReduction: 'medium',
+      explanation: 'Regular maintenance typically extends HVAC lifespan and narrows uncertainty'
+    },
+    disclosureNote: resolvedInstall.installSource === 'heuristic'
+      ? 'Install year estimated from home construction date'
+      : 'Based on typical HVAC replacement patterns for your region'
+  };
+}
+
+/**
+ * Calculate Water Heater lifecycle from resolved input
+ * PURE MATH - no authority decisions
+ */
+export function calculateWaterHeaterLifecycle(
+  resolvedInstall: ResolvedInstallInput,
+  property: PropertyContext,
+  region: RegionContext
+): LifecycleOutput {
+  const { waterHeaterType = 'unknown' } = property;
+  const lifespan = WATER_HEATER_LIFESPANS[waterHeaterType] || WATER_HEATER_LIFESPANS.unknown;
+  const costs = WATER_HEATER_COSTS[waterHeaterType] || WATER_HEATER_COSTS.unknown;
+  const baseInstall = resolvedInstall.installYear || property.yearBuilt;
+  const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
+  
+  const replacementWindow: ReplacementWindow = {
+    earlyYear: baseInstall + lifespan.min,
+    likelyYear: baseInstall + Math.round((lifespan.min + lifespan.max) / 2),
+    lateYear: baseInstall + lifespan.max,
+    windowUncertainty: uncertainty,
+    rationale: resolvedInstall.rationale
+  };
+  
+  return {
+    systemId: 'water_heater',
+    systemLabel: 'Water Heater',
+    category: 'utility',
+    replacementWindow,
+    capitalCost: {
+      low: costs.min,
+      high: costs.max,
+      costDrivers: ['Tank type', 'Fuel type', 'Labor rates']
+    },
+    lifespanDrivers: [],
+    maintenanceEffect: {
+      shiftsTimeline: false,
+      expectedDelayYears: 1,
+      uncertaintyReduction: 'low',
+      explanation: 'Routine maintenance reduces surprise failures but has minimal lifespan impact'
+    },
+    disclosureNote: resolvedInstall.installSource === 'heuristic'
+      ? 'Install year estimated; water heaters are often replaced without permits'
+      : 'Water heater timeline based on your provided install date'
+  };
+}
+
+/**
+ * Calculate Roof lifecycle from resolved input
+ * PURE MATH - no authority decisions
+ */
+export function calculateRoofLifecycle(
+  resolvedInstall: ResolvedInstallInput,
+  property: PropertyContext,
+  region: RegionContext
+): LifecycleOutput {
+  const { roofMaterial = 'unknown', state } = property;
+  
+  // Florida default to tile if unknown
+  const material = roofMaterial === 'unknown' && state.toLowerCase() === 'fl' 
+    ? 'tile' 
+    : roofMaterial;
+  
+  const lifespan = ROOF_LIFESPANS[material] || ROOF_LIFESPANS.unknown;
+  const costs = ROOF_COSTS[material] || ROOF_COSTS.unknown;
+  const baseInstall = resolvedInstall.installYear || property.yearBuilt;
+  const climateAdjustment = region.isHotHumid ? -3 : 0;
+  const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
+  
+  const replacementWindow: ReplacementWindow = {
+    earlyYear: baseInstall + lifespan.min + climateAdjustment,
+    likelyYear: baseInstall + Math.round((lifespan.min + lifespan.max) / 2) + climateAdjustment,
+    lateYear: baseInstall + lifespan.max,
+    windowUncertainty: uncertainty,
+    rationale: resolvedInstall.rationale
+  };
+  
+  const lifespanDrivers: LifespanDriver[] = [];
+  if (material === 'tile') {
+    lifespanDrivers.push({
+      factor: 'Tile roofing',
+      impact: 'increase',
+      severity: 'high',
+      description: 'Tile roofs typically last longer than asphalt shingles'
+    });
+  }
+  if (region.isHotHumid) {
+    lifespanDrivers.push({
+      factor: 'Hot/humid climate',
+      impact: 'decrease',
+      severity: 'low',
+      description: 'Florida weather can accelerate roof wear'
+    });
+  }
+  
+  return {
+    systemId: 'roof',
+    systemLabel: 'Roof',
+    category: 'structural',
+    replacementWindow,
+    capitalCost: {
+      low: costs.min,
+      high: costs.max,
+      costDrivers: ['Material', 'Roof pitch', 'Insurance requirements']
+    },
+    lifespanDrivers,
+    maintenanceEffect: {
+      shiftsTimeline: false,
+      expectedDelayYears: 0,
+      uncertaintyReduction: 'low',
+      explanation: 'Roof maintenance reduces leak risk but does not meaningfully extend lifespan'
+    },
+    // EMOTIONAL GUARDRAIL: This note appears on all roof presentations
+    disclosureNote: 'Roofs vary widely; this window reflects typical outcomes for similar homes.'
+  };
+}
+
+/**
+ * Main pure calculator entry point
+ */
+export function calculateSystemLifecycle(
+  systemType: 'hvac' | 'roof' | 'water_heater',
+  resolvedInstall: ResolvedInstallInput,
+  property: PropertyContext,
+  region: RegionContext
+): LifecycleOutput {
+  switch (systemType) {
+    case 'hvac':
+      return calculateHVACLifecycle(resolvedInstall, property, region);
+    case 'water_heater':
+      return calculateWaterHeaterLifecycle(resolvedInstall, property, region);
+    case 'roof':
+      return calculateRoofLifecycle(resolvedInstall, property, region);
+    default:
+      throw new Error(`Unknown system type: ${systemType}`);
+  }
+}
+
+// ============== Legacy Inference Functions (Backward Compatibility) ==============
+// These are kept for any code that hasn't migrated to the new pattern yet
+
+/**
+ * @deprecated Use resolveInstallAuthority() + calculateSystemLifecycle() instead
  */
 export function inferHVACTimeline(
   property: PropertyContext,
@@ -175,7 +436,6 @@ export function inferHVACTimeline(
   
   let install: InferredInstall;
   
-  // Case HVAC-1: Permit found
   if (hasValidPermit('hvac', permits)) {
     const permitYear = extractPermitYear('hvac', permits);
     install = {
@@ -184,19 +444,15 @@ export function inferHVACTimeline(
       dataQuality: 'high',
       rationale: 'HVAC replacement verified via building permit'
     };
-  }
-  // Case HVAC-2: No permit, older home
-  else if (yearBuilt <= 2005) {
-    const inferredYear = yearBuilt + 12; // Typical first replacement
+  } else if (yearBuilt <= 2005) {
+    const inferredYear = yearBuilt + 12;
     install = {
       installYear: Math.min(inferredYear, currentYear - 5),
       installSource: 'inferred',
       dataQuality: 'medium',
       rationale: 'HVAC replacement inferred based on typical service life and home age'
     };
-  }
-  // Case HVAC-3: No permit, newer home
-  else {
+  } else {
     install = {
       installYear: yearBuilt,
       installSource: 'inferred',
@@ -250,13 +506,7 @@ export function inferHVACTimeline(
 }
 
 /**
- * Water Heater Inference
- * 
- * Cases:
- * - WH-1: Permit found → installYear = permit.year, high confidence
- * - WH-2: No permit, yearBuilt ≥ 2012 → likely original, medium confidence
- * - WH-3: No permit, 1990-2011 → likely replaced, low-medium confidence, wide window
- * - WH-4: No permit, < 1990 → assume at least one replacement, low confidence
+ * @deprecated Use resolveInstallAuthority() + calculateSystemLifecycle() instead
  */
 export function inferWaterHeaterTimeline(
   property: PropertyContext,
@@ -269,7 +519,6 @@ export function inferWaterHeaterTimeline(
   let install: InferredInstall;
   let windowWidth: 'narrow' | 'medium' | 'wide' = 'medium';
   
-  // Case WH-1: Permit found
   if (hasValidPermit('water_heater', permits)) {
     const permitYear = extractPermitYear('water_heater', permits);
     install = {
@@ -279,9 +528,7 @@ export function inferWaterHeaterTimeline(
       rationale: 'Water heater replacement verified via building permit'
     };
     windowWidth = 'narrow';
-  }
-  // Case WH-2: No permit, recent build
-  else if (yearBuilt >= 2012) {
+  } else if (yearBuilt >= 2012) {
     install = {
       installYear: yearBuilt,
       installSource: 'inferred',
@@ -289,9 +536,7 @@ export function inferWaterHeaterTimeline(
       rationale: 'Water heater assumed original with recent construction'
     };
     windowWidth = 'medium';
-  }
-  // Case WH-3: No permit, 1990-2011
-  else if (yearBuilt >= 1990) {
+  } else if (yearBuilt >= 1990) {
     const inferredYear = yearBuilt + 12;
     install = {
       installYear: Math.min(inferredYear, currentYear - 3),
@@ -300,9 +545,7 @@ export function inferWaterHeaterTimeline(
       rationale: 'Water heater replacement inferred due to missing permit history'
     };
     windowWidth = 'wide';
-  }
-  // Case WH-4: Pre-1990
-  else {
+  } else {
     const inferredYear = yearBuilt + 18;
     install = {
       installYear: Math.min(inferredYear, currentYear - 5),
@@ -348,13 +591,7 @@ export function inferWaterHeaterTimeline(
 }
 
 /**
- * Roof Inference (High-CapEx, Emotionally Sensitive)
- * 
- * Cases:
- * - R-1: Permit found → installYear = permit.year, high confidence
- * - R-2: No permit, yearBuilt ≤ 1995 → likely original, low confidence, very wide
- * - R-3: No permit, 1996-2010 → possible replacement, low-medium confidence
- * - R-4: No permit, yearBuilt ≥ 2011 → likely original, medium confidence
+ * @deprecated Use resolveInstallAuthority() + calculateSystemLifecycle() instead
  */
 export function inferRoofTimeline(
   property: PropertyContext,
@@ -363,7 +600,6 @@ export function inferRoofTimeline(
 ): InferredTimeline {
   const { yearBuilt, roofMaterial = 'unknown', state } = property;
   
-  // Florida default to tile if unknown
   const material = roofMaterial === 'unknown' && state.toLowerCase() === 'fl' 
     ? 'tile' 
     : roofMaterial;
@@ -371,7 +607,6 @@ export function inferRoofTimeline(
   let install: InferredInstall;
   let windowWidth: 'narrow' | 'medium' | 'wide' = 'medium';
   
-  // Case R-1: Permit found
   if (hasValidPermit('roof', permits)) {
     const permitYear = extractPermitYear('roof', permits);
     install = {
@@ -381,9 +616,7 @@ export function inferRoofTimeline(
       rationale: 'Roof replacement verified via building permit'
     };
     windowWidth = 'narrow';
-  }
-  // Case R-2: No permit, very old home
-  else if (yearBuilt <= 1995) {
+  } else if (yearBuilt <= 1995) {
     install = {
       installYear: yearBuilt,
       installSource: 'unknown',
@@ -391,9 +624,7 @@ export function inferRoofTimeline(
       rationale: 'Likely original roof based on home age and permit history'
     };
     windowWidth = 'wide';
-  }
-  // Case R-3: No permit, 1996-2010
-  else if (yearBuilt <= 2010) {
+  } else if (yearBuilt <= 2010) {
     install = {
       installYear: yearBuilt,
       installSource: 'inferred',
@@ -401,9 +632,7 @@ export function inferRoofTimeline(
       rationale: 'Roof age inferred from year built; no replacement permit found'
     };
     windowWidth = 'wide';
-  }
-  // Case R-4: No permit, recent build
-  else {
+  } else {
     install = {
       installYear: yearBuilt,
       installSource: 'inferred',
@@ -462,13 +691,12 @@ export function inferRoofTimeline(
       uncertaintyReduction: 'low',
       explanation: 'Roof maintenance reduces leak risk but does not meaningfully extend lifespan'
     },
-    // EMOTIONAL GUARDRAIL: This note appears on all roof presentations
     disclosureNote: 'Roofs vary widely; this window reflects typical outcomes for similar homes.'
   };
 }
 
 /**
- * Main entry point - infer timeline for any system
+ * @deprecated Use resolveInstallAuthority() + calculateSystemLifecycle() instead
  */
 export function inferSystemTimeline(
   systemType: 'hvac' | 'roof' | 'water_heater',
