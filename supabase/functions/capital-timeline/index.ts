@@ -1,8 +1,16 @@
 /**
  * capital-timeline - Generates unified CapEx timeline for a home
  * 
- * Returns HomeCapitalTimeline with all active systems
- * Used by: Timeline visualization, CapEx roll-up dashboard
+ * ARCHITECTURE (v2):
+ * - This is the ORCHESTRATOR and POLICY ENGINE
+ * - It decides which data source wins (authority resolution)
+ * - It calls pure calculators for lifecycle math
+ * - It returns pre-formatted labels (UI renders blindly)
+ * 
+ * Authority Priority:
+ * 1. User overrides (owner_reported, inspection) — User corrects data
+ * 2. Permit data (permit_verified) — Authoritative public records
+ * 3. Heuristic inference — Fallback from yearBuilt
  * 
  * Actions:
  * - 'timeline': Full HomeCapitalTimeline
@@ -13,9 +21,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { 
-  inferSystemTimeline, 
+  calculateSystemLifecycle,
+  dataQualityFromConfidence,
+  hasValidPermit,
+  extractPermitYear,
   getRegionContext,
-  type InferredTimeline,
+  type ResolvedInstallInput,
+  type LifecycleOutput,
   type PropertyContext 
 } from '../_shared/systemInference.ts';
 
@@ -69,6 +81,10 @@ interface SystemTimelineEntry {
     explanation: string;
   };
   disclosureNote: string;
+  // NEW: Pre-formatted labels for UI
+  installedLine: string;
+  confidenceScore: number;
+  confidenceLevel: 'low' | 'medium' | 'high';
   lastEventAt?: string;
   eventShiftYears?: number;
 }
@@ -83,28 +99,217 @@ interface CapitalOutlook {
   methodologyNote: string;
 }
 
+// ============== Confidence Scoring ==============
+
+/**
+ * Base confidence scores by install source
+ * Matches the canonical model in memory
+ */
+function getBaseConfidenceScore(source: string): number {
+  switch (source) {
+    case 'permit_verified': return 0.85;
+    case 'inspection': return 0.75;
+    case 'owner_reported': return 0.60;
+    case 'heuristic':
+    default: return 0.30;
+  }
+}
+
+/**
+ * Map install source to UI label
+ */
+function formatInstallSourceLabel(source: string): string {
+  switch (source) {
+    case 'permit_verified': return 'permit-verified';
+    case 'inspection': return 'inspector-confirmed';
+    case 'owner_reported': return 'owner-confirmed';
+    case 'heuristic':
+    default: return 'estimated';
+  }
+}
+
+/**
+ * Map new install sources to legacy format for backward compatibility
+ */
+function mapInstallSourceToLegacy(source: string): 'permit' | 'inferred' | 'unknown' {
+  switch (source) {
+    case 'permit_verified':
+      return 'permit';
+    case 'owner_reported':
+    case 'inspection':
+      return 'inferred';
+    case 'heuristic':
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * Format the installed line for UI display
+ * Canonical formatter - UI renders this blindly
+ */
+function formatInstalledLine(
+  installYear: number | null,
+  installSource: string,
+  replacementStatus: string
+): string {
+  if (!installYear) {
+    return 'Install year unknown';
+  }
+  
+  const sourceLabel = formatInstallSourceLabel(installSource);
+  
+  if (replacementStatus === 'original') {
+    return `Original (${installYear})`;
+  }
+  
+  return `Installed ${installYear} (${sourceLabel})`;
+}
+
+// ============== Authority Resolution ==============
+
+interface SystemRow {
+  kind: string;
+  install_year: number | null;
+  install_source: string | null;
+  replacement_status: string | null;
+  material: string | null;
+  confidence: number | null;
+}
+
+interface PermitRecord {
+  description?: string;
+  permit_type?: string;
+  date_finaled?: string;
+  final_date?: string;
+  approval_date?: string;
+  date_issued?: string;
+  issue_date?: string;
+}
+
+/**
+ * resolveInstallAuthority - THE POLICY ENGINE
+ * 
+ * Decides which data source wins for a given system.
+ * This is the ONLY place where precedence is determined.
+ * 
+ * Priority:
+ * 1. User overrides (owner_reported, inspection) if NOT heuristic
+ * 2. Permit data if available
+ * 3. Heuristic fallback from yearBuilt
+ */
+function resolveInstallAuthority(
+  systemType: 'hvac' | 'roof' | 'water_heater',
+  userSystem: SystemRow | undefined,
+  permits: PermitRecord[],
+  yearBuilt: number
+): ResolvedInstallInput {
+  const currentYear = new Date().getFullYear();
+  
+  // Priority 1: User override (if source is NOT heuristic)
+  if (userSystem && userSystem.install_source && userSystem.install_source !== 'heuristic') {
+    const source = userSystem.install_source as ResolvedInstallInput['installSource'];
+    const confidenceScore = userSystem.confidence ?? getBaseConfidenceScore(source);
+    
+    return {
+      installYear: userSystem.install_year,
+      installSource: source,
+      confidenceScore,
+      replacementStatus: (userSystem.replacement_status as ResolvedInstallInput['replacementStatus']) || 'replaced',
+      rationale: userSystem.replacement_status === 'original'
+        ? 'Original system confirmed by owner'
+        : `Install date provided by owner (${userSystem.install_year})`
+    };
+  }
+  
+  // Priority 2: Permit data
+  if (hasValidPermit(systemType, permits)) {
+    const permitYear = extractPermitYear(systemType, permits);
+    return {
+      installYear: permitYear,
+      installSource: 'permit_verified',
+      confidenceScore: 0.85,
+      replacementStatus: 'replaced',
+      rationale: `${formatSystemLabel(systemType)} replacement verified via building permit`
+    };
+  }
+  
+  // Priority 3: Heuristic fallback
+  // Use different heuristics based on system type and home age
+  let inferredYear: number;
+  let rationale: string;
+  
+  switch (systemType) {
+    case 'hvac':
+      if (yearBuilt <= 2005) {
+        inferredYear = Math.min(yearBuilt + 12, currentYear - 5);
+        rationale = 'HVAC replacement inferred based on typical service life and home age';
+      } else {
+        inferredYear = yearBuilt;
+        rationale = 'HVAC assumed original with newer construction';
+      }
+      break;
+      
+    case 'water_heater':
+      if (yearBuilt >= 2012) {
+        inferredYear = yearBuilt;
+        rationale = 'Water heater assumed original with recent construction';
+      } else if (yearBuilt >= 1990) {
+        inferredYear = Math.min(yearBuilt + 12, currentYear - 3);
+        rationale = 'Water heater replacement inferred due to missing permit history';
+      } else {
+        inferredYear = Math.min(yearBuilt + 18, currentYear - 5);
+        rationale = 'At least one water heater replacement assumed for pre-1990 home';
+      }
+      break;
+      
+    case 'roof':
+      if (yearBuilt >= 2011) {
+        inferredYear = yearBuilt;
+        rationale = 'Roof assumed original with recent construction';
+      } else {
+        inferredYear = yearBuilt;
+        rationale = 'Roof age inferred from year built; no replacement permit found';
+      }
+      break;
+      
+    default:
+      inferredYear = yearBuilt;
+      rationale = 'Age estimated from home construction date';
+  }
+  
+  return {
+    installYear: inferredYear,
+    installSource: 'heuristic',
+    confidenceScore: 0.30,
+    replacementStatus: 'unknown',
+    rationale
+  };
+}
+
+function formatSystemLabel(systemType: 'hvac' | 'roof' | 'water_heater'): string {
+  switch (systemType) {
+    case 'hvac': return 'HVAC System';
+    case 'water_heater': return 'Water Heater';
+    case 'roof': return 'Roof';
+  }
+}
+
 // ============== Weighted Exposure Logic ==============
 
 /**
  * Calculate weighted capital exposure
- * 
- * IMPORTANT: Uses probabilistic weighting, not naive binary inclusion
- * - Early in horizon = 0.3× weight ("possible")
- * - Likely in horizon = 1.0× weight ("probable")
- * - Late only in horizon = 0.5× weight ("partial risk")
  */
 function calculateWeightedExposure(
   system: SystemTimelineEntry,
   horizonCutoff: number
 ): { low: number; high: number } {
-  const { earlyYear, likelyYear, lateYear } = system.replacementWindow;
+  const { earlyYear, likelyYear } = system.replacementWindow;
   
-  // No exposure if even early is beyond horizon
   if (earlyYear > horizonCutoff) {
     return { low: 0, high: 0 };
   }
   
-  // Full exposure if likely is within horizon
   if (likelyYear <= horizonCutoff) {
     return { 
       low: system.capitalCost.low, 
@@ -112,8 +317,6 @@ function calculateWeightedExposure(
     };
   }
   
-  // Partial exposure: early is in, likely is out
-  // Apply 0.3× weight for "possible but not probable"
   if (earlyYear <= horizonCutoff) {
     return { 
       low: Math.round(system.capitalCost.low * 0.3), 
@@ -158,32 +361,50 @@ function calculateCapitalOutlook(
   };
 }
 
-// ============== Transform Helper ==============
+// ============== Entry Builder ==============
 
-function transformToEntry(inferred: InferredTimeline): SystemTimelineEntry {
+/**
+ * Build a SystemTimelineEntry from resolved authority + calculated lifecycle
+ */
+function buildTimelineEntry(
+  systemType: 'hvac' | 'roof' | 'water_heater',
+  resolvedInstall: ResolvedInstallInput,
+  lifecycle: LifecycleOutput
+): SystemTimelineEntry {
+  const dataQuality = dataQualityFromConfidence(resolvedInstall.confidenceScore);
+  const confidenceLevel = dataQuality; // Same mapping
+  
   return {
-    systemId: inferred.systemId,
-    systemLabel: inferred.systemLabel,
-    category: inferred.category,
-    installSource: inferred.install.installSource,
-    installYear: inferred.install.installYear,
-    dataQuality: inferred.install.dataQuality,
+    systemId: systemType,
+    systemLabel: lifecycle.systemLabel,
+    category: lifecycle.category,
+    installSource: mapInstallSourceToLegacy(resolvedInstall.installSource),
+    installYear: resolvedInstall.installYear,
+    dataQuality,
     replacementWindow: {
-      earlyYear: inferred.replacementWindow.earlyYear,
-      likelyYear: inferred.replacementWindow.likelyYear,
-      lateYear: inferred.replacementWindow.lateYear,
-      rationale: inferred.replacementWindow.rationale,
+      earlyYear: lifecycle.replacementWindow.earlyYear,
+      likelyYear: lifecycle.replacementWindow.likelyYear,
+      lateYear: lifecycle.replacementWindow.lateYear,
+      rationale: lifecycle.replacementWindow.rationale,
     },
-    windowUncertainty: inferred.replacementWindow.windowUncertainty,
+    windowUncertainty: lifecycle.replacementWindow.windowUncertainty,
     capitalCost: {
-      low: inferred.capitalCost.low,
-      high: inferred.capitalCost.high,
+      low: lifecycle.capitalCost.low,
+      high: lifecycle.capitalCost.high,
       currency: 'USD',
-      costDrivers: inferred.capitalCost.costDrivers,
+      costDrivers: lifecycle.capitalCost.costDrivers,
     },
-    lifespanDrivers: inferred.lifespanDrivers,
-    maintenanceEffect: inferred.maintenanceEffect,
-    disclosureNote: inferred.disclosureNote,
+    lifespanDrivers: lifecycle.lifespanDrivers,
+    maintenanceEffect: lifecycle.maintenanceEffect,
+    disclosureNote: lifecycle.disclosureNote,
+    // Pre-formatted labels for UI
+    installedLine: formatInstalledLine(
+      resolvedInstall.installYear,
+      resolvedInstall.installSource,
+      resolvedInstall.replacementStatus
+    ),
+    confidenceScore: resolvedInstall.confidenceScore,
+    confidenceLevel,
   };
 }
 
@@ -228,7 +449,7 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('home_id', homeId);
 
-    // Fetch existing systems
+    // Fetch existing systems (including user-provided data)
     const { data: systems } = await supabase
       .from('systems')
       .select('*')
@@ -247,15 +468,29 @@ Deno.serve(async (req) => {
 
     // Single system detail request
     if (action === 'system-detail' && systemType) {
-      const inferred = inferSystemTimeline(
+      const userSystem = systems?.find(s => s.kind === systemType);
+      
+      // Step A: Resolve authority (POLICY)
+      const resolvedInstall = resolveInstallAuthority(
         systemType,
-        propertyContext,
-        regionContext,
-        permits || []
+        userSystem,
+        permits || [],
+        propertyContext.yearBuilt
       );
       
+      // Step B: Calculate lifecycle (MATH)
+      const lifecycle = calculateSystemLifecycle(
+        systemType,
+        resolvedInstall,
+        propertyContext,
+        regionContext
+      );
+      
+      // Step C: Build entry with formatted output
+      const entry = buildTimelineEntry(systemType, resolvedInstall, lifecycle);
+      
       return new Response(
-        JSON.stringify(transformToEntry(inferred)),
+        JSON.stringify(entry),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -266,21 +501,32 @@ Deno.serve(async (req) => {
     const limitingFactors: string[] = [];
 
     for (const sysType of systemTypes) {
-      const inferred = inferSystemTimeline(
+      // Find user-provided system data
+      const userSystem = systems?.find(s => s.kind === sysType);
+      
+      // Step A: Resolve authority (POLICY)
+      const resolvedInstall = resolveInstallAuthority(
         sysType,
-        propertyContext,
-        regionContext,
-        permits || []
+        userSystem,
+        permits || [],
+        propertyContext.yearBuilt
       );
       
-      const entry = transformToEntry(inferred);
+      // Step B: Calculate lifecycle (MATH)
+      const lifecycle = calculateSystemLifecycle(
+        sysType,
+        resolvedInstall,
+        propertyContext,
+        regionContext
+      );
+      
+      // Step C: Build entry with formatted output
+      const entry = buildTimelineEntry(sysType, resolvedInstall, lifecycle);
       timelineEntries.push(entry);
       
       // Track limiting factors
-      if (entry.installSource === 'unknown') {
-        limitingFactors.push(`No ${entry.systemLabel.toLowerCase()} permit found`);
-      } else if (entry.installSource === 'inferred') {
-        limitingFactors.push(`${entry.systemLabel} age inferred from home age`);
+      if (entry.dataQuality === 'low') {
+        limitingFactors.push(`${entry.systemLabel} install date is estimated`);
       }
     }
 
@@ -308,7 +554,7 @@ Deno.serve(async (req) => {
       capitalOutlook,
       dataQuality: {
         completenessPercent,
-        limitingFactors: [...new Set(limitingFactors)], // Dedupe
+        limitingFactors: [...new Set(limitingFactors)],
       },
     };
 
@@ -316,6 +562,13 @@ Deno.serve(async (req) => {
       systemCount: timelineEntries.length,
       completeness: completenessPercent,
       outlook3yr: capitalOutlook.horizons[0],
+      // Log authority resolution results
+      sources: timelineEntries.map(e => ({ 
+        system: e.systemId, 
+        source: e.installSource, 
+        year: e.installYear,
+        confidence: e.confidenceScore 
+      }))
     });
 
     return new Response(
