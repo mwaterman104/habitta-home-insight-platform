@@ -12,6 +12,7 @@ interface LeftColumnProps {
  * 
  * Per spec: Navigation + identity ONLY (not health).
  * Health belongs in the middle column forecast.
+ * Bottom nav items are sticky to bottom of the sidebar.
  */
 export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   const location = useLocation();
@@ -22,10 +23,10 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
 
   const navItems = [
     { title: "Home Pulse", path: "/dashboard-v3", icon: Home },
-    { title: "Field Insights", path: "/home-profile", icon: MapPin },
+    { title: "Home Profile", path: "/home-profile", icon: MapPin },
   ];
 
-  const moreItems = [
+  const bottomItems = [
     { title: "Reports", path: "/validation", icon: FileText },
     { title: "Help", path: "/chatdiy", icon: MessageCircle },
     { title: "Settings", path: "/settings", icon: Settings },
@@ -34,7 +35,7 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Property Identity Card */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b shrink-0">
         <button
           onClick={onAddressClick}
           className="w-full text-left p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
@@ -53,7 +54,7 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
         </button>
       </div>
 
-      {/* Main Navigation */}
+      {/* Main Navigation - takes remaining space */}
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => (
           <button
@@ -72,13 +73,10 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
         ))}
       </nav>
 
-      {/* More Section */}
-      <div className="p-4 border-t">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-3">
-          More
-        </p>
+      {/* Bottom Section - Sticky to bottom */}
+      <div className="p-4 border-t mt-auto shrink-0">
         <div className="space-y-1">
-          {moreItems.map((item) => (
+          {bottomItems.map((item) => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
