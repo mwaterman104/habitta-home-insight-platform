@@ -124,6 +124,38 @@ const STRUCTURAL_WEIGHTS = {
 const APPLIANCE_PENALTY_PER = 1.0;
 const MAX_APPLIANCE_PENALTY = 5;
 
+// ============== Multi-System Transparency Configs ==============
+
+// Quiet monitoring config - declarative, not embedded in buildHomeForecast
+const QUIET_MONITORING_CONFIG: Record<string, {
+  subcomponents?: Array<{ component: string; typicalCost: string }>;
+  wearPoints?: string[];
+  typicalServiceCost?: string;
+}> = {
+  hvac: {
+    subcomponents: [
+      { component: 'Capacitor', typicalCost: '$150–$400' },
+      { component: 'Drain line', typicalCost: '$75–$200' },
+      { component: 'Condensate pump', typicalCost: '$200–$400' }
+    ]
+  },
+  water_heater: {
+    wearPoints: ['Anode rod wear', 'Sediment buildup', 'Pressure relief valve'],
+    typicalServiceCost: '$100–$300'
+  },
+  roof: {
+    wearPoints: ['Shingle aging', 'Flashing wear', 'Storm exposure'],
+    typicalServiceCost: '$200–$500'
+  }
+};
+
+// Missing factor deltas - centralized, not scattered
+const CONFIDENCE_DELTAS: Record<string, Record<string, number>> = {
+  hvac: { install_year: 0.12, brand_model: 0.05, service_history: 0.08 },
+  roof: { replacement_year: 0.12, material: 0.05 },
+  water_heater: { install_year: 0.08, type: 0.03 }
+};
+
 // ============== Multi-System Scoring Helpers ==============
 
 function severityFromStatus(status: 'low' | 'moderate' | 'high'): number {
@@ -1932,16 +1964,50 @@ interface HomeForecastOutput {
     region: string;
   };
   trajectoryQualifier: string;
-  // NEW: Driver explanations for score changes
+  // Driver explanations for score changes
   drivers: {
     structural: Array<{ system: string; impact: number; reason: string }>;
     appliances: Array<{ appliance: string; impact: number; reason: string }>;
   };
-  // NEW: System breakdown for UI
+  // System breakdown for UI
   systemBreakdown: {
     hvac: { status: string; contribution: number };
     roof: { status: string; contribution: number };
     water_heater: { status: string; contribution: number };
+  };
+  
+  // ============== NEW: Multi-System Transparency Fields ==============
+  
+  /** Per-system confidence (numeric, UI derives dots) */
+  systemConfidence: {
+    hvac: { confidence_0_1: number };
+    roof: { confidence_0_1: number };
+    water_heater: { confidence_0_1: number };
+  };
+  
+  /** Missing factors with raw deltas (UI formats "+X%") */
+  missingFactorsBySystem: Array<{
+    system: 'hvac' | 'roof' | 'water_heater';
+    factor: string;
+    confidenceDelta: number;
+  }>;
+  
+  /** Multi-system quiet monitoring */
+  quietlyMonitored: {
+    subcomponents: Array<{ system: string; component: string; typicalCost: string }>;
+    secondarySystems: Array<{
+      system: string;
+      wearPoints: string[];
+      typicalServiceCost: string;
+    }>;
+  };
+  
+  /** Financial attribution (keys only, UI generates copy) */
+  financialAttribution: {
+    preventiveDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    avoidedRepairDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    riskDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    primaryRiskSystem: 'hvac' | 'roof' | 'water_heater';
   };
 }
 
@@ -2147,6 +2213,81 @@ async function calculateFeatureCompleteness(homeId: string): Promise<number> {
 }
 
 /**
+ * Derive missing factors based on actual system data
+ * Returns raw deltas - UI formats the copy
+ */
+function deriveMissingFactors(
+  systemsMap: Map<string, any>
+): Array<{ system: 'hvac' | 'roof' | 'water_heater'; factor: string; confidenceDelta: number }> {
+  const missing: Array<{ system: 'hvac' | 'roof' | 'water_heater'; factor: string; confidenceDelta: number }> = [];
+  
+  for (const [sysKey, factorDeltas] of Object.entries(CONFIDENCE_DELTAS)) {
+    const sys = systemsMap.get(sysKey);
+    
+    // Check for install year (or replacement year for roof)
+    if (sysKey === 'roof' && !sys?.install_year && factorDeltas['replacement_year']) {
+      missing.push({ 
+        system: sysKey as 'hvac' | 'roof' | 'water_heater', 
+        factor: 'replacement_year', 
+        confidenceDelta: factorDeltas['replacement_year'] 
+      });
+    } else if (sysKey !== 'roof' && !sys?.install_year && factorDeltas['install_year']) {
+      missing.push({ 
+        system: sysKey as 'hvac' | 'roof' | 'water_heater', 
+        factor: 'install_year', 
+        confidenceDelta: factorDeltas['install_year'] 
+      });
+    }
+    
+    // Check for service history (only for HVAC for now)
+    if (sysKey === 'hvac' && factorDeltas['service_history']) {
+      // We'll check this against maintenance events in getHomeForecast
+      // For now, include if confidence is low
+      if (!sys?.confidence_score || sys.confidence_score < 0.5) {
+        missing.push({ 
+          system: 'hvac', 
+          factor: 'service_history', 
+          confidenceDelta: factorDeltas['service_history'] 
+        });
+      }
+    }
+  }
+  
+  return missing;
+}
+
+/**
+ * Build quiet monitoring data from declarative config
+ */
+function buildQuietlyMonitored(): {
+  subcomponents: Array<{ system: string; component: string; typicalCost: string }>;
+  secondarySystems: Array<{ system: string; wearPoints: string[]; typicalServiceCost: string }>;
+} {
+  // Subcomponents (HVAC parts)
+  const subcomponents = (QUIET_MONITORING_CONFIG.hvac?.subcomponents || []).map(c => ({
+    system: 'HVAC',
+    component: c.component,
+    typicalCost: c.typicalCost
+  }));
+  
+  // Secondary systems (non-HVAC)
+  const secondarySystems = [
+    {
+      system: 'Water heater',
+      wearPoints: QUIET_MONITORING_CONFIG.water_heater?.wearPoints || [],
+      typicalServiceCost: QUIET_MONITORING_CONFIG.water_heater?.typicalServiceCost || ''
+    },
+    {
+      system: 'Roof',
+      wearPoints: QUIET_MONITORING_CONFIG.roof?.wearPoints || [],
+      typicalServiceCost: QUIET_MONITORING_CONFIG.roof?.typicalServiceCost || ''
+    }
+  ];
+  
+  return { subcomponents, secondarySystems };
+}
+
+/**
  * Build home forecast for conversion-optimized HomeHealthCard
  * 
  * RULES:
@@ -2161,7 +2302,9 @@ function buildHomeForecast(
     permitVerified: boolean;
     featureCompleteness: number;
     region: 'south_florida' | 'other';
-  }
+  },
+  systemConfidences: { hvac: number; roof: number; water_heater: number },
+  missingFactorsBySystem: Array<{ system: 'hvac' | 'roof' | 'water_heater'; factor: string; confidenceDelta: number }>
 ): HomeForecastOutput {
   const currentScore = multiSystemResult.score;
   const remainingYears = multiSystemResult.decayContext.effectiveRemainingYears;
@@ -2178,7 +2321,7 @@ function buildHomeForecast(
   const score12moTracked = Math.max(currentScore - 2, Math.round(currentScore * (1 - trackedDecayRate)));
   const score24moTracked = Math.max(currentScore - 4, Math.round(currentScore * (1 - trackedDecayRate * 2)));
   
-  // CORRECTED: Missing factors are ILLUSTRATIVE, not additive
+  // LEGACY: Missing factors (still needed for backward compat)
   const missingFactors: Array<{ label: string; impactLabel: string; ctaRoute?: string }> = [];
   if (!context.hasRecentMaintenance) {
     missingFactors.push({ 
@@ -2202,7 +2345,7 @@ function buildHomeForecast(
     });
   }
   
-  // Silent risks (South Florida specific)
+  // LEGACY: Silent risks (South Florida specific)
   const silentRisks = context.region === 'south_florida' ? [
     { 
       component: 'Capacitor', 
@@ -2239,6 +2382,25 @@ function buildHomeForecast(
   // Convert featureCompleteness (0-1) to percentage
   const completenessPercent = Math.round(context.featureCompleteness * 100);
   
+  // NEW: System confidence (numeric only)
+  const systemConfidence = {
+    hvac: { confidence_0_1: systemConfidences.hvac },
+    roof: { confidence_0_1: systemConfidences.roof },
+    water_heater: { confidence_0_1: systemConfidences.water_heater }
+  };
+  
+  // NEW: Quietly monitored from config (declarative)
+  const quietlyMonitored = buildQuietlyMonitored();
+  
+  // NEW: Financial attribution (keys only, no copy)
+  const primarySystem = multiSystemResult.primarySystem;
+  const financialAttribution = {
+    preventiveDrivers: ['hvac', 'water_heater'] as const,
+    avoidedRepairDrivers: ['hvac', 'water_heater'] as const,
+    riskDrivers: [primarySystem, primarySystem === 'roof' ? 'hvac' : 'roof'] as const,
+    primaryRiskSystem: primarySystem
+  };
+  
   return {
     currentScore,
     ifLeftUntracked: {
@@ -2267,10 +2429,16 @@ function buildHomeForecast(
     trajectoryQualifier: context.region === 'south_florida'
       ? 'Typical trajectory for South Florida homes like yours'
       : 'Typical trajectory for homes like yours',
-    // NEW: Include driver explanations from multi-system result
+    // Driver explanations from multi-system result
     drivers: multiSystemResult.drivers,
-    // NEW: Include system breakdown for UI
-    systemBreakdown: multiSystemResult.systemBreakdown
+    // System breakdown for UI
+    systemBreakdown: multiSystemResult.systemBreakdown,
+    
+    // NEW: Multi-system transparency fields
+    systemConfidence,
+    missingFactorsBySystem,
+    quietlyMonitored,
+    financialAttribution
   };
 }
 
@@ -2312,13 +2480,35 @@ async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
   // 5. Calculate feature completeness (now user-effort-based, not cost-weighted)
   const featureCompleteness = await calculateFeatureCompleteness(homeId);
   
-  // 6. Build forecast using multi-system result
-  const forecast = buildHomeForecast(multiSystemResult, {
-    hasRecentMaintenance: (recentMaintenance?.length || 0) > 0,
-    permitVerified: false, // Will enhance with multi-system permit check later
-    featureCompleteness,
-    region: isSouthFlorida ? 'south_florida' : 'other'
-  });
+  // 6. NEW: Fetch system confidence scores
+  const { data: systems } = await supabase
+    .from('systems')
+    .select('kind, confidence_score, install_year')
+    .eq('home_id', homeId);
+  
+  const systemsMap = new Map(systems?.map(s => [s.kind, s]) || []);
+  
+  const systemConfidences = {
+    hvac: systemsMap.get('hvac')?.confidence_score ?? 0.30,
+    roof: systemsMap.get('roof')?.confidence_score ?? 0.30,
+    water_heater: systemsMap.get('water_heater')?.confidence_score ?? 0.30
+  };
+  
+  // 7. NEW: Derive missing factors based on actual data
+  const missingFactorsBySystem = deriveMissingFactors(systemsMap);
+  
+  // 8. Build forecast using multi-system result with new transparency fields
+  const forecast = buildHomeForecast(
+    multiSystemResult, 
+    {
+      hasRecentMaintenance: (recentMaintenance?.length || 0) > 0,
+      permitVerified: false, // Will enhance with multi-system permit check later
+      featureCompleteness,
+      region: isSouthFlorida ? 'south_florida' : 'other'
+    },
+    systemConfidences,
+    missingFactorsBySystem
+  );
   
   console.log(`[getHomeForecast] Built multi-system forecast:`, {
     currentScore: forecast.currentScore,
@@ -2326,7 +2516,9 @@ async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
     completeness: forecast.forecastCompleteness.percentage,
     primarySystem: multiSystemResult.primarySystem,
     systemBreakdown: multiSystemResult.systemBreakdown,
-    effectiveRemainingYears: multiSystemResult.decayContext.effectiveRemainingYears
+    effectiveRemainingYears: multiSystemResult.decayContext.effectiveRemainingYears,
+    systemConfidences,
+    missingFactorsBySystem: missingFactorsBySystem.length
   });
   
   return forecast;
