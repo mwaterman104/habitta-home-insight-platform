@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
       .from('systems')
       .select('*')
       .eq('home_id', homeId)
-      .eq('system_key', systemKey)
+      .eq('kind', systemKey)
       .maybeSingle();
 
     if (systemError) {
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
     // Upsert system record
     const systemPayload = {
       home_id: homeId,
-      system_key: systemKey,
+      kind: systemKey,
       install_year: newInstallYear,
       install_month: newInstallMonth,
       install_source: newInstallSource,
