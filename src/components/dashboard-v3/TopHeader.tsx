@@ -1,7 +1,17 @@
-import { Bell, ChevronDown, User } from "lucide-react";
+import { Bell, ChevronDown, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface TopHeaderProps {
   address: string;
@@ -11,10 +21,10 @@ interface TopHeaderProps {
 }
 
 /**
- * TopHeader - Property selector + health status + notifications
+ * TopHeader - Property selector + health status + notifications + profile
  * 
  * Displays the current property with a health badge.
- * Clicking the address opens the property selector/profile.
+ * Includes full auth controls since Dashboard V3 is a standalone layout.
  */
 export function TopHeader({ 
   address, 
@@ -22,6 +32,14 @@ export function TopHeader({
   onAddressClick,
   hasNotifications = false 
 }: TopHeaderProps) {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
+
   const getStatusBadge = () => {
     switch (healthStatus) {
       case 'healthy':
@@ -40,41 +58,92 @@ export function TopHeader({
 
   return (
     <header className="h-16 border-b bg-card px-6 flex items-center justify-between shrink-0">
-      {/* Left: Property Selector */}
-      <button 
-        onClick={onAddressClick}
-        className="flex items-center gap-2 hover:bg-muted/50 rounded-lg px-2 py-1.5 -ml-2 transition-colors"
-      >
-        <div className="h-8 w-8 rounded bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-bold text-sm">🏠</span>
-        </div>
-        <div className="text-left">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate max-w-[200px]">
-              {address.split(',')[0]}
-            </span>
-            {getStatusBadge()}
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      {/* Left: Brand + Property Selector */}
+      <div className="flex items-center gap-4">
+        <span className="text-xl font-bold text-primary">Habitta</span>
+        
+        <button 
+          onClick={onAddressClick}
+          className="flex items-center gap-2 hover:bg-muted/50 rounded-lg px-2 py-1.5 transition-colors"
+        >
+          <div className="h-8 w-8 rounded bg-primary flex items-center justify-center shrink-0">
+            <span className="text-primary-foreground font-bold text-sm">🏠</span>
           </div>
-        </div>
-      </button>
+          <div className="text-left">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-sm truncate max-w-[200px]">
+                {address.split(',')[0]}
+              </span>
+              {getStatusBadge()}
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </div>
+        </button>
+      </div>
 
       {/* Center: Date (hidden on smaller screens) */}
       <div className="hidden md:block text-sm text-muted-foreground">
         {currentDate}
       </div>
 
-      {/* Right: Actions */}
+      {/* Right: Notifications + Profile */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          {hasNotifications && (
-            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-          )}
-        </Button>
-        <Button variant="ghost" size="icon">
-          <User className="h-5 w-5" />
-        </Button>
+        {/* Notifications */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5" />
+              {hasNotifications && (
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">HVAC Filter Due</p>
+                <p className="text-sm text-muted-foreground">Change your air filter this week</p>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">Property Value Alert</p>
+                <p className="text-sm text-muted-foreground">Your home value increased 3.2%</p>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Profile Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="flex items-center gap-2 px-2">
+              <Avatar className="h-7 w-7">
+                <AvatarImage src={user?.user_metadata?.avatar_url} />
+                <AvatarFallback className="text-xs">
+                  {user?.email?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              {user?.user_metadata?.full_name || user?.email?.split("@")[0]}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );
