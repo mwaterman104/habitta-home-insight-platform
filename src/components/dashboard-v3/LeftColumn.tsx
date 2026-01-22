@@ -33,7 +33,7 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Property Identity Card */}
       <div className="p-4 border-b shrink-0">
         <button

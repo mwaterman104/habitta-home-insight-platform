@@ -169,9 +169,9 @@ export function MiddleColumn({
   const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Scrollable content area */}
-      <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 min-h-0 overflow-hidden" ref={scrollAreaRef}>
         <div className="space-y-6 max-w-3xl mx-auto pb-4">
           {/* Enriching indicator */}
           {isEnriching && (
@@ -240,7 +240,7 @@ export function MiddleColumn({
       
       {/* Sticky ChatDock - Always visible at bottom */}
       {!isMobile && (
-        <div className="shrink-0">
+        <div className="shrink-0 border-t bg-card">
           <ChatDock
             propertyId={propertyId}
             isExpanded={chatExpanded}
