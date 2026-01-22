@@ -395,15 +395,15 @@ export default function DashboardV3() {
       
       <div className="flex flex-1 h-[calc(100vh-64px)]">
         {/* Left Column - Navigation + Identity (Fixed 240px) */}
-        <aside className="w-60 border-r bg-card shrink-0 hidden lg:block overflow-y-auto">
+        <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col h-full">
           <LeftColumn 
             address={fullAddress}
             onAddressClick={handleAddressClick}
           />
         </aside>
         
-        {/* Middle Column - Primary Canvas (Flex) */}
-        <main className="flex-1 overflow-hidden p-6">
+        {/* Middle Column - Primary Canvas (Flex) with sticky chat */}
+        <main className="flex-1 flex flex-col overflow-hidden p-6 pb-0">
           <MiddleColumn
             homeForecast={homeForecast}
             forecastLoading={forecastLoading}

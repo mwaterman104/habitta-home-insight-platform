@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { ChevronRight } from 'lucide-react';
 import { 
   arbitrateNarrative, 
@@ -25,7 +25,7 @@ interface TodaysHomeBriefProps {
 /**
  * TodaysHomeBrief - Narrative Anchor Component
  * 
- * Answers: "What is going on with my house right now, and why does it matter?"
+ * Surface Job: What matters today
  * Uses narrative arbitration to select a single dominant story.
  * Optionally displays a soft recommendation directive.
  */
@@ -137,40 +137,41 @@ export function TodaysHomeBrief({
   };
   
   return (
-    <div className="bg-muted/30 rounded-xl px-4 py-3">
-      {/* Primary narrative */}
-      <p className="text-sm text-foreground leading-relaxed">
-        {brief.primary}
-      </p>
-      
-      {/* Secondary context */}
-      {brief.secondary && (
-        <p className="text-xs text-muted-foreground mt-1">
-          {brief.secondary}
+    <Card className="rounded-xl border-0 bg-muted/30 shadow-none">
+      <CardContent className="p-4">
+        {/* Primary narrative */}
+        <p className="text-base font-medium text-foreground leading-relaxed">
+          {brief.primary}
         </p>
-      )}
-      
-      {/* Soft recommendation directive */}
-      {narrative.recommendedAction && (
-        <div className="mt-3 pt-3 border-t border-border/50">
-          <p className="text-xs text-muted-foreground mb-1">
-            {narrative.recommendedAction.softFraming}
+        
+        {/* Secondary context */}
+        {brief.secondary && (
+          <p className="text-sm text-muted-foreground mt-1.5">
+            {brief.secondary}
           </p>
-          <Button
-            variant="link"
-            className="p-0 h-auto text-sm text-primary hover:text-primary/80 group"
-            onClick={handleRecommendationClick}
-          >
-            {narrative.recommendedAction.actionLabel}
-            {narrative.recommendedAction.impactLabel && (
-              <span className="ml-1.5 text-muted-foreground text-xs">
-                ({narrative.recommendedAction.impactLabel})
-              </span>
-            )}
-            <ChevronRight className="ml-1 h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </Button>
-        </div>
-      )}
-    </div>
+        )}
+        
+        {/* Soft recommendation directive */}
+        {narrative.recommendedAction && (
+          <div className="mt-4 pt-3 border-t border-border/40">
+            <p className="text-xs text-muted-foreground mb-1.5">
+              {narrative.recommendedAction.softFraming}
+            </p>
+            <button
+              onClick={handleRecommendationClick}
+              className="inline-flex items-center text-sm font-medium text-primary hover:text-primary/80 transition-colors group"
+            >
+              {narrative.recommendedAction.actionLabel}
+              {narrative.recommendedAction.impactLabel && (
+                <span className="ml-2 text-xs font-normal text-green-600">
+                  ({narrative.recommendedAction.impactLabel})
+                </span>
+              )}
+              <ChevronRight className="ml-1 h-4 w-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
