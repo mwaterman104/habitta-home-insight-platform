@@ -7,6 +7,16 @@ const corsHeaders = {
 };
 
 /**
+ * Normalize parcel ID to digits only for reliable matching across systems
+ * Returns null if the result is too short to be valid (< 6 digits)
+ */
+function normalizeFolio(folio: string | null | undefined): string | null {
+  if (!folio) return null;
+  const normalized = folio.replace(/[^0-9]/g, '');
+  return normalized.length >= 6 ? normalized : null;
+}
+
+/**
  * property-enrichment: ATTOM property data enrichment
  * 
  * Internal function called by create-home via background task.
@@ -103,10 +113,27 @@ serve(async (req) => {
                          attomData._attomData?.building?.size?.livingsize ||
                          attomData._attomData?.building?.size?.bldgsize;
 
+      // DEFENSIVE FOLIO EXTRACTION
+      // Priority: apn > parcelId > alternateParcelId (NOT fips - that's geographic, not parcel)
+      const identifiers = attomData._attomData?.identifier || {};
+      console.log('[property-enrichment] Raw ATTOM identifiers:', JSON.stringify(identifiers));
+      
+      const rawFolio = identifiers.apn || identifiers.parcelId || identifiers.alternateParcelId || null;
+      const folio = normalizeFolio(rawFolio);
+      
+      if (rawFolio && !folio) {
+        console.warn(`[property-enrichment] Folio normalized to null (raw: ${rawFolio})`);
+      } else if (!rawFolio) {
+        console.warn('[property-enrichment] No parcel identifier found in ATTOM response');
+      } else {
+        console.log(`[property-enrichment] Folio extracted: raw=${rawFolio}, normalized=${folio}`);
+      }
+
       // CRITICAL: Log what we extracted to debug persistence issues
       console.log('[property-enrichment] ATTOM extracted values:', {
         yearBuilt,
         squareFeet,
+        folio,
         existingYearBuilt: home.year_built,
         existingSquareFeet: home.square_feet,
         rawPropertyDetails: attomData.propertyDetails ? 'present' : 'missing',
@@ -130,6 +157,13 @@ serve(async (req) => {
         console.log(`[property-enrichment] square_feet already set to ${home.square_feet}, not overwriting with ${squareFeet}`);
       } else if (!squareFeet) {
         console.warn(`[property-enrichment] ATTOM did not return squareFeet for home: ${home_id}`);
+      }
+
+      // Store folio with source tracking
+      if (folio) {
+        updates.folio = folio;
+        updates.folio_source = 'attom';
+        console.log(`[property-enrichment] Will update folio to: ${folio} (source: attom)`);
       }
 
       if (Object.keys(updates).length > 0) {

@@ -51,8 +51,23 @@ serve(async (req) => {
       console.log('[shovels-permits] Internal call validated via secret')
     }
 
-    const { address, homeId, folio, source: requestedSource } = await req.json()
-    console.log('Syncing permits for address:', address, 'homeId:', homeId, 'folio:', folio, 'source:', requestedSource)
+    const { address, homeId, folio: requestFolio, source: requestedSource } = await req.json()
+    console.log('Syncing permits for address:', address, 'homeId:', homeId, 'folio:', requestFolio, 'source:', requestedSource)
+
+    // Fetch folio from homes table if homeId provided but no folio in request
+    let folio = requestFolio;
+    if (!folio && homeId) {
+      const { data: homeData } = await supabaseClient
+        .from('homes')
+        .select('folio')
+        .eq('id', homeId)
+        .single();
+      
+      if (homeData?.folio) {
+        folio = homeData.folio;
+        console.log(`[shovels-permits] Found stored folio from homes table: ${folio}`);
+      }
+    }
 
     // Determine which source(s) to query
     // Priority: explicit source > folio detection > default to shovels
@@ -337,30 +352,45 @@ serve(async (req) => {
 // ========== SOURCE FETCHERS ==========
 
 /**
+ * Normalize folio to digits only for reliable matching
+ */
+function normalizeFolioForQuery(folio: string): string {
+  return folio.replace(/[^0-9]/g, '');
+}
+
+/**
  * Fetch permits from Miami-Dade ArcGIS API
+ * Uses folio-first strategy with normalized matching and suffix fallback
  */
 async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<NormalizedPermit[]> {
   let whereClause = '1=1';
+  let searchStrategy = 'none';
   
   if (folio) {
-    // Direct FOLIO lookup is most reliable
-    whereClause = `FOLIO='${folio.replace(/'/g, "''")}'`;
+    // Normalize folio and use REPLACE() for database-side normalization too
+    const normalizedFolio = normalizeFolioForQuery(folio);
+    whereClause = `REPLACE(REPLACE(FOLIO, '-', ''), ' ', '')='${normalizedFolio}'`;
+    searchStrategy = 'folio-exact';
+    console.log(`[miami-dade] Folio search: normalized=${normalizedFolio}`);
   } else if (address) {
     // Miami-Dade uses abbreviated address format: "3082 NW 64 ST" not "NORTHWEST 64TH STREET"
-    // Use the ADDRESS field (not STNDADDR) with normalized abbreviations
     const normalizedAddr = normalizeMiamiDadeAddress(address);
     
     if (normalizedAddr) {
-      // Use ADDRESS field with the normalized format
       whereClause = `ADDRESS LIKE '${normalizedAddr}%'`;
+      searchStrategy = 'address-prefix';
     } else {
       // Fallback: extract just the street number for broader matching
       const streetNumMatch = address.match(/^(\d+)/);
       if (streetNumMatch) {
         whereClause = `ADDRESS LIKE '${streetNumMatch[1]}%'`;
+        searchStrategy = 'address-number';
       }
     }
+    console.log(`[miami-dade] Address fallback: ${normalizedAddr || 'number-only'}`);
   }
+
+  console.log(`[miami-dade] Search strategy: ${searchStrategy}, where: ${whereClause}`);
 
   // Build query with reasonable limits
   const params = new URLSearchParams({
@@ -368,8 +398,8 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
     outFields: '*',
     outSR: '4326',
     f: 'json',
-    resultRecordCount: '100', // Limit results
-    orderByFields: 'ISSUDATE DESC' // Most recent first
+    resultRecordCount: '100',
+    orderByFields: 'ISSUDATE DESC'
   });
 
   const response = await fetch(`${MIAMI_DADE_API}?${params.toString()}`);
@@ -384,8 +414,32 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
     throw new Error(`Miami-Dade API error: ${data.error.message}`);
   }
 
-  const features = data.features || [];
+  let features = data.features || [];
   console.log(`[miami-dade] Query: ${whereClause}, Results: ${features.length}`);
+
+  // SUFFIX FALLBACK: If exact folio match returns 0 results, try last 6 digits
+  if (features.length === 0 && folio && searchStrategy === 'folio-exact') {
+    const normalizedFolio = normalizeFolioForQuery(folio);
+    const suffix = normalizedFolio.slice(-6);
+    const fallbackWhere = `REPLACE(REPLACE(FOLIO, '-', ''), ' ', '') LIKE '%${suffix}'`;
+    console.log(`[miami-dade] Retrying with folio suffix: ${suffix}`);
+    
+    const fallbackParams = new URLSearchParams({
+      where: fallbackWhere,
+      outFields: '*',
+      outSR: '4326',
+      f: 'json',
+      resultRecordCount: '100',
+      orderByFields: 'ISSUDATE DESC'
+    });
+
+    const fallbackResponse = await fetch(`${MIAMI_DADE_API}?${fallbackParams.toString()}`);
+    if (fallbackResponse.ok) {
+      const fallbackData = await fallbackResponse.json();
+      features = fallbackData.features || [];
+      console.log(`[miami-dade] Suffix fallback results: ${features.length}`);
+    }
+  }
 
   return features.map((f: any) => normalizeMiamiDadePermit(f.attributes || f));
 }
