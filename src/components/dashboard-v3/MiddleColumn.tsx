@@ -10,6 +10,7 @@ import { ChatDock } from "./ChatDock";
 import { ChevronDown } from "lucide-react";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
+import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 
 interface TimelineTask {
   id: string;
@@ -39,18 +40,23 @@ interface MiddleColumnProps {
   onSystemClick: (systemKey: string) => void;
   isEnriching?: boolean;
   isMobile?: boolean;
+  // Advisor state props
+  advisorState?: AdvisorState;
+  focusContext?: { systemKey: string; trigger: string };
+  openingMessage?: AdvisorOpeningMessage | null;
+  confidence?: number;
+  risk?: RiskLevel;
+  onUserReply?: () => void;
 }
 
 /**
- * MiddleColumn - Primary Canvas
+ * MiddleColumn - Primary Canvas with Advisor State Integration
  * 
  * Strict narrative order:
  * 1. Home Health Forecast (~40%)
  * 2. Timeline / Planning Windows (~40%)
  * 3. Coming Up - Tasks
- * 4. Chat Dock (~20% - collapsed by default)
- * 
- * The agent inhabits this column, not dominates it.
+ * 4. Chat Dock (~20% - collapsed by default, auto-opens on triggers)
  */
 export function MiddleColumn({
   homeForecast,
@@ -67,6 +73,12 @@ export function MiddleColumn({
   onSystemClick,
   isEnriching,
   isMobile = false,
+  advisorState = 'PASSIVE',
+  focusContext,
+  openingMessage,
+  confidence = 0.5,
+  risk = 'LOW',
+  onUserReply,
 }: MiddleColumnProps) {
   const navigate = useNavigate();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -236,6 +248,12 @@ export function MiddleColumn({
               isExpanded={chatExpanded}
               onExpandChange={onChatExpandChange}
               hasAgentMessage={hasAgentMessage}
+              advisorState={advisorState}
+              focusContext={focusContext}
+              openingMessage={openingMessage}
+              confidence={confidence}
+              risk={risk}
+              onUserReply={onUserReply}
             />
           </section>
         )}

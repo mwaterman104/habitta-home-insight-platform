@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { AdvisorState, RiskLevel } from '@/types/advisorState';
 
 interface ChatMessage {
   id: string;
@@ -17,7 +18,16 @@ interface AssistantResponse {
   suggestions?: string[];
 }
 
-export const useAIHomeAssistant = (propertyId?: string) => {
+interface UseAIHomeAssistantOptions {
+  advisorState?: AdvisorState;
+  confidence?: number;
+  risk?: RiskLevel;
+  focusSystem?: string;
+}
+
+export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssistantOptions = {}) => {
+  const { advisorState = 'ENGAGED', confidence = 0.5, risk = 'LOW', focusSystem } = options;
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,14 +55,18 @@ export const useAIHomeAssistant = (propertyId?: string) => {
         content: msg.content
       }));
 
-      // Get AI response
+      // Get AI response with advisor state context
       const { data, error: assistantError } = await supabase.functions.invoke(
         'ai-home-assistant',
         {
           body: {
             message,
             propertyId,
-            conversationHistory
+            conversationHistory,
+            advisorState,
+            confidence,
+            risk,
+            focusSystem
           }
         }
       );
@@ -91,6 +105,21 @@ export const useAIHomeAssistant = (propertyId?: string) => {
     }
   };
 
+  // Inject an assistant message (for opening messages from advisor state)
+  const injectMessage = useCallback((content: string) => {
+    const message: ChatMessage = {
+      id: `assistant-opening-${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => {
+      // Don't inject if already present
+      if (prev.some(m => m.content === content)) return prev;
+      return [...prev, message];
+    });
+  }, []);
+
   const clearConversation = () => {
     setMessages([]);
     setError(null);
@@ -100,31 +129,13 @@ export const useAIHomeAssistant = (propertyId?: string) => {
     await sendMessage(suggestion);
   };
 
-  const getInitialGreeting = (): ChatMessage => {
-    return {
-      id: 'greeting',
-      role: 'assistant',
-      content: 'Hi! I\'m your AI home maintenance assistant. I can help you with maintenance planning, cost estimates, contractor recommendations, and answer questions about your home systems. What would you like to know?',
-      timestamp: new Date().toISOString(),
-      suggestions: [
-        'What maintenance should I prioritize this season?',
-        'Show me my system health overview',
-        'Help me plan my maintenance budget'
-      ]
-    };
-  };
-
-  // Initialize with greeting if no messages
-  if (messages.length === 0 && propertyId) {
-    setMessages([getInitialGreeting()]);
-  }
-
   return {
     messages,
     loading,
     error,
     sendMessage,
     sendSuggestion,
-    clearConversation
+    clearConversation,
+    injectMessage
   };
 };
