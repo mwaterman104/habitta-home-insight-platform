@@ -1,12 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export function useUpcomingTasks(homeId?: string, days: number = 30, refreshKey: number = 0) {
-  const [data, setData] = useState<any[] | null>(null);
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [internalRefresh, setInternalRefresh] = useState(0);
+  
+  const refetch = useCallback(() => {
+    setInternalRefresh(prev => prev + 1);
+  }, []);
   
   useEffect(() => {
-    if (!homeId) return;
+    if (!homeId) {
+      setData([]);
+      setLoading(false);
+      return;
+    }
     
     let cancel = false;
     setLoading(true);
@@ -20,7 +29,6 @@ export function useUpcomingTasks(homeId?: string, days: number = 30, refreshKey:
         .from("maintenance_tasks")
         .select("*")
         .eq("home_id", homeId)
-        .in("status", ["pending", "in_progress"]) // upcoming, not completed
         .gte("due_date", now.toISOString().slice(0, 10))
         .lte("due_date", end.toISOString().slice(0, 10))
         .order("due_date", { ascending: true });
@@ -34,7 +42,7 @@ export function useUpcomingTasks(homeId?: string, days: number = 30, refreshKey:
     return () => {
       cancel = true;
     };
-  }, [homeId, days, refreshKey]);
+  }, [homeId, days, refreshKey, internalRefresh]);
   
-  return { data, loading };
+  return { data, loading, refetch };
 }

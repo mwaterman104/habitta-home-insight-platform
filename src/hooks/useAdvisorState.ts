@@ -1,7 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import type {
   AdvisorState,
-  AdvisorContext,
   AdvisorTrigger,
   FocusContext,
   RiskLevel,
@@ -13,6 +12,13 @@ import {
   getTriggerKey,
   generateOpeningMessage,
 } from '@/types/advisorState';
+import {
+  loadTriggerHistory,
+  saveTriggerToHistory,
+  canAutoOpen,
+  incrementSessionAutoOpens,
+  CADENCE_RULES,
+} from '@/lib/uiGovernance';
 
 interface UseAdvisorStateOptions {
   initialConfidence?: number;
@@ -49,10 +55,21 @@ interface UseAdvisorStateReturn {
  * Manages transitions between:
  * PASSIVE → OBSERVING → ENGAGED → DECISION → EXECUTION
  * 
- * Rules:
- * - Auto-open only happens on specific triggers
- * - Chat never auto-closes
- * - Each unique trigger only causes expansion once
+ * Cadence Rules:
+ * - 24hr cooldown per trigger type
+ * - Max 2 auto-opens per session
+ * - Silent if no data change
+ * 
+ * Auto-open triggers:
+ * - System selected (once per system per session)
+ * - Risk threshold crossed (once per threshold level)
+ * - Confidence improved >15% (once per system)
+ * - Planning window entered (once per system)
+ * 
+ * Non-triggers (never auto-open):
+ * - App load with no changes
+ * - User scrolling
+ * - Map interactions
  */
 export function useAdvisorState(options: UseAdvisorStateOptions = {}): UseAdvisorStateReturn {
   const { initialConfidence = 0.5, initialRisk = 'LOW' } = options;
@@ -65,14 +82,34 @@ export function useAdvisorState(options: UseAdvisorStateOptions = {}): UseAdviso
   const [lastTrigger, setLastTrigger] = useState<AdvisorTrigger | null>(null);
   const [chatManuallyOpened, setChatManuallyOpened] = useState(false);
 
+  // Load trigger history from localStorage on mount
+  useEffect(() => {
+    const history = loadTriggerHistory();
+    if (history.length > 0) {
+      setExpandedTriggers(new Set(history.map(entry => entry.key)));
+    }
+  }, []);
+
   // Process a trigger and potentially transition state
   const processTrigger = useCallback((trigger: AdvisorTrigger) => {
-    const shouldExpand = shouldAutoExpand(trigger, advisorState, expandedTriggers);
+    // Check if this trigger should cause auto-expansion
+    const basicShouldExpand = shouldAutoExpand(trigger, advisorState, expandedTriggers);
+    
+    // Apply session-level cadence rules
+    const sessionAllowsExpand = canAutoOpen();
+    const shouldExpand = basicShouldExpand && sessionAllowsExpand;
     
     if (shouldExpand) {
       // Mark this trigger as processed (once per unique trigger)
       const triggerKey = getTriggerKey(trigger);
       setExpandedTriggers(prev => new Set(prev).add(triggerKey));
+      
+      // Persist to localStorage for cross-session cadence
+      saveTriggerToHistory(triggerKey);
+      
+      // Increment session counter
+      incrementSessionAutoOpens();
+      
       setLastTrigger(trigger);
       setAdvisorState('ENGAGED');
     }

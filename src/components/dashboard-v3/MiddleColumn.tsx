@@ -3,12 +3,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeHealthCard } from "@/components/HomeHealthCard";
-import { SystemStatusCard } from "@/components/SystemStatusCard";
 import { MaintenanceTimeline } from "@/components/MaintenanceTimeline";
 import { CapitalTimeline } from "@/components/CapitalTimeline";
 import { TodaysHomeBrief } from "@/components/TodaysHomeBrief";
 import { ChatDock } from "./ChatDock";
-import { ChevronDown } from "lucide-react";
 import { trackScrollDepth, trackSystemCardClick } from "@/lib/analytics";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
@@ -19,6 +17,12 @@ interface TimelineTask {
   title: string;
   metaLine?: string;
   completed?: boolean;
+  systemKey?: string;
+  riskImpact?: {
+    type: 'prevents' | 'reduces' | 'extends';
+    systemName: string;
+    description: string;
+  };
 }
 
 interface MaintenanceData {
@@ -49,16 +53,21 @@ interface MiddleColumnProps {
   confidence?: number;
   risk?: RiskLevel;
   onUserReply?: () => void;
+  // Maintenance interaction handlers
+  onTaskComplete?: (taskId: string) => void;
 }
 
 /**
- * MiddleColumn - Primary Canvas with Advisor State Integration
+ * MiddleColumn - Primary Canvas with Sticky ChatDock
  * 
- * Strict narrative order:
- * 1. Home Health Forecast (~40%)
- * 2. Timeline / Planning Windows (~40%)
- * 3. Coming Up - Tasks
- * 4. Chat Dock (~20% - collapsed by default, auto-opens on triggers)
+ * V3.1 Architecture:
+ * - Scrollable content: Home Brief → Health Score → Timeline → Maintenance
+ * - Sticky ChatDock at bottom (outside scroll area)
+ * - Chat expands upward, content compresses
+ * 
+ * Removed:
+ * - "Coming Up" HVAC card (redundant with Timeline)
+ * - Scroll indicator (chat is always visible now)
  */
 export function MiddleColumn({
   homeForecast,
@@ -81,63 +90,38 @@ export function MiddleColumn({
   confidence = 0.5,
   risk = 'LOW',
   onUserReply,
+  onTaskComplete,
 }: MiddleColumnProps) {
   const navigate = useNavigate();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const chatDockRef = useRef<HTMLDivElement>(null);
-  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
 
   // Track scroll depth for analytics
   const lastTrackedDepth = useRef(0);
-  const trackScroll = useCallback((percentage: number, reachedChatDock: boolean) => {
+  const trackScroll = useCallback((percentage: number) => {
     // Only track significant scroll depth changes (every 25%)
     const bucket = Math.floor(percentage / 25) * 25;
     if (bucket > lastTrackedDepth.current) {
       lastTrackedDepth.current = bucket;
-      trackScrollDepth(bucket, reachedChatDock);
+      trackScrollDepth(bucket, false);
     }
   }, []);
 
-  // Check if ChatDock is below the fold
+  // Scroll tracking
   useEffect(() => {
-    const checkScrollPosition = () => {
-      const scrollArea = scrollAreaRef.current;
-      if (!scrollArea) return;
-      
-      const viewport = scrollArea.querySelector('[data-radix-scroll-area-viewport]');
-      if (!viewport) return;
-      
-      const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
-      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
-      setShowScrollIndicator(!isNearBottom && !chatExpanded);
-      
-      // Track scroll depth
-      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100);
-      trackScroll(scrollPercentage, isNearBottom);
-    };
-
     const scrollArea = scrollAreaRef.current;
     const viewport = scrollArea?.querySelector('[data-radix-scroll-area-viewport]');
     
-    if (viewport) {
-      viewport.addEventListener('scroll', checkScrollPosition);
-      // Initial check
-      setTimeout(checkScrollPosition, 100);
-    }
+    if (!viewport) return;
 
-    return () => {
-      if (viewport) {
-        viewport.removeEventListener('scroll', checkScrollPosition);
-      }
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
+      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100);
+      trackScroll(scrollPercentage);
     };
-  }, [chatExpanded, trackScroll]);
 
-  // Agent-triggered scroll: when chat expands, scroll ChatDock into view
-  useEffect(() => {
-    if (chatExpanded && chatDockRef.current) {
-      chatDockRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-  }, [chatExpanded]);
+    viewport.addEventListener('scroll', handleScroll);
+    return () => viewport.removeEventListener('scroll', handleScroll);
+  }, [trackScroll]);
 
   // Derive scores for legacy fallback
   const getOverallScore = () => {
@@ -172,6 +156,12 @@ export function MiddleColumn({
     onSystemClick(systemKey);
   };
 
+  // Handle "protect" CTA - opens chat in-place with context
+  const handleProtectClick = () => {
+    // Expand chat with pre-seeded context instead of navigating away
+    onChatExpandChange(true);
+  };
+
   // Determine if user is new (no forecast data)
   const isNewUser = !homeForecast && !hvacPrediction;
 
@@ -179,135 +169,92 @@ export function MiddleColumn({
   const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
 
   return (
-    <ScrollArea className="h-full" ref={scrollAreaRef}>
-      <div className={`space-y-6 max-w-3xl mx-auto ${chatExpanded ? 'pb-8' : 'pb-32'}`}>
-        {/* Enriching indicator */}
-        {isEnriching && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-            Still analyzing your home...
-          </div>
-        )}
-
-        {/* 0. Today's Home Brief - Narrative Anchor */}
-        <section>
-          <TodaysHomeBrief
-            homeForecast={homeForecast}
-            hvacPrediction={hvacPrediction}
-            capitalTimeline={capitalTimeline}
-            isNewUser={isNewUser}
-            hasOverdueMaintenance={hasOverdueMaintenance}
-          />
-        </section>
-
-        {/* 1. Home Health Forecast - Primary */}
-        <section>
-          {forecastLoading ? (
-            <Skeleton className="h-64 rounded-2xl" />
-          ) : homeForecast ? (
-            <HomeHealthCard 
-              forecast={homeForecast}
-              onProtectClick={() => {
-                const params = new URLSearchParams({
-                  topic: 'protection-plan',
-                  score: String(homeForecast.currentScore),
-                  projected: String(homeForecast.ifLeftUntracked.score24mo),
-                  topRisk: homeForecast.silentRisks[0]?.component || 'system-wear',
-                  region: homeForecast.financialOutlook.region
-                });
-                navigate(`/chatdiy?${params.toString()}`);
-              }}
-            />
-          ) : (
-            <HomeHealthCard 
-              overallScore={getOverallScore()}
-              systemsNeedingAttention={getSystemsNeedingAttention()}
-              lastUpdated="today"
-              scoreDrivers="HVAC age, recent maintenance, and local climate"
-              whyBullets={getWhyBullets()}
-              confidenceScore={35}
-            />
+    <div className="flex flex-col h-full">
+      {/* Scrollable content area */}
+      <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
+        <div className="space-y-6 max-w-3xl mx-auto pb-4">
+          {/* Enriching indicator */}
+          {isEnriching && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+              Still analyzing your home...
+            </div>
           )}
-        </section>
 
-        {/* 2. Coming Up - Systems */}
-        <section>
-          <h2 className="text-xs uppercase text-muted-foreground mb-1 font-medium tracking-wider">
-            Coming Up
-          </h2>
-          <p className="text-xs text-muted-foreground mb-3">
-            Tracking HVAC in detail. More systems coming soon.
-          </p>
-          <div className="space-y-3">
-            {hvacLoading ? (
-              <Skeleton className="h-24 rounded-xl" />
-            ) : hvacPrediction ? (
-              <SystemStatusCard
-                systemName={hvacPrediction.header.name}
-                summary={hvacPrediction.forecast.summary}
-                recommendation={hvacPrediction.actions[0]?.title ? `Recommended: ${hvacPrediction.actions[0].title}` : undefined}
-                status={hvacPrediction.status}
-                nextReview={hvacPrediction.status === 'low' ? 'Next review after summer season' : undefined}
-                onClick={() => handleSystemClickWithTracking('hvac')}
+          {/* 0. Today's Home Brief - Narrative Anchor */}
+          <section>
+            <TodaysHomeBrief
+              homeForecast={homeForecast}
+              hvacPrediction={hvacPrediction}
+              capitalTimeline={capitalTimeline}
+              isNewUser={isNewUser}
+              hasOverdueMaintenance={hasOverdueMaintenance}
+            />
+          </section>
+
+          {/* 1. Home Health Forecast - Primary */}
+          <section>
+            {forecastLoading ? (
+              <Skeleton className="h-64 rounded-2xl" />
+            ) : homeForecast ? (
+              <HomeHealthCard 
+                forecast={homeForecast}
+                onProtectClick={handleProtectClick}
               />
             ) : (
-              <div className="text-center py-8 text-muted-foreground rounded-xl border border-dashed">
-                <p>No HVAC data available yet.</p>
-                <p className="text-sm">We're analyzing your home systems.</p>
-              </div>
+              <HomeHealthCard 
+                overallScore={getOverallScore()}
+                systemsNeedingAttention={getSystemsNeedingAttention()}
+                lastUpdated="today"
+                scoreDrivers="HVAC age, recent maintenance, and local climate"
+                whyBullets={getWhyBullets()}
+                confidenceScore={35}
+              />
             )}
-          </div>
-        </section>
+          </section>
 
-        {/* 3. Capital Timeline - Planning Windows */}
-        {timelineLoading ? (
-          <Skeleton className="h-48 rounded-2xl" />
-        ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
+          {/* 2. Capital Timeline - Planning Windows (Entry point for systems) */}
+          {timelineLoading ? (
+            <Skeleton className="h-48 rounded-2xl" />
+          ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
+            <section>
+              <CapitalTimeline 
+                timeline={capitalTimeline} 
+                onSystemClick={handleSystemClickWithTracking}
+              />
+            </section>
+          ) : null}
+
+          {/* 3. Maintenance Timeline - What prevents change */}
           <section>
-            <CapitalTimeline 
-              timeline={capitalTimeline} 
-              onSystemClick={handleSystemClickWithTracking}
+            <MaintenanceTimeline
+              nowTasks={maintenanceData.nowTasks}
+              thisYearTasks={maintenanceData.thisYearTasks}
+              futureYearsTasks={maintenanceData.futureYearsTasks}
+              onTaskComplete={onTaskComplete}
+              showRiskImpact
             />
           </section>
-        ) : null}
-
-        {/* 4. Maintenance Timeline */}
-        <section>
-          <MaintenanceTimeline
-            nowTasks={maintenanceData.nowTasks}
-            thisYearTasks={maintenanceData.thisYearTasks}
-            futureYearsTasks={maintenanceData.futureYearsTasks}
+        </div>
+      </ScrollArea>
+      
+      {/* Sticky ChatDock - Always visible at bottom */}
+      {!isMobile && (
+        <div className="shrink-0">
+          <ChatDock
+            propertyId={propertyId}
+            isExpanded={chatExpanded}
+            onExpandChange={onChatExpandChange}
+            hasAgentMessage={hasAgentMessage}
+            advisorState={advisorState}
+            focusContext={focusContext}
+            openingMessage={openingMessage}
+            confidence={confidence}
+            risk={risk}
+            onUserReply={onUserReply}
           />
-        </section>
-
-        {/* 5. Chat Dock - Latent (20%) */}
-        {!isMobile && (
-          <section className="mt-8" id="chat-dock" ref={chatDockRef}>
-            <ChatDock
-              propertyId={propertyId}
-              isExpanded={chatExpanded}
-              onExpandChange={onChatExpandChange}
-              hasAgentMessage={hasAgentMessage}
-              advisorState={advisorState}
-              focusContext={focusContext}
-              openingMessage={openingMessage}
-              confidence={confidence}
-              risk={risk}
-              onUserReply={onUserReply}
-            />
-          </section>
-        )}
-      </div>
-
-      {/* Subtle scroll affordance - gradient fade + chevron (not a CTA) */}
-      {showScrollIndicator && !isMobile && (
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 pointer-events-none z-10 hidden lg:flex flex-col items-center" style={{ width: '48rem', maxWidth: '100%' }}>
-          <div className="w-full h-16 bg-gradient-to-t from-background to-transparent" />
-          <div className="absolute bottom-2 animate-bounce">
-            <ChevronDown className="h-5 w-5 text-muted-foreground/50" />
-          </div>
         </div>
       )}
-    </ScrollArea>
+    </div>
   );
 }
