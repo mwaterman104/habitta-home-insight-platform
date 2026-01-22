@@ -13,9 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured');
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
     const supabase = createClient(
@@ -25,19 +25,36 @@ serve(async (req) => {
 
     const { message, propertyId, conversationHistory } = await req.json();
     
-    console.log('AI Assistant request:', { message, propertyId });
+    console.log('[ai-home-assistant] Request:', { message, propertyId });
 
     // Get property context
     const propertyContext = await getPropertyContext(supabase, propertyId);
     
-    // Generate AI response using OpenAI
-    const response = await generateAIResponse(openAIApiKey, message, propertyContext, conversationHistory);
+    // Generate AI response using Lovable AI Gateway
+    const response = await generateAIResponse(lovableApiKey, message, propertyContext, conversationHistory);
     
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error in AI home assistant:', error);
+    console.error('[ai-home-assistant] Error:', error);
+    
+    // Handle rate limiting
+    if (error.message?.includes('429') || error.message?.includes('rate limit')) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Handle payment required
+    if (error.message?.includes('402') || error.message?.includes('payment')) {
+      return new Response(JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -72,81 +89,105 @@ async function generateAIResponse(apiKey: string, message: string, context: any,
     { role: 'user', content: message }
   ];
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Use Lovable AI Gateway with tool calling
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'google/gemini-3-flash-preview',
       messages,
       max_tokens: 500,
       temperature: 0.7,
-      functions: [
+      tools: [
         {
-          name: 'schedule_maintenance',
-          description: 'Schedule a maintenance task for the user',
-          parameters: {
-            type: 'object',
-            properties: {
-              system: { type: 'string', description: 'System that needs maintenance' },
-              task: { type: 'string', description: 'Maintenance task description' },
-              urgency: { type: 'string', enum: ['low', 'medium', 'high'] },
-              estimated_cost: { type: 'number', description: 'Estimated cost in USD' }
-            },
-            required: ['system', 'task', 'urgency']
+          type: 'function',
+          function: {
+            name: 'schedule_maintenance',
+            description: 'Schedule a maintenance task for the user',
+            parameters: {
+              type: 'object',
+              properties: {
+                system: { type: 'string', description: 'System that needs maintenance' },
+                task: { type: 'string', description: 'Maintenance task description' },
+                urgency: { type: 'string', enum: ['low', 'medium', 'high'] },
+                estimated_cost: { type: 'number', description: 'Estimated cost in USD' }
+              },
+              required: ['system', 'task', 'urgency'],
+              additionalProperties: false
+            }
           }
         },
         {
-          name: 'get_contractor_recommendations',
-          description: 'Get local contractor recommendations for a specific service',
-          parameters: {
-            type: 'object',
-            properties: {
-              service_type: { type: 'string', description: 'Type of service needed' },
-              urgency: { type: 'string', enum: ['low', 'medium', 'high'] }
-            },
-            required: ['service_type']
+          type: 'function',
+          function: {
+            name: 'get_contractor_recommendations',
+            description: 'Get local contractor recommendations for a specific service',
+            parameters: {
+              type: 'object',
+              properties: {
+                service_type: { type: 'string', description: 'Type of service needed' },
+                urgency: { type: 'string', enum: ['low', 'medium', 'high'] }
+              },
+              required: ['service_type'],
+              additionalProperties: false
+            }
           }
         },
         {
-          name: 'calculate_cost_impact',
-          description: 'Calculate the cost impact of a repair or maintenance decision',
-          parameters: {
-            type: 'object',
-            properties: {
-              repair_type: { type: 'string', description: 'Type of repair or maintenance' },
-              delay_months: { type: 'number', description: 'Months to delay the work' }
-            },
-            required: ['repair_type']
+          type: 'function',
+          function: {
+            name: 'calculate_cost_impact',
+            description: 'Calculate the cost impact of a repair or maintenance decision',
+            parameters: {
+              type: 'object',
+              properties: {
+                repair_type: { type: 'string', description: 'Type of repair or maintenance' },
+                delay_months: { type: 'number', description: 'Months to delay the work' }
+              },
+              required: ['repair_type'],
+              additionalProperties: false
+            }
           }
         }
       ],
-      function_call: 'auto'
+      tool_choice: 'auto'
     }),
   });
 
-  const data = await response.json();
-  
   if (!response.ok) {
-    throw new Error(`OpenAI API error: ${data.error?.message || 'Unknown error'}`);
+    const errorText = await response.text();
+    console.error('[ai-home-assistant] API error:', response.status, errorText);
+    throw new Error(`API error ${response.status}: ${errorText}`);
   }
 
-  const aiMessage = data.choices[0].message;
+  const data = await response.json();
   
-  // Handle function calls
-  if (aiMessage.function_call) {
-    const functionResult = await handleFunctionCall(aiMessage.function_call, context);
+  const aiMessage = data.choices?.[0]?.message;
+  
+  if (!aiMessage) {
+    throw new Error('No response from AI');
+  }
+  
+  // Handle tool calls (new format)
+  if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+    const toolCall = aiMessage.tool_calls[0];
+    const functionResult = await handleFunctionCall({
+      name: toolCall.function.name,
+      arguments: toolCall.function.arguments
+    }, context);
+    
     return {
-      message: `${aiMessage.content || ''}\n\n${functionResult}`,
-      functionCall: aiMessage.function_call,
+      message: `${aiMessage.content || ''}\n\n${functionResult}`.trim(),
+      functionCall: toolCall.function,
       functionResult
     };
   }
 
   return {
-    message: aiMessage.content,
+    message: aiMessage.content || 'I can help you with your home maintenance questions.',
     suggestions: generateFollowUpSuggestions(message, context)
   };
 }
@@ -164,17 +205,17 @@ function createSystemPrompt(context: any): string {
 
 PROPERTY CONTEXT:
 Current Systems:
-${systemInfo}
+${systemInfo || 'No systems registered yet'}
 
 Active Recommendations:
-${recommendations}
+${recommendations || 'No active recommendations'}
 
 PERSONALITY & APPROACH:
 - Be conversational, helpful, and knowledgeable
 - Provide specific, actionable advice
 - Consider Florida climate impacts (humidity, hurricanes, heat)
 - Emphasize preventive maintenance and cost savings
-- Use function calls when users need specific actions
+- Use tool calls when users need specific actions
 - Always prioritize safety and professional help for complex electrical/gas work
 
 RESPONSE GUIDELINES:
@@ -185,9 +226,15 @@ RESPONSE GUIDELINES:
 - Reference the user's existing systems and recommendations when relevant`;
 }
 
-async function handleFunctionCall(functionCall: any, context: any): string {
+async function handleFunctionCall(functionCall: any, context: any): Promise<string> {
   const { name, arguments: args } = functionCall;
-  const parsedArgs = JSON.parse(args);
+  
+  let parsedArgs: any;
+  try {
+    parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
+  } catch {
+    parsedArgs = {};
+  }
 
   switch (name) {
     case 'schedule_maintenance':
@@ -198,7 +245,7 @@ async function handleFunctionCall(functionCall: any, context: any): string {
       
     case 'calculate_cost_impact':
       const delayMonths = parsedArgs.delay_months || 0;
-      const impactMultiplier = 1 + (delayMonths * 0.05); // 5% cost increase per month of delay
+      const impactMultiplier = 1 + (delayMonths * 0.05);
       return `Delaying ${parsedArgs.repair_type}${delayMonths > 0 ? ` by ${delayMonths} months` : ''} could increase costs by approximately ${Math.round((impactMultiplier - 1) * 100)}% due to further deterioration and potential emergency repair premiums. Acting sooner typically saves money and prevents more extensive damage.`;
       
     default:
@@ -207,14 +254,15 @@ async function handleFunctionCall(functionCall: any, context: any): string {
 }
 
 function generateFollowUpSuggestions(message: string, context: any): string[] {
-  const suggestions = [];
+  const suggestions: string[] = [];
+  const lowerMessage = message.toLowerCase();
   
-  if (message.toLowerCase().includes('cost') || message.toLowerCase().includes('budget')) {
+  if (lowerMessage.includes('cost') || lowerMessage.includes('budget')) {
     suggestions.push('Show me my predicted maintenance costs for this year');
     suggestions.push('What are the most cost-effective improvements I can make?');
   }
   
-  if (message.toLowerCase().includes('hvac') || message.toLowerCase().includes('air')) {
+  if (lowerMessage.includes('hvac') || lowerMessage.includes('air')) {
     suggestions.push('When should I change my HVAC filters?');
     suggestions.push('How can I improve my HVAC efficiency?');
   }
