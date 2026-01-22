@@ -1531,6 +1531,8 @@ export type Database = {
           city: string
           confidence: number | null
           created_at: string
+          folio: string | null
+          folio_source: string | null
           id: string
           latitude: number | null
           longitude: number | null
@@ -1555,6 +1557,8 @@ export type Database = {
           city: string
           confidence?: number | null
           created_at?: string
+          folio?: string | null
+          folio_source?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
@@ -1579,6 +1583,8 @@ export type Database = {
           city?: string
           confidence?: number | null
           created_at?: string
+          folio?: string | null
+          folio_source?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
