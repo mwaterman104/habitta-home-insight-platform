@@ -359,19 +359,39 @@ function normalizeFolioForQuery(folio: string): string {
 }
 
 /**
+ * Format a 13-digit folio into Miami-Dade dashed format: XX-XXXX-XXX-XXXX
+ * Example: 3059030260870 -> 30-5903-026-0870
+ */
+function formatFolioForMiamiDade(digits: string): string | null {
+  // Pad to 13 digits if needed
+  const padded = digits.padStart(13, '0');
+  if (padded.length !== 13) return null;
+  
+  // Format: XX-XXXX-XXX-XXXX
+  return `${padded.slice(0, 2)}-${padded.slice(2, 6)}-${padded.slice(6, 9)}-${padded.slice(9, 13)}`;
+}
+
+/**
  * Fetch permits from Miami-Dade ArcGIS API
- * Uses folio-first strategy with normalized matching and suffix fallback
+ * Uses folio-first strategy with formatted folio matching
  */
 async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<NormalizedPermit[]> {
   let whereClause = '1=1';
   let searchStrategy = 'none';
   
   if (folio) {
-    // Normalize folio and use REPLACE() for database-side normalization too
+    // Normalize folio to digits and format to Miami-Dade dashed format
     const normalizedFolio = normalizeFolioForQuery(folio);
-    whereClause = `REPLACE(REPLACE(FOLIO, '-', ''), ' ', '')='${normalizedFolio}'`;
-    searchStrategy = 'folio-exact';
-    console.log(`[miami-dade] Folio search: normalized=${normalizedFolio}`);
+    const formattedFolio = formatFolioForMiamiDade(normalizedFolio);
+    
+    if (formattedFolio) {
+      // Use direct equality with formatted folio - ArcGIS doesn't support REPLACE()
+      whereClause = `FOLIO='${formattedFolio}'`;
+      searchStrategy = 'folio-exact';
+      console.log(`[miami-dade] Folio search: digits=${normalizedFolio}, formatted=${formattedFolio}`);
+    } else {
+      console.log(`[miami-dade] Invalid folio length: ${normalizedFolio.length} digits`);
+    }
   } else if (address) {
     // Miami-Dade uses abbreviated address format: "3082 NW 64 ST" not "NORTHWEST 64TH STREET"
     const normalizedAddr = normalizeMiamiDadeAddress(address);
@@ -417,12 +437,13 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
   let features = data.features || [];
   console.log(`[miami-dade] Query: ${whereClause}, Results: ${features.length}`);
 
-  // SUFFIX FALLBACK: If exact folio match returns 0 results, try last 6 digits
+  // SUFFIX FALLBACK: If exact folio match returns 0 results, try LIKE with suffix pattern
   if (features.length === 0 && folio && searchStrategy === 'folio-exact') {
     const normalizedFolio = normalizeFolioForQuery(folio);
-    const suffix = normalizedFolio.slice(-6);
-    const fallbackWhere = `REPLACE(REPLACE(FOLIO, '-', ''), ' ', '') LIKE '%${suffix}'`;
-    console.log(`[miami-dade] Retrying with folio suffix: ${suffix}`);
+    // Try LIKE pattern with last 4 digits of folio (the property-specific portion)
+    const suffix = normalizedFolio.slice(-4);
+    const fallbackWhere = `FOLIO LIKE '%-${suffix}'`;
+    console.log(`[miami-dade] Retrying with folio suffix pattern: %-${suffix}`);
     
     const fallbackParams = new URLSearchParams({
       where: fallbackWhere,
@@ -436,8 +457,10 @@ async function fetchMiamiDadePermits(address?: string, folio?: string): Promise<
     const fallbackResponse = await fetch(`${MIAMI_DADE_API}?${fallbackParams.toString()}`);
     if (fallbackResponse.ok) {
       const fallbackData = await fallbackResponse.json();
-      features = fallbackData.features || [];
-      console.log(`[miami-dade] Suffix fallback results: ${features.length}`);
+      if (!fallbackData.error) {
+        features = fallbackData.features || [];
+        console.log(`[miami-dade] Suffix fallback results: ${features.length}`);
+      }
     }
   }
 
