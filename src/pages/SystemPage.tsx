@@ -15,6 +15,7 @@ interface UserHome {
   state: string;
   zip_code: string;
   property_id?: string;
+  year_built?: number;
 }
 
 /**
@@ -171,8 +172,30 @@ export default function SystemPage() {
     <div className="p-6 max-w-3xl mx-auto pb-24 md:pb-6">
       <SystemDetailView 
         prediction={prediction}
+        homeId={userHome?.id}
+        yearBuilt={userHome?.year_built}
         onBack={handleBack}
         onActionComplete={handleActionComplete}
+        onSystemUpdated={async () => {
+          // Refetch prediction after system update
+          if (!userHome?.id || !systemKey || !isValidSystemKey(systemKey)) return;
+          
+          try {
+            const { data, error } = await supabase.functions.invoke('intelligence-engine', {
+              body: { 
+                action: 'system-prediction',
+                systemKey: systemKey,
+                property_id: userHome.id,
+                forceRefresh: true
+              }
+            });
+            if (!error && data) {
+              setPrediction(data);
+            }
+          } catch (error) {
+            console.error('Error refreshing prediction:', error);
+          }
+        }}
       />
     </div>
   );

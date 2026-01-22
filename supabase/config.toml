@@ -54,3 +54,6 @@ verify_jwt = true
 
 [functions.enrich-property]
 verify_jwt = true
+
+[functions.update-system-install]
+verify_jwt = true

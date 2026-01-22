@@ -3326,6 +3326,80 @@ export type Database = {
           },
         ]
       }
+      system_install_events: {
+        Row: {
+          created_at: string | null
+          home_id: string
+          id: string
+          metadata: Json | null
+          new_install_source: string | null
+          new_install_year: number | null
+          new_replacement_status: string | null
+          prev_install_source: string | null
+          prev_install_year: number | null
+          prev_replacement_status: string | null
+          system_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          home_id: string
+          id?: string
+          metadata?: Json | null
+          new_install_source?: string | null
+          new_install_year?: number | null
+          new_replacement_status?: string | null
+          prev_install_source?: string | null
+          prev_install_year?: number | null
+          prev_replacement_status?: string | null
+          system_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          home_id?: string
+          id?: string
+          metadata?: Json | null
+          new_install_source?: string | null
+          new_install_year?: number | null
+          new_replacement_status?: string | null
+          prev_install_source?: string | null
+          prev_install_year?: number | null
+          prev_replacement_status?: string | null
+          system_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_install_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_install_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+          {
+            foreignKeyName: "system_install_events_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_install_events_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "v_dashboard_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_lifecycles: {
         Row: {
           brand: string | null
@@ -3453,12 +3527,15 @@ export type Database = {
           created_at: string
           home_id: string
           id: string
+          install_metadata: Json | null
+          install_month: number | null
           install_source: string | null
           install_year: number | null
           kind: string
           material: string | null
           notes: string | null
           raw_data: Json | null
+          replacement_status: string
           status: string
           updated_at: string
           user_id: string
@@ -3468,12 +3545,15 @@ export type Database = {
           created_at?: string
           home_id: string
           id?: string
+          install_metadata?: Json | null
+          install_month?: number | null
           install_source?: string | null
           install_year?: number | null
           kind: string
           material?: string | null
           notes?: string | null
           raw_data?: Json | null
+          replacement_status?: string
           status?: string
           updated_at?: string
           user_id: string
@@ -3483,12 +3563,15 @@ export type Database = {
           created_at?: string
           home_id?: string
           id?: string
+          install_metadata?: Json | null
+          install_month?: number | null
           install_source?: string | null
           install_year?: number | null
           kind?: string
           material?: string | null
           notes?: string | null
           raw_data?: Json | null
+          replacement_status?: string
           status?: string
           updated_at?: string
           user_id?: string
