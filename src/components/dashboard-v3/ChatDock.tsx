@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { MessageCircle, ChevronUp, ChevronDown, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -21,7 +20,13 @@ interface ChatDockProps {
 }
 
 /**
- * ChatDock - Collapsible chat interface with advisor state integration
+ * ChatDock - Sticky collapsed-first chat interface
+ * 
+ * Design:
+ * - Collapsed (48px): Input affordance only, or "Habitta has a suggestion" with pulse
+ * - Expanded: Full chat interface, max 60% viewport height
+ * - Never auto-closes during active conversation
+ * - Expands upward (content scrolls behind)
  * 
  * Behavior rules:
  * - Chat auto-opens only when triggered by advisor state machine
@@ -101,48 +106,44 @@ export function ChatDock({
     }
   };
 
-  // Collapsed state
+  // Collapsed state - minimal, non-intrusive (48px)
   if (!isExpanded) {
     return (
-      <Card 
-        className={cn(
-          "transition-all duration-200",
-          hasAgentMessage && "shadow-md border-primary/20"
-        )}
-      >
+      <div className="bg-card border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <button
           onClick={() => onExpandChange(true)}
-          className="w-full p-4 flex items-center justify-between hover:bg-muted/50 rounded-lg transition-colors"
+          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors"
         >
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              "h-8 w-8 rounded-full flex items-center justify-center",
-              hasAgentMessage ? "bg-primary/10" : "bg-muted"
-            )}>
-              <MessageCircle className={cn(
-                "h-4 w-4",
-                hasAgentMessage ? "text-primary" : "text-muted-foreground"
-              )} />
-            </div>
-            <div className="text-left">
-              {hasAgentMessage ? (
-                <p className="text-sm font-medium text-primary">Habitta has a suggestion</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">Ask about your home...</p>
-              )}
-            </div>
-          </div>
-          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          {hasAgentMessage ? (
+            <>
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
+                <MessageCircle className="h-4 w-4 text-primary" />
+              </div>
+              <span className="text-sm font-medium text-primary">
+                Habitta has a suggestion
+              </span>
+            </>
+          ) : (
+            <>
+              <Input 
+                placeholder="Ask about your home..."
+                className="flex-1 bg-muted/50 border-0 cursor-pointer pointer-events-none"
+                readOnly
+                tabIndex={-1}
+              />
+            </>
+          )}
+          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
         </button>
-      </Card>
+      </div>
     );
   }
 
-  // Expanded state
+  // Expanded state - full chat interface
   return (
-    <Card className="transition-all duration-200 shadow-lg">
+    <div className="bg-card border-t shadow-[0_-4px_12px_-1px_rgba(0,0,0,0.1)] flex flex-col max-h-[60vh]">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b">
+      <div className="flex items-center justify-between p-3 border-b shrink-0">
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Habitta</span>
@@ -162,8 +163,8 @@ export function ChatDock({
         </Button>
       </div>
 
-      {/* Messages */}
-      <div className="h-64 overflow-y-auto p-4 space-y-4">
+      {/* Messages - scrollable area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
             <p className="text-sm">I'll let you know when something important changes.</p>
@@ -216,7 +217,7 @@ export function ChatDock({
 
       {/* Contextual suggestions (only in ENGAGED state with low message count) */}
       {messages.length <= 1 && advisorState === 'ENGAGED' && (
-        <div className="px-4 pb-2 flex flex-wrap gap-2">
+        <div className="px-4 pb-2 flex flex-wrap gap-2 shrink-0">
           {[
             "Walk me through my options",
             "What happens if I wait?",
@@ -237,8 +238,8 @@ export function ChatDock({
         </div>
       )}
 
-      {/* Input */}
-      <div className="p-3 border-t">
+      {/* Input - always visible */}
+      <div className="p-3 border-t shrink-0">
         <div className="flex gap-2">
           <Input
             ref={inputRef}
@@ -258,6 +259,6 @@ export function ChatDock({
           </Button>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }

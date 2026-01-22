@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,9 @@ import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
+import { useInvalidateRiskDeltas } from "@/hooks/useRiskDeltas";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
 
@@ -82,13 +85,17 @@ export default function DashboardV3() {
   });
 
   // Fetch maintenance tasks
-  const { data: maintenanceTasks, loading: tasksLoading } = useUpcomingTasks(userHome?.id, 365);
+  const { data: maintenanceTasks, loading: tasksLoading, refetch: refetchTasks } = useUpcomingTasks(userHome?.id, 365);
 
   // Fetch capital timeline
   const { timeline: capitalTimeline, loading: timelineLoading } = useCapitalTimeline({ 
     homeId: userHome?.id, 
     enabled: !!userHome?.id 
   });
+
+  // Risk delta invalidation
+  const invalidateRiskDeltas = useInvalidateRiskDeltas();
+  const queryClient = useQueryClient();
 
   // Fetch user home
   useEffect(() => {
@@ -258,6 +265,46 @@ export default function DashboardV3() {
     }
   };
 
+  // Handle task completion with risk delta capture
+  const handleTaskComplete = useCallback(async (taskId: string) => {
+    if (!userHome?.id) return;
+    
+    try {
+      // Update task status in database
+      const { error } = await supabase
+        .from('habitta_maintenance_tasks')
+        .update({ 
+          completed: true,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', taskId);
+      
+      if (error) throw error;
+      
+      // Show success toast
+      toast.success("Task completed", {
+        description: "Your home health score will update shortly.",
+      });
+      
+      // Refetch tasks to update UI
+      refetchTasks();
+      
+      // Trigger prediction refresh (will calculate delta)
+      await supabase.functions.invoke('intelligence-engine', {
+        body: { action: 'refresh-after-maintenance', home_id: userHome.id, task_id: taskId }
+      });
+      
+      // Invalidate caches
+      invalidateRiskDeltas(userHome.id);
+      queryClient.invalidateQueries({ queryKey: ['home-forecast'] });
+    } catch (error) {
+      console.error('Error completing task:', error);
+      toast.error("Failed to complete task", {
+        description: "Please try again.",
+      });
+    }
+  }, [userHome?.id, refetchTasks, invalidateRiskDeltas, queryClient]);
+
   // Loading state
   if (loading) {
     return (
@@ -330,6 +377,7 @@ export default function DashboardV3() {
             confidence={confidence}
             risk={risk}
             onUserReply={handleUserReply}
+            onTaskComplete={handleTaskComplete}
           />
         </main>
       </div>
@@ -376,6 +424,7 @@ export default function DashboardV3() {
             confidence={confidence}
             risk={risk}
             onUserReply={handleUserReply}
+            onTaskComplete={handleTaskComplete}
           />
         </main>
         
