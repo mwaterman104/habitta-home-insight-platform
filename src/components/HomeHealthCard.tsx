@@ -73,7 +73,12 @@ export function HomeHealthCard({
     forecastCompleteness,
     silentRisks,
     financialOutlook,
-    trajectoryQualifier
+    trajectoryQualifier,
+    // New multi-system transparency fields
+    systemConfidence,
+    missingFactorsBySystem,
+    quietlyMonitored,
+    financialAttribution
   } = forecast;
 
   // Determine score colors
@@ -197,16 +202,23 @@ export function HomeHealthCard({
         {/* EXPANDED SECTION - Only on demand (progressive disclosure) */}
         {isExpanded && (
           <div className="space-y-4 pt-2 border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
-            {/* Forecast completeness with illustrative impacts */}
-            <ForecastCompleteness {...forecastCompleteness} />
+            {/* Prediction confidence with system-based breakdown */}
+            <ForecastCompleteness 
+              {...forecastCompleteness} 
+              systemConfidence={systemConfidence}
+              missingFactorsBySystem={missingFactorsBySystem}
+            />
             
-            {/* Silent risks */}
-            {silentRisks.length > 0 && (
-              <SilentRiskCallout risks={silentRisks} />
+            {/* Quietly monitored items - subcomponents + secondary systems */}
+            {quietlyMonitored && (
+              <SilentRiskCallout quietlyMonitored={quietlyMonitored} />
             )}
             
-            {/* Financial anchor with regionalized ROI */}
-            <FinancialAnchor {...financialOutlook} />
+            {/* Financial anchor with system attribution */}
+            <FinancialAnchor 
+              {...financialOutlook} 
+              financialAttribution={financialAttribution}
+            />
           </div>
         )}
       </CardContent>
