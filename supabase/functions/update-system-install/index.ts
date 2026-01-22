@@ -221,6 +221,7 @@ Deno.serve(async (req) => {
     // Upsert system record
     const systemPayload = {
       home_id: homeId,
+      user_id: user.id,
       kind: systemKey,
       install_year: newInstallYear,
       install_month: newInstallMonth,
