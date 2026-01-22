@@ -7,6 +7,182 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ============================================================================
+// COPY GOVERNOR (Server-Side Authority)
+// ============================================================================
+
+type AdvisorState = 'PASSIVE' | 'OBSERVING' | 'ENGAGED' | 'DECISION' | 'EXECUTION';
+type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH';
+type ConfidenceBucket = 'LOW' | 'MEDIUM' | 'HIGH';
+
+interface CopyStyleProfile {
+  verbosity: 'minimal' | 'concise' | 'detailed';
+  specificity: 'low' | 'medium' | 'high';
+  costDisclosure: 'none' | 'ranges' | 'tight';
+  tone: 'observational' | 'analytical' | 'procedural';
+  urgency: 'none' | 'soft' | 'time-bound';
+  allowedActs: {
+    askQuestions: boolean;
+    presentOptions: boolean;
+    recommendPath: boolean;
+    initiateExecution: boolean;
+  };
+}
+
+function confidenceBucket(confidence: number): ConfidenceBucket {
+  if (confidence < 0.5) return 'LOW';
+  if (confidence < 0.8) return 'MEDIUM';
+  return 'HIGH';
+}
+
+const BASE_PROFILES: Record<'ENGAGED' | 'DECISION' | 'EXECUTION', Record<ConfidenceBucket, CopyStyleProfile>> = {
+  ENGAGED: {
+    LOW: {
+      verbosity: 'concise',
+      specificity: 'low',
+      costDisclosure: 'none',
+      tone: 'observational',
+      urgency: 'none',
+      allowedActs: { askQuestions: true, presentOptions: true, recommendPath: false, initiateExecution: false }
+    },
+    MEDIUM: {
+      verbosity: 'concise',
+      specificity: 'medium',
+      costDisclosure: 'none',
+      tone: 'observational',
+      urgency: 'soft',
+      allowedActs: { askQuestions: true, presentOptions: true, recommendPath: false, initiateExecution: false }
+    },
+    HIGH: {
+      verbosity: 'concise',
+      specificity: 'high',
+      costDisclosure: 'none',
+      tone: 'observational',
+      urgency: 'soft',
+      allowedActs: { askQuestions: false, presentOptions: true, recommendPath: true, initiateExecution: false }
+    }
+  },
+  DECISION: {
+    LOW: {
+      verbosity: 'detailed',
+      specificity: 'low',
+      costDisclosure: 'none',
+      tone: 'analytical',
+      urgency: 'none',
+      allowedActs: { askQuestions: true, presentOptions: true, recommendPath: false, initiateExecution: false }
+    },
+    MEDIUM: {
+      verbosity: 'detailed',
+      specificity: 'medium',
+      costDisclosure: 'ranges',
+      tone: 'analytical',
+      urgency: 'soft',
+      allowedActs: { askQuestions: false, presentOptions: true, recommendPath: true, initiateExecution: false }
+    },
+    HIGH: {
+      verbosity: 'detailed',
+      specificity: 'high',
+      costDisclosure: 'tight',
+      tone: 'analytical',
+      urgency: 'time-bound',
+      allowedActs: { askQuestions: false, presentOptions: true, recommendPath: true, initiateExecution: false }
+    }
+  },
+  EXECUTION: {
+    LOW: {
+      verbosity: 'concise',
+      specificity: 'high',
+      costDisclosure: 'tight',
+      tone: 'procedural',
+      urgency: 'time-bound',
+      allowedActs: { askQuestions: false, presentOptions: false, recommendPath: false, initiateExecution: true }
+    },
+    MEDIUM: {
+      verbosity: 'concise',
+      specificity: 'high',
+      costDisclosure: 'tight',
+      tone: 'procedural',
+      urgency: 'time-bound',
+      allowedActs: { askQuestions: false, presentOptions: false, recommendPath: false, initiateExecution: true }
+    },
+    HIGH: {
+      verbosity: 'concise',
+      specificity: 'high',
+      costDisclosure: 'tight',
+      tone: 'procedural',
+      urgency: 'time-bound',
+      allowedActs: { askQuestions: false, presentOptions: false, recommendPath: false, initiateExecution: true }
+    }
+  }
+};
+
+function applyRiskOverlay(profile: CopyStyleProfile, risk: RiskLevel): CopyStyleProfile {
+  const next = { ...profile, allowedActs: { ...profile.allowedActs } };
+  if (risk === 'HIGH' && next.urgency === 'none') next.urgency = 'soft';
+  if (risk === 'LOW') next.urgency = 'none';
+  return next;
+}
+
+function getAdvisorCopyProfile(state: AdvisorState, confidence: number, risk: RiskLevel): CopyStyleProfile | null {
+  if (state === 'PASSIVE' || state === 'OBSERVING') return null;
+  const bucket = confidenceBucket(confidence);
+  const base = BASE_PROFILES[state][bucket];
+  return applyRiskOverlay(base, risk);
+}
+
+function profileToPromptInstructions(profile: CopyStyleProfile): string {
+  const instructions: string[] = [];
+
+  switch (profile.verbosity) {
+    case 'minimal': instructions.push('Keep responses under 2 sentences.'); break;
+    case 'concise': instructions.push('Keep responses to 2-3 short paragraphs. Be direct.'); break;
+    case 'detailed': instructions.push('You may provide detailed explanations when comparing options.'); break;
+  }
+
+  switch (profile.specificity) {
+    case 'low': instructions.push('Avoid specific numbers or timeframes. Use general terms.'); break;
+    case 'medium': instructions.push('Use moderate specificity. Ranges are acceptable.'); break;
+    case 'high': instructions.push('Be specific with timeframes and projections when data supports it.'); break;
+  }
+
+  switch (profile.costDisclosure) {
+    case 'none': instructions.push('Do NOT mention specific costs or price ranges.'); break;
+    case 'ranges': instructions.push('You may mention cost ranges but not exact figures.'); break;
+    case 'tight': instructions.push('You may provide specific cost estimates when confident.'); break;
+  }
+
+  switch (profile.tone) {
+    case 'observational': instructions.push('Tone: Calm and observational. Frame the situation.'); break;
+    case 'analytical': instructions.push('Tone: Analytical and supportive. Compare tradeoffs.'); break;
+    case 'procedural': instructions.push('Tone: Decisive and procedural. Help them execute.'); break;
+  }
+
+  switch (profile.urgency) {
+    case 'none': instructions.push('Do NOT create urgency. This is about planning.'); break;
+    case 'soft': instructions.push('Gentle time awareness is okay.'); break;
+    case 'time-bound': instructions.push('Time-bound framing is appropriate.'); break;
+  }
+
+  const acts: string[] = [];
+  if (profile.allowedActs.askQuestions) acts.push('ask clarifying questions');
+  if (profile.allowedActs.presentOptions) acts.push('present options');
+  if (profile.allowedActs.recommendPath) acts.push('recommend a specific path');
+  if (profile.allowedActs.initiateExecution) acts.push('initiate execution steps');
+  if (acts.length > 0) instructions.push(`You may: ${acts.join(', ')}.`);
+
+  instructions.push('');
+  instructions.push('HARD RULES:');
+  instructions.push('- Never say "You should..." — frame as options');
+  instructions.push('- Never use: "urgent", "act now", "don\'t miss out"');
+  instructions.push('- End with an invitation, not a CTA');
+
+  return instructions.join('\n');
+}
+
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -23,15 +199,33 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const { message, propertyId, conversationHistory } = await req.json();
+    const { 
+      message, 
+      propertyId, 
+      conversationHistory,
+      advisorState = 'ENGAGED',
+      confidence = 0.5,
+      risk = 'LOW',
+      focusSystem
+    } = await req.json();
     
-    console.log('[ai-home-assistant] Request:', { message, propertyId });
+    console.log('[ai-home-assistant] Request:', { message, propertyId, advisorState, confidence, risk });
 
     // Get property context
     const propertyContext = await getPropertyContext(supabase, propertyId);
     
-    // Generate AI response using Lovable AI Gateway
-    const response = await generateAIResponse(lovableApiKey, message, propertyContext, conversationHistory);
+    // Get copy style profile from governor
+    const copyProfile = getAdvisorCopyProfile(advisorState as AdvisorState, confidence, risk as RiskLevel);
+    
+    // Generate AI response with governed style
+    const response = await generateAIResponse(
+      lovableApiKey, 
+      message, 
+      propertyContext, 
+      conversationHistory,
+      copyProfile,
+      focusSystem
+    );
     
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -39,7 +233,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('[ai-home-assistant] Error:', error);
     
-    // Handle rate limiting
     if (error.message?.includes('429') || error.message?.includes('rate limit')) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
         status: 429,
@@ -47,7 +240,6 @@ serve(async (req) => {
       });
     }
     
-    // Handle payment required
     if (error.message?.includes('402') || error.message?.includes('payment')) {
       return new Response(JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }), {
         status: 402,
@@ -80,16 +272,22 @@ async function getPropertyContext(supabase: any, propertyId: string) {
   };
 }
 
-async function generateAIResponse(apiKey: string, message: string, context: any, history: any[] = []) {
-  const systemPrompt = createSystemPrompt(context);
+async function generateAIResponse(
+  apiKey: string, 
+  message: string, 
+  context: any, 
+  history: any[] = [],
+  copyProfile: CopyStyleProfile | null,
+  focusSystem?: string
+) {
+  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem);
   
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...history.slice(-6), // Last 6 messages for context
+    ...history.slice(-6),
     { role: 'user', content: message }
   ];
 
-  // Use Lovable AI Gateway with tool calling
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -164,14 +362,12 @@ async function generateAIResponse(apiKey: string, message: string, context: any,
   }
 
   const data = await response.json();
-  
   const aiMessage = data.choices?.[0]?.message;
   
   if (!aiMessage) {
     throw new Error('No response from AI');
   }
   
-  // Handle tool calls (new format)
   if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
     const toolCall = aiMessage.tool_calls[0];
     const functionResult = await handleFunctionCall({
@@ -192,7 +388,7 @@ async function generateAIResponse(apiKey: string, message: string, context: any,
   };
 }
 
-function createSystemPrompt(context: any): string {
+function createSystemPrompt(context: any, copyProfile: CopyStyleProfile | null, focusSystem?: string): string {
   const systemInfo = context.systems.map((s: any) => 
     `- ${s.system_name}: ${s.current_condition || 'Good'} (installed ${s.installed_year || 'unknown'})`
   ).join('\n');
@@ -201,7 +397,8 @@ function createSystemPrompt(context: any): string {
     `- ${r.title}: ${r.description} (urgency: ${r.urgency_score}/100)`
   ).join('\n');
 
-  return `You are Habitta AI, an expert home maintenance assistant. You help homeowners with maintenance planning, cost optimization, and system care.
+  // Base personality
+  let prompt = `You are Habitta AI, an expert home maintenance advisor. You are a calm, knowledgeable steward — not a pushy assistant.
 
 PROPERTY CONTEXT:
 Current Systems:
@@ -210,20 +407,34 @@ ${systemInfo || 'No systems registered yet'}
 Active Recommendations:
 ${recommendations || 'No active recommendations'}
 
-PERSONALITY & APPROACH:
-- Be conversational, helpful, and knowledgeable
-- Provide specific, actionable advice
-- Consider Florida climate impacts (humidity, hurricanes, heat)
-- Emphasize preventive maintenance and cost savings
-- Use tool calls when users need specific actions
-- Always prioritize safety and professional help for complex electrical/gas work
+${focusSystem ? `CURRENT FOCUS: ${focusSystem} system\nThe user has selected this system. Reference it specifically in your response.` : ''}
 
-RESPONSE GUIDELINES:
-- Keep responses concise but informative (under 400 words)
-- Include specific cost estimates when relevant
-- Suggest timing based on seasons and urgency
-- Mention DIY vs professional recommendations
-- Reference the user's existing systems and recommendations when relevant`;
+PERSONALITY:
+- Calm, composed, never alarmist
+- A steward watching on the homeowner's behalf
+- Situational intelligence, not "ask me anything"
+`;
+
+  // Apply copy governance if profile exists
+  if (copyProfile) {
+    prompt += `
+COPY GOVERNANCE (STRICT - DO NOT VIOLATE):
+${profileToPromptInstructions(copyProfile)}
+`;
+  }
+
+  prompt += `
+CORE BEHAVIOR:
+- Reference what's visible on screen (the forecast, timeline, system cards)
+- Present choices, not commands
+- If confidence is low, acknowledge uncertainty gracefully
+- Consider Florida climate impacts (humidity, hurricanes, heat)
+- Prioritize safety and professional help for complex work
+
+When the user asks "what if" questions, shift to analytical mode and compare tradeoffs clearly.
+When the user commits to a path, shift to procedural mode and help them execute.`;
+
+  return prompt;
 }
 
 async function handleFunctionCall(functionCall: any, context: any): Promise<string> {
@@ -271,7 +482,6 @@ function generateFollowUpSuggestions(message: string, context: any): string[] {
     suggestions.push('What should I prioritize from my active recommendations?');
   }
   
-  // Default suggestions
   if (suggestions.length === 0) {
     suggestions.push('What maintenance should I focus on this season?');
     suggestions.push('Show me my system health overview');

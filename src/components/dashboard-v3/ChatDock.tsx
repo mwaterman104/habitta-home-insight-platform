@@ -1,37 +1,33 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, ChevronUp, ChevronDown, Send, X } from "lucide-react";
+import { MessageCircle, ChevronUp, ChevronDown, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
+import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 
 interface ChatDockProps {
   propertyId: string;
   isExpanded: boolean;
   onExpandChange: (expanded: boolean) => void;
-  advisorState?: 'PASSIVE' | 'OBSERVING' | 'ENGAGED' | 'DECISION' | 'EXECUTION';
+  advisorState?: AdvisorState;
   focusContext?: { systemKey: string; trigger: string };
   hasAgentMessage?: boolean;
+  openingMessage?: AdvisorOpeningMessage | null;
+  confidence?: number;
+  risk?: RiskLevel;
+  onUserReply?: () => void;
 }
 
 /**
- * ChatDock - Collapsible chat interface
+ * ChatDock - Collapsible chat interface with advisor state integration
  * 
- * Resting State (Default - 20%):
- * - Collapsed bar at bottom
- * - "Ask about your home..." placeholder
- * - Simple input + send button
- * 
- * Expanded State (On focus or agentic trigger - 60%):
- * - Shows conversation history
- * - Max height: 40% of middle column
- * - Scroll within container
- * 
- * Rules:
- * - Chat may auto-expand only once per unique trigger
- * - Chat attracts attention once, then yields
- * - No glow - subtle elevation + badge only
+ * Behavior rules:
+ * - Chat auto-opens only when triggered by advisor state machine
+ * - Chat never auto-closes (user control only)
+ * - Opening message follows Observation → Implication → Options structure
+ * - Silence is intentional in PASSIVE/OBSERVING states
  */
 export function ChatDock({
   propertyId,
@@ -40,15 +36,36 @@ export function ChatDock({
   advisorState = 'PASSIVE',
   focusContext,
   hasAgentMessage = false,
+  openingMessage,
+  confidence = 0.5,
+  risk = 'LOW',
+  onUserReply,
 }: ChatDockProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
-  // Track triggers that have already caused expansion (once per trigger)
-  const [expandedTriggers] = useState<Set<string>>(new Set());
+  const [hasShownOpening, setHasShownOpening] = useState(false);
 
-  const { messages, loading, sendMessage } = useAIHomeAssistant(propertyId);
+  const { messages, loading, sendMessage, injectMessage } = useAIHomeAssistant(propertyId, {
+    advisorState,
+    confidence,
+    risk,
+    focusSystem: focusContext?.systemKey,
+  });
+
+  // Inject opening message when advisor auto-opens chat
+  useEffect(() => {
+    if (hasAgentMessage && openingMessage && !hasShownOpening && isExpanded) {
+      const formattedMessage = `${openingMessage.observation}\n\n${openingMessage.implication}\n\n${openingMessage.optionsPreview}`;
+      injectMessage(formattedMessage);
+      setHasShownOpening(true);
+    }
+  }, [hasAgentMessage, openingMessage, hasShownOpening, isExpanded, injectMessage]);
+
+  // Reset opening state when focus changes
+  useEffect(() => {
+    setHasShownOpening(false);
+  }, [focusContext?.systemKey]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -69,6 +86,10 @@ export function ChatDock({
     if (!input.trim() || loading) return;
     const message = input;
     setInput("");
+    
+    // Notify parent of user reply (triggers state transition to DECISION)
+    onUserReply?.();
+    
     await sendMessage(message);
   };
 
@@ -124,7 +145,12 @@ export function ChatDock({
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">Habitta Assistant</span>
+          <span className="text-sm font-medium">Habitta</span>
+          {/* Subtle state indicator */}
+          <span className="text-xs text-muted-foreground">
+            {advisorState === 'DECISION' && '• Comparing options'}
+            {advisorState === 'EXECUTION' && '• Ready to act'}
+          </span>
         </div>
         <Button 
           variant="ghost" 
@@ -140,7 +166,7 @@ export function ChatDock({
       <div className="h-64 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">Ask me anything about your home maintenance, costs, or planning.</p>
+            <p className="text-sm">I'll let you know when something important changes.</p>
           </div>
         )}
         
@@ -159,7 +185,7 @@ export function ChatDock({
             )}
             <div
               className={cn(
-                "rounded-lg px-3 py-2 max-w-[80%] text-sm",
+                "rounded-lg px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap",
                 message.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted"
@@ -188,13 +214,13 @@ export function ChatDock({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions */}
-      {messages.length <= 1 && (
+      {/* Contextual suggestions (only in ENGAGED state with low message count) */}
+      {messages.length <= 1 && advisorState === 'ENGAGED' && (
         <div className="px-4 pb-2 flex flex-wrap gap-2">
           {[
-            "What should I prioritize?",
-            "Explain my HVAC status",
-            "Help me budget for repairs"
+            "Walk me through my options",
+            "What happens if I wait?",
+            "Help me understand the timeline"
           ].map((suggestion) => (
             <Button
               key={suggestion}
@@ -203,7 +229,6 @@ export function ChatDock({
               className="text-xs"
               onClick={() => {
                 setInput(suggestion);
-                handleSend();
               }}
             >
               {suggestion}

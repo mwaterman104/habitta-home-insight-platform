@@ -5,11 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Home, Plus } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAdvisorState } from "@/hooks/useAdvisorState";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
+import type { RiskLevel } from "@/types/advisorState";
 
 // Dashboard V3 Components
 import { TopHeader } from "@/components/dashboard-v3/TopHeader";
@@ -39,7 +40,9 @@ interface UserHome {
  * - Middle Column: Primary Canvas (Forecast → Timeline → Tasks → ChatDock)
  * - Right Column: "Am I okay?" Performance at a Glance
  * 
- * The agent inhabits the dashboard rather than sitting on top of it.
+ * Advisor State Model:
+ * PASSIVE → OBSERVING → ENGAGED → DECISION → EXECUTION
+ * Chat auto-opens only on specific triggers (system selection, risk threshold, etc.)
  */
 export default function DashboardV3() {
   const { user } = useAuth();
@@ -56,10 +59,27 @@ export default function DashboardV3() {
   // Home Forecast State
   const [homeForecast, setHomeForecast] = useState<HomeForecast | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
-  
-  // Chat dock expansion state
-  const [chatExpanded, setChatExpanded] = useState(false);
-  const [hasAgentMessage, setHasAgentMessage] = useState(false);
+
+  // Advisor state machine
+  const {
+    advisorState,
+    focusContext,
+    confidence,
+    risk,
+    shouldChatBeOpen,
+    openingMessage,
+    hasAgentMessage,
+    selectSystem,
+    handleRiskThresholdCrossed,
+    handleConfidenceImproved,
+    handlePlanningWindowEntered,
+    handleUserReply,
+    handleChatDismissed,
+    handleChatExpanded,
+  } = useAdvisorState({
+    initialConfidence: userHome?.confidence ?? 0.5,
+    initialRisk: 'LOW',
+  });
 
   // Fetch maintenance tasks
   const { data: maintenanceTasks, loading: tasksLoading } = useUpcomingTasks(userHome?.id, 365);
@@ -114,7 +134,28 @@ export default function DashboardV3() {
           })
         ]);
 
-        if (hvacRes.data) setHvacPrediction(hvacRes.data);
+        if (hvacRes.data) {
+          setHvacPrediction(hvacRes.data);
+          
+          // Check for risk threshold or planning window triggers
+          const status = hvacRes.data.status as 'low' | 'moderate' | 'high';
+          if (status === 'high') {
+            handleRiskThresholdCrossed('hvac', 'HIGH');
+          } else if (status === 'moderate') {
+            // Check if entering planning window (< 36 months)
+            const remainingYears = hvacRes.data.forecast?.remainingYears;
+            if (remainingYears && remainingYears < 3) {
+              handlePlanningWindowEntered('hvac', remainingYears * 12);
+            }
+          }
+          
+          // Check for confidence improvement
+          const newConfidence = hvacRes.data.confidence ?? 0.5;
+          if (newConfidence > confidence + 0.15) {
+            handleConfidenceImproved('hvac', confidence, newConfidence);
+          }
+        }
+        
         if (forecastRes.data) setHomeForecast(forecastRes.data as HomeForecast);
       } catch (error) {
         console.error('Error fetching predictions:', error);
@@ -181,9 +222,15 @@ export default function DashboardV3() {
     return { nowTasks: fallbackNow, thisYearTasks: fallbackYear, futureYearsTasks: fallbackFuture };
   }, [maintenanceTasks, hvacPrediction]);
 
-  // Navigate to system detail
+  // Navigate to system detail AND trigger advisor state
   const handleSystemClick = (systemKey: string) => {
+    selectSystem(systemKey);
     navigate(`/system/${systemKey}`);
+  };
+
+  // Handle system click without navigation (just focus)
+  const handleSystemFocus = (systemKey: string) => {
+    selectSystem(systemKey);
   };
 
   // Navigate to home profile
@@ -199,6 +246,15 @@ export default function DashboardV3() {
       case 'moderate': return 'attention';
       case 'high': return 'critical';
       default: return 'healthy';
+    }
+  };
+
+  // Handle chat expansion changes
+  const handleChatExpandChange = (expanded: boolean) => {
+    if (expanded) {
+      handleChatExpanded();
+    } else {
+      handleChatDismissed();
     }
   };
 
@@ -243,7 +299,7 @@ export default function DashboardV3() {
   const fullAddress = `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`;
   const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
 
-  // Mobile: Single column layout (reuse existing HomePulsePage behavior)
+  // Mobile: Single column layout
   if (isMobile) {
     return (
       <div className="min-h-screen bg-background">
@@ -261,13 +317,19 @@ export default function DashboardV3() {
             capitalTimeline={capitalTimeline}
             timelineLoading={timelineLoading}
             maintenanceData={maintenanceTimelineData}
-            chatExpanded={chatExpanded}
-            onChatExpandChange={setChatExpanded}
+            chatExpanded={shouldChatBeOpen}
+            onChatExpandChange={handleChatExpandChange}
             hasAgentMessage={hasAgentMessage}
             propertyId={userHome.id}
-            onSystemClick={handleSystemClick}
+            onSystemClick={handleSystemFocus}
             isEnriching={isEnriching}
             isMobile={true}
+            advisorState={advisorState}
+            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+            openingMessage={openingMessage}
+            confidence={confidence}
+            risk={risk}
+            onUserReply={handleUserReply}
           />
         </main>
       </div>
@@ -302,12 +364,18 @@ export default function DashboardV3() {
             capitalTimeline={capitalTimeline}
             timelineLoading={timelineLoading}
             maintenanceData={maintenanceTimelineData}
-            chatExpanded={chatExpanded}
-            onChatExpandChange={setChatExpanded}
+            chatExpanded={shouldChatBeOpen}
+            onChatExpandChange={handleChatExpandChange}
             hasAgentMessage={hasAgentMessage}
             propertyId={userHome.id}
-            onSystemClick={handleSystemClick}
+            onSystemClick={handleSystemFocus}
             isEnriching={isEnriching}
+            advisorState={advisorState}
+            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+            openingMessage={openingMessage}
+            confidence={confidence}
+            risk={risk}
+            onUserReply={handleUserReply}
           />
         </main>
         
