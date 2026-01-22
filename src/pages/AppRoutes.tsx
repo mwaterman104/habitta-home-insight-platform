@@ -7,6 +7,7 @@ import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
 import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
+import DashboardV3 from "./DashboardV3";
 import SystemPage from "./SystemPage";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
@@ -50,6 +51,9 @@ export function AppRoutes() {
           }>
             {/* PRIMARY: Home Pulse */}
             <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Dashboard V3: Three-Column Layout (Data-first, Agent-latent) */}
+            <Route path="/dashboard-v3" element={<DashboardV3 />} />
             
             {/* SECONDARY: System Drilldowns (route-based) */}
             <Route path="/system/:systemKey" element={<SystemPage />} />
