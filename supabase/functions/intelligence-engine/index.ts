@@ -104,6 +104,44 @@ interface BudgetPrediction {
   };
 }
 
+// ============== Multi-System Scoring Constants ==============
+
+// Severity normalization (system-agnostic)
+const STATUS_SEVERITY = {
+  low: 1.0,        // healthy
+  moderate: 0.65,  // aging
+  high: 0.35       // late life
+} as const;
+
+// Structural system weights (sum = 1.0)
+const STRUCTURAL_WEIGHTS = {
+  hvac: 0.40,
+  roof: 0.35,
+  water_heater: 0.25
+} as const;
+
+// Appliance penalties (bounded, future-ready)
+const APPLIANCE_PENALTY_PER = 1.0;
+const MAX_APPLIANCE_PENALTY = 5;
+
+// ============== Multi-System Scoring Helpers ==============
+
+function severityFromStatus(status: 'low' | 'moderate' | 'high'): number {
+  return STATUS_SEVERITY[status];
+}
+
+function computeEffectiveRemainingYears(
+  systems: Array<{ remainingYears: number; weight: number }>
+): number {
+  const weightedAvg = systems.reduce(
+    (sum, s) => sum + s.remainingYears * s.weight, 0
+  );
+  const minRemaining = Math.min(...systems.map(s => s.remainingYears));
+  
+  // Weakest system matters, but cannot hijack the curve
+  return Math.max(weightedAvg, minRemaining - 2);
+}
+
 // ============== Survival Prediction Functions ==============
 
 /**
@@ -1894,6 +1932,189 @@ interface HomeForecastOutput {
     region: string;
   };
   trajectoryQualifier: string;
+  // NEW: Driver explanations for score changes
+  drivers: {
+    structural: Array<{ system: string; impact: number; reason: string }>;
+    appliances: Array<{ appliance: string; impact: number; reason: string }>;
+  };
+  // NEW: System breakdown for UI
+  systemBreakdown: {
+    hvac: { status: string; contribution: number };
+    roof: { status: string; contribution: number };
+    water_heater: { status: string; contribution: number };
+  };
+}
+
+// ============== Multi-System Scoring ==============
+
+interface MultiSystemScoreResult {
+  score: number;
+  baseStructuralScore: number;
+  appliancePenalty: number;
+  drivers: {
+    structural: Array<{ system: string; impact: number; reason: string }>;
+    appliances: Array<{ appliance: string; impact: number; reason: string }>;
+  };
+  decayContext: {
+    effectiveRemainingYears: number;
+  };
+  primarySystem: 'hvac' | 'roof' | 'water_heater';
+  systemBreakdown: {
+    hvac: { status: string; contribution: number };
+    roof: { status: string; contribution: number };
+    water_heater: { status: string; contribution: number };
+  };
+}
+
+async function calculateMultiSystemScore(homeId: string): Promise<MultiSystemScoreResult> {
+  // Fetch all structural predictions in parallel
+  const [hvac, roof, waterHeater] = await Promise.all([
+    getHVACPrediction(homeId),
+    getRoofPrediction(homeId),
+    getWaterHeaterPrediction(homeId)
+  ]);
+
+  // Build structural systems array
+  const structuralSystems = [
+    {
+      key: 'hvac' as const,
+      status: hvac.status,
+      weight: STRUCTURAL_WEIGHTS.hvac,
+      remainingYears: hvac.lifespan?.years_remaining_p50 ?? 10
+    },
+    {
+      key: 'roof' as const,
+      status: roof.status,
+      weight: STRUCTURAL_WEIGHTS.roof,
+      remainingYears: roof.lifespan?.years_remaining_p50 ?? 15
+    },
+    {
+      key: 'water_heater' as const,
+      status: waterHeater.status,
+      weight: STRUCTURAL_WEIGHTS.water_heater,
+      remainingYears: waterHeater.lifespan?.years_remaining_p50 ?? 8
+    }
+  ];
+
+  // Calculate base structural score (0-100)
+  const baseStructuralScore = structuralSystems.reduce((sum, s) => {
+    return sum + severityFromStatus(s.status) * s.weight;
+  }, 0) * 100;
+
+  // Appliances: future placeholder (returns 0 penalty for now)
+  const appliancePenalty = 0;
+
+  const finalScore = Math.round(baseStructuralScore - appliancePenalty);
+
+  // Driver explanations
+  const drivers = {
+    structural: structuralSystems.map(s => {
+      const contribution = severityFromStatus(s.status) * s.weight * 100;
+      const baseline = s.weight * 100;
+      return {
+        system: s.key,
+        impact: Math.round(contribution - baseline),
+        reason: s.status === 'low' ? 'System in good condition'
+              : s.status === 'moderate' ? 'System aging'
+              : 'System in late life'
+      };
+    }),
+    appliances: [] as Array<{ appliance: string; impact: number; reason: string }>
+  };
+
+  // Primary system = largest negative contributor
+  const sortedByImpact = [...structuralSystems].sort((a, b) => {
+    const impactA = severityFromStatus(a.status) * a.weight;
+    const impactB = severityFromStatus(b.status) * b.weight;
+    return impactA - impactB;
+  });
+  const primarySystem = sortedByImpact[0].key;
+
+  // Decay context
+  const decayContext = {
+    effectiveRemainingYears: computeEffectiveRemainingYears(
+      structuralSystems.map(s => ({
+        remainingYears: s.remainingYears,
+        weight: s.weight
+      }))
+    )
+  };
+
+  // System breakdown for UI
+  const systemBreakdown = {
+    hvac: { 
+      status: hvac.status, 
+      contribution: Math.round(severityFromStatus(hvac.status) * STRUCTURAL_WEIGHTS.hvac * 100)
+    },
+    roof: { 
+      status: roof.status, 
+      contribution: Math.round(severityFromStatus(roof.status) * STRUCTURAL_WEIGHTS.roof * 100)
+    },
+    water_heater: { 
+      status: waterHeater.status, 
+      contribution: Math.round(severityFromStatus(waterHeater.status) * STRUCTURAL_WEIGHTS.water_heater * 100)
+    }
+  };
+
+  console.log(`[calculateMultiSystemScore] homeId=${homeId}`, {
+    hvacStatus: hvac.status,
+    roofStatus: roof.status,
+    waterHeaterStatus: waterHeater.status,
+    baseScore: Math.round(baseStructuralScore),
+    finalScore,
+    primarySystem,
+    effectiveRemainingYears: decayContext.effectiveRemainingYears
+  });
+
+  return {
+    score: finalScore,
+    baseStructuralScore: Math.round(baseStructuralScore),
+    appliancePenalty,
+    drivers,
+    decayContext,
+    primarySystem,
+    systemBreakdown
+  };
+}
+
+/**
+ * Calculate feature completeness based on user effort (data entry), not system weights
+ */
+async function calculateFeatureCompleteness(homeId: string): Promise<number> {
+  // Fetch all system records
+  const { data: systems } = await supabase
+    .from('systems')
+    .select('kind, install_source, install_year, confidence_score')
+    .eq('home_id', homeId);
+  
+  let completeness = 0.15; // Base
+  
+  const systemsMap = new Map(systems?.map(s => [s.kind, s]) || []);
+  
+  // Each system contributes equally to accuracy (not weighted by cost)
+  const systemTypes = ['hvac', 'roof', 'water_heater'];
+  const perSystemContribution = 0.25; // ~25% each = 75% max from systems
+  
+  for (const sysType of systemTypes) {
+    const sys = systemsMap.get(sysType);
+    if (sys) {
+      // Has install year?
+      if (sys.install_year) completeness += perSystemContribution * 0.6;
+      // Has good confidence?
+      if (sys.confidence_score && sys.confidence_score > 0.5) completeness += perSystemContribution * 0.4;
+    }
+  }
+  
+  // Check for maintenance history
+  const { count } = await supabase
+    .from('habitta_system_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('home_id', homeId)
+    .eq('event_type', 'maintenance');
+  
+  if ((count || 0) > 0) completeness += 0.10;
+  
+  return Math.min(completeness, 1);
 }
 
 /**
@@ -1905,17 +2126,19 @@ interface HomeForecastOutput {
  * - Missing factor impacts are illustrative ("up to ~X%"), not additive
  */
 function buildHomeForecast(
-  currentScore: number,
+  multiSystemResult: MultiSystemScoreResult,
   context: {
-    remainingYears: number;
     hasRecentMaintenance: boolean;
     permitVerified: boolean;
     featureCompleteness: number;
     region: 'south_florida' | 'other';
   }
 ): HomeForecastOutput {
-  // CORRECTED: Decay model (maintenance SLOWS decay, doesn't reverse)
-  const baseDecayRate = context.remainingYears < 5 ? 0.06 : 0.03;
+  const currentScore = multiSystemResult.score;
+  const remainingYears = multiSystemResult.decayContext.effectiveRemainingYears;
+  
+  // CORRECTED: Decay model uses weighted remaining years (not single system)
+  const baseDecayRate = remainingYears < 5 ? 0.06 : 0.03;
   
   // Without tracking: full decay
   const score12moUntracked = Math.max(55, Math.round(currentScore * (1 - baseDecayRate)));
@@ -2014,18 +2237,23 @@ function buildHomeForecast(
     },
     trajectoryQualifier: context.region === 'south_florida'
       ? 'Typical trajectory for South Florida homes like yours'
-      : 'Typical trajectory for homes like yours'
+      : 'Typical trajectory for homes like yours',
+    // NEW: Include driver explanations from multi-system result
+    drivers: multiSystemResult.drivers,
+    // NEW: Include system breakdown for UI
+    systemBreakdown: multiSystemResult.systemBreakdown
   };
 }
 
 /**
  * Get home forecast for conversion-optimized HomeHealthCard
+ * CORRECTED: Now uses multi-system weighted scoring instead of HVAC-only
  */
 async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
-  console.log(`[getHomeForecast] Building forecast for home: ${homeId}`);
+  console.log(`[getHomeForecast] Building multi-system forecast for home: ${homeId}`);
   
-  // 1. Get HVAC prediction to derive current score and context
-  const hvacPrediction = await getHVACPrediction(homeId);
+  // 1. Calculate multi-system score (HVAC 40%, Roof 35%, Water Heater 25%)
+  const multiSystemResult = await calculateMultiSystemScore(homeId);
   
   // 2. Get home details for region detection
   const { data: home } = await supabase
@@ -2034,7 +2262,7 @@ async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
     .eq('id', homeId)
     .single();
   
-  // 3. Check for recent maintenance
+  // 3. Check for recent maintenance (any system)
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   
@@ -2042,43 +2270,34 @@ async function getHomeForecast(homeId: string): Promise<HomeForecastOutput> {
     .from('habitta_system_events')
     .select('id')
     .eq('home_id', homeId)
-    .eq('system_type', 'hvac')
     .eq('event_type', 'maintenance')
     .gte('event_date', twelveMonthsAgo.toISOString().split('T')[0])
     .limit(1);
   
-  // 4. Derive current score from HVAC status
-  const currentScore = 
-    hvacPrediction.status === 'low' ? 85 :
-    hvacPrediction.status === 'moderate' ? 70 : 55;
-  
-  // 5. Determine region
+  // 4. Determine region
   const isSouthFlorida = home?.state === 'FL' || 
     home?.city?.toLowerCase().includes('miami') ||
     home?.city?.toLowerCase().includes('fort lauderdale') ||
     home?.city?.toLowerCase().includes('west palm');
   
-  // 6. Calculate feature completeness
-  let featureCompleteness = 0.25; // Base
-  if (hvacPrediction.lifespan?.install_year) featureCompleteness += 0.30;
-  if (hvacPrediction.lifespan?.confidence_0_1 && hvacPrediction.lifespan.confidence_0_1 > 0.5) featureCompleteness += 0.20;
-  if ((recentMaintenance?.length || 0) > 0) featureCompleteness += 0.15;
-  featureCompleteness = Math.min(featureCompleteness, 1);
+  // 5. Calculate feature completeness (now user-effort-based, not cost-weighted)
+  const featureCompleteness = await calculateFeatureCompleteness(homeId);
   
-  // 7. Build forecast
-  const forecast = buildHomeForecast(currentScore, {
-    remainingYears: hvacPrediction.lifespan?.years_remaining_p50 || 8,
+  // 6. Build forecast using multi-system result
+  const forecast = buildHomeForecast(multiSystemResult, {
     hasRecentMaintenance: (recentMaintenance?.length || 0) > 0,
-    permitVerified: hvacPrediction.optimization?.signals?.permitVerified || false,
+    permitVerified: false, // Will enhance with multi-system permit check later
     featureCompleteness,
     region: isSouthFlorida ? 'south_florida' : 'other'
   });
   
-  console.log(`[getHomeForecast] Built forecast:`, {
+  console.log(`[getHomeForecast] Built multi-system forecast:`, {
     currentScore: forecast.currentScore,
     projected24mo: forecast.ifLeftUntracked.score24mo,
     completeness: forecast.forecastCompleteness.percentage,
-    region: forecast.financialOutlook.region
+    primarySystem: multiSystemResult.primarySystem,
+    systemBreakdown: multiSystemResult.systemBreakdown,
+    effectiveRemainingYears: multiSystemResult.decayContext.effectiveRemainingYears
   });
   
   return forecast;
