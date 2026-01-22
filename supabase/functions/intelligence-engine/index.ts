@@ -1967,32 +1967,59 @@ interface MultiSystemScoreResult {
 }
 
 async function calculateMultiSystemScore(homeId: string): Promise<MultiSystemScoreResult> {
-  // Fetch all structural predictions in parallel
-  const [hvac, roof, waterHeater] = await Promise.all([
-    getHVACPrediction(homeId),
-    getRoofPrediction(homeId),
-    getWaterHeaterPrediction(homeId)
-  ]);
+  console.log(`[calculateMultiSystemScore] Starting for homeId=${homeId}`);
+  
+  // Fetch all structural predictions in parallel with error handling
+  let hvac: any, roof: any, waterHeater: any;
+  
+  try {
+    [hvac, roof, waterHeater] = await Promise.all([
+      getHVACPrediction(homeId).catch(err => {
+        console.error(`[calculateMultiSystemScore] HVAC prediction failed:`, err.message);
+        return { status: 'moderate', lifespan: null };
+      }),
+      getRoofPrediction(homeId).catch(err => {
+        console.error(`[calculateMultiSystemScore] Roof prediction failed:`, err.message);
+        return { status: 'moderate', lifespan: null };
+      }),
+      getWaterHeaterPrediction(homeId).catch(err => {
+        console.error(`[calculateMultiSystemScore] Water heater prediction failed:`, err.message);
+        return { status: 'moderate', lifespan: null };
+      })
+    ]);
+  } catch (err) {
+    console.error(`[calculateMultiSystemScore] Failed to fetch predictions:`, err);
+    // Return fallback with moderate status
+    hvac = { status: 'moderate', lifespan: null };
+    roof = { status: 'moderate', lifespan: null };
+    waterHeater = { status: 'moderate', lifespan: null };
+  }
 
-  // Build structural systems array
+  console.log(`[calculateMultiSystemScore] Got predictions:`, {
+    hvacStatus: hvac?.status,
+    roofStatus: roof?.status,
+    waterHeaterStatus: waterHeater?.status
+  });
+
+  // Build structural systems array with defensive defaults
   const structuralSystems = [
     {
       key: 'hvac' as const,
-      status: hvac.status,
+      status: (hvac?.status || 'moderate') as 'low' | 'moderate' | 'high',
       weight: STRUCTURAL_WEIGHTS.hvac,
-      remainingYears: hvac.lifespan?.years_remaining_p50 ?? 10
+      remainingYears: hvac?.lifespan?.years_remaining_p50 ?? 10
     },
     {
       key: 'roof' as const,
-      status: roof.status,
+      status: (roof?.status || 'moderate') as 'low' | 'moderate' | 'high',
       weight: STRUCTURAL_WEIGHTS.roof,
-      remainingYears: roof.lifespan?.years_remaining_p50 ?? 15
+      remainingYears: roof?.lifespan?.years_remaining_p50 ?? 15
     },
     {
       key: 'water_heater' as const,
-      status: waterHeater.status,
+      status: (waterHeater?.status || 'moderate') as 'low' | 'moderate' | 'high',
       weight: STRUCTURAL_WEIGHTS.water_heater,
-      remainingYears: waterHeater.lifespan?.years_remaining_p50 ?? 8
+      remainingYears: waterHeater?.lifespan?.years_remaining_p50 ?? 8
     }
   ];
 
@@ -2030,14 +2057,16 @@ async function calculateMultiSystemScore(homeId: string): Promise<MultiSystemSco
   });
   const primarySystem = sortedByImpact[0].key;
 
-  // Decay context
+  // Decay context with defensive calculation
+  const effectiveRemainingYears = computeEffectiveRemainingYears(
+    structuralSystems.map(s => ({
+      remainingYears: s.remainingYears,
+      weight: s.weight
+    }))
+  );
+  
   const decayContext = {
-    effectiveRemainingYears: computeEffectiveRemainingYears(
-      structuralSystems.map(s => ({
-        remainingYears: s.remainingYears,
-        weight: s.weight
-      }))
-    )
+    effectiveRemainingYears: effectiveRemainingYears ?? 10 // Default to 10 if undefined
   };
 
   // System breakdown for UI
