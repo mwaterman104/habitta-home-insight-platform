@@ -47,7 +47,7 @@ export interface HomeForecast {
     summary: string;        // "Your forecast is 62% complete"
   };
   
-  /** Silent risks - emerging, not urgent */
+  /** Silent risks - emerging, not urgent (legacy) */
   silentRisks: Array<{
     component: string;
     riskContext: string;        // "Stress from humidity cycles"
@@ -66,6 +66,53 @@ export interface HomeForecast {
   
   /** Trajectory qualifier - always shown */
   trajectoryQualifier: string;  // "Typical for South Florida homes like yours"
+  
+  // ============== NEW: Multi-System Transparency Fields ==============
+  
+  /** Per-system confidence (numeric, UI derives dots) */
+  systemConfidence?: {
+    hvac: { confidence_0_1: number };
+    roof: { confidence_0_1: number };
+    water_heater: { confidence_0_1: number };
+  };
+  
+  /** Missing factors with raw deltas (UI formats "+X%") */
+  missingFactorsBySystem?: Array<{
+    system: 'hvac' | 'roof' | 'water_heater';
+    factor: string;  // 'install_year', 'replacement_year', etc.
+    confidenceDelta: number;  // 0.12, not '+12%'
+  }>;
+  
+  /** Multi-system quiet monitoring */
+  quietlyMonitored?: {
+    subcomponents: Array<{ system: string; component: string; typicalCost: string }>;
+    secondarySystems: Array<{
+      system: string;
+      wearPoints: string[];
+      typicalServiceCost: string;
+    }>;
+  };
+  
+  /** Financial attribution (keys only, UI generates copy) */
+  financialAttribution?: {
+    preventiveDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    avoidedRepairDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    riskDrivers: Array<'hvac' | 'roof' | 'water_heater'>;
+    primaryRiskSystem: 'hvac' | 'roof' | 'water_heater';
+  };
+  
+  /** Driver explanations for score changes */
+  drivers?: {
+    structural: Array<{ system: string; impact: number; reason: string }>;
+    appliances: Array<{ appliance: string; impact: number; reason: string }>;
+  };
+  
+  /** System breakdown for UI */
+  systemBreakdown?: {
+    hvac: { status: string; contribution: number };
+    roof: { status: string; contribution: number };
+    water_heater: { status: string; contribution: number };
+  };
 }
 
 /**
