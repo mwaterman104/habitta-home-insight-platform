@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { ChatDIYBanner } from "@/components/ChatDIYBanner";
@@ -9,6 +10,7 @@ import { LifespanProgressBar } from "@/components/LifespanProgressBar";
 import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
 import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
 import { SYSTEM_META, isValidSystemKey } from "@/lib/systemMeta";
+import { SystemUpdateModal } from "@/components/system/SystemUpdateModal";
 import { 
   formatReplacementWindow, 
   formatMostLikelyYear, 
@@ -19,8 +21,11 @@ import {
 
 interface SystemDetailViewProps {
   prediction: SystemPrediction;
+  homeId?: string;
+  yearBuilt?: number;
   onBack: () => void;
   onActionComplete?: (actionSlug: string) => void;
+  onSystemUpdated?: () => void;
 }
 
 /**
@@ -31,10 +36,15 @@ interface SystemDetailViewProps {
  */
 export function SystemDetailView({ 
   prediction, 
+  homeId,
+  yearBuilt,
   onBack,
-  onActionComplete 
+  onActionComplete,
+  onSystemUpdated,
 }: SystemDetailViewProps) {
   const navigate = useNavigate();
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [installedLine, setInstalledLine] = useState(prediction.header.installedLine);
   
   // Get system-specific icon
   const getSystemIcon = () => {
@@ -111,12 +121,41 @@ export function SystemDetailView({
             {getSystemIcon()}
             {prediction.header.name}
           </h1>
-          <p className="text-muted-foreground mt-1">{prediction.header.installedLine}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-muted-foreground">{installedLine}</p>
+            {homeId && (
+              <button
+                onClick={() => setUpdateModalOpen(true)}
+                className="text-sm text-primary hover:text-primary/80 flex items-center gap-1"
+              >
+                <Pencil className="h-3 w-3" />
+                Update
+              </button>
+            )}
+          </div>
         </div>
         <Badge variant="outline" className={getStatusBadgeColor()}>
           {prediction.header.statusLabel}
         </Badge>
       </div>
+
+      {/* System Update Modal */}
+      {homeId && (
+        <SystemUpdateModal
+          open={updateModalOpen}
+          onOpenChange={setUpdateModalOpen}
+          homeId={homeId}
+          systemKey={prediction.systemKey}
+          currentInstallYear={prediction.lifespan?.current_age_years 
+            ? new Date().getFullYear() - prediction.lifespan.current_age_years 
+            : undefined}
+          yearBuilt={yearBuilt}
+          onUpdateComplete={(result) => {
+            setInstalledLine(result.installedLine);
+            onSystemUpdated?.();
+          }}
+        />
+      )}
 
       {/* What to Expect Section */}
       <Card className={`rounded-xl border ${getForecastBgColor()}`}>

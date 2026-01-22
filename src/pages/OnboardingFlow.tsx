@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { GooglePlacesAutocomplete } from "@/components/onboarding/GooglePlacesAutocomplete";
 import { InstantSnapshot } from "@/components/onboarding/InstantSnapshot";
 import { HVACAgePicker } from "@/components/onboarding/HVACAgePicker";
+import { CriticalSystemsStep } from "@/components/onboarding/CriticalSystemsStep";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ArrowRight, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -46,7 +47,7 @@ interface OnboardingState {
   isEnriching: boolean;
 }
 
-type Step = 'address' | 'snapshot' | 'hvac';
+type Step = 'address' | 'snapshot' | 'systems' | 'hvac';
 
 export default function OnboardingFlow() {
   const navigate = useNavigate();
@@ -314,13 +315,68 @@ export default function OnboardingFlow() {
             />
 
             <Button
-              onClick={() => setStep('hvac')}
+              onClick={() => setStep('systems')}
               className="w-full h-12 text-base"
               size="lg"
             >
-              One quick question
+              Tell us about your systems
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+          </div>
+        )}
+
+        {/* Step: Critical Systems */}
+        {step === 'systems' && state.home_id && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <button
+              onClick={() => setStep('snapshot')}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </button>
+
+            <CriticalSystemsStep
+              yearBuilt={state.snapshot?.year_built ?? undefined}
+              onComplete={async (systems) => {
+                setIsLoading(true);
+                try {
+                  // Call update-system-install for each answered system
+                  const updatePromises = Object.entries(systems).map(async ([key, answer]) => {
+                    if (!answer || answer.choice === null) return;
+                    
+                    const payload: Record<string, any> = {
+                      homeId: state.home_id,
+                      systemKey: key,
+                      replacementStatus: answer.choice,
+                    };
+                    
+                    if (answer.choice === 'replaced' && answer.year) {
+                      payload.installYear = answer.year;
+                      payload.installSource = 'owner_reported';
+                    }
+                    
+                    if (answer.choice === 'unknown') {
+                      payload.installMetadata = { user_acknowledged_unknown: true };
+                    }
+                    
+                    return supabase.functions.invoke('update-system-install', {
+                      body: payload,
+                    });
+                  });
+                  
+                  await Promise.all(updatePromises);
+                  navigate('/dashboard', { replace: true });
+                } catch (error) {
+                  console.error('[OnboardingFlow] Systems update error:', error);
+                  navigate('/dashboard', { replace: true });
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              onSkip={() => navigate('/dashboard', { replace: true })}
+              isSubmitting={isLoading}
+            />
           </div>
         )}
 
