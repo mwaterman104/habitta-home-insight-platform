@@ -102,12 +102,12 @@ export default function MobilePhotoCaptureRoute() {
     return null;
   };
 
-  // Handle file selection
+  // Handle file selection - sends file to edge function (bypasses storage RLS)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
 
-    // Validate file
+    // Validate file client-side
     const validationError = validateFile(file);
     if (validationError) {
       setError(validationError);
@@ -121,38 +121,18 @@ export default function MobilePhotoCaptureRoute() {
     setError(null);
 
     try {
-      // Generate unique filename
-      const ext = file.name.split('.').pop() || 'jpg';
-      const filename = `${token}_${Date.now()}.${ext}`;
-      const storagePath = `transfers/${filename}`;
+      // Send file to edge function (which handles storage upload with service role)
+      const formData = new FormData();
+      formData.append('image', file);
 
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('home-photos')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw new Error(uploadError.message || 'Failed to upload photo');
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('home-photos')
-        .getPublicUrl(storagePath);
-
-      // Update session status
       const response = await fetch(
         `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/photo-transfer-session?action=upload&token=${token}`,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
           },
-          body: JSON.stringify({ photo_url: publicUrl }),
+          body: formData,
         }
       );
 
@@ -163,7 +143,7 @@ export default function MobilePhotoCaptureRoute() {
           setPageState('already_used');
           return;
         }
-        throw new Error(result.error || 'Failed to complete transfer');
+        throw new Error(result.error || 'Upload failed');
       }
 
       setPageState('success');
