@@ -46,26 +46,30 @@ serve(async (req) => {
     if (action === 'create' && req.method === 'POST') {
       // Get auth header for user verification
       const authHeader = req.headers.get('Authorization');
-      if (!authHeader) {
+      if (!authHeader?.startsWith('Bearer ')) {
         return new Response(
           JSON.stringify({ error: 'Authorization required' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Verify user with anon client
+      // Verify user with getClaims (recommended approach)
       const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader } }
       });
       
-      const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
-      if (authError || !user) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: authError } = await supabaseUser.auth.getClaims(token);
+      
+      if (authError || !claimsData?.claims?.sub) {
         console.error('Auth error:', authError);
         return new Response(
           JSON.stringify({ error: 'Invalid authorization' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      
+      const userId = claimsData.claims.sub;
 
       // Parse body for home_id
       let homeId: string | null = null;
@@ -80,7 +84,7 @@ serve(async (req) => {
       const { data: session, error: createError } = await supabaseAdmin
         .from('photo_transfer_sessions')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           home_id: homeId,
           status: 'pending',
         })
