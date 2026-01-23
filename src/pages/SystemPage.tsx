@@ -6,7 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { SystemDetailView } from "@/components/SystemDetailView";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
-import { SUPPORTED_SYSTEMS, SYSTEM_META, isValidSystemKey, getSystemLabel } from "@/lib/systemMeta";
+import { isValidSystemKey } from "@/lib/systemMeta";
+import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
 
 interface UserHome {
   id: string;
@@ -149,56 +150,62 @@ export default function SystemPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6 max-w-3xl mx-auto animate-pulse">
-        <Skeleton className="h-8 w-48 rounded" />
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-32 rounded-xl" />
-        <Skeleton className="h-48 rounded-xl" />
-        <Skeleton className="h-32 rounded-xl" />
-      </div>
+      <DashboardV3Layout>
+        <div className="p-6 space-y-6 max-w-3xl mx-auto animate-pulse">
+          <Skeleton className="h-8 w-48 rounded" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+        </div>
+      </DashboardV3Layout>
     );
   }
 
   if (!prediction) {
     return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-lg mb-2">No data available for this system</p>
-          <p className="text-sm">We're still analyzing your home.</p>
+      <DashboardV3Layout>
+        <div className="p-6 max-w-3xl mx-auto">
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="text-lg mb-2">No data available for this system</p>
+            <p className="text-sm">We're still analyzing your home.</p>
+          </div>
         </div>
-      </div>
+      </DashboardV3Layout>
     );
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto pb-24 md:pb-6">
-      <SystemDetailView 
-        prediction={prediction}
-        homeId={userHome?.id}
-        yearBuilt={userHome?.year_built}
-        onBack={handleBack}
-        onActionComplete={handleActionComplete}
-        onSystemUpdated={async () => {
-          // Refetch prediction after system update
-          if (!userHome?.id || !systemKey || !isValidSystemKey(systemKey)) return;
-          
-          try {
-            const { data, error } = await supabase.functions.invoke('intelligence-engine', {
-              body: { 
-                action: 'system-prediction',
-                systemKey: systemKey,
-                property_id: userHome.id,
-                forceRefresh: true
+    <DashboardV3Layout>
+      <div className="p-6 max-w-3xl mx-auto pb-24 md:pb-6">
+        <SystemDetailView 
+          prediction={prediction}
+          homeId={userHome?.id}
+          yearBuilt={userHome?.year_built}
+          onBack={handleBack}
+          onActionComplete={handleActionComplete}
+          onSystemUpdated={async () => {
+            // Refetch prediction after system update
+            if (!userHome?.id || !systemKey || !isValidSystemKey(systemKey)) return;
+            
+            try {
+              const { data, error } = await supabase.functions.invoke('intelligence-engine', {
+                body: { 
+                  action: 'system-prediction',
+                  systemKey: systemKey,
+                  property_id: userHome.id,
+                  forceRefresh: true
+                }
+              });
+              if (!error && data) {
+                setPrediction(data);
               }
-            });
-            if (!error && data) {
-              setPrediction(data);
+            } catch (error) {
+              console.error('Error refreshing prediction:', error);
             }
-          } catch (error) {
-            console.error('Error refreshing prediction:', error);
-          }
-        }}
-      />
-    </div>
+          }}
+        />
+      </div>
+    </DashboardV3Layout>
   );
 }
