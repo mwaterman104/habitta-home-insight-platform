@@ -181,12 +181,28 @@ export function useHomeSystems(homeId?: string) {
     try {
       // If we have a URL (from QR transfer), use JSON body
       if (photoUrl && !photo) {
-        const { data, error } = await supabase.functions.invoke('analyze-device-photo', {
-          body: JSON.stringify({ image_url: photoUrl }),
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (error) throw error;
-        return data;
+        console.log('Analyzing photo from URL:', photoUrl.substring(0, 50) + '...');
+        
+        // Use fetch directly to ensure proper Content-Type header
+        const response = await fetch(
+          `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
+            },
+            body: JSON.stringify({ image_url: photoUrl }),
+          }
+        );
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Analysis failed:', response.status, errorText);
+          throw new Error(`Analysis failed: ${response.status}`);
+        }
+        
+        return await response.json();
       }
 
       // Otherwise use FormData for file upload

@@ -95,37 +95,74 @@ serve(async (req) => {
     let base64Image: string;
     const contentType = req.headers.get('content-type') || '';
 
+    console.log('Content-Type:', contentType);
+
     // Check if request is JSON (URL-based) or FormData (file upload)
     if (contentType.includes('application/json')) {
-      // URL-based image (from QR transfer - Guardrail 5)
-      const body = await req.json();
+      // URL-based image (from QR transfer)
+      let body: { image_url?: string };
+      try {
+        body = await req.json();
+      } catch (e) {
+        console.error('Failed to parse JSON body:', e);
+        throw new Error('Invalid JSON body');
+      }
+      
       const imageUrl = body.image_url;
       
       if (!imageUrl) {
-        throw new Error('No image_url provided');
+        throw new Error('No image_url provided in JSON body');
       }
       
-      console.log('Fetching image from URL:', imageUrl.substring(0, 50) + '...');
+      console.log('Fetching image from URL:', imageUrl.substring(0, 80) + '...');
       const imageResponse = await fetch(imageUrl);
       
       if (!imageResponse.ok) {
-        throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
+        throw new Error(`Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}`);
       }
       
       const imageBytes = await imageResponse.arrayBuffer();
-      base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+      
+      // Convert to base64 in chunks to avoid stack overflow for large images
+      const uint8Array = new Uint8Array(imageBytes);
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode(...chunk);
+      }
+      base64Image = btoa(binaryString);
+      
       console.log('Image fetched from URL, size:', imageBytes.byteLength);
     } else {
       // FormData file upload (original flow)
-      const formData = await req.formData();
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch (e) {
+        console.error('Failed to parse FormData:', e);
+        throw new Error('Invalid form data');
+      }
+      
       const imageFile = formData.get('image') as File;
 
       if (!imageFile) {
-        throw new Error('No image file provided');
+        throw new Error('No image file provided in form data');
       }
 
+      console.log('Processing uploaded file:', imageFile.name, 'size:', imageFile.size);
+
       const imageBytes = await imageFile.arrayBuffer();
-      base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+      
+      // Convert to base64 in chunks
+      const uint8Array = new Uint8Array(imageBytes);
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode(...chunk);
+      }
+      base64Image = btoa(binaryString);
     }
 
     console.log('Calling Google Vision API for OCR...');
@@ -231,9 +268,9 @@ function analyzeDeviceText(text: string): AnalysisResult {
 
   // Detect system type based on keywords
   const systemTypeKeywords = {
-    'hvac': ['heat pump', 'air conditioner', 'furnace', 'hvac', 'compressor', 'condenser', 'evaporator'],
+    'hvac': ['heat pump', 'air conditioner', 'furnace', 'hvac', 'compressor', 'condenser', 'evaporator', 'central air'],
     'water_heater': ['water heater', 'hot water', 'tank', 'gallon', 'gal', 'thermostat'],
-    'appliance': ['refrigerator', 'dishwasher', 'washer', 'dryer', 'oven', 'range', 'microwave'],
+    'appliance': ['refrigerator', 'dishwasher', 'washer', 'dryer', 'oven', 'range', 'microwave', 'stove', 'cooktop', 'freezer', 'ice maker', 'garbage disposal', 'hood', 'ventilation'],
     'pool_equipment': ['pool', 'pump', 'filter', 'heater', 'chlorinator', 'spa'],
     'electrical': ['breaker', 'panel', 'electrical', 'voltage', 'amp', 'circuit'],
   };
