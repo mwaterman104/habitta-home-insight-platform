@@ -463,6 +463,8 @@ export default function DashboardV3() {
                 latitude={userHome.latitude}
                 longitude={userHome.longitude}
                 address={userHome.address}
+                city={userHome.city}
+                state={userHome.state}
               />
             </aside>
           </ResizablePanel>
