@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { MapPin, Thermometer, Droplet, Snowflake, Sun } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 interface ClimateZone {
@@ -18,6 +20,8 @@ interface PropertyMapProps {
   state?: string;
   className?: string;
 }
+
+const SUPABASE_URL = "https://vbcsuoubxyhjhxcgrqco.supabase.co";
 
 /**
  * Derive climate zone based on location
@@ -111,9 +115,17 @@ export function PropertyMap({
   state,
   className 
 }: PropertyMapProps) {
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+  
   const hasCoordinates = lat && lng;
   const climate = deriveClimateZone(state, city, lat);
   const ClimateIcon = climate.icon;
+
+  // Build the static map URL via edge function
+  const mapUrl = hasCoordinates
+    ? `${SUPABASE_URL}/functions/v1/google-static-map?lat=${lat}&lng=${lng}&zoom=15&size=400x200`
+    : null;
 
   return (
     <Card className={className}>
@@ -126,33 +138,58 @@ export function PropertyMap({
       <CardContent className="space-y-3">
         {/* Map visualization */}
         <div className="aspect-video bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
-          {/* Climate-based gradient overlay */}
-          <div className={cn(
-            "absolute inset-0 bg-gradient-to-br",
-            climate.gradient
-          )} />
-          
-          {/* Map content */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center space-y-2">
-              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
-                <MapPin className="h-5 w-5 text-primary" />
-              </div>
-              {hasCoordinates ? (
-                <p className="text-xs text-muted-foreground">
-                  {lat?.toFixed(4)}, {lng?.toFixed(4)}
-                </p>
-              ) : address ? (
-                <p className="text-xs text-muted-foreground max-w-[200px] truncate">
-                  {address}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Location available
-                </p>
+          {/* Show actual Google Map if we have coordinates and no error */}
+          {mapUrl && !imageError ? (
+            <>
+              {imageLoading && (
+                <Skeleton className="absolute inset-0 rounded-lg" />
               )}
-            </div>
-          </div>
+              <img
+                src={mapUrl}
+                alt={`Map of ${address || 'property location'}`}
+                className={cn(
+                  "w-full h-full object-cover rounded-lg transition-opacity duration-300",
+                  imageLoading ? "opacity-0" : "opacity-100"
+                )}
+                onLoad={() => setImageLoading(false)}
+                onError={() => {
+                  setImageLoading(false);
+                  setImageError(true);
+                }}
+              />
+            </>
+          ) : (
+            // Fallback placeholder when no coordinates or image error
+            <>
+              {/* Climate-based gradient overlay */}
+              <div className={cn(
+                "absolute inset-0 bg-gradient-to-br",
+                climate.gradient
+              )} />
+              
+              {/* Placeholder content */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center space-y-2">
+                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                    <MapPin className="h-5 w-5 text-primary" />
+                  </div>
+                  {hasCoordinates ? (
+                    <p className="text-xs text-muted-foreground">
+                      {lat?.toFixed(4)}, {lng?.toFixed(4)}
+                    </p>
+                  ) : address ? (
+                    <p className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      {address}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Location available
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
         
         {/* Climate zone indicator */}

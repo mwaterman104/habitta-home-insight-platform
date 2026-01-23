@@ -45,6 +45,9 @@ verify_jwt = false
 [functions.google-places-details]
 verify_jwt = false
 
+[functions.google-static-map]
+verify_jwt = false
+
 # Other functions
 [functions.google-weather-insights]
 verify_jwt = true
