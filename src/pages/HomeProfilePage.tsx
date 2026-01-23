@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAttomProperty } from '@/hooks/useAttomProperty';
 import { SimpleRefreshButton } from '@/components/SimpleRefreshButton';
+import { DashboardV3Layout } from '@/layouts/DashboardV3Layout';
 
 // Home Profile Components
 import { PropertyHero } from '@/components/HomeProfile/PropertyHero';
@@ -128,8 +129,8 @@ const HomeProfilePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+    <DashboardV3Layout>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-8">
           {/* Property Hero */}
           <div className="flex items-start justify-between">
@@ -186,8 +187,8 @@ const HomeProfilePage = () => {
             }))}
           />
         </div>
-      </main>
-    </div>
+      </div>
+    </DashboardV3Layout>
   );
 };
 

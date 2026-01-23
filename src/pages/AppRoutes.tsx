@@ -65,6 +65,13 @@ export function AppRoutes() {
             </ProtectedRoute>
           } />
           
+          {/* Home Profile: Uses V3 layout */}
+          <Route path="/home-profile" element={
+            <ProtectedRoute>
+              <HomeProfilePage />
+            </ProtectedRoute>
+          } />
+          
           {/* Protected routes with unified layout */}
           <Route element={
             <ProtectedRoute>
@@ -77,8 +84,7 @@ export function AppRoutes() {
             {/* SECONDARY: System Drilldowns (route-based) */}
             <Route path="/system/:systemKey" element={<SystemPage />} />
             
-            {/* TERTIARY: Accessible via contextual links */}
-            <Route path="/home-profile" element={<HomeProfilePage />} />
+            {/* Settings still uses old layout for now */}
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant</h1><p className="text-muted-foreground mt-2">Get help with home maintenance tasks.</p></div>} />
             
