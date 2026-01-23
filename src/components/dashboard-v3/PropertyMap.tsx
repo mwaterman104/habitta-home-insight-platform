@@ -21,8 +21,17 @@ interface PropertyMapProps {
   className?: string;
 }
 
-const SUPABASE_URL = "https://vbcsuoubxyhjhxcgrqco.supabase.co";
-// Use dedicated google-static-map endpoint for map images
+/**
+ * Convert lat/lng to OSM tile coordinates
+ * https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
+ */
+function latLngToTile(lat: number, lng: number, zoom: number) {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y, zoom };
+}
 
 /**
  * Derive climate zone based on location
@@ -106,7 +115,7 @@ function deriveClimateZone(
  * Part of the Context Rail (Right Column).
  * Shows property location with climate zone meaning.
  * 
- * The map now has a JOB: explain why location matters.
+ * Uses OpenStreetMap tiles for reliable map display without API keys.
  */
 export function PropertyMap({ 
   lat, 
@@ -134,16 +143,22 @@ export function PropertyMap({
   const mapKey = `${lat}-${lng}-${retryCount}`;
   const ClimateIcon = climate.icon;
 
-  // Build the static map URL via dedicated edge function
-  const mapUrl = hasCoordinates
-    ? `${SUPABASE_URL}/functions/v1/google-static-map?lat=${lat}&lng=${lng}&zoom=15&size=640x360`
+  // Build OSM tile URL - uses public tile server, no API key needed
+  // Zoom level 15 gives good neighborhood detail
+  const zoom = 15;
+  const tile = hasCoordinates ? latLngToTile(lat, lng, zoom) : null;
+  
+  // Use OpenStreetMap tile server (free, no API key required)
+  // Format: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+  const mapUrl = tile
+    ? `https://tile.openstreetmap.org/${tile.zoom}/${tile.x}/${tile.y}.png`
     : null;
 
   return (
     <Card className={cn("overflow-hidden", className)}>
       {/* Full-bleed map visualization */}
       <div className="aspect-video bg-muted flex items-center justify-center relative">
-        {/* Show actual Google Map if we have coordinates and no error */}
+        {/* Show map tile if we have coordinates and no error */}
         {mapUrl && !imageError ? (
           <>
             {imageLoading && (
@@ -171,6 +186,12 @@ export function PropertyMap({
                 }
               }}
             />
+            {/* Location pin overlay - since OSM tiles don't have markers */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shadow-lg">
+                <MapPin className="h-5 w-5 text-primary" />
+              </div>
+            </div>
             {/* Climate zone overlay badge */}
             <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm">
               <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
