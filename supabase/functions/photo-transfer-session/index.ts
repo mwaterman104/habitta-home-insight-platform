@@ -159,8 +159,9 @@ serve(async (req) => {
     }
 
     // =========================================================================
-    // ACTION: UPLOAD - Mark session as uploaded (public, requires token)
+    // ACTION: UPLOAD - Handle file upload via FormData (public, requires token)
     // Guardrail: Single-use - only accepts if status is 'pending'
+    // Uses service role to bypass storage RLS (mobile page is unauthenticated)
     // =========================================================================
     if (action === 'upload' && req.method === 'POST') {
       if (!token) {
@@ -170,37 +171,90 @@ serve(async (req) => {
         );
       }
 
-      // Parse body for photo_url
-      let photoUrl: string;
+      // Parse multipart form data
+      let file: File | null = null;
       try {
-        const body = await req.json();
-        photoUrl = body.photo_url;
-        if (!photoUrl) throw new Error('photo_url required');
+        const formData = await req.formData();
+        file = formData.get('image') as File | null;
       } catch (e) {
+        console.error('Failed to parse form data:', e);
         return new Response(
-          JSON.stringify({ error: 'photo_url required in body' }),
+          JSON.stringify({ error: 'Invalid form data' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Atomically update only if status is 'pending' (single-use guardrail)
-      const { data: updated, error: updateError } = await supabaseAdmin
+      if (!file) {
+        return new Response(
+          JSON.stringify({ error: 'Image file required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        return new Response(
+          JSON.stringify({ error: 'File too large (max 10MB)' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`Upload request: token=${token.substring(0, 8)}..., file=${file.name}, size=${file.size}`);
+
+      // Verify session is pending (single-use check)
+      const { data: session, error: sessionError } = await supabaseAdmin
         .from('photo_transfer_sessions')
-        .update({ 
-          status: 'uploaded', 
-          photo_url: photoUrl 
-        })
+        .select('id, status, expires_at')
         .eq('session_token', token)
-        .eq('status', 'pending')  // Critical: only update if still pending
-        .gt('expires_at', new Date().toISOString())  // Not expired
-        .select('id')
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
         .single();
 
-      if (updateError || !updated) {
-        console.log('Upload failed - session not pending or expired:', updateError);
+      if (sessionError || !session) {
+        console.log('Session not valid:', sessionError);
         return new Response(
-          JSON.stringify({ error: 'Session already used, expired, or not found' }),
+          JSON.stringify({ error: 'Session expired or already used' }),
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Upload to storage using service role (bypasses RLS)
+      const ext = file.name.split('.').pop() || 'jpg';
+      const storagePath = `transfers/${token}_${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('home-photos')
+        .upload(storagePath, file, {
+          cacheControl: '3600',
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to upload image' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabaseAdmin.storage
+        .from('home-photos')
+        .getPublicUrl(storagePath);
+
+      console.log(`Uploaded to: ${storagePath}, URL: ${publicUrl}`);
+
+      // Update session atomically
+      const { error: updateError } = await supabaseAdmin
+        .from('photo_transfer_sessions')
+        .update({ status: 'uploaded', photo_url: publicUrl })
+        .eq('id', session.id);
+
+      if (updateError) {
+        console.error('Session update error:', updateError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to update session' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
