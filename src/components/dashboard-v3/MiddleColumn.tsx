@@ -258,7 +258,7 @@ export function MiddleColumn({
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Scrollable content area - independent scroll */}
       <ScrollArea className="h-full" ref={scrollAreaRef}>
-        <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
+        <div className="space-y-4 max-w-3xl mx-auto px-4 py-6">
           {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">

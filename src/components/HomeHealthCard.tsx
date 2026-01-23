@@ -106,7 +106,7 @@ export function HomeHealthCard({
 
   return (
     <Card className="rounded-2xl bg-gradient-to-br from-blue-50 to-slate-50 border-0 shadow-sm">
-      <CardContent className="p-6 space-y-4">
+      <CardContent className="p-5 space-y-3">
         
         {/* 1. Trajectory Headline with Tooltip */}
         <div>
@@ -136,7 +136,7 @@ export function HomeHealthCard({
               {currentScore}
             </span>
             <span className="text-2xl text-muted-foreground">→</span>
-            <span className="text-3xl font-semibold text-amber-600">
+            <span className="text-2xl font-semibold text-amber-600">
               {ifLeftUntracked.score24mo}
             </span>
           </div>
@@ -148,7 +148,7 @@ export function HomeHealthCard({
         </div>
         
         {/* 2. Control Subheadline */}
-        <p className="text-gray-700">
+        <p className="text-sm text-gray-700">
           With Habitta Care, your home stays stable and predictable at{' '}
           <strong className="text-green-700">
             {withHabittaCare.score12mo}–{withHabittaCare.score24mo}

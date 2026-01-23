@@ -311,7 +311,7 @@ export function MaintenanceRoadmap({
                   
                   {tasksForMonth.length === 0 ? (
                     <p className="text-sm text-muted-foreground italic py-2">
-                      No maintenance scheduled for this month
+                      No maintenance scheduled this month — you're on track.
                     </p>
                   ) : (
                     <div className="space-y-3">
