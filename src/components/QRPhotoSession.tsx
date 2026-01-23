@@ -50,20 +50,20 @@ export function QRPhotoSession({
     setError(null);
 
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('photo-transfer-session', {
-        body: { home_id: homeId },
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      
+      if (!accessToken) {
+        throw new Error('Not authenticated');
+      }
 
-      // Handle the query param approach
       const response = await fetch(
         `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/photo-transfer-session?action=create`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
           },
           body: JSON.stringify({ home_id: homeId }),
