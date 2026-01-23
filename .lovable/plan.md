@@ -1,302 +1,238 @@
 
 
-# Floating ChatDock with Dynamic Positioning (Revised)
+# ChatDock: Fixed → Sticky In-Flow (Final Production Plan)
 
 ## Overview
 
-Transform the ChatDock from a full-width footer bar into a floating control surface that is:
-- Visually contained within the middle column bounds
-- Dynamically anchored to account for resizable right panel
-- Visually connected to the content above (drawer relationship)
-- Height-constrained in expanded state to never become a full modal
+Transform the ChatDock from a viewport-fixed floating overlay into an in-flow, sticky dockable panel that lives inside the MiddleColumn and pushes content up when expanded.
 
 ---
 
-## What We're Keeping (Validated)
+## Architectural Shift
 
-| Decision | Rationale |
-|----------|-----------|
-| `bottom-4` spacing | 16px gap from viewport edge - feels lifted but grounded |
-| `pointer-events-none` / `pointer-events-auto` pattern | Clean click-through behavior |
-| Full `rounded-xl` corners | Self-contained floating element |
-| `fixed` positioning | Ensures viewport-level anchoring |
+### Before (Current - Wrong)
+```text
+┌─ DashboardV3 ─────────────────────────────────────────────────────┐
+│  ┌─ MiddleColumn (scrollable) ───────────────────────────────┐   │
+│  │  SystemWatch, HomeHealthCard, etc.                        │   │
+│  │  [ChatDock is NOT here - content ends]                    │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                                                                   │
+│  ┌─ ChatDock (FIXED to viewport, gradient fade) ─────────────┐   │
+│  │  [Floats over content, uses viewport math, pointer-events]│   │
+│  └───────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### After (Target - Correct)
+```text
+┌─ DashboardV3 ─────────────────────────────────────────────────────┐
+│  ┌─ MiddleColumn ────────────────────────────────────────────┐   │
+│  │  ┌─ ScrollArea ──────────────────────────────────────────┐│   │
+│  │  │  <div className="space-y-6 max-w-3xl mx-auto pb-6">  ││   │
+│  │  │    SystemWatch                                        ││   │
+│  │  │    HomeHealthCard                                     ││   │
+│  │  │    HabittaThinking                                    ││   │
+│  │  │    CapitalTimeline                                    ││   │
+│  │  │    MaintenanceRoadmap                                 ││   │
+│  │  │                                                       ││   │
+│  │  │    <div className="sticky bottom-4">                  ││   │
+│  │  │      <ChatDock />  ← IN FLOW, same width as cards     ││   │
+│  │  │    </div>                                             ││   │
+│  │  │  </div>                                               ││   │
+│  │  └───────────────────────────────────────────────────────┘│   │
+│  └───────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Changes to Address Risks
+## Locked Rules (Non-Negotiable)
 
-### 1. Dynamic Right Boundary (Risk #1)
+These 4 rules prevent future regressions:
 
-**Problem**: Hardcoded `xl:right-[25%]` will drift when the right panel is resized.
+### 1. Sticky Attachment Rule
+> **ChatDock's sticky wrapper must be inside the scrollable content container, not the ScrollArea root.**
 
-**Solution**: Track panel size in component state and compute `right` offset dynamically.
+The sticky `<div>` must be a direct descendant of the `<div className="space-y-6 max-w-3xl mx-auto">` inside ScrollArea — not on the ScrollArea itself. This ensures sticky attaches to the correct scroll ancestor.
 
+### 2. Scroll Ownership Rule
+> **Only the messages area scrolls; the ChatDock container does not.**
+
+Correct structure:
 ```tsx
-// In DashboardV3.tsx
-const [rightPanelSize, setRightPanelSize] = useState(() => {
-  return parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25');
-});
-
-// Update on resize
-<ResizablePanelGroup
-  onLayout={(sizes) => {
-    localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
-    setRightPanelSize(sizes[1]); // Live update
-  }}
->
-
-// ChatDock wrapper with dynamic right offset
-<div 
-  className="fixed bottom-4 z-50 pointer-events-none lg:left-60 right-0"
-  style={{ 
-    // On xl screens, offset by right panel percentage
-    right: isXlScreen ? `${rightPanelSize}%` : 0 
-  }}
->
-```
-
-For simplicity, we'll use a CSS custom property approach:
-```tsx
-// Set CSS variable on resize
-document.documentElement.style.setProperty('--right-panel-width', `${sizes[1]}%`);
-
-// Use in className
-"xl:right-[var(--right-panel-width)]"
-```
-
-This keeps the styling declarative while being dynamic.
-
-### 2. Anchor to Middle Column Container (Risk #2)
-
-**Problem**: `max-w-3xl mx-auto` centers to the viewport region, not the middle column.
-
-**Solution**: Match the MiddleColumn's content constraints:
-- MiddleColumn content uses `max-w-3xl mx-auto`
-- ChatDock should use the same constraints
-- Horizontal padding matches the column's `p-6`
-
-```tsx
-// ChatDock wrapper - matches middle column layout
-<div className="fixed bottom-4 left-0 lg:left-60 z-50 pointer-events-none px-6"
-     style={{ right: rightOffset }}>
-  <div className="max-w-3xl mx-auto pointer-events-auto">
-    <ChatDock ... />
+<div className="flex flex-col max-h-[min(60vh,420px)]">
+  <Header />                              {/* fixed, shrink-0 */}
+  <div className="flex-1 overflow-y-auto min-h-0">
+    {/* messages scroll here */}
   </div>
+  <Input />                               {/* fixed, shrink-0 */}
 </div>
 ```
 
-This ensures the chat aligns with the content above it, not floating independently.
+This keeps header and input always visible; only messages scroll.
 
-### 3. Drawer Relationship Cue (Missing Element)
+### 3. Expansion Trigger Rules
+> **Input focus → Peek, first exchange → Expanded, manual collapse → Collapsed**
 
-**Problem**: The dock floats without visual connection to content above.
+| Trigger | State Change |
+|---------|--------------|
+| Click collapsed input | Collapsed → Expanded |
+| First user message or agent reply | Stays Expanded |
+| Click collapse button | Expanded → Collapsed |
+| Navigate away | Expanded → Collapsed |
 
-**Solution**: Add a soft gradient fade at the top of the fixed wrapper to imply "rising from content."
+### 4. Natural Layout Reflow
+> **ChatDock expansion increases its height within the flow, causing natural layout reflow of content above.**
 
-```tsx
-// Wrapper with subtle top gradient
-<div className="fixed bottom-0 left-0 lg:left-60 z-50 pointer-events-none px-6 pb-4"
-     style={{ right: rightOffset }}>
-  {/* Subtle gradient fade - "drawer rising" effect */}
-  <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
-  
-  <div className="max-w-3xl mx-auto pointer-events-auto">
-    <ChatDock ... />
-  </div>
-</div>
-```
+This is NOT forced scroll behavior. The chat grows, content above naturally reflews upward. No scroll hacks needed.
 
-Alternative visual cues (can be combined):
-- A subtle "handle" bar on top edge of ChatDock (2px rounded line)
-- Slightly increased shadow (`shadow-xl` instead of `shadow-lg`)
+---
 
-### 4. Expanded State Height Limit (Missing Rule)
+## Height States
 
-**Problem**: Expanded chat could cover the entire dashboard.
+| State | Height | Max Height | Behavior |
+|-------|--------|------------|----------|
+| **Collapsed** | ~72-80px | Fixed | Input affordance only |
+| **Expanded** | Variable | `min(60vh, 420px)` | Full conversation, bounded |
 
-**Solution**: Lock max-height to 75vh, ensuring content remains visible above.
-
-```tsx
-// In ChatDock.tsx expanded state
-<div className={cn(
-  "bg-card rounded-xl shadow-lg border flex flex-col",
-  "max-h-[75vh]" // Never covers more than 75% of viewport
-)}>
-```
-
-Current: `max-h-[60vh]` - This is already reasonable, but we'll confirm it's enforced.
+The `min(60vh, 420px)` cap ensures:
+- On tall screens (700px+): 420px max
+- On shorter screens: 60% of viewport
+- Always leaves ~40% for content above
 
 ---
 
 ## Implementation Details
 
-### Files to Modify
+### File 1: `src/pages/DashboardV3.tsx`
 
-| File | Changes |
-|------|---------|
-| `src/pages/DashboardV3.tsx` | Track rightPanelSize state, compute dynamic offset, update ChatDock wrapper styling |
-| `src/components/dashboard-v3/ChatDock.tsx` | Update to full `rounded-xl`, add border, adjust shadow, confirm max-height |
+**Remove:**
+- The entire fixed ChatDock wrapper (lines 503-528)
+- The `rightPanelSize` state (no longer needed for ChatDock positioning)
+- The gradient fade element
 
-### DashboardV3.tsx Changes
+ChatDock will now be rendered inside MiddleColumn, not at the DashboardV3 level.
+
+### File 2: `src/components/dashboard-v3/MiddleColumn.tsx`
+
+**Add ChatDock as last child inside the scrollable content:**
 
 ```tsx
-// 1. Add state for panel size tracking
-const [rightPanelSize, setRightPanelSize] = useState(() => {
-  return parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25');
-});
-
-// 2. Check for xl breakpoint
-const isXlScreen = typeof window !== 'undefined' && window.innerWidth >= 1280;
-
-// 3. Update onLayout handler
-<ResizablePanelGroup
-  onLayout={(sizes) => {
-    localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
-    setRightPanelSize(sizes[1]);
-  }}
->
-
-// 4. ChatDock wrapper with dynamic positioning
-<div 
-  className={cn(
-    "fixed bottom-0 z-50 pointer-events-none",
-    "left-0 lg:left-60", // After sidebar on lg+
-    "px-6 pb-4" // Match column padding
-  )}
-  style={{ 
-    // Dynamic right offset on xl screens
-    right: isXlScreen ? `${rightPanelSize}%` : 0 
-  }}
->
-  {/* Gradient fade for drawer effect */}
-  <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-  
-  <div className="max-w-3xl mx-auto pointer-events-auto">
-    <ChatDock ... />
+<ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
+  <div className="space-y-6 max-w-3xl mx-auto pb-6">
+    {/* ... existing sections 1-5 ... */}
+    
+    {/* 6. ChatDock - Sticky dockable panel (IN FLOW) */}
+    <div className="sticky bottom-4">
+      <ChatDock
+        propertyId={propertyId}
+        isExpanded={chatExpanded}
+        onExpandChange={onChatExpandChange}
+        advisorState={advisorState}
+        focusContext={focusContext}
+        hasAgentMessage={hasAgentMessage}
+        openingMessage={openingMessage}
+        confidence={confidence}
+        risk={risk}
+        onUserReply={onUserReply}
+      />
+    </div>
   </div>
-</div>
+</ScrollArea>
 ```
 
-### ChatDock.tsx Changes
+**Key changes:**
+- `pb-28` → `pb-6` (no extra padding for fixed element)
+- ChatDock is now the last child in content flow
+- `sticky bottom-4` wrapper keeps it anchored while scrolling
+- Inherits `max-w-3xl` width automatically
+
+### File 3: `src/components/dashboard-v3/ChatDock.tsx`
+
+**Styling updates to match other cards:**
+
+| Current | Change To |
+|---------|-----------|
+| `shadow-lg` | `shadow-sm` (match card hierarchy) |
+| `max-h-[75vh]` | `max-h-[min(60vh,420px)]` (bounded) |
+| `p-3` on collapsed | `p-4` (taller touch target, ~80px) |
 
 **Collapsed state:**
 ```tsx
-<div className="bg-card rounded-xl border shadow-lg">
-  <button
-    onClick={() => onExpandChange(true)}
-    className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-xl"
-  >
-    {/* ... existing content ... */}
-  </button>
-</div>
+<div className="bg-card rounded-xl border shadow-sm">
+  <button className="w-full p-4 flex items-center gap-3 ...">
 ```
 
 **Expanded state:**
 ```tsx
-<div className="bg-card rounded-xl border shadow-lg flex flex-col max-h-[75vh]">
-  {/* ... existing content ... */}
-</div>
+<div className={cn(
+  "bg-card rounded-xl border shadow-sm flex flex-col",
+  "max-h-[min(60vh,420px)]",
+  "transition-all duration-200"
+)}>
+  {/* Header - shrink-0 */}
+  <div className="flex items-center justify-between p-3 border-b shrink-0">
+  
+  {/* Messages - scrollable */}
+  <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+  
+  {/* Input - shrink-0, always visible */}
+  <div className="p-3 border-t shrink-0">
 ```
-
-Key styling changes:
-- `rounded-t-xl` → `rounded-xl` (full corners)
-- `border-t` → `border` (full border)
-- `shadow-[0_-8px_...]` → `shadow-lg` (standard shadow, not just upward)
-- Confirm `max-h-[75vh]` is applied
 
 ---
 
-## Visual Comparison
+## Visual Hierarchy After Changes
 
-### Before (Current)
-```text
-┌─────────────┬────────────────────────────────────────────────────────────────┐
-│  Sidebar    │                          Content Area                          │
-│             │                                                                │
-│             │                                                                │
-├─────────────┴────────────────────────────────────────────────────────────────┤
-│  [━━━━━━━━━━━━━━━ Full-width chat bar with border-t ━━━━━━━━━━━━━━━━━]       │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+| Property | ChatDock | Other Cards |
+|----------|----------|-------------|
+| Border | `border` | `border` |
+| Radius | `rounded-xl` | `rounded-xl` |
+| Shadow | `shadow-sm` | `shadow-sm` |
+| Width | Inherits `max-w-3xl` | Uses `max-w-3xl` |
 
-### After (Floating)
-```text
-┌─────────────┬──────────────────────────────────┬──────────────────┐
-│  Sidebar    │        Content Area              │   Right Panel    │
-│             │                                  │                  │
-│             │    (content scrolls here)        │                  │
-│             │                                  │                  │
-│             │   ┌────────────────────────────┐ │                  │
-│             │   │ Ask about your home...  ↑ │ │                  │
-│             │   └────────────────────────────┘ │                  │
-│             │         ↑ 16px gap               │                  │
-└─────────────┴──────────────────────────────────┴──────────────────┘
-```
-
-The chat dock:
-- Floats above the viewport bottom (16px gap)
-- Has horizontal margins from column edges (24px via `px-6`)
-- Is contained within the middle column width
-- Has full rounded corners
-- Has a subtle gradient fade connecting it to content above
-- Stops at the right panel boundary (dynamically calculated)
+ChatDock will now feel like another card in the system, not a bolted-on assistant.
 
 ---
 
 ## Responsive Behavior
 
+Because ChatDock is now in-flow, it automatically respects all column constraints:
+
 | Breakpoint | Behavior |
 |------------|----------|
-| Mobile (`< lg`) | `left-0 right-0` - full width with `px-6` padding |
-| Desktop (`lg`) | `left-60 right-0` - after sidebar, full remaining width |
-| Large Desktop (`xl`) | `left-60 right-[dynamic%]` - between sidebar and right panel |
+| Mobile (`< lg`) | Full width within MiddleColumn padding |
+| Desktop (`lg`) | Same width as other middle column cards |
+| Large Desktop (`xl`) | Same width, right panel unaffected |
+
+No viewport math, no breakpoint-specific positioning.
 
 ---
 
-## Technical Considerations
+## What Gets Removed
 
-### Window Resize Handling
-
-For the `isXlScreen` check to be reactive, we'll either:
-1. Use a custom hook that listens to window resize
-2. Or use Tailwind's responsive classes with CSS custom properties
-
-The cleanest approach is CSS custom properties set via JS:
-
-```tsx
-// Set on mount and resize
-useEffect(() => {
-  const updateCSSVar = () => {
-    const rightSize = parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25');
-    document.documentElement.style.setProperty('--right-panel-width', `${rightSize}%`);
-  };
-  updateCSSVar();
-  window.addEventListener('resize', updateCSSVar);
-  return () => window.removeEventListener('resize', updateCSSVar);
-}, []);
-
-// Then in className
-"xl:right-[var(--right-panel-width)]"
-```
-
-### Scroll Context
-
-The fixed positioning means the ChatDock ignores:
-- Middle column scroll position
-- Section boundaries
-- Future sticky elements within the column
-
-This is an acceptable tradeoff for now. If we need scroll-aware behavior later (e.g., hide when scrolling fast), we can add that as a separate enhancement.
+| Element | Why |
+|---------|-----|
+| `fixed bottom-0 left-0 lg:left-60` positioning | No longer needed — sticky in flow |
+| `rightPanelSize` state | No longer needed for ChatDock |
+| `pointer-events-none/auto` pattern | No overlay, no click-through needed |
+| Gradient fade (`bg-gradient-to-t`) | No separation needed — chat is in flow |
+| `pb-28` extra padding | No fixed element to compensate for |
 
 ---
 
 ## Summary Checklist
 
-| Concern | Solution |
-|---------|----------|
-| Hardcoded right boundary | Dynamic calculation from state/CSS variable |
-| Width centered to viewport | Anchored to middle column via matching padding/max-width |
-| No drawer relationship | Gradient fade at top of fixed wrapper |
-| Expanded height undefined | Max-height of 75vh (already 60vh, will confirm) |
-| Full-width border look | Full rounded corners + border + shadow (floating) |
+| Rule | Implementation |
+|------|----------------|
+| ChatDock lives inside MiddleColumn flow | Last child of `<div className="space-y-6">` inside ScrollArea |
+| Same width as other modules | Inherits `max-w-3xl mx-auto` from parent |
+| Uses `sticky`, not `fixed` | `<div className="sticky bottom-4">` wrapper |
+| Expands by pushing content up | Natural layout reflow, not forced scroll |
+| Has a hard max height | `max-h-[min(60vh,420px)]` |
+| Only messages scroll | `overflow-y-auto` on messages div only |
+| No gradients | Removed entirely |
+| No viewport math | No left/right offset calculations |
+| No overlay behavior | Never covers content, always pushes |
 
