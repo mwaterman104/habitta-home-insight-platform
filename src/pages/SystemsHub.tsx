@@ -6,10 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Cpu, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { Cpu, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
 
 interface SystemCardData {
   key: string;
@@ -116,30 +116,14 @@ export default function SystemsHub() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate('/dashboard-v3')}
-              className="gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <div className="flex items-center gap-2">
-              <Cpu className="h-5 w-5 text-primary" />
-              <h1 className="text-xl font-semibold">Your Home Systems</h1>
-            </div>
-          </div>
+    <DashboardV3Layout>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Page Title */}
+        <div className="flex items-center gap-2 mb-6">
+          <Cpu className="h-5 w-5 text-primary" />
+          <h1 className="text-xl font-semibold">Your Home Systems</h1>
         </div>
-      </header>
 
-      {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => (
@@ -203,7 +187,7 @@ export default function SystemsHub() {
             </div>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </DashboardV3Layout>
   );
 }
