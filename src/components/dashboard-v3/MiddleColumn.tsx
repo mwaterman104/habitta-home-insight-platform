@@ -255,10 +255,10 @@ export function MiddleColumn({
   const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Scrollable content area */}
       <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
-        <div className="space-y-6 max-w-3xl mx-auto pb-24">
+        <div className="space-y-6 max-w-3xl mx-auto pb-28">
           {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
@@ -337,26 +337,6 @@ export function MiddleColumn({
         </div>
       </ScrollArea>
       
-      {/* 6. Sticky ChatDock - Fixed at bottom of viewport */}
-      {!isMobile && (
-        <div className="absolute bottom-0 left-0 right-0 border-t bg-card z-10">
-          <ChatDock
-            propertyId={propertyId}
-            isExpanded={chatExpanded}
-            onExpandChange={(expanded) => {
-              if (expanded) setChatEngagedThisSession(true);
-              onChatExpandChange(expanded);
-            }}
-            hasAgentMessage={hasAgentMessage}
-            advisorState={advisorState}
-            focusContext={focusContext}
-            openingMessage={openingMessage}
-            confidence={confidence}
-            risk={risk}
-            onUserReply={onUserReply}
-          />
-        </div>
-      )}
     </div>
   );
 }

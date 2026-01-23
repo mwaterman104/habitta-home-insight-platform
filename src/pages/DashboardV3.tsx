@@ -21,6 +21,7 @@ import { TopHeader } from "@/components/dashboard-v3/TopHeader";
 import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
 import { RightColumn } from "@/components/dashboard-v3/RightColumn";
+import { ChatDock } from "@/components/dashboard-v3/ChatDock";
 
 interface UserHome {
   id: string;
@@ -481,6 +482,7 @@ export default function DashboardV3() {
             propertyId={userHome.id}
             onSystemClick={handleSystemFocus}
             isEnriching={isEnriching}
+            isMobile={true}
             advisorState={advisorState}
             focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
             openingMessage={openingMessage}
@@ -490,6 +492,24 @@ export default function DashboardV3() {
             onTaskComplete={handleTaskComplete}
           />
         </main>
+      </div>
+      
+      {/* Fixed ChatDock - Anchored to viewport bottom */}
+      <div className="fixed bottom-0 left-0 lg:left-60 right-0 z-50 border-t bg-card shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.08)]">
+        <div className="max-w-3xl mx-auto px-6">
+          <ChatDock
+            propertyId={userHome.id}
+            isExpanded={shouldChatBeOpen}
+            onExpandChange={handleChatExpandChange}
+            hasAgentMessage={hasAgentMessage}
+            advisorState={advisorState}
+            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+            openingMessage={openingMessage}
+            confidence={confidence}
+            risk={risk}
+            onUserReply={handleUserReply}
+          />
+        </div>
       </div>
     </div>
   );
