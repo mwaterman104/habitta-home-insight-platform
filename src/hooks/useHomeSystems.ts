@@ -116,11 +116,20 @@ export function useHomeSystems(homeId?: string) {
     if (!homeId) return;
     
     try {
+      // Generate a unique system_key to avoid duplicate constraint
+      // Format: system_type_brand_timestamp (e.g., appliance_lg_1706123456)
+      const baseKey = systemData.system_key || 'unknown';
+      const brandSuffix = systemData.brand?.toLowerCase().replace(/\s+/g, '_') || '';
+      const timestamp = Date.now().toString(36); // Short base-36 timestamp
+      const uniqueKey = brandSuffix 
+        ? `${baseKey}_${brandSuffix}_${timestamp}` 
+        : `${baseKey}_${timestamp}`;
+
       const { data, error } = await supabase
         .from("home_systems")
         .insert({
           home_id: homeId,
-          system_key: systemData.system_key!,
+          system_key: uniqueKey,
           brand: systemData.brand,
           model: systemData.model,
           serial: systemData.serial,
@@ -138,7 +147,7 @@ export function useHomeSystems(homeId?: string) {
           images: systemData.images || [],
           expected_lifespan_years: systemData.expected_lifespan_years,
           notes: systemData.notes,
-          source: { method: "manual" }
+          source: { method: "manual", original_type: baseKey }
         })
         .select()
         .single();
