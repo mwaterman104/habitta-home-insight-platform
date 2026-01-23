@@ -1,194 +1,471 @@
 
 
-# Fix RLS Error on QR Photo Upload
+# Appliance Intelligence: Tiered Integration Plan
 
-## Problem Identified
+## Overview
 
-The error "new row violates row-level security policy for table 'objects'" occurs because:
+This plan integrates appliances into Habitta as **second-order systems** with strict tiering, capped health influence, and constrained intelligence—all while preserving the core "home-as-an-operating-system" model.
 
-1. **Mobile capture page is unauthenticated** - The `/capture-photo` route is public (no auth required by design)
-2. **Storage bucket requires auth** - The `home-photos` bucket has an INSERT policy: `auth.uid() = storage.foldername(name)[1]`
-3. **No user ID available** - Since `auth.uid()` is null on the mobile page, the upload is blocked
+Your QA feedback is locked in as non-negotiable guardrails.
 
-## Solution: Move Upload to Edge Function
+---
 
-Instead of the mobile page uploading directly to storage, it will:
-1. Send the image file to the edge function
-2. Edge function validates the token
-3. Edge function uploads to storage using service role (bypasses RLS)
-4. Edge function updates session status and returns success
+## Architecture Decision: Appliances Live Inside Systems Hub
 
-This is more secure because:
-- Token validation and upload are atomic
-- No need to add permissive storage policies
-- File validation happens server-side
+Per your recommendation, appliances will **not** get a parallel navigation item. Instead:
 
-## Technical Changes
+- **Systems Hub** (`/systems`) becomes the unified view for all tracked items
+- Systems are visually grouped: **Structural Systems** (top) and **Appliances** (below)
+- Clicking an appliance navigates to `/systems/:applianceId` (same pattern as HVAC/Roof)
 
-### 1. Modify Edge Function: `photo-transfer-session/index.ts`
+This preserves one mental model and one navigation surface.
 
-Update the `upload` action to accept file uploads via FormData:
+---
+
+## Phase 1: Database Foundation (Tiering Model)
+
+### 1.1 Extend `system_catalog` with Tier + Health Weight
+
+```sql
+ALTER TABLE public.system_catalog
+ADD COLUMN IF NOT EXISTS appliance_tier INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS health_weight_cap DECIMAL(3,2) DEFAULT 1.0;
+
+-- Existing structural systems = Tier 0 (not appliances)
+UPDATE system_catalog SET appliance_tier = 0, health_weight_cap = 1.0
+WHERE key IN ('hvac', 'roof', 'water_heater', 'electrical', 'plumbing', 'windows', 'flooring');
+
+-- Add Tier 1 Critical Appliances
+INSERT INTO public.system_catalog 
+(key, display_name, typical_lifespan_years, cost_low, cost_high, risk_weights, maintenance_checks, appliance_tier, health_weight_cap)
+VALUES
+('refrigerator', 'Refrigerator', 12, 1000, 4000, '{"age":0.5,"usage":0.3}', '["Clean coils annually","Check seals"]', 1, 1.0),
+('oven_range', 'Oven/Range', 15, 800, 3500, '{"age":0.6,"usage":0.3}', '["Clean regularly","Check burners annually"]', 1, 1.0),
+('dishwasher', 'Dishwasher', 10, 400, 1200, '{"age":0.6}', '["Clean filter monthly","Check spray arms"]', 1, 1.0),
+('washer', 'Washing Machine', 10, 500, 1500, '{"age":0.5,"usage":0.4}', '["Clean drum monthly","Check hoses"]', 1, 1.0),
+('dryer', 'Dryer', 13, 400, 1200, '{"age":0.5,"usage":0.3}', '["Clean lint trap","Vent cleaning annually"]', 1, 1.0)
+ON CONFLICT (key) DO UPDATE SET
+  appliance_tier = EXCLUDED.appliance_tier,
+  health_weight_cap = EXCLUDED.health_weight_cap;
+
+-- Add Tier 2 Contextual Appliances (no health impact)
+INSERT INTO public.system_catalog 
+(key, display_name, typical_lifespan_years, cost_low, cost_high, risk_weights, maintenance_checks, appliance_tier, health_weight_cap)
+VALUES
+('microwave', 'Microwave', 9, 150, 600, '{"age":0.7}', '["Clean interior regularly"]', 2, 0.0),
+('garbage_disposal', 'Garbage Disposal', 10, 100, 400, '{"age":0.6}', '["Run with cold water"]', 2, 0.0),
+('wine_cooler', 'Wine Cooler', 10, 300, 2000, '{"age":0.5}', '["Clean condenser annually"]', 2, 0.0)
+ON CONFLICT (key) DO UPDATE SET
+  appliance_tier = EXCLUDED.appliance_tier,
+  health_weight_cap = EXCLUDED.health_weight_cap;
+```
+
+### 1.2 Type Definitions
 
 ```typescript
-if (action === 'upload' && req.method === 'POST') {
-  if (!token) { /* error handling */ }
+// src/lib/systemMeta.ts additions
+export type ApplianceTier = 0 | 1 | 2;
 
-  // Parse multipart form data
-  const formData = await req.formData();
-  const file = formData.get('image') as File | null;
-  
-  if (!file) {
-    return new Response(
-      JSON.stringify({ error: 'Image file required' }),
-      { status: 400, headers: corsHeaders }
-    );
-  }
+export interface ApplianceCategory {
+  key: string;
+  displayName: string;
+  tier: ApplianceTier;
+  healthWeightCap: number;
+  typicalLifespan: number;
+  icon: string;
+}
 
-  // Validate file
-  if (file.size > 10 * 1024 * 1024) { // 10MB
-    return new Response(
-      JSON.stringify({ error: 'File too large (max 10MB)' }),
-      { status: 400, headers: corsHeaders }
-    );
-  }
+export const TIER_1_APPLIANCES = [
+  'refrigerator', 'oven_range', 'dishwasher', 'washer', 'dryer'
+];
 
-  // Verify session is pending (single-use check)
-  const { data: session } = await supabaseAdmin
-    .from('photo_transfer_sessions')
-    .select('id, status, expires_at')
-    .eq('session_token', token)
-    .eq('status', 'pending')
-    .gt('expires_at', new Date().toISOString())
-    .single();
+export const TIER_2_APPLIANCES = [
+  'microwave', 'garbage_disposal', 'wine_cooler'
+];
+```
 
-  if (!session) {
-    return new Response(
-      JSON.stringify({ error: 'Session expired or already used' }),
-      { status: 409, headers: corsHeaders }
-    );
-  }
+---
 
-  // Upload to storage using service role (bypasses RLS)
-  const ext = file.name.split('.').pop() || 'jpg';
-  const storagePath = `transfers/${token}_${Date.now()}.${ext}`;
-  
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from('home-photos')
-    .upload(storagePath, file, {
-      cacheControl: '3600',
-      contentType: file.type,
-    });
+## Phase 2: Visibility in Systems Hub
 
-  if (uploadError) {
-    return new Response(
-      JSON.stringify({ error: 'Failed to upload image' }),
-      { status: 500, headers: corsHeaders }
-    );
-  }
+### 2.1 Update SystemsHub to Show Appliances
 
-  // Get public URL
-  const { data: { publicUrl } } = supabaseAdmin.storage
-    .from('home-photos')
-    .getPublicUrl(storagePath);
+Modify `/systems` to fetch both capital timeline systems AND `home_systems` appliances, then render them in grouped sections.
 
-  // Update session atomically
-  await supabaseAdmin
-    .from('photo_transfer_sessions')
-    .update({ status: 'uploaded', photo_url: publicUrl })
-    .eq('id', session.id);
+**Key Changes to `src/pages/SystemsHub.tsx`:**
 
-  return new Response(
-    JSON.stringify({ success: true }),
-    { status: 200, headers: corsHeaders }
+```typescript
+// Fetch appliances from home_systems
+const { data: appliances } = useQuery({
+  queryKey: ['home-appliances', userHome?.id],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('home_systems')
+      .select('*, system_catalog!inner(display_name, typical_lifespan_years, appliance_tier)')
+      .eq('home_id', userHome?.id)
+      .gte('system_catalog.appliance_tier', 1); // Tier 1 and 2 only
+    return data;
+  },
+  enabled: !!userHome?.id,
+});
+
+// Render as two sections
+<section>
+  <h2>Structural Systems</h2>
+  {/* HVAC, Roof, Water Heater cards */}
+</section>
+
+<section className="mt-8">
+  <h2>Appliances</h2>
+  <p className="text-sm text-muted-foreground">
+    {tier1Count} critical • {tier2Count} tracked
+  </p>
+  {/* Appliance cards with tier badge */}
+</section>
+```
+
+### 2.2 Appliance Card Visual Treatment
+
+- **Tier 1**: Full card styling, status badge (Healthy/Planning/Attention)
+- **Tier 2**: Muted styling, no status badge, subtle "Tracked" label
+- Both link to `/systems/:applianceKey`
+
+```typescript
+// Card rendering logic
+{appliances.map(appliance => (
+  <Card 
+    key={appliance.id}
+    className={cn(
+      "cursor-pointer",
+      appliance.tier === 2 && "opacity-70 border-dashed"
+    )}
+    onClick={() => navigate(`/systems/${appliance.id}`)}
+  >
+    <CardHeader>
+      <div className="flex justify-between">
+        <span>{appliance.brand} {appliance.system_catalog.display_name}</span>
+        {appliance.tier === 1 && getStatusBadge(appliance.status)}
+        {appliance.tier === 2 && (
+          <Badge variant="outline" className="text-muted-foreground">
+            Tracked
+          </Badge>
+        )}
+      </div>
+    </CardHeader>
+    <CardContent>
+      <p>{ageYears} years old</p>
+      {appliance.tier === 1 && remainingYears && (
+        <p>~{remainingYears} years remaining</p>
+      )}
+    </CardContent>
+  </Card>
+))}
+```
+
+---
+
+## Phase 3: Appliance Detail Page
+
+### 3.1 Extend SystemPage for Appliances
+
+The existing `/systems/:systemKey` route will handle appliances by detecting whether the key is a structural system or appliance.
+
+**Changes to `src/pages/SystemPage.tsx`:**
+
+```typescript
+// Detect if this is an appliance (UUID) vs structural system (key)
+const isApplianceId = systemKey?.length === 36; // UUID format
+
+// Fetch appliance data if UUID
+const { data: applianceData } = useQuery({
+  queryKey: ['appliance-detail', systemKey],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('home_systems')
+      .select('*, system_catalog(*)')
+      .eq('id', systemKey)
+      .single();
+    return data;
+  },
+  enabled: isApplianceId,
+});
+
+// Render appliance-specific layout
+if (isApplianceId && applianceData) {
+  return <ApplianceDetailView appliance={applianceData} />;
+}
+```
+
+### 3.2 ApplianceDetailView Component
+
+```typescript
+// src/components/system/ApplianceDetailView.tsx
+export function ApplianceDetailView({ appliance }: Props) {
+  const tier = appliance.system_catalog.appliance_tier;
+  const ageYears = appliance.manufacture_year 
+    ? new Date().getFullYear() - appliance.manufacture_year 
+    : null;
+  const typicalLifespan = appliance.system_catalog.typical_lifespan_years;
+  const remainingYears = ageYears ? Math.max(0, typicalLifespan - ageYears) : null;
+
+  return (
+    <DashboardV3Layout>
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        {/* Header with photo */}
+        <div className="flex gap-4 mb-6">
+          {appliance.images?.[0] && (
+            <img src={appliance.images[0]} className="w-24 h-24 rounded-lg object-cover" />
+          )}
+          <div>
+            <h1 className="text-xl font-semibold">
+              {appliance.brand} {appliance.system_catalog.display_name}
+            </h1>
+            <p className="text-muted-foreground">
+              {appliance.model || 'Model unknown'}
+            </p>
+            {tier === 2 && (
+              <Badge variant="outline" className="mt-2">
+                Tracked (low-impact)
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Lifespan card - Tier 1 only */}
+        {tier === 1 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Planning Outlook</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-2xl font-bold">
+                    {remainingYears !== null ? `~${remainingYears} years` : 'Unknown'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    estimated remaining
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg">{ageYears ?? '?'} years old</p>
+                  <p className="text-sm text-muted-foreground">
+                    Typical lifespan: {typicalLifespan} years
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tier 2 disclaimer */}
+        {tier === 2 && (
+          <Card className="mb-6 border-dashed">
+            <CardContent className="py-4">
+              <p className="text-sm text-muted-foreground">
+                I'll keep an eye on this, but it won't affect your home's outlook.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Maintenance tips */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Maintenance Tips</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {appliance.system_catalog.maintenance_checks?.map((tip, i) => (
+                <li key={i} className="flex gap-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  {tip}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardV3Layout>
   );
 }
 ```
 
-### 2. Modify Mobile Page: `MobilePhotoCaptureRoute.tsx`
+---
 
-Update `handleFileChange` to send file to edge function instead of storage:
+## Phase 4: Health Roll-Up (Constrained)
+
+### 4.1 Tiered Median Scoring in Intelligence Engine
+
+Update `supabase/functions/intelligence-engine/index.ts`:
 
 ```typescript
-const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file || !token) return;
+// New: Appliance health contribution (capped)
+async function calculateApplianceHealthPenalty(homeId: string): Promise<number> {
+  // Fetch Tier 1 appliances only
+  const { data: appliances } = await supabaseAdmin
+    .from('home_systems')
+    .select('manufacture_year, system_catalog!inner(typical_lifespan_years, appliance_tier)')
+    .eq('home_id', homeId)
+    .eq('system_catalog.appliance_tier', 1);
 
-  // Validate file client-side
-  const validationError = validateFile(file);
-  if (validationError) {
-    setError(validationError);
-    setPageState('error');
-    return;
+  if (!appliances || appliances.length === 0) return 0; // No penalty
+
+  const currentYear = new Date().getFullYear();
+  
+  // Calculate status for each appliance
+  const applianceStatuses = appliances.map(a => {
+    const age = a.manufacture_year 
+      ? currentYear - a.manufacture_year 
+      : 5; // Conservative default
+    const lifespan = a.system_catalog.typical_lifespan_years;
+    const remaining = Math.max(0, lifespan - age);
+    
+    if (remaining <= 2) return 'attention';
+    if (remaining <= 5) return 'planning';
+    return 'healthy';
+  });
+
+  // Count appliances in Attention
+  const attentionCount = applianceStatuses.filter(s => s === 'attention').length;
+
+  // RULE: Only apply penalty if 2+ appliances are in Attention
+  if (attentionCount < 2) return 0;
+
+  // Calculate penalty (capped at 5 points)
+  const penaltyPerAppliance = 2;
+  const maxPenalty = 5;
+  
+  return Math.min(attentionCount * penaltyPerAppliance, maxPenalty);
+}
+
+// Update calculateMultiSystemScore to include appliance penalty
+async function calculateMultiSystemScore(homeId: string): Promise<MultiSystemScoreResult> {
+  // ... existing structural calculation ...
+  
+  // Apply capped appliance penalty
+  const appliancePenalty = await calculateApplianceHealthPenalty(homeId);
+  
+  const finalScore = Math.round(baseStructuralScore - appliancePenalty);
+  
+  // Include in drivers if penalty applied
+  if (appliancePenalty > 0) {
+    drivers.appliances = {
+      penalty: appliancePenalty,
+      message: 'Multiple appliances nearing end of life'
+    };
   }
+  
+  // ... rest of function ...
+}
+```
 
-  setPreviewUrl(URL.createObjectURL(file));
-  setPageState('uploading');
+### 4.2 UI Rules (Locked)
 
-  try {
-    // Send file to edge function (which handles storage upload)
-    const formData = new FormData();
-    formData.append('image', file);
+| Surface | Tier 1 Behavior | Tier 2 Behavior |
+|---------|-----------------|-----------------|
+| **Dashboard (Home Pulse)** | Counted in health if ≥2 in Attention. Max copy: "2 appliances nearing replacement" | Never shown |
+| **SystemWatch** | Only when confidence ≥ estimated AND planning window ≤ 3 years | Never shown |
+| **HabittaThinking** | Allowed with soft language: "Your refrigerator may be worth planning for." | Never triggered |
+| **Systems Hub** | Full status badge, remaining years | Muted card, "Tracked" badge |
 
-    const response = await fetch(
-      `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/photo-transfer-session?action=upload&token=${token}`,
-      {
-        method: 'POST',
-        headers: {
-          'apikey': 'eyJ...', // anon key
-        },
-        body: formData, // Send as FormData, not JSON
-      }
-    );
+---
 
-    const result = await response.json();
+## Phase 5: Appliance Type Recognition (TeachHabittaModal Update)
 
-    if (!response.ok) {
-      if (response.status === 409) {
-        setPageState('already_used');
-        return;
-      }
-      throw new Error(result.error || 'Upload failed');
-    }
+### 5.1 Update QUICK_SYSTEM_TYPES
 
-    setPageState('success');
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Upload failed');
-    setPageState('error');
-  }
+```typescript
+// src/components/TeachHabittaModal.tsx
+const QUICK_SYSTEM_TYPES = [
+  // Structural
+  'hvac',
+  'water_heater',
+  'roof',
+  'electrical',
+  'plumbing',
+  // Critical Appliances (Tier 1)
+  'refrigerator',
+  'oven_range',
+  'dishwasher',
+  'washer',
+  'dryer',
+  // Contextual (Tier 2)
+  'microwave',
+];
+
+const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  // ... existing ...
+  refrigerator: 'Refrigerator',
+  oven_range: 'Oven/Range',
+  dishwasher: 'Dishwasher',
+  washer: 'Washing Machine',
+  dryer: 'Dryer',
+  microwave: 'Microwave',
+  garbage_disposal: 'Garbage Disposal',
 };
 ```
+
+### 5.2 Add Tier Messaging on Save
+
+When saving a Tier 2 appliance, show reassurance:
+
+```typescript
+// In handleConfirmInterpretation or handleSaveCorrection
+const tier = TIER_2_APPLIANCES.includes(selectedSystemType) ? 2 : 1;
+
+// Show appropriate success message
+const successMessage = tier === 2
+  ? "I'll keep an eye on this, but it won't affect your home's outlook."
+  : "Added. I'll start tracking this.";
+```
+
+---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/system/ApplianceDetailView.tsx` | Appliance-specific detail page component |
+| `src/lib/applianceTiers.ts` | Tier definitions and helper functions |
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/photo-transfer-session/index.ts` | Accept FormData upload, use service role for storage |
-| `src/pages/MobilePhotoCaptureRoute.tsx` | Send file to edge function instead of direct storage upload |
+| `src/pages/SystemsHub.tsx` | Add appliances section, grouped display |
+| `src/pages/SystemPage.tsx` | Detect appliance vs structural, render accordingly |
+| `src/lib/systemMeta.ts` | Add appliance type definitions and tier constants |
+| `src/components/TeachHabittaModal.tsx` | Add appliance types, tier messaging |
+| `supabase/functions/intelligence-engine/index.ts` | Add `calculateApplianceHealthPenalty` with ≥2 rule |
 
-## Flow After Fix
+## Database Migration
 
-```text
-Mobile Phone                    Edge Function                   Storage
-     │                               │                              │
-     ├── POST /upload?token=xyz ────►│                              │
-     │   (FormData with image)       │                              │
-     │                               ├── Validate token ───────────►│
-     │                               │   (check pending + not expired)
-     │                               │                              │
-     │                               ├── Upload with service role ─►│
-     │                               │   (bypasses RLS)             │
-     │                               │                              │
-     │                               ├── Update session status      │
-     │                               │                              │
-     │◄── { success: true } ─────────┤                              │
-     │                               │                              │
-```
+| Migration | Content |
+|-----------|---------|
+| `add_appliance_tiers.sql` | Add `appliance_tier` and `health_weight_cap` columns, seed appliance categories |
 
-## Security Notes
+---
 
-- Token is still validated before upload
-- Single-use enforcement remains (check `status = 'pending'`)
-- File size validation happens server-side
-- Service role key is never exposed to client
-- Storage policies remain strict for direct uploads
+## Guardrails Summary (Locked)
+
+1. **Tiering is non-negotiable**: Tier 1 = critical (health-impacting), Tier 2 = contextual (tracked only)
+2. **Appliances cap at 5-point penalty**: Never dominate health score
+3. **≥2 Attention rule**: Single aging appliance = advisory only
+4. **Status language is standardized**: Healthy / Planning / Attention everywhere
+5. **No parallel navigation**: Appliances live inside Systems Hub
+6. **Tier 2 messaging**: "I'll keep an eye on this, but it won't affect your home's outlook."
+7. **Brand intelligence is advisory**: Adjusts confidence, never generates urgency
+
+---
+
+## Recommended Build Order
+
+1. **Database migration** → Tier columns + appliance catalog entries
+2. **SystemsHub update** → Show appliances in grouped section
+3. **ApplianceDetailView** → Detail page for appliance clicks
+4. **TeachHabittaModal** → Add appliance type options
+5. **Intelligence engine** → Health roll-up with ≥2 rule
+
+Phase 3 (Brand Intelligence) can follow as a separate iteration once visibility and tiering are proven in production.
 
