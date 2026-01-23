@@ -2372,6 +2372,54 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_transfer_sessions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          home_id: string | null
+          id: string
+          photo_url: string | null
+          session_token: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          home_id?: string | null
+          id?: string
+          photo_url?: string | null
+          session_token?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          home_id?: string | null
+          id?: string
+          photo_url?: string | null
+          session_token?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_transfer_sessions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_transfer_sessions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       plan_cards: {
         Row: {
           category: string | null
@@ -4116,6 +4164,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      cleanup_expired_photo_sessions: { Args: never; Returns: undefined }
       cleanup_expired_recommendations: { Args: never; Returns: undefined }
       compute_canonical_hash: {
         Args: {

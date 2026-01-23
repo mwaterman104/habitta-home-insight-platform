@@ -27,6 +27,7 @@ import PropertyLabelingPage from "./PropertyLabelingPage";
 import PropertyReportPage from "./PropertyReportPage";
 import LandingPage from "./LandingPage";
 import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
+import MobilePhotoCaptureRoute from "./MobilePhotoCaptureRoute";
 
 export function AppRoutes() {
   return (
@@ -37,6 +38,7 @@ export function AppRoutes() {
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/capture-photo" element={<MobilePhotoCaptureRoute />} />
           
           <Route path="/onboarding" element={
             <ProtectedRoute>

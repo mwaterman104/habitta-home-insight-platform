@@ -6,6 +6,8 @@ import { useHomeSystems, HomeSystem, SystemCatalog } from "@/hooks/useHomeSystem
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { QRPhotoSession } from "@/components/QRPhotoSession";
 
 /**
  * TeachHabittaModal - Collaborative AI-led flow for adding systems
@@ -145,66 +147,89 @@ export function TeachHabittaModal({
 
     try {
       const result = await analyzePhoto(file);
-      
-      if (result.success && result.analysis) {
-        const analysisData = result.analysis as AnalysisResult;
-        
-        // Compute visual certainty if not provided
-        if (analysisData.visual_certainty === undefined) {
-          analysisData.visual_certainty = computeVisualCertainty(analysisData.confidence_scores);
-        }
-        
-        // Determine if uncertain (Guardrail 2)
-        if (analysisData.is_uncertain === undefined) {
-          analysisData.is_uncertain = analysisData.visual_certainty < 0.30 || !analysisData.system_type;
-        }
-        
-        // Generate Habitta message if not provided
-        if (!analysisData.habitta_message) {
-          if (analysisData.is_uncertain) {
-            analysisData.habitta_message = "I'm not totally sure what this is yet.";
-          } else {
-            const systemName = SYSTEM_DISPLAY_NAMES[analysisData.system_type || ''] || 'system';
-            analysisData.habitta_message = `This looks like a ${systemName}.`;
-            
-            if (analysisData.manufacture_year) {
-              analysisData.habitta_detail = `Likely installed around ${analysisData.manufacture_year}.`;
-            } else if (analysisData.brand) {
-              analysisData.habitta_detail = `${analysisData.brand} brand detected.`;
-            }
-          }
-        }
-        
-        setAnalysis(analysisData);
-        
-        // Guardrail 2: If uncertain, go straight to correction
-        if (analysisData.is_uncertain) {
-          // Pre-fill any partial data
-          if (analysisData.system_type) {
-            setSelectedSystemType(analysisData.system_type);
-          }
-          if (analysisData.brand) {
-            setBrandInput(analysisData.brand);
-          }
-          if (analysisData.model) {
-            setModelInput(analysisData.model);
-          }
-          if (analysisData.manufacture_year) {
-            setInstallYear(analysisData.manufacture_year.toString());
-          }
-          setStep('correction');
-        } else {
-          setStep('interpretation');
-        }
-      } else {
-        throw new Error(result.error || 'Failed to analyze photo');
-      }
+      processAnalysisResult(result);
     } catch (err) {
       console.error('Photo analysis error:', err);
       setError("I'm not totally sure what this is yet — can you help me out?");
       setStep('correction');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Handle remote photo from QR code transfer (Guardrail 5: passes URL to server)
+  const handleRemotePhotoUpload = async (photoUrl: string) => {
+    setPreviewUrl(photoUrl);
+    setStep('analyzing');
+    setError(null);
+    setIsProcessing(true);
+
+    try {
+      const result = await analyzePhoto(null, photoUrl);
+      processAnalysisResult(result);
+    } catch (err) {
+      console.error('Remote photo analysis error:', err);
+      setError("I'm not totally sure what this is yet — can you help me out?");
+      setStep('correction');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Shared logic to process analysis result
+  const processAnalysisResult = (result: any) => {
+    if (result.success && result.analysis) {
+      const analysisData = result.analysis as AnalysisResult;
+      
+      // Compute visual certainty if not provided
+      if (analysisData.visual_certainty === undefined) {
+        analysisData.visual_certainty = computeVisualCertainty(analysisData.confidence_scores);
+      }
+      
+      // Determine if uncertain (Guardrail 2)
+      if (analysisData.is_uncertain === undefined) {
+        analysisData.is_uncertain = analysisData.visual_certainty < 0.30 || !analysisData.system_type;
+      }
+      
+      // Generate Habitta message if not provided
+      if (!analysisData.habitta_message) {
+        if (analysisData.is_uncertain) {
+          analysisData.habitta_message = "I'm not totally sure what this is yet.";
+        } else {
+          const systemName = SYSTEM_DISPLAY_NAMES[analysisData.system_type || ''] || 'system';
+          analysisData.habitta_message = `This looks like a ${systemName}.`;
+          
+          if (analysisData.manufacture_year) {
+            analysisData.habitta_detail = `Likely installed around ${analysisData.manufacture_year}.`;
+          } else if (analysisData.brand) {
+            analysisData.habitta_detail = `${analysisData.brand} brand detected.`;
+          }
+        }
+      }
+      
+      setAnalysis(analysisData);
+      
+      // Guardrail 2: If uncertain, go straight to correction
+      if (analysisData.is_uncertain) {
+        // Pre-fill any partial data
+        if (analysisData.system_type) {
+          setSelectedSystemType(analysisData.system_type);
+        }
+        if (analysisData.brand) {
+          setBrandInput(analysisData.brand);
+        }
+        if (analysisData.model) {
+          setModelInput(analysisData.model);
+        }
+        if (analysisData.manufacture_year) {
+          setInstallYear(analysisData.manufacture_year.toString());
+        }
+        setStep('correction');
+      } else {
+        setStep('interpretation');
+      }
+    } else {
+      throw new Error(result.error || 'Failed to analyze photo');
     }
   };
 
@@ -345,66 +370,94 @@ export function TeachHabittaModal({
     }
   };
 
-  // Render steps
-  const renderCaptureStep = () => (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="h-6 w-6 text-primary" />
+  // Check if on desktop for QR code flow
+  const isMobile = useIsMobile();
+
+  const renderCaptureStep = () => {
+    // Desktop: Show QR code flow
+    if (!isMobile) {
+      return (
+        <div className="space-y-6">
+          <QRPhotoSession
+            homeId={homeId}
+            onPhotoReceived={handleRemotePhotoUpload}
+            onCancel={() => onOpenChange(false)}
+            onFallbackUpload={() => fileInputRef.current?.click()}
+          />
+          
+          {/* Hidden file input for fallback upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
         </div>
-        <p className="text-sm text-muted-foreground">
-          Take a photo or upload an image of a system or appliance you want Habitta to track.
-        </p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          variant="outline"
-          className="h-24 flex-col gap-2"
-          onClick={() => cameraInputRef.current?.click()}
-        >
-          <Camera className="h-6 w-6" />
-          <span className="text-sm">Take photo</span>
-        </Button>
+      );
+    }
+
+    // Mobile: Show camera/upload options
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="h-6 w-6 text-primary" />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Take a photo or upload an image of a system or appliance you want Habitta to track.
+          </p>
+        </div>
         
-        <Button
-          variant="outline"
-          className="h-24 flex-col gap-2"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-6 w-6" />
-          <span className="text-sm">Upload</span>
-        </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            variant="outline"
+            className="h-24 flex-col gap-2"
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            <Camera className="h-6 w-6" />
+            <span className="text-sm">Take photo</span>
+          </Button>
+          
+          <Button
+            variant="outline"
+            className="h-24 flex-col gap-2"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-6 w-6" />
+            <span className="text-sm">Upload</span>
+          </Button>
+        </div>
+        
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="text-muted-foreground"
+          >
+            Cancel
+          </Button>
+        </div>
+        
+        {/* Hidden file inputs */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
-      
-      <div className="flex justify-center">
-        <Button
-          variant="ghost"
-          onClick={() => onOpenChange(false)}
-          className="text-muted-foreground"
-        >
-          Cancel
-        </Button>
-      </div>
-      
-      {/* Hidden file inputs */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-    </div>
-  );
+    );
+  };
 
   const renderAnalyzingStep = () => (
     <div className="py-8 text-center">

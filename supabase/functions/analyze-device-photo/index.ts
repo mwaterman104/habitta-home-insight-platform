@@ -92,16 +92,41 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const formData = await req.formData();
-    const imageFile = formData.get('image') as File;
+    let base64Image: string;
+    const contentType = req.headers.get('content-type') || '';
 
-    if (!imageFile) {
-      throw new Error('No image file provided');
+    // Check if request is JSON (URL-based) or FormData (file upload)
+    if (contentType.includes('application/json')) {
+      // URL-based image (from QR transfer - Guardrail 5)
+      const body = await req.json();
+      const imageUrl = body.image_url;
+      
+      if (!imageUrl) {
+        throw new Error('No image_url provided');
+      }
+      
+      console.log('Fetching image from URL:', imageUrl.substring(0, 50) + '...');
+      const imageResponse = await fetch(imageUrl);
+      
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
+      }
+      
+      const imageBytes = await imageResponse.arrayBuffer();
+      base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+      console.log('Image fetched from URL, size:', imageBytes.byteLength);
+    } else {
+      // FormData file upload (original flow)
+      const formData = await req.formData();
+      const imageFile = formData.get('image') as File;
+
+      if (!imageFile) {
+        throw new Error('No image file provided');
+      }
+
+      const imageBytes = await imageFile.arrayBuffer();
+      base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
     }
-
-    // Convert image to base64 for Google Vision API
-    const imageBytes = await imageFile.arrayBuffer();
-    const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
 
     console.log('Calling Google Vision API for OCR...');
     const visionResponse = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${Deno.env.get('GOOGLE_VISION_API_KEY')}`, {

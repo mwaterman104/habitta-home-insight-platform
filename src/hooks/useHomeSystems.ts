@@ -177,8 +177,21 @@ export function useHomeSystems(homeId?: string) {
     }
   };
 
-  const analyzePhoto = async (photo: File): Promise<any> => {
+  const analyzePhoto = async (photo: File | null, photoUrl?: string): Promise<any> => {
     try {
+      // If we have a URL (from QR transfer), use JSON body
+      if (photoUrl && !photo) {
+        const { data, error } = await supabase.functions.invoke('analyze-device-photo', {
+          body: JSON.stringify({ image_url: photoUrl }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (error) throw error;
+        return data;
+      }
+
+      // Otherwise use FormData for file upload
+      if (!photo) throw new Error('No photo provided');
+      
       const formData = new FormData();
       formData.append('image', photo);
 
