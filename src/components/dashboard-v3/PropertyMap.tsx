@@ -128,79 +128,73 @@ export function PropertyMap({
     : null;
 
   return (
-    <Card className={className}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          Property Location
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Map visualization */}
-        <div className="aspect-video bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
-          {/* Show actual Google Map if we have coordinates and no error */}
-          {mapUrl && !imageError ? (
-            <>
-              {imageLoading && (
-                <Skeleton className="absolute inset-0 rounded-lg" />
+    <Card className={cn("overflow-hidden", className)}>
+      {/* Full-bleed map visualization */}
+      <div className="aspect-video bg-muted flex items-center justify-center relative">
+        {/* Show actual Google Map if we have coordinates and no error */}
+        {mapUrl && !imageError ? (
+          <>
+            {imageLoading && (
+              <Skeleton className="absolute inset-0" />
+            )}
+            <img
+              src={mapUrl}
+              alt={`Map of ${address || 'property location'}`}
+              className={cn(
+                "w-full h-full object-cover transition-opacity duration-300",
+                imageLoading ? "opacity-0" : "opacity-100"
               )}
-              <img
-                src={mapUrl}
-                alt={`Map of ${address || 'property location'}`}
-                className={cn(
-                  "w-full h-full object-cover rounded-lg transition-opacity duration-300",
-                  imageLoading ? "opacity-0" : "opacity-100"
-                )}
-                onLoad={() => setImageLoading(false)}
-                onError={() => {
-                  setImageLoading(false);
-                  setImageError(true);
-                }}
-              />
-            </>
-          ) : (
-            // Fallback placeholder when no coordinates or image error
-            <>
-              {/* Climate-based gradient overlay */}
-              <div className={cn(
-                "absolute inset-0 bg-gradient-to-br",
-                climate.gradient
-              )} />
-              
-              {/* Placeholder content */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
-                    <MapPin className="h-5 w-5 text-primary" />
-                  </div>
-                  {hasCoordinates ? (
-                    <p className="text-xs text-muted-foreground">
-                      {lat?.toFixed(4)}, {lng?.toFixed(4)}
-                    </p>
-                  ) : address ? (
-                    <p className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {address}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Location available
-                    </p>
-                  )}
+              onLoad={() => setImageLoading(false)}
+              onError={() => {
+                setImageLoading(false);
+                setImageError(true);
+              }}
+            />
+            {/* Climate zone overlay badge */}
+            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm">
+              <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium">{climate.label}</span>
+            </div>
+          </>
+        ) : (
+          // Fallback placeholder when no coordinates or image error
+          <>
+            {/* Climate-based gradient overlay */}
+            <div className={cn(
+              "absolute inset-0 bg-gradient-to-br",
+              climate.gradient
+            )} />
+            
+            {/* Placeholder content */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                  <MapPin className="h-5 w-5 text-primary" />
                 </div>
+                {hasCoordinates ? (
+                  <p className="text-xs text-muted-foreground">
+                    {lat?.toFixed(4)}, {lng?.toFixed(4)}
+                  </p>
+                ) : address ? (
+                  <p className="text-xs text-muted-foreground max-w-[200px] truncate">
+                    {address}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Location available
+                  </p>
+                )}
               </div>
-            </>
-          )}
-        </div>
-        
-        {/* Climate zone indicator */}
-        <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
-          <ClimateIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{climate.label}</p>
-            <p className="text-xs text-muted-foreground">{climate.impact}</p>
-          </div>
-        </div>
-      </CardContent>
+            </div>
+            
+            {/* Climate badge on fallback too */}
+            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm">
+              <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium">{climate.label}</span>
+            </div>
+          </>
+        )}
+      </div>
     </Card>
   );
 }
