@@ -57,27 +57,47 @@ interface TeachHabittaModalProps {
   onSystemAdded?: (system: HomeSystem) => void;
 }
 
-// System type display names
+// System type display names - includes structural systems AND appliances
 const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  // Structural systems (Tier 0)
   hvac: 'HVAC',
   water_heater: 'Water Heater',
-  appliance: 'Appliance',
-  pool_equipment: 'Pool Equipment',
-  electrical: 'Electrical Panel',
   roof: 'Roof',
+  electrical: 'Electrical Panel',
   plumbing: 'Plumbing',
   windows: 'Windows',
+  // Critical appliances (Tier 1)
+  refrigerator: 'Refrigerator',
+  oven_range: 'Oven/Range',
+  dishwasher: 'Dishwasher',
+  washer: 'Washing Machine',
+  dryer: 'Dryer',
+  // Contextual appliances (Tier 2)
+  microwave: 'Microwave',
+  garbage_disposal: 'Garbage Disposal',
+  wine_cooler: 'Wine Cooler',
 };
 
-// Quick-select system types
+// Quick-select system types - ordered by tier (structural first, then appliances)
 const QUICK_SYSTEM_TYPES = [
+  // Structural
   'hvac',
   'water_heater',
   'roof',
-  'appliance',
   'electrical',
   'plumbing',
+  // Critical Appliances (Tier 1)
+  'refrigerator',
+  'oven_range',
+  'dishwasher',
+  'washer',
+  'dryer',
+  // Contextual (Tier 2)
+  'microwave',
 ];
+
+// Tier 2 appliances for messaging
+const TIER_2_APPLIANCES = ['microwave', 'garbage_disposal', 'wine_cooler'];
 
 export function TeachHabittaModal({
   open,
@@ -608,25 +628,33 @@ export function TeachHabittaModal({
     </div>
   );
 
-  const renderSuccessStep = () => (
-    <div className="py-6 text-center space-y-4">
-      <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
-        <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+  const renderSuccessStep = () => {
+    // Tier-specific messaging (Guardrail: Tier 2 gets disclaimer)
+    const isTier2 = TIER_2_APPLIANCES.includes(selectedSystemType || analysis?.system_type || '');
+    const successMessage = isTier2
+      ? "I'll keep an eye on this, but it won't affect your home's outlook."
+      : "I'll start tracking this and include it in your home's outlook.";
+    
+    return (
+      <div className="py-6 text-center space-y-4">
+        <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
+          <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-base font-medium">Added.</p>
+          <p className="text-sm text-muted-foreground">
+            {successMessage}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            You can update this anytime.
+          </p>
+        </div>
+        <Button onClick={() => onOpenChange(false)} className="mt-4">
+          Done
+        </Button>
       </div>
-      <div className="space-y-1">
-        <p className="text-base font-medium">Added.</p>
-        <p className="text-sm text-muted-foreground">
-          I'll start tracking this and include it in your home's outlook.
-        </p>
-        <p className="text-xs text-muted-foreground mt-2">
-          You can update this anytime.
-        </p>
-      </div>
-      <Button onClick={() => onOpenChange(false)} className="mt-4">
-        Done
-      </Button>
-    </div>
-  );
+    );
+  };
 
   const renderStep = () => {
     switch (step) {

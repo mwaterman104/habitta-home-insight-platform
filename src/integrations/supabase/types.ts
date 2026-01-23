@@ -3299,10 +3299,12 @@ export type Database = {
       }
       system_catalog: {
         Row: {
+          appliance_tier: number | null
           cost_high: number | null
           cost_low: number | null
           created_at: string | null
           display_name: string
+          health_weight_cap: number | null
           id: string
           key: string
           maintenance_checks: Json | null
@@ -3311,10 +3313,12 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          appliance_tier?: number | null
           cost_high?: number | null
           cost_low?: number | null
           created_at?: string | null
           display_name: string
+          health_weight_cap?: number | null
           id?: string
           key: string
           maintenance_checks?: Json | null
@@ -3323,10 +3327,12 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          appliance_tier?: number | null
           cost_high?: number | null
           cost_low?: number | null
           created_at?: string | null
           display_name?: string
+          health_weight_cap?: number | null
           id?: string
           key?: string
           maintenance_checks?: Json | null

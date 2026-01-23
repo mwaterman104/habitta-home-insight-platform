@@ -3,7 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 import { SystemDetailView } from "@/components/SystemDetailView";
+import { ApplianceDetailView } from "@/components/system/ApplianceDetailView";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 import { isValidSystemKey } from "@/lib/systemMeta";
@@ -22,11 +24,15 @@ interface UserHome {
 /**
  * SystemPage - Route-based system detail view
  * 
- * Accessed via /system/:systemKey
+ * Accessed via /system/:systemKey or /systems/:systemSlug
  * Deep-linkable, refreshable, shareable.
  * 
- * Supports: hvac, roof, water_heater
- * All systems follow HVAC canonical template.
+ * Supports: 
+ * - Structural systems: hvac, roof, water_heater (by key)
+ * - Appliances: by UUID (detected by length and format)
+ * 
+ * All structural systems follow HVAC canonical template.
+ * Appliances render via ApplianceDetailView.
  */
 export default function SystemPage() {
   // Support both param names for backward compatibility
@@ -36,9 +42,38 @@ export default function SystemPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   
+  // Check if this is an appliance UUID vs a system key
+  // UUIDs are 36 chars with dashes (e.g., "550e8400-e29b-41d4-a716-446655440000")
+  const isApplianceId = systemKey?.length === 36 && systemKey.includes('-');
+  
   const [loading, setLoading] = useState(true);
   const [userHome, setUserHome] = useState<UserHome | null>(null);
   const [prediction, setPrediction] = useState<SystemPrediction | null>(null);
+  
+  // Fetch appliance data if UUID
+  const { data: applianceData, isLoading: isApplianceLoading } = useQuery({
+    queryKey: ['appliance-detail', systemKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('home_systems')
+        .select('*')
+        .eq('id', systemKey!)
+        .single();
+      if (error) throw error;
+      
+      // Fetch catalog separately since there's no FK
+      const baseKey = data.system_key?.split('_').slice(0, 2).join('_') || '';
+      const { data: catalog } = await supabase
+        .from('system_catalog')
+        .select('key, display_name, typical_lifespan_years, appliance_tier, maintenance_checks')
+        .or(`key.eq.${baseKey},key.eq.${data.system_key?.split('_')[0]}`)
+        .limit(1)
+        .maybeSingle();
+      
+      return { ...data, system_catalog: catalog };
+    },
+    enabled: !!isApplianceId && !!systemKey,
+  });
 
   // Fetch user home first
   useEffect(() => {
@@ -64,8 +99,14 @@ export default function SystemPage() {
     fetchUserHome();
   }, [user]);
 
-  // Fetch system prediction when home is available
+  // Fetch system prediction when home is available (only for structural systems)
   useEffect(() => {
+    // Skip if this is an appliance (handled by react-query above)
+    if (isApplianceId) {
+      setLoading(false);
+      return;
+    }
+    
     if (!userHome?.id || !systemKey) return;
 
     const fetchPrediction = async () => {
@@ -78,7 +119,7 @@ export default function SystemPage() {
             description: 'This system is not yet supported.',
             variant: 'destructive',
           });
-          navigate('/dashboard');
+          navigate('/systems');
           return;
         }
 
@@ -108,11 +149,11 @@ export default function SystemPage() {
     };
 
     fetchPrediction();
-  }, [userHome?.id, systemKey, navigate, toast]);
+  }, [userHome?.id, systemKey, isApplianceId, navigate, toast]);
 
-  // Handle back navigation - always goes to Home Pulse
+  // Handle back navigation - goes to Systems Hub
   const handleBack = () => {
-    navigate('/dashboard');
+    navigate('/systems');
   };
 
   // Handle action completion - refresh prediction with softened feedback
@@ -148,6 +189,44 @@ export default function SystemPage() {
     }
   };
 
+  // If this is an appliance, render the ApplianceDetailView
+  if (isApplianceId) {
+    if (isApplianceLoading) {
+      return (
+        <DashboardV3Layout>
+          <div className="p-6 space-y-6 max-w-3xl mx-auto animate-pulse">
+            <Skeleton className="h-8 w-48 rounded" />
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+          </div>
+        </DashboardV3Layout>
+      );
+    }
+
+    if (!applianceData) {
+      return (
+        <DashboardV3Layout>
+          <div className="p-6 max-w-3xl mx-auto">
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-lg mb-2">Appliance not found</p>
+              <p className="text-sm">This appliance may have been removed.</p>
+            </div>
+          </div>
+        </DashboardV3Layout>
+      );
+    }
+
+    return (
+      <DashboardV3Layout>
+        <ApplianceDetailView 
+          appliance={applianceData} 
+          onBack={handleBack}
+        />
+      </DashboardV3Layout>
+    );
+  }
+
+  // Structural system loading state
   if (loading) {
     return (
       <DashboardV3Layout>
