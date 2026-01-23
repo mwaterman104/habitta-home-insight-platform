@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeHealthCard } from "@/components/HomeHealthCard";
 import { MaintenanceTimeline } from "@/components/MaintenanceTimeline";
 import { CapitalTimeline } from "@/components/CapitalTimeline";
-import { TodaysHomeBrief } from "@/components/TodaysHomeBrief";
 import { ChatDock } from "./ChatDock";
-import { trackScrollDepth, trackSystemCardClick } from "@/lib/analytics";
+import { SystemWatch } from "./SystemWatch";
+import { MonthlyPriorityCTA } from "./MonthlyPriorityCTA";
+import { track } from "@/lib/analytics";
+import { useViewTracker } from "@/lib/analytics/useViewTracker";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -60,14 +62,16 @@ interface MiddleColumnProps {
 /**
  * MiddleColumn - Primary Canvas with Sticky ChatDock
  * 
- * V3.1 Architecture:
- * - Scrollable content: Home Brief → Health Score → Timeline → Maintenance
- * - Sticky ChatDock at bottom (outside scroll area)
- * - Chat expands upward, content compresses
+ * V3.2 Architecture (Phase 0 - Dashboard Structure Lock):
+ * 1. SystemWatch (authoritative, boxed)
+ * 2. HomeHealthForecast (primary instrument)
+ * 3. MonthlyPriorityCTA (chat-first)
+ * 4. CapitalTimeline (systems planning)
+ * 5. MaintenanceRoadmap (prevention)
+ * 6. ChatDock (sticky)
  * 
- * Removed:
- * - "Coming Up" HVAC card (redundant with Timeline)
- * - Scroll indicator (chat is always visible now)
+ * Deprecated:
+ * - TodaysHomeBrief (replaced by SystemWatch + MonthlyPriorityCTA)
  */
 export function MiddleColumn({
   homeForecast,
@@ -94,34 +98,69 @@ export function MiddleColumn({
 }: MiddleColumnProps) {
   const navigate = useNavigate();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const healthCardRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const maintenanceRef = useRef<HTMLDivElement>(null);
 
-  // Track scroll depth for analytics
-  const lastTrackedDepth = useRef(0);
-  const trackScroll = useCallback((percentage: number) => {
-    // Only track significant scroll depth changes (every 25%)
-    const bucket = Math.floor(percentage / 25) * 25;
-    if (bucket > lastTrackedDepth.current) {
-      lastTrackedDepth.current = bucket;
-      trackScrollDepth(bucket, false);
+  // Track if chat was engaged this session
+  const [chatEngagedThisSession, setChatEngagedThisSession] = useState(false);
+
+  // Derive systems in planning window for MonthlyPriorityCTA
+  const planningWindowSystems = useMemo(() => {
+    const systems: { key: string; remainingYears: number }[] = [];
+    const currentYear = new Date().getFullYear();
+
+    if (hvacPrediction?.lifespan?.years_remaining_p50) {
+      const years = hvacPrediction.lifespan.years_remaining_p50;
+      if (years <= 7) {
+        systems.push({ key: 'hvac', remainingYears: years });
+      }
     }
-  }, []);
 
-  // Scroll tracking
-  useEffect(() => {
-    const scrollArea = scrollAreaRef.current;
-    const viewport = scrollArea?.querySelector('[data-radix-scroll-area-viewport]');
-    
-    if (!viewport) return;
+    capitalTimeline?.systems.forEach(sys => {
+      if (systems.some(s => s.key === sys.systemId)) return;
+      const years = sys.replacementWindow.likelyYear - currentYear;
+      if (years <= 7 && years > 0) {
+        systems.push({ key: sys.systemId, remainingYears: years });
+      }
+    });
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
-      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100);
-      trackScroll(scrollPercentage);
-    };
+    return systems.sort((a, b) => a.remainingYears - b.remainingYears);
+  }, [hvacPrediction, capitalTimeline]);
 
-    viewport.addEventListener('scroll', handleScroll);
-    return () => viewport.removeEventListener('scroll', handleScroll);
-  }, [trackScroll]);
+  const primaryPlanningSystem = planningWindowSystems[0];
+
+  // Phase 2: View tracking for HomeHealthCard
+  useViewTracker(healthCardRef, {
+    eventName: 'home_health_forecast_viewed',
+    properties: {
+      current_score: homeForecast?.currentScore,
+      projected_score_12mo: homeForecast?.ifLeftUntracked?.score12mo,
+      has_habitta_care: !!homeForecast?.withHabittaCare
+    },
+    context: { surface: 'dashboard' },
+    enabled: !!homeForecast
+  });
+
+  // Phase 2: View tracking for Timeline
+  useViewTracker(timelineRef, {
+    eventName: 'systems_timeline_viewed',
+    properties: {
+      systems_visible: capitalTimeline?.systems.length ?? 0
+    },
+    context: { surface: 'dashboard' },
+    enabled: !!capitalTimeline && capitalTimeline.systems.length >= 2
+  });
+
+  // Phase 2: View tracking for Maintenance
+  useViewTracker(maintenanceRef, {
+    eventName: 'maintenance_roadmap_viewed',
+    properties: {
+      upcoming_items_12mo: [...maintenanceData.nowTasks, ...maintenanceData.thisYearTasks].length
+    },
+    context: { surface: 'maintenance' },
+    enabled: true
+  });
 
   // Derive scores for legacy fallback
   const getOverallScore = () => {
@@ -150,20 +189,25 @@ export function MiddleColumn({
     return hvacPrediction.why.bullets;
   };
 
-  // Handle system click with analytics
-  const handleSystemClickWithTracking = (systemKey: string) => {
-    trackSystemCardClick(systemKey);
+  // Handle system click with tracking
+  const handleSystemClick = (systemKey: string) => {
+    track('timeline_system_focused', {
+      system_slug: systemKey,
+    }, { surface: 'dashboard', system_slug: systemKey });
     onSystemClick(systemKey);
   };
 
   // Handle "protect" CTA - opens chat in-place with context
   const handleProtectClick = () => {
-    // Expand chat with pre-seeded context instead of navigating away
+    setChatEngagedThisSession(true);
     onChatExpandChange(true);
   };
 
-  // Determine if user is new (no forecast data)
-  const isNewUser = !homeForecast && !hvacPrediction;
+  // Handle chat expand (for SystemWatch and MonthlyPriorityCTA)
+  const handleChatExpand = () => {
+    setChatEngagedThisSession(true);
+    onChatExpandChange(true);
+  };
 
   // Check for overdue maintenance
   const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
@@ -173,7 +217,7 @@ export function MiddleColumn({
       {/* Scrollable content area */}
       <ScrollArea className="flex-1 min-h-0 overflow-hidden" ref={scrollAreaRef}>
         <div className="space-y-6 max-w-3xl mx-auto pb-4">
-          {/* Enriching indicator */}
+          {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
               <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
@@ -181,19 +225,18 @@ export function MiddleColumn({
             </div>
           )}
 
-          {/* 0. Today's Home Brief - Narrative Anchor */}
+          {/* 1. SystemWatch - Authoritative planning window alert (NEW) */}
           <section>
-            <TodaysHomeBrief
-              homeForecast={homeForecast}
+            <SystemWatch
               hvacPrediction={hvacPrediction}
               capitalTimeline={capitalTimeline}
-              isNewUser={isNewUser}
-              hasOverdueMaintenance={hasOverdueMaintenance}
+              onSystemClick={handleSystemClick}
+              onChatExpand={handleChatExpand}
             />
           </section>
 
-          {/* 1. Home Health Forecast - Primary */}
-          <section>
+          {/* 2. Home Health Forecast - Primary instrument */}
+          <section ref={healthCardRef}>
             {forecastLoading ? (
               <Skeleton className="h-64 rounded-2xl" />
             ) : homeForecast ? (
@@ -213,20 +256,30 @@ export function MiddleColumn({
             )}
           </section>
 
-          {/* 2. Capital Timeline - Planning Windows (Entry point for systems) */}
+          {/* 3. MonthlyPriorityCTA - Chat-first prompt (NEW) */}
+          <section>
+            <MonthlyPriorityCTA
+              suggestedSystemSlug={primaryPlanningSystem?.key}
+              chatEngagedThisSession={chatEngagedThisSession}
+              hasSystemsInWindow={planningWindowSystems.length > 0}
+              onAskClick={handleChatExpand}
+            />
+          </section>
+
+          {/* 4. Capital Timeline - Planning Windows */}
           {timelineLoading ? (
             <Skeleton className="h-48 rounded-2xl" />
           ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
-            <section>
+            <section ref={timelineRef}>
               <CapitalTimeline 
                 timeline={capitalTimeline} 
-                onSystemClick={handleSystemClickWithTracking}
+                onSystemClick={handleSystemClick}
               />
             </section>
           ) : null}
 
-          {/* 3. Maintenance Timeline - What prevents change */}
-          <section>
+          {/* 5. Maintenance Roadmap - What prevents change */}
+          <section ref={maintenanceRef}>
             <MaintenanceTimeline
               nowTasks={maintenanceData.nowTasks}
               thisYearTasks={maintenanceData.thisYearTasks}
@@ -238,13 +291,16 @@ export function MiddleColumn({
         </div>
       </ScrollArea>
       
-      {/* Sticky ChatDock - Always visible at bottom */}
+      {/* 6. Sticky ChatDock - Always visible at bottom */}
       {!isMobile && (
         <div className="shrink-0 border-t bg-card">
           <ChatDock
             propertyId={propertyId}
             isExpanded={chatExpanded}
-            onExpandChange={onChatExpandChange}
+            onExpandChange={(expanded) => {
+              if (expanded) setChatEngagedThisSession(true);
+              onChatExpandChange(expanded);
+            }}
             hasAgentMessage={hasAgentMessage}
             advisorState={advisorState}
             focusContext={focusContext}

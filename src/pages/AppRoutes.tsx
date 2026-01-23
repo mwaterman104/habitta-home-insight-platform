@@ -9,6 +9,7 @@ import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
 import Dashboard from "./Dashboard";
 import DashboardV3 from "./DashboardV3";
 import SystemPage from "./SystemPage";
+import SystemsHub from "./SystemsHub";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingFlow from "./OnboardingFlow";
@@ -47,6 +48,20 @@ export function AppRoutes() {
           <Route path="/dashboard-v3" element={
             <ProtectedRoute>
               <DashboardV3 />
+            </ProtectedRoute>
+          } />
+          
+          {/* Systems Hub: Standalone layout */}
+          <Route path="/systems" element={
+            <ProtectedRoute>
+              <SystemsHub />
+            </ProtectedRoute>
+          } />
+          
+          {/* System Detail: Uses standardized /systems/:systemSlug route */}
+          <Route path="/systems/:systemSlug" element={
+            <ProtectedRoute>
+              <SystemPage />
             </ProtectedRoute>
           } />
           

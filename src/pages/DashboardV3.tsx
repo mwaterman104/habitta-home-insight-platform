@@ -454,9 +454,11 @@ export default function DashboardV3() {
             <aside className="border-l bg-muted/30 h-full overflow-y-auto p-6">
               <RightColumn
                 homeForecast={homeForecast}
-                hvacPrediction={hvacPrediction}
                 capitalTimeline={capitalTimeline}
                 loading={forecastLoading || hvacLoading || timelineLoading}
+                latitude={userHome.latitude}
+                longitude={userHome.longitude}
+                address={userHome.address}
               />
             </aside>
           </ResizablePanel>
