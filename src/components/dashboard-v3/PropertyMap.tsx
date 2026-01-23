@@ -1,17 +1,13 @@
-import { useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { MapPin, Thermometer, Droplet, Snowflake, Sun } from "lucide-react";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
-import L from "leaflet";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-// Fix default marker icon (Leaflet quirk with bundlers)
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
+// Lazy load Leaflet to avoid duplicate React instance issues
+const LeafletMap = lazy(() =>
+  import("./LeafletMap").then((mod) => ({ default: mod.LeafletMap }))
+);
 
 interface ClimateZone {
   zone: "high_heat" | "coastal" | "freeze_thaw" | "moderate";
@@ -109,17 +105,6 @@ function deriveClimateZone(
 }
 
 /**
- * Component to recenter map when coordinates change
- */
-function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView([lat, lng], 15);
-  }, [lat, lng, map]);
-  return null;
-}
-
-/**
  * PropertyMap - Property location with climate exposure indicator
  *
  * Part of the Context Rail (Right Column).
@@ -183,17 +168,9 @@ export function PropertyMap({
   return (
     <Card className={cn("overflow-hidden", className)}>
       <div className="aspect-video relative">
-        <MapContainer
-          center={[lat, lng]}
-          zoom={15}
-          scrollWheelZoom={false}
-          className="h-full w-full z-0"
-          attributionControl={false}
-        >
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <Marker position={[lat, lng]} />
-          <MapRecenter lat={lat} lng={lng} />
-        </MapContainer>
+        <Suspense fallback={<Skeleton className="absolute inset-0" />}>
+          <LeafletMap lat={lat} lng={lng} />
+        </Suspense>
 
         {/* Climate zone overlay badge */}
         <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm pointer-events-none">
