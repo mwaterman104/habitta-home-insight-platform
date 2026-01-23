@@ -28,7 +28,9 @@ interface UserHome {
  * All systems follow HVAC canonical template.
  */
 export default function SystemPage() {
-  const { systemKey } = useParams<{ systemKey: string }>();
+  // Support both param names for backward compatibility
+  const params = useParams<{ systemKey?: string; systemSlug?: string }>();
+  const systemKey = params.systemKey || params.systemSlug;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
