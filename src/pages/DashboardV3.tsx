@@ -394,9 +394,9 @@ export default function DashboardV3() {
         onAddressClick={handleAddressClick}
       />
       
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 overflow-hidden">
         {/* Left Column - Navigation + Identity (Fixed 240px) */}
-        <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col">
+        <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col h-full">
           <LeftColumn 
             address={fullAddress}
             onAddressClick={handleAddressClick}
@@ -415,8 +415,9 @@ export default function DashboardV3() {
           <ResizablePanel 
             defaultSize={75} 
             minSize={50}
+            className="!overflow-hidden"
           >
-            <main className="flex flex-col h-full p-6 pb-0">
+            <main className="flex flex-col h-full overflow-hidden p-6 pb-0">
               <MiddleColumn
                 homeForecast={homeForecast}
                 forecastLoading={forecastLoading}
@@ -465,7 +466,7 @@ export default function DashboardV3() {
         </ResizablePanelGroup>
         
         {/* Middle Column only (lg screens without right column) */}
-        <main className="flex-1 flex-col min-h-0 p-6 pb-0 hidden lg:flex xl:hidden">
+        <main className="flex-1 flex-col overflow-hidden p-6 pb-0 hidden lg:flex xl:hidden">
           <MiddleColumn
             homeForecast={homeForecast}
             forecastLoading={forecastLoading}
