@@ -110,7 +110,7 @@ export function SystemWatch({
         "border-emerald-200 bg-emerald-50/50"
       )}>
         <CardContent className="p-4">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
             </div>
@@ -124,7 +124,7 @@ export function SystemWatch({
               <p className="text-sm text-foreground font-medium">
                 All systems healthy.
               </p>
-              <p className="text-sm text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground">
                 No planning windows for the next 7 years.
               </p>
             </div>
@@ -143,7 +143,7 @@ export function SystemWatch({
         : "border-amber-200 bg-amber-50/30"
     )}>
       <CardContent className="p-4">
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-2.5">
           <div className={cn(
             "h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
             hasAttention ? "bg-amber-200" : "bg-amber-100"
@@ -165,7 +165,7 @@ export function SystemWatch({
             <p className="text-sm text-foreground font-medium">
               Your {primarySystem.name} is entering its planning window.
             </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-sm text-muted-foreground">
               {primarySystem.remainingYears <= 3 
                 ? `${primarySystem.remainingYears}–${primarySystem.remainingYears + 2} years until likely replacement.`
                 : `${primarySystem.remainingYears - 2}–${primarySystem.remainingYears} years until likely replacement.`

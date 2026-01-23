@@ -139,19 +139,16 @@ export function HabittaThinking({
     if (years <= 2) {
       return `Your ${systemName} is approaching end of life.`;
     }
-    if (years <= 5) {
-      return `Your ${systemName} is entering a planning window.`;
-    }
-    return `Your ${systemName} may need attention in the coming years.`;
+    return `Your ${systemName} is entering a planning window.`;
   };
 
   return (
     <Card className={className}>
-      <CardContent className="py-4">
-        <div className="flex items-start gap-3">
+      <CardContent className="py-3">
+        <div className="flex items-start gap-2.5">
           {/* Icon */}
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-            <MessageCircle className="h-4 w-4 text-primary" />
+          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <MessageCircle className="h-3.5 w-3.5 text-primary" />
           </div>
           
           {/* Content */}
@@ -159,11 +156,10 @@ export function HabittaThinking({
             <p className="text-xs font-medium text-primary mb-1">
               Habitta's thinking
             </p>
-            <p className="text-sm text-foreground mb-3">
-              {getMessage()}
-              <br />
+            <p className="text-sm text-foreground mb-2.5">
+              {getMessage()}{' '}
               <span className="text-muted-foreground">
-                Want to talk through options now, or keep an eye on it?
+                Talk now — or keep an eye on it?
               </span>
             </p>
             
@@ -181,9 +177,9 @@ export function HabittaThinking({
                 size="sm"
                 variant="ghost"
                 onClick={handleDismiss}
-                className="text-xs text-muted-foreground"
+                className="text-xs text-muted-foreground/70 hover:text-muted-foreground"
               >
-                Not right now
+                Later
               </Button>
             </div>
           </div>
