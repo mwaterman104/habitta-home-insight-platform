@@ -1,15 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Cpu, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Cpu, CheckCircle2, AlertTriangle, Clock, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
+import { TeachHabittaModal } from "@/components/TeachHabittaModal";
 
 interface SystemCardData {
   key: string;
@@ -38,7 +40,8 @@ const SYSTEM_DISPLAY: Record<string, { name: string; icon: string }> = {
 export default function SystemsHub() {
   const navigate = useNavigate();
   const { user } = useAuth();
-
+  const queryClient = useQueryClient();
+  const [showTeachModal, setShowTeachModal] = useState(false);
   // Fetch user's home
   const { data: userHome } = useQuery({
     queryKey: ['user-home', user?.id],
@@ -187,6 +190,27 @@ export default function SystemsHub() {
             </div>
           </>
         )}
+
+        {/* Floating Action Button - Guardrail 4: z-30 (above nav, below modals) */}
+        <Button
+          onClick={() => setShowTeachModal(true)}
+          className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg z-30"
+          size="icon"
+          aria-label="Add system"
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+
+        {/* TeachHabittaModal */}
+        <TeachHabittaModal
+          open={showTeachModal}
+          onOpenChange={setShowTeachModal}
+          homeId={userHome?.id || ''}
+          onSystemAdded={() => {
+            // Invalidate relevant queries when a system is added
+            queryClient.invalidateQueries({ queryKey: ['capital-timeline', userHome?.id] });
+          }}
+        />
       </div>
     </DashboardV3Layout>
   );

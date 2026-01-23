@@ -17,6 +17,15 @@ export type InstallSource = 'heuristic' | 'owner_reported' | 'inspection' | 'per
 export type ReplacementStatus = 'original' | 'replaced' | 'unknown';
 export type ConfidenceLevel = 'low' | 'medium' | 'high';
 
+/**
+ * ConfidenceState - 3-state model for UI display
+ * 
+ * - high: User confirmed OR visual certainty ≥ 0.75 (SILENT in UI)
+ * - estimated: Visual certainty ≥ 0.40 (shows "Estimated" label)
+ * - needs_confirmation: Visual certainty < 0.40 (shows "Needs confirmation" label)
+ */
+export type ConfidenceState = 'high' | 'estimated' | 'needs_confirmation';
+
 export interface ConfidenceInput {
   installSource: InstallSource;
   hasMonth?: boolean;
@@ -211,6 +220,50 @@ export function getConfidenceLevelLabel(level: ConfidenceLevel): string {
       return 'High confidence';
     default:
       return 'Unknown';
+  }
+}
+
+// =============================================================================
+// VALIDATION
+// =============================================================================
+
+// =============================================================================
+// CONFIDENCE STATE (3-State Model for UI)
+// =============================================================================
+
+/**
+ * Compute confidence state from score
+ * 
+ * Guardrail 1: High confidence requires user confirmation OR strong visual certainty
+ */
+export function confidenceStateFromScore(
+  score: number,
+  userConfirmed: boolean = false
+): ConfidenceState {
+  // User confirmation always grants high (Guardrail 3)
+  if (userConfirmed) return 'high';
+  
+  // Vision-only requires strong certainty for high (Guardrail 1)
+  if (score >= 0.75) return 'high';
+  if (score >= 0.40) return 'estimated';
+  return 'needs_confirmation';
+}
+
+/**
+ * Get confidence state label for display
+ * 
+ * CRITICAL: High confidence returns null (silent in UI)
+ */
+export function getConfidenceStateLabel(state: ConfidenceState): string | null {
+  switch (state) {
+    case 'high': 
+      return null; // Silent for high (critical design decision)
+    case 'estimated': 
+      return 'Estimated';
+    case 'needs_confirmation': 
+      return 'Needs confirmation';
+    default:
+      return null;
   }
 }
 
