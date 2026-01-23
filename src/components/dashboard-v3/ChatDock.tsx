@@ -127,13 +127,13 @@ export function ChatDock({
     ? `Ask about your ${systemName}...`
     : "Ask about your home...";
 
-  // Collapsed state - minimal, non-intrusive (48px)
+  // Collapsed state - floating, minimal (48px)
   if (!isExpanded) {
     return (
-      <div className="bg-card rounded-t-xl border-t shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
+      <div className="bg-card rounded-xl border shadow-lg">
         <button
           onClick={() => onExpandChange(true)}
-          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-t-xl"
+          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-xl"
         >
           {hasAgentMessage ? (
             <>
@@ -160,9 +160,9 @@ export function ChatDock({
     );
   }
 
-  // Expanded state - full chat interface with drawer feel
+  // Expanded state - floating chat interface with drawer feel
   return (
-    <div className="bg-card rounded-t-xl border-t shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)] flex flex-col max-h-[60vh]">
+    <div className="bg-card rounded-xl border shadow-lg flex flex-col max-h-[75vh]">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b shrink-0 rounded-t-xl">
         <div className="flex items-center gap-2">

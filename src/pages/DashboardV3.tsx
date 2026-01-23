@@ -65,6 +65,11 @@ export default function DashboardV3() {
   const [homeForecast, setHomeForecast] = useState<HomeForecast | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
 
+  // Right panel size for dynamic ChatDock positioning
+  const [rightPanelSize, setRightPanelSize] = useState(() => {
+    return parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25');
+  });
+
   // Advisor state machine
   const {
     advisorState,
@@ -410,6 +415,7 @@ export default function DashboardV3() {
           className="flex-1 hidden xl:flex"
           onLayout={(sizes) => {
             localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
+            setRightPanelSize(sizes[1]); // Live update for ChatDock positioning
           }}
         >
           {/* Middle Column - Primary Canvas */}
@@ -494,9 +500,18 @@ export default function DashboardV3() {
         </main>
       </div>
       
-      {/* Fixed ChatDock - Anchored to viewport bottom */}
-      <div className="fixed bottom-0 left-0 lg:left-60 right-0 z-50 border-t bg-card shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.08)]">
-        <div className="max-w-3xl mx-auto px-6">
+      {/* Fixed Floating ChatDock - Anchored within middle column bounds */}
+      <div 
+        className="fixed bottom-0 left-0 lg:left-60 z-50 pointer-events-none px-6 pb-4"
+        style={{ 
+          // Dynamic right offset on xl screens, 0 otherwise
+          right: isMobile ? 0 : `${rightPanelSize}%`
+        }}
+      >
+        {/* Gradient fade for drawer relationship cue */}
+        <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+        
+        <div className="max-w-3xl mx-auto pointer-events-auto">
           <ChatDock
             propertyId={userHome.id}
             isExpanded={shouldChatBeOpen}
