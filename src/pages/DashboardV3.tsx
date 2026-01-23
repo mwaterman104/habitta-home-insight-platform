@@ -390,16 +390,16 @@ export default function DashboardV3() {
 
   // Desktop: Full 3-column layout
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <TopHeader 
         address={fullAddress}
         healthStatus={getHealthStatus()}
         onAddressClick={handleAddressClick}
       />
       
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left Column - Navigation + Identity (Fixed 240px) */}
-        <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col h-full">
+        <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col">
           <LeftColumn 
             address={fullAddress}
             onAddressClick={handleAddressClick}
@@ -409,7 +409,7 @@ export default function DashboardV3() {
         {/* Resizable Middle + Right Columns (xl screens) */}
         <ResizablePanelGroup 
           direction="horizontal" 
-          className="flex-1 hidden xl:flex"
+          className="flex-1 min-h-0 hidden xl:flex"
           onLayout={(sizes) => {
             localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
           }}
@@ -420,7 +420,7 @@ export default function DashboardV3() {
             minSize={50}
             className="!overflow-hidden"
           >
-            <main className="flex flex-col h-full overflow-hidden p-6 pb-0">
+            <div className="h-full p-6 pb-0">
               <MiddleColumn
                 homeForecast={homeForecast}
                 forecastLoading={forecastLoading}
@@ -443,7 +443,7 @@ export default function DashboardV3() {
                 onUserReply={handleUserReply}
                 onTaskComplete={handleTaskComplete}
               />
-            </main>
+            </div>
           </ResizablePanel>
           
           {/* Drag Handle */}
@@ -469,7 +469,7 @@ export default function DashboardV3() {
         </ResizablePanelGroup>
         
         {/* Middle Column only (lg screens without right column) */}
-        <main className="flex-1 flex-col overflow-hidden p-6 pb-0 hidden lg:flex xl:hidden">
+        <div className="flex-1 min-h-0 flex-col p-6 pb-0 hidden lg:flex xl:hidden">
           <MiddleColumn
             homeForecast={homeForecast}
             forecastLoading={forecastLoading}
@@ -493,7 +493,7 @@ export default function DashboardV3() {
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
           />
-        </main>
+        </div>
       </div>
     </div>
   );
