@@ -3,17 +3,34 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeHealthCard } from "@/components/HomeHealthCard";
-import { MaintenanceTimeline } from "@/components/MaintenanceTimeline";
+import { MaintenanceRoadmap } from "./MaintenanceRoadmap";
 import { CapitalTimeline } from "@/components/CapitalTimeline";
 import { ChatDock } from "./ChatDock";
 import { SystemWatch } from "./SystemWatch";
-import { MonthlyPriorityCTA } from "./MonthlyPriorityCTA";
+import { HabittaThinking } from "./HabittaThinking";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 
+interface RoadmapTask {
+  id: string;
+  title: string;
+  metaLine?: string;
+  completed?: boolean;
+  systemKey?: string;
+  dueDate?: string;
+  dueMonth?: string;
+  season?: 'spring' | 'summer' | 'fall' | 'winter';
+  riskImpact?: {
+    type: 'prevents' | 'reduces' | 'extends';
+    systemName: string;
+    description: string;
+  };
+}
+
+// Legacy interface for backwards compatibility
 interface TimelineTask {
   id: string;
   title: string;
@@ -31,6 +48,13 @@ interface MaintenanceData {
   nowTasks: TimelineTask[];
   thisYearTasks: TimelineTask[];
   futureYearsTasks: TimelineTask[];
+}
+
+interface SystemInWindow {
+  key: string;
+  remainingYears: number;
+  replacementCost?: number;
+  confidence?: number;
 }
 
 interface MiddleColumnProps {
@@ -62,16 +86,18 @@ interface MiddleColumnProps {
 /**
  * MiddleColumn - Primary Canvas with Sticky ChatDock
  * 
- * V3.2 Architecture (Phase 0 - Dashboard Structure Lock):
+ * V3.2 Architecture (Structural Transformation):
  * 1. SystemWatch (authoritative, boxed)
- * 2. HomeHealthForecast (primary instrument)
- * 3. MonthlyPriorityCTA (chat-first)
+ * 2. HomeHealthCard (primary instrument)
+ * 3. HabittaThinking (chat presence above fold) - NEW
  * 4. CapitalTimeline (systems planning)
- * 5. MaintenanceRoadmap (prevention)
- * 6. ChatDock (sticky)
+ * 5. MaintenanceRoadmap (horizontal time model) - REPLACED
+ * 6. ChatDock (sticky, connected)
  * 
  * Deprecated:
- * - TodaysHomeBrief (replaced by SystemWatch + MonthlyPriorityCTA)
+ * - TodaysHomeBrief (replaced by SystemWatch)
+ * - MonthlyPriorityCTA (replaced by HabittaThinking)
+ * - MaintenanceTimeline (replaced by MaintenanceRoadmap)
  */
 export function MiddleColumn({
   homeForecast,
@@ -105,15 +131,19 @@ export function MiddleColumn({
   // Track if chat was engaged this session
   const [chatEngagedThisSession, setChatEngagedThisSession] = useState(false);
 
-  // Derive systems in planning window for MonthlyPriorityCTA
-  const planningWindowSystems = useMemo(() => {
-    const systems: { key: string; remainingYears: number }[] = [];
+  // Derive systems in planning window for HabittaThinking
+  const systemsInWindow = useMemo<SystemInWindow[]>(() => {
+    const systems: SystemInWindow[] = [];
     const currentYear = new Date().getFullYear();
 
     if (hvacPrediction?.lifespan?.years_remaining_p50) {
       const years = hvacPrediction.lifespan.years_remaining_p50;
       if (years <= 7) {
-        systems.push({ key: 'hvac', remainingYears: years });
+        systems.push({ 
+          key: 'hvac', 
+          remainingYears: years,
+          // Confidence may not be on lifespan, use a default
+        });
       }
     }
 
@@ -121,14 +151,26 @@ export function MiddleColumn({
       if (systems.some(s => s.key === sys.systemId)) return;
       const years = sys.replacementWindow.likelyYear - currentYear;
       if (years <= 7 && years > 0) {
-        systems.push({ key: sys.systemId, remainingYears: years });
+        systems.push({ 
+          key: sys.systemId, 
+          remainingYears: years,
+          // estimatedCost may not exist on SystemTimelineEntry
+        });
       }
     });
 
     return systems.sort((a, b) => a.remainingYears - b.remainingYears);
   }, [hvacPrediction, capitalTimeline]);
 
-  const primaryPlanningSystem = planningWindowSystems[0];
+  // Convert legacy bucket tasks to roadmap tasks
+  const roadmapTasks = useMemo<RoadmapTask[]>(() => {
+    const allTasks = [
+      ...maintenanceData.nowTasks.map(t => ({ ...t, season: 'spring' as const })),
+      ...maintenanceData.thisYearTasks.map(t => ({ ...t, season: 'summer' as const })),
+      ...maintenanceData.futureYearsTasks.map(t => ({ ...t })),
+    ];
+    return allTasks;
+  }, [maintenanceData]);
 
   // Phase 2: View tracking for HomeHealthCard
   useViewTracker(healthCardRef, {
@@ -156,7 +198,7 @@ export function MiddleColumn({
   useViewTracker(maintenanceRef, {
     eventName: 'maintenance_roadmap_viewed',
     properties: {
-      upcoming_items_12mo: [...maintenanceData.nowTasks, ...maintenanceData.thisYearTasks].length
+      upcoming_items_12mo: roadmapTasks.filter(t => !t.completed).length
     },
     context: { surface: 'maintenance' },
     enabled: true
@@ -256,13 +298,19 @@ export function MiddleColumn({
             )}
           </section>
 
-          {/* 3. MonthlyPriorityCTA - Chat-first prompt (NEW) */}
+          {/* 3. HabittaThinking - Chat presence above fold (NEW) */}
           <section>
-            <MonthlyPriorityCTA
-              suggestedSystemSlug={primaryPlanningSystem?.key}
+            <HabittaThinking
+              systemsInWindow={systemsInWindow}
               chatEngagedThisSession={chatEngagedThisSession}
-              hasSystemsInWindow={planningWindowSystems.length > 0}
-              onAskClick={handleChatExpand}
+              onTalkClick={(systemKey) => {
+                // Set focus context and expand chat
+                handleSystemClick(systemKey);
+                handleChatExpand();
+              }}
+              onDismiss={() => {
+                // Dismiss handled internally via sessionStorage
+              }}
             />
           </section>
 
@@ -278,12 +326,10 @@ export function MiddleColumn({
             </section>
           ) : null}
 
-          {/* 5. Maintenance Roadmap - What prevents change */}
+          {/* 5. Maintenance Roadmap - Horizontal time model (NEW) */}
           <section ref={maintenanceRef}>
-            <MaintenanceTimeline
-              nowTasks={maintenanceData.nowTasks}
-              thisYearTasks={maintenanceData.thisYearTasks}
-              futureYearsTasks={maintenanceData.futureYearsTasks}
+            <MaintenanceRoadmap
+              tasks={roadmapTasks}
               onTaskComplete={onTaskComplete}
               showRiskImpact
             />

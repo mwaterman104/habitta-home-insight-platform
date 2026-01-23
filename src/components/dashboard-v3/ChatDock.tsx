@@ -2,9 +2,22 @@ import { useState, useRef, useEffect } from "react";
 import { MessageCircle, ChevronUp, ChevronDown, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
+
+// System display names for context-aware placeholder
+const SYSTEM_NAMES: Record<string, string> = {
+  hvac: 'HVAC',
+  water_heater: 'water heater',
+  roof: 'roof',
+  safety: 'safety systems',
+  exterior: 'exterior',
+  gutters: 'gutters',
+  plumbing: 'plumbing',
+  electrical: 'electrical',
+};
 
 interface ChatDockProps {
   propertyId: string;
@@ -22,17 +35,17 @@ interface ChatDockProps {
 /**
  * ChatDock - Sticky collapsed-first chat interface
  * 
+ * V3.2 Updates:
+ * - Rounded top corners (drawer feel)
+ * - Upward shadow for visual connection
+ * - Context-aware placeholder
+ * - Focus header chip (not injected message)
+ * 
  * Design:
  * - Collapsed (48px): Input affordance only, or "Habitta has a suggestion" with pulse
  * - Expanded: Full chat interface, max 60% viewport height
  * - Never auto-closes during active conversation
  * - Expands upward (content scrolls behind)
- * 
- * Behavior rules:
- * - Chat auto-opens only when triggered by advisor state machine
- * - Chat never auto-closes (user control only)
- * - Opening message follows Observation → Implication → Options structure
- * - Silence is intentional in PASSIVE/OBSERVING states
  */
 export function ChatDock({
   propertyId,
@@ -106,13 +119,21 @@ export function ChatDock({
     }
   };
 
+  // Context-aware placeholder
+  const systemName = focusContext?.systemKey 
+    ? SYSTEM_NAMES[focusContext.systemKey] || focusContext.systemKey
+    : null;
+  const placeholder = systemName
+    ? `Ask about your ${systemName}...`
+    : "Ask about your home...";
+
   // Collapsed state - minimal, non-intrusive (48px)
   if (!isExpanded) {
     return (
-      <div className="bg-card border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      <div className="bg-card rounded-t-xl border-t shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]">
         <button
           onClick={() => onExpandChange(true)}
-          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors"
+          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-t-xl"
         >
           {hasAgentMessage ? (
             <>
@@ -126,7 +147,7 @@ export function ChatDock({
           ) : (
             <>
               <Input 
-                placeholder="Ask about your home..."
+                placeholder={placeholder}
                 className="flex-1 bg-muted/50 border-0 cursor-pointer pointer-events-none"
                 readOnly
                 tabIndex={-1}
@@ -139,11 +160,11 @@ export function ChatDock({
     );
   }
 
-  // Expanded state - full chat interface
+  // Expanded state - full chat interface with drawer feel
   return (
-    <div className="bg-card border-t shadow-[0_-4px_12px_-1px_rgba(0,0,0,0.1)] flex flex-col max-h-[60vh]">
+    <div className="bg-card rounded-t-xl border-t shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)] flex flex-col max-h-[60vh]">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b shrink-0">
+      <div className="flex items-center justify-between p-3 border-b shrink-0 rounded-t-xl">
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Habitta</span>
@@ -162,6 +183,15 @@ export function ChatDock({
           <ChevronDown className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Focus context header chip (NOT a message) */}
+      {focusContext?.systemKey && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
+          <Badge variant="secondary" className="text-xs">
+            Focus: {SYSTEM_NAMES[focusContext.systemKey] || focusContext.systemKey}
+          </Badge>
+        </div>
+      )}
 
       {/* Messages - scrollable area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
@@ -246,7 +276,7 @@ export function ChatDock({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about your home..."
+            placeholder={placeholder}
             disabled={loading}
             className="flex-1"
           />
