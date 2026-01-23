@@ -45,6 +45,18 @@ const SERIAL_PATTERNS = [
   /\b([A-Z]{2}\d{8,})\b/i,    // Format: AB12345678
 ];
 
+// System type display names
+const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  hvac: 'HVAC',
+  water_heater: 'Water Heater',
+  appliance: 'Appliance',
+  pool_equipment: 'Pool Equipment',
+  electrical: 'Electrical Panel',
+};
+
+// Confidence state type
+type ConfidenceState = 'high' | 'estimated' | 'needs_confirmation';
+
 interface AnalysisResult {
   brand?: string;
   model?: string;
@@ -60,6 +72,12 @@ interface AnalysisResult {
     system_type?: number;
   };
   raw_ocr_text: string;
+  // New fields for Habitta messaging
+  visual_certainty: number;
+  is_uncertain: boolean;
+  habitta_message: string;
+  habitta_detail?: string;
+  confidence_state: ConfidenceState;
 }
 
 serve(async (req) => {
@@ -150,7 +168,11 @@ serve(async (req) => {
 function analyzeDeviceText(text: string): AnalysisResult {
   const result: AnalysisResult = {
     confidence_scores: {},
-    raw_ocr_text: text
+    raw_ocr_text: text,
+    visual_certainty: 0,
+    is_uncertain: true,
+    habitta_message: "I'm not totally sure what this is yet.",
+    confidence_state: 'needs_confirmation',
   };
 
   // Extract brand
@@ -230,6 +252,46 @@ function analyzeDeviceText(text: string): AnalysisResult {
     const year = extractManufactureYear(result.serial, result.brand.toLowerCase());
     if (year) {
       result.manufacture_year = year;
+    }
+  }
+
+  // =========================================================================
+  // NEW: Compute visual certainty and Habitta messaging
+  // =========================================================================
+  
+  // Calculate visual certainty (composite of all signals)
+  result.visual_certainty = (
+    (result.confidence_scores.brand ?? 0) * 0.25 +
+    (result.confidence_scores.model ?? 0) * 0.25 +
+    (result.confidence_scores.system_type ?? 0) * 0.35 +
+    (result.confidence_scores.serial ? 0.15 : 0)
+  );
+  
+  // Guardrail 2: Determine if uncertain (visual_certainty < 0.30 OR no system_type)
+  result.is_uncertain = result.visual_certainty < 0.30 || !result.system_type;
+  
+  // Determine confidence state (Guardrail 1: high requires ≥0.75 for vision-only)
+  if (result.visual_certainty >= 0.75) {
+    result.confidence_state = 'high';
+  } else if (result.visual_certainty >= 0.40) {
+    result.confidence_state = 'estimated';
+  } else {
+    result.confidence_state = 'needs_confirmation';
+  }
+  
+  // Generate Habitta-style messaging
+  if (result.is_uncertain) {
+    result.habitta_message = "I'm not totally sure what this is yet.";
+    result.habitta_detail = undefined;
+  } else {
+    const systemName = SYSTEM_DISPLAY_NAMES[result.system_type || ''] || 'system';
+    result.habitta_message = `This looks like a ${systemName}.`;
+    
+    // Add detail if we have supporting info
+    if (result.manufacture_year) {
+      result.habitta_detail = `Likely installed around ${result.manufacture_year}.`;
+    } else if (result.brand) {
+      result.habitta_detail = `${result.brand} brand detected.`;
     }
   }
 

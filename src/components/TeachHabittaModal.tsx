@@ -1,0 +1,602 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Camera, Upload, Loader2, CheckCircle2, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ActionSheet } from "@/components/mobile/ActionSheet";
+import { useHomeSystems, HomeSystem, SystemCatalog } from "@/hooks/useHomeSystems";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+/**
+ * TeachHabittaModal - Collaborative AI-led flow for adding systems
+ * 
+ * 5 Guardrails (Locked):
+ * 1. High confidence requires user confirmation OR strong visual certainty (≥0.75)
+ * 2. Explicit "AI unsure" branch (visual_certainty < 0.30)
+ * 3. User confirmation raises confidence but is not immutable
+ * 4. Z-index hierarchy: FAB at z-30, modals at z-50
+ * 5. Modal state is ephemeral (resets on close)
+ */
+
+type ModalStep = 
+  | 'capture'        // Initial: take/upload photo
+  | 'analyzing'      // Loading: "Looking closely..."
+  | 'interpretation' // AI result: "This looks like a Roof"
+  | 'correction'     // User editing: system type, brand, year
+  | 'success';       // Done: "Added. I'll start tracking this."
+
+interface AnalysisResult {
+  brand?: string;
+  model?: string;
+  serial?: string;
+  system_type?: string;
+  manufacture_year?: number;
+  capacity_rating?: string;
+  fuel_type?: string;
+  confidence_scores: {
+    brand?: number;
+    model?: number;
+    serial?: number;
+    system_type?: number;
+  };
+  raw_ocr_text: string;
+  // New fields from enhanced edge function
+  visual_certainty?: number;
+  is_uncertain?: boolean;
+  habitta_message?: string;
+  habitta_detail?: string;
+  confidence_state?: 'high' | 'estimated' | 'needs_confirmation';
+}
+
+interface TeachHabittaModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  homeId: string;
+  onSystemAdded?: (system: HomeSystem) => void;
+}
+
+// System type display names
+const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  hvac: 'HVAC',
+  water_heater: 'Water Heater',
+  appliance: 'Appliance',
+  pool_equipment: 'Pool Equipment',
+  electrical: 'Electrical Panel',
+  roof: 'Roof',
+  plumbing: 'Plumbing',
+  windows: 'Windows',
+};
+
+// Quick-select system types
+const QUICK_SYSTEM_TYPES = [
+  'hvac',
+  'water_heater',
+  'roof',
+  'appliance',
+  'electrical',
+  'plumbing',
+];
+
+export function TeachHabittaModal({
+  open,
+  onOpenChange,
+  homeId,
+  onSystemAdded,
+}: TeachHabittaModalProps) {
+  // Step state machine
+  const [step, setStep] = useState<ModalStep>('capture');
+  const [capturedPhoto, setCapturedPhoto] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Correction form state
+  const [selectedSystemType, setSelectedSystemType] = useState<string>('');
+  const [brandInput, setBrandInput] = useState('');
+  const [modelInput, setModelInput] = useState('');
+  const [installYear, setInstallYear] = useState('');
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  
+  const { addSystem, analyzePhoto, catalog } = useHomeSystems(homeId);
+
+  // Guardrail 5: Reset state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setStep('capture');
+      setCapturedPhoto(null);
+      setPreviewUrl(null);
+      setAnalysis(null);
+      setError(null);
+      setSelectedSystemType('');
+      setBrandInput('');
+      setModelInput('');
+      setInstallYear('');
+    }
+  }, [open]);
+
+  // Clean up preview URL
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  // Compute visual certainty client-side if not provided by server
+  const computeVisualCertainty = (scores: AnalysisResult['confidence_scores']): number => {
+    return (
+      (scores.brand ?? 0) * 0.25 +
+      (scores.model ?? 0) * 0.25 +
+      (scores.system_type ?? 0) * 0.35 +
+      (scores.serial ? 0.15 : 0)
+    );
+  };
+
+  const handlePhotoCapture = async (file: File) => {
+    setCapturedPhoto(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setStep('analyzing');
+    setError(null);
+    setIsProcessing(true);
+
+    try {
+      const result = await analyzePhoto(file);
+      
+      if (result.success && result.analysis) {
+        const analysisData = result.analysis as AnalysisResult;
+        
+        // Compute visual certainty if not provided
+        if (analysisData.visual_certainty === undefined) {
+          analysisData.visual_certainty = computeVisualCertainty(analysisData.confidence_scores);
+        }
+        
+        // Determine if uncertain (Guardrail 2)
+        if (analysisData.is_uncertain === undefined) {
+          analysisData.is_uncertain = analysisData.visual_certainty < 0.30 || !analysisData.system_type;
+        }
+        
+        // Generate Habitta message if not provided
+        if (!analysisData.habitta_message) {
+          if (analysisData.is_uncertain) {
+            analysisData.habitta_message = "I'm not totally sure what this is yet.";
+          } else {
+            const systemName = SYSTEM_DISPLAY_NAMES[analysisData.system_type || ''] || 'system';
+            analysisData.habitta_message = `This looks like a ${systemName}.`;
+            
+            if (analysisData.manufacture_year) {
+              analysisData.habitta_detail = `Likely installed around ${analysisData.manufacture_year}.`;
+            } else if (analysisData.brand) {
+              analysisData.habitta_detail = `${analysisData.brand} brand detected.`;
+            }
+          }
+        }
+        
+        setAnalysis(analysisData);
+        
+        // Guardrail 2: If uncertain, go straight to correction
+        if (analysisData.is_uncertain) {
+          // Pre-fill any partial data
+          if (analysisData.system_type) {
+            setSelectedSystemType(analysisData.system_type);
+          }
+          if (analysisData.brand) {
+            setBrandInput(analysisData.brand);
+          }
+          if (analysisData.model) {
+            setModelInput(analysisData.model);
+          }
+          if (analysisData.manufacture_year) {
+            setInstallYear(analysisData.manufacture_year.toString());
+          }
+          setStep('correction');
+        } else {
+          setStep('interpretation');
+        }
+      } else {
+        throw new Error(result.error || 'Failed to analyze photo');
+      }
+    } catch (err) {
+      console.error('Photo analysis error:', err);
+      setError("I'm not totally sure what this is yet — can you help me out?");
+      setStep('correction');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handlePhotoCapture(file);
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
+  const handleConfirmInterpretation = async () => {
+    if (!analysis) return;
+    
+    setIsProcessing(true);
+    try {
+      // Guardrail 3: Set install_source to 'owner_reported' on confirmation
+      const systemData: Partial<HomeSystem> = {
+        system_key: analysis.system_type || 'unknown',
+        brand: analysis.brand,
+        model: analysis.model,
+        serial: analysis.serial,
+        manufacture_year: analysis.manufacture_year,
+        capacity_rating: analysis.capacity_rating,
+        fuel_type: analysis.fuel_type,
+        confidence_scores: analysis.confidence_scores,
+        data_sources: ['vision', 'owner_confirmed'],
+        source: {
+          method: 'vision',
+          confirmed_at: new Date().toISOString(),
+          install_source: 'owner_reported', // Guardrail 3
+        },
+      };
+      
+      const result = await addSystem(systemData);
+      if (result) {
+        onSystemAdded?.(result as HomeSystem);
+        setStep('success');
+      }
+    } catch (err) {
+      console.error('Error saving system:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNotQuite = () => {
+    // Pre-fill with analysis data
+    if (analysis) {
+      if (analysis.system_type) {
+        setSelectedSystemType(analysis.system_type);
+      }
+      if (analysis.brand) {
+        setBrandInput(analysis.brand);
+      }
+      if (analysis.model) {
+        setModelInput(analysis.model);
+      }
+      if (analysis.manufacture_year) {
+        setInstallYear(analysis.manufacture_year.toString());
+      }
+    }
+    setStep('correction');
+  };
+
+  const handleSaveCorrection = async () => {
+    if (!selectedSystemType) {
+      setError('Please select a system type');
+      return;
+    }
+    
+    setIsProcessing(true);
+    try {
+      const systemData: Partial<HomeSystem> = {
+        system_key: selectedSystemType,
+        brand: brandInput || undefined,
+        model: modelInput || undefined,
+        serial: analysis?.serial,
+        manufacture_year: installYear ? parseInt(installYear) : undefined,
+        capacity_rating: analysis?.capacity_rating,
+        fuel_type: analysis?.fuel_type,
+        confidence_scores: analysis?.confidence_scores || {},
+        data_sources: ['vision', 'owner_corrected'],
+        source: {
+          method: 'vision',
+          corrected_at: new Date().toISOString(),
+          install_source: 'owner_reported',
+        },
+      };
+      
+      const result = await addSystem(systemData);
+      if (result) {
+        onSystemAdded?.(result as HomeSystem);
+        setStep('success');
+      }
+    } catch (err) {
+      console.error('Error saving system:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSkipDetails = async () => {
+    if (!selectedSystemType && !analysis?.system_type) {
+      setError('Please at least select a system type');
+      return;
+    }
+    
+    setIsProcessing(true);
+    try {
+      const systemData: Partial<HomeSystem> = {
+        system_key: selectedSystemType || analysis?.system_type || 'unknown',
+        brand: brandInput || analysis?.brand,
+        model: modelInput || analysis?.model,
+        serial: analysis?.serial,
+        manufacture_year: installYear ? parseInt(installYear) : analysis?.manufacture_year,
+        data_sources: ['vision'],
+        source: {
+          method: 'vision',
+          skipped_details: true,
+          install_source: 'heuristic',
+        },
+      };
+      
+      const result = await addSystem(systemData);
+      if (result) {
+        onSystemAdded?.(result as HomeSystem);
+        setStep('success');
+      }
+    } catch (err) {
+      console.error('Error saving system:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Render steps
+  const renderCaptureStep = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <Sparkles className="h-6 w-6 text-primary" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Take a photo or upload an image of a system or appliance you want Habitta to track.
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          variant="outline"
+          className="h-24 flex-col gap-2"
+          onClick={() => cameraInputRef.current?.click()}
+        >
+          <Camera className="h-6 w-6" />
+          <span className="text-sm">Take photo</span>
+        </Button>
+        
+        <Button
+          variant="outline"
+          className="h-24 flex-col gap-2"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-6 w-6" />
+          <span className="text-sm">Upload</span>
+        </Button>
+      </div>
+      
+      <div className="flex justify-center">
+        <Button
+          variant="ghost"
+          onClick={() => onOpenChange(false)}
+          className="text-muted-foreground"
+        >
+          Cancel
+        </Button>
+      </div>
+      
+      {/* Hidden file inputs */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+
+  const renderAnalyzingStep = () => (
+    <div className="py-8 text-center">
+      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
+        <Sparkles className="h-6 w-6 text-primary" />
+      </div>
+      <p className="text-sm text-muted-foreground">Looking closely...</p>
+    </div>
+  );
+
+  const renderInterpretationStep = () => (
+    <div className="space-y-6">
+      {/* Photo preview */}
+      {previewUrl && (
+        <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
+          <img 
+            src={previewUrl} 
+            alt="Captured device" 
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+      
+      {/* Habitta's interpretation */}
+      <div className="space-y-2">
+        <p className="text-base font-medium">
+          {analysis?.habitta_message}
+        </p>
+        {analysis?.habitta_detail && (
+          <p className="text-sm text-muted-foreground">
+            {analysis.habitta_detail}
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground mt-3">
+          Does this look right?
+        </p>
+      </div>
+      
+      {/* Actions */}
+      <div className="flex gap-3">
+        <Button
+          variant="outline"
+          className="flex-1"
+          onClick={handleNotQuite}
+          disabled={isProcessing}
+        >
+          Not quite
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={handleConfirmInterpretation}
+          disabled={isProcessing}
+        >
+          {isProcessing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            "Yes, that's right"
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderCorrectionStep = () => (
+    <div className="space-y-5">
+      {/* Habitta's uncertain message */}
+      <div className="text-center">
+        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+          <Sparkles className="h-5 w-5 text-primary" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {error || analysis?.habitta_message || "I'm not totally sure what this is yet — can you help me out?"}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Rough answers are fine.
+        </p>
+      </div>
+      
+      {/* System type pills */}
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">System type</Label>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_SYSTEM_TYPES.map((type) => (
+            <Button
+              key={type}
+              variant={selectedSystemType === type ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedSystemType(type)}
+              className="text-xs"
+            >
+              {SYSTEM_DISPLAY_NAMES[type] || type}
+            </Button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Optional fields */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="brand" className="text-xs text-muted-foreground">
+            Brand (optional)
+          </Label>
+          <Input
+            id="brand"
+            value={brandInput}
+            onChange={(e) => setBrandInput(e.target.value)}
+            placeholder="e.g. Carrier"
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="year" className="text-xs text-muted-foreground">
+            Install year (optional)
+          </Label>
+          <Input
+            id="year"
+            value={installYear}
+            onChange={(e) => setInstallYear(e.target.value)}
+            placeholder="e.g. 2018"
+            type="number"
+            className="h-9"
+          />
+        </div>
+      </div>
+      
+      {/* Actions */}
+      <div className="flex gap-3 pt-2">
+        <Button
+          variant="ghost"
+          className="text-muted-foreground"
+          onClick={handleSkipDetails}
+          disabled={isProcessing}
+        >
+          Skip details
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={handleSaveCorrection}
+          disabled={isProcessing || !selectedSystemType}
+        >
+          {isProcessing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            "Save"
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderSuccessStep = () => (
+    <div className="py-6 text-center space-y-4">
+      <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
+        <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+      </div>
+      <div className="space-y-1">
+        <p className="text-base font-medium">Added.</p>
+        <p className="text-sm text-muted-foreground">
+          I'll start tracking this and include it in your home's outlook.
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          You can update this anytime.
+        </p>
+      </div>
+      <Button onClick={() => onOpenChange(false)} className="mt-4">
+        Done
+      </Button>
+    </div>
+  );
+
+  const renderStep = () => {
+    switch (step) {
+      case 'capture':
+        return renderCaptureStep();
+      case 'analyzing':
+        return renderAnalyzingStep();
+      case 'interpretation':
+        return renderInterpretationStep();
+      case 'correction':
+        return renderCorrectionStep();
+      case 'success':
+        return renderSuccessStep();
+    }
+  };
+
+  return (
+    <ActionSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={step === 'capture' ? "Teach Habitta something new" : undefined}
+    >
+      {renderStep()}
+    </ActionSheet>
+  );
+}

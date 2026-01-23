@@ -465,6 +465,11 @@ export default function DashboardV3() {
                 address={userHome.address}
                 city={userHome.city}
                 state={userHome.state}
+                homeId={userHome.id}
+                onSystemAdded={() => {
+                  // Invalidate relevant queries when a system is added
+                  queryClient.invalidateQueries({ queryKey: ['capital-timeline', userHome.id] });
+                }}
               />
             </aside>
           </ResizablePanel>
