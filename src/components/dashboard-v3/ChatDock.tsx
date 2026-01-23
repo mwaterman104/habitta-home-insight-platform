@@ -127,13 +127,13 @@ export function ChatDock({
     ? `Ask about your ${systemName}...`
     : "Ask about your home...";
 
-  // Collapsed state - floating, minimal (48px)
+  // Collapsed state - dockable panel, ~80px
   if (!isExpanded) {
     return (
-      <div className="bg-card rounded-xl border shadow-lg">
+      <div className="bg-card rounded-xl border shadow-sm transition-all duration-200">
         <button
           onClick={() => onExpandChange(true)}
-          className="w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-xl"
+          className="w-full p-4 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-xl"
         >
           {hasAgentMessage ? (
             <>
@@ -160,9 +160,9 @@ export function ChatDock({
     );
   }
 
-  // Expanded state - floating chat interface with drawer feel
+  // Expanded state - dockable panel with bounded height
   return (
-    <div className="bg-card rounded-xl border shadow-lg flex flex-col max-h-[75vh]">
+    <div className="bg-card rounded-xl border shadow-sm flex flex-col max-h-[min(60vh,420px)] transition-all duration-200">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b shrink-0 rounded-t-xl">
         <div className="flex items-center gap-2">

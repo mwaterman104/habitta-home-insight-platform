@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeHealthCard } from "@/components/HomeHealthCard";
@@ -258,7 +258,7 @@ export function MiddleColumn({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Scrollable content area */}
       <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
-        <div className="space-y-6 max-w-3xl mx-auto pb-28">
+        <div className="space-y-6 max-w-3xl mx-auto pb-6">
           {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
@@ -326,7 +326,7 @@ export function MiddleColumn({
             </section>
           ) : null}
 
-          {/* 5. Maintenance Roadmap - Horizontal time model (NEW) */}
+          {/* 5. Maintenance Roadmap - Horizontal time model */}
           <section ref={maintenanceRef}>
             <MaintenanceRoadmap
               tasks={roadmapTasks}
@@ -334,9 +334,24 @@ export function MiddleColumn({
               showRiskImpact
             />
           </section>
+
+          {/* 6. ChatDock - Sticky dockable panel (IN FLOW) */}
+          <div className="sticky bottom-4">
+            <ChatDock
+              propertyId={propertyId}
+              isExpanded={chatExpanded}
+              onExpandChange={onChatExpandChange}
+              advisorState={advisorState}
+              focusContext={focusContext}
+              hasAgentMessage={hasAgentMessage}
+              openingMessage={openingMessage}
+              confidence={confidence}
+              risk={risk}
+              onUserReply={onUserReply}
+            />
+          </div>
         </div>
       </ScrollArea>
-      
     </div>
   );
 }

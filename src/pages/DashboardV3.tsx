@@ -21,7 +21,7 @@ import { TopHeader } from "@/components/dashboard-v3/TopHeader";
 import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
 import { RightColumn } from "@/components/dashboard-v3/RightColumn";
-import { ChatDock } from "@/components/dashboard-v3/ChatDock";
+// ChatDock is now rendered inside MiddleColumn, not here
 
 interface UserHome {
   id: string;
@@ -65,10 +65,7 @@ export default function DashboardV3() {
   const [homeForecast, setHomeForecast] = useState<HomeForecast | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
 
-  // Right panel size for dynamic ChatDock positioning
-  const [rightPanelSize, setRightPanelSize] = useState(() => {
-    return parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25');
-  });
+// Note: rightPanelSize tracking removed - ChatDock is now in-flow inside MiddleColumn
 
   // Advisor state machine
   const {
@@ -415,7 +412,6 @@ export default function DashboardV3() {
           className="flex-1 hidden xl:flex"
           onLayout={(sizes) => {
             localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
-            setRightPanelSize(sizes[1]); // Live update for ChatDock positioning
           }}
         >
           {/* Middle Column - Primary Canvas */}
@@ -498,33 +494,6 @@ export default function DashboardV3() {
             onTaskComplete={handleTaskComplete}
           />
         </main>
-      </div>
-      
-      {/* Fixed Floating ChatDock - Anchored within middle column bounds */}
-      <div 
-        className="fixed bottom-0 left-0 lg:left-60 z-50 pointer-events-none px-6 pb-4"
-        style={{ 
-          // Dynamic right offset on xl screens, 0 otherwise
-          right: isMobile ? 0 : `${rightPanelSize}%`
-        }}
-      >
-        {/* Gradient fade for drawer relationship cue */}
-        <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-        
-        <div className="max-w-3xl mx-auto pointer-events-auto">
-          <ChatDock
-            propertyId={userHome.id}
-            isExpanded={shouldChatBeOpen}
-            onExpandChange={handleChatExpandChange}
-            hasAgentMessage={hasAgentMessage}
-            advisorState={advisorState}
-            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
-            openingMessage={openingMessage}
-            confidence={confidence}
-            risk={risk}
-            onUserReply={handleUserReply}
-          />
-        </div>
       </div>
     </div>
   );
