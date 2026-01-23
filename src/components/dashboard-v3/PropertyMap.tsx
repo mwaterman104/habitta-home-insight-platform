@@ -22,18 +22,6 @@ interface PropertyMapProps {
 }
 
 /**
- * Convert lat/lng to OSM tile coordinates
- * https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
- */
-function latLngToTile(lat: number, lng: number, zoom: number) {
-  const n = Math.pow(2, zoom);
-  const x = Math.floor((lng + 180) / 360 * n);
-  const latRad = lat * Math.PI / 180;
-  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
-  return { x, y, zoom };
-}
-
-/**
  * Derive climate zone based on location
  * V1: Heuristic-based (will be replaced with proper climate data)
  */
@@ -115,7 +103,7 @@ function deriveClimateZone(
  * Part of the Context Rail (Right Column).
  * Shows property location with climate zone meaning.
  * 
- * Uses OpenStreetMap tiles for reliable map display without API keys.
+ * Uses Google Maps Embed API via iframe - no API key required for basic embed.
  */
 export function PropertyMap({ 
   lat, 
@@ -125,81 +113,62 @@ export function PropertyMap({
   state,
   className 
 }: PropertyMapProps) {
-  const [imageLoading, setImageLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [iframeError, setIframeError] = useState(false);
   
   const hasCoordinates = lat != null && lng != null;
   const climate = deriveClimateZone(state, city, lat);
   
   // Reset state when coordinates change
   useEffect(() => {
-    setImageLoading(true);
-    setImageError(false);
-    setRetryCount(0);
+    setIframeLoading(true);
+    setIframeError(false);
   }, [lat, lng]);
   
-  // Key for forcing image reload on retry
-  const mapKey = `${lat}-${lng}-${retryCount}`;
   const ClimateIcon = climate.icon;
 
-  // Build OSM tile URL - uses public tile server, no API key needed
-  // Zoom level 15 gives good neighborhood detail
-  const zoom = 15;
-  const tile = hasCoordinates ? latLngToTile(lat, lng, zoom) : null;
-  
-  // Use OpenStreetMap tile server (free, no API key required)
-  // Format: https://tile.openstreetmap.org/{z}/{x}/{y}.png
-  const mapUrl = tile
-    ? `https://tile.openstreetmap.org/${tile.zoom}/${tile.x}/${tile.y}.png`
+  // Build Google Maps Embed URL - works without API key for basic usage
+  // Format: https://maps.google.com/maps?q=lat,lng&z=zoom&output=embed
+  const mapEmbedUrl = hasCoordinates
+    ? `https://maps.google.com/maps?q=${lat},${lng}&t=m&z=15&output=embed`
     : null;
 
   return (
     <Card className={cn("overflow-hidden", className)}>
       {/* Full-bleed map visualization */}
       <div className="aspect-video bg-muted flex items-center justify-center relative">
-        {/* Show map tile if we have coordinates and no error */}
-        {mapUrl && !imageError ? (
+        {/* Show Google Maps embed if we have coordinates and no error */}
+        {mapEmbedUrl && !iframeError ? (
           <>
-            {imageLoading && (
+            {iframeLoading && (
               <Skeleton className="absolute inset-0" />
             )}
-            <img
-              key={mapKey}
-              src={mapUrl}
-              alt={`Map of ${address || 'property location'}`}
+            <iframe
+              src={mapEmbedUrl}
+              title={`Map of ${address || 'property location'}`}
               className={cn(
-                "w-full h-full object-cover transition-opacity duration-300",
-                imageLoading ? "opacity-0" : "opacity-100"
+                "w-full h-full border-0 transition-opacity duration-300",
+                iframeLoading ? "opacity-0" : "opacity-100"
               )}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
               onLoad={() => {
-                setImageLoading(false);
-                setImageError(false);
+                setIframeLoading(false);
+                setIframeError(false);
               }}
               onError={() => {
-                setImageLoading(false);
-                // Retry up to 2 times with a delay
-                if (retryCount < 2) {
-                  setTimeout(() => setRetryCount(prev => prev + 1), 1000);
-                } else {
-                  setImageError(true);
-                }
+                setIframeLoading(false);
+                setIframeError(true);
               }}
             />
-            {/* Location pin overlay - since OSM tiles don't have markers */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shadow-lg">
-                <MapPin className="h-5 w-5 text-primary" />
-              </div>
-            </div>
             {/* Climate zone overlay badge */}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm">
+            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm pointer-events-none">
               <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-medium">{climate.label}</span>
             </div>
           </>
         ) : (
-          // Fallback placeholder when no coordinates or image error
+          // Fallback placeholder when no coordinates or iframe error
           <>
             {/* Climate-based gradient overlay */}
             <div className={cn(
