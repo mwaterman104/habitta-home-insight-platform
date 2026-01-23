@@ -22,7 +22,7 @@ interface PropertyMapProps {
 }
 
 const SUPABASE_URL = "https://vbcsuoubxyhjhxcgrqco.supabase.co";
-// Use google-places-details endpoint which supports static map via GET params
+// Use dedicated google-static-map endpoint for map images
 
 /**
  * Derive climate zone based on location
@@ -134,9 +134,9 @@ export function PropertyMap({
   const mapKey = `${lat}-${lng}-${retryCount}`;
   const ClimateIcon = climate.icon;
 
-  // Build the static map URL via edge function (using google-places-details endpoint)
+  // Build the static map URL via dedicated edge function
   const mapUrl = hasCoordinates
-    ? `${SUPABASE_URL}/functions/v1/google-places-details?lat=${lat}&lng=${lng}&zoom=15&size=640x360`
+    ? `${SUPABASE_URL}/functions/v1/google-static-map?lat=${lat}&lng=${lng}&zoom=15&size=640x360`
     : null;
 
   return (
