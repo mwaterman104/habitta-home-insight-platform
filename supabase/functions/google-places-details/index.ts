@@ -23,6 +23,14 @@ serve(async (req) => {
       throw new Error('GOOGLE_PLACES_API_KEY not configured');
     }
 
+    const url = new URL(req.url);
+    
+    // Check if this is a static map request (GET with lat/lng params)
+    if (req.method === 'GET' && url.searchParams.has('lat') && url.searchParams.has('lng')) {
+      return handleStaticMap(url, GOOGLE_PLACES_API_KEY);
+    }
+
+    // Otherwise, handle place details (POST)
     const { place_id, sessionToken } = await req.json();
     
     if (!place_id) {
@@ -42,10 +50,10 @@ serve(async (req) => {
       params.append('sessiontoken', sessionToken);
     }
 
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?${params}`;
+    const apiUrl = `https://maps.googleapis.com/maps/api/place/details/json?${params}`;
     console.log('[google-places-details] Fetching details for place_id:', place_id);
 
-    const response = await fetch(url);
+    const response = await fetch(apiUrl);
     const data = await response.json();
 
     if (data.status !== 'OK') {
@@ -122,3 +130,59 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * Handle static map image requests
+ * GET /google-places-details?lat=...&lng=...&zoom=15&size=640x360
+ */
+async function handleStaticMap(url: URL, apiKey: string): Promise<Response> {
+  const lat = url.searchParams.get('lat');
+  const lng = url.searchParams.get('lng');
+  const zoom = url.searchParams.get('zoom') || '15';
+  const size = url.searchParams.get('size') || '400x200';
+  const maptype = url.searchParams.get('maptype') || 'roadmap';
+  const scale = url.searchParams.get('scale') || '2';
+
+  console.log(`[google-places-details/staticMap] Params: lat=${lat}, lng=${lng}, zoom=${zoom}, size=${size}`);
+
+  if (!lat || !lng) {
+    return new Response(
+      JSON.stringify({ error: 'Missing required parameters: lat, lng' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Build Google Static Maps URL
+  const staticMapUrl = new URL('https://maps.googleapis.com/maps/api/staticmap');
+  staticMapUrl.searchParams.set('center', `${lat},${lng}`);
+  staticMapUrl.searchParams.set('zoom', zoom);
+  staticMapUrl.searchParams.set('size', size);
+  staticMapUrl.searchParams.set('scale', scale);
+  staticMapUrl.searchParams.set('maptype', maptype);
+  staticMapUrl.searchParams.set('markers', `color:red|${lat},${lng}`);
+  staticMapUrl.searchParams.set('key', apiKey);
+
+  console.log(`[google-places-details/staticMap] Fetching map for: ${lat}, ${lng}`);
+
+  const mapResponse = await fetch(staticMapUrl.toString());
+
+  if (!mapResponse.ok) {
+    const errorText = await mapResponse.text();
+    console.error('[google-places-details/staticMap] Google API error:', errorText);
+    return new Response(
+      JSON.stringify({ error: 'Failed to fetch map image' }),
+      { status: mapResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const imageBuffer = await mapResponse.arrayBuffer();
+  console.log(`[google-places-details/staticMap] Success, returning ${imageBuffer.byteLength} bytes`);
+  
+  return new Response(imageBuffer, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+}
