@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Thermometer, Droplet, Snowflake, Sun } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -117,9 +117,20 @@ export function PropertyMap({
 }: PropertyMapProps) {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   
-  const hasCoordinates = lat && lng;
+  const hasCoordinates = lat != null && lng != null;
   const climate = deriveClimateZone(state, city, lat);
+  
+  // Reset state when coordinates change
+  useEffect(() => {
+    setImageLoading(true);
+    setImageError(false);
+    setRetryCount(0);
+  }, [lat, lng]);
+  
+  // Key for forcing image reload on retry
+  const mapKey = `${lat}-${lng}-${retryCount}`;
   const ClimateIcon = climate.icon;
 
   // Build the static map URL via edge function (larger size for better quality)
@@ -138,16 +149,25 @@ export function PropertyMap({
               <Skeleton className="absolute inset-0" />
             )}
             <img
+              key={mapKey}
               src={mapUrl}
               alt={`Map of ${address || 'property location'}`}
               className={cn(
                 "w-full h-full object-cover transition-opacity duration-300",
                 imageLoading ? "opacity-0" : "opacity-100"
               )}
-              onLoad={() => setImageLoading(false)}
+              onLoad={() => {
+                setImageLoading(false);
+                setImageError(false);
+              }}
               onError={() => {
                 setImageLoading(false);
-                setImageError(true);
+                // Retry up to 2 times with a delay
+                if (retryCount < 2) {
+                  setTimeout(() => setRetryCount(prev => prev + 1), 1000);
+                } else {
+                  setImageError(true);
+                }
               }}
             />
             {/* Climate zone overlay badge */}
