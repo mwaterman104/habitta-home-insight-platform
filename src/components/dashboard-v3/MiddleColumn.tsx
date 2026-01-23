@@ -255,10 +255,10 @@ export function MiddleColumn({
   const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Scrollable content area */}
-      <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
-        <div className="space-y-6 max-w-3xl mx-auto pb-6">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* Scrollable content area - independent scroll */}
+      <ScrollArea className="h-full" ref={scrollAreaRef}>
+        <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
           {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
