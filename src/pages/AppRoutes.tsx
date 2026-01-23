@@ -44,8 +44,8 @@ export function AppRoutes() {
             </ProtectedRoute>
           } />
           
-          {/* Dashboard V3: Standalone layout - not inside AuthenticatedLayout */}
-          <Route path="/dashboard-v3" element={
+          {/* Dashboard V3: Now the primary /dashboard route */}
+          <Route path="/dashboard" element={
             <ProtectedRoute>
               <DashboardV3 />
             </ProtectedRoute>
@@ -71,8 +71,8 @@ export function AppRoutes() {
               <AuthenticatedLayout />
             </ProtectedRoute>
           }>
-            {/* PRIMARY: Home Pulse */}
-            <Route path="/dashboard" element={<Dashboard />} />
+            {/* Legacy dashboard redirects to new dashboard */}
+            <Route path="/dashboard-v3" element={<Navigate to="/dashboard" replace />} />
             
             {/* SECONDARY: System Drilldowns (route-based) */}
             <Route path="/system/:systemKey" element={<SystemPage />} />

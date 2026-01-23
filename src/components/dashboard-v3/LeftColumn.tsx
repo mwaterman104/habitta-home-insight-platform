@@ -24,12 +24,12 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   const navigate = useNavigate();
 
   const isActive = (path: string) => location.pathname === path || 
-    (path === '/dashboard-v3' && location.pathname.startsWith('/system')) ||
+    (path === '/dashboard' && location.pathname.startsWith('/system')) ||
     (path === '/systems' && location.pathname.startsWith('/systems'));
 
   const navItems = [
-    { title: "Home Pulse", path: "/dashboard-v3", icon: Home },
-    { title: "Systems Hub", path: "/systems", icon: Cpu },  // NEW
+    { title: "Home Pulse", path: "/dashboard", icon: Home },
+    { title: "Systems Hub", path: "/systems", icon: Cpu },
     { title: "Home Profile", path: "/home-profile", icon: MapPin },
   ];
 
