@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Home, MessageCircle, Settings, FileText, MapPin } from "lucide-react";
+import { Home, MessageCircle, Settings, FileText, MapPin, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LeftColumnProps {
@@ -13,16 +13,23 @@ interface LeftColumnProps {
  * Per spec: Navigation + identity ONLY (not health).
  * Health belongs in the middle column forecast.
  * Bottom nav items are sticky to bottom of the sidebar.
+ * 
+ * Navigation order:
+ * - Home Pulse (dashboard)
+ * - Systems Hub (NEW)
+ * - Home Profile
  */
 export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
   const isActive = (path: string) => location.pathname === path || 
-    (path === '/dashboard-v3' && location.pathname.startsWith('/system'));
+    (path === '/dashboard-v3' && location.pathname.startsWith('/system')) ||
+    (path === '/systems' && location.pathname.startsWith('/systems'));
 
   const navItems = [
     { title: "Home Pulse", path: "/dashboard-v3", icon: Home },
+    { title: "Systems Hub", path: "/systems", icon: Cpu },  // NEW
     { title: "Home Profile", path: "/home-profile", icon: MapPin },
   ];
 

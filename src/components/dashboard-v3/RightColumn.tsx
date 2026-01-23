@@ -1,112 +1,67 @@
-import { CheckCircle2, AlertTriangle, Clock, TrendingUp } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CapitalOutlookCard } from "@/components/CapitalOutlookCard";
-import { PerformanceGlance } from "./PerformanceGlance";
-import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
+import type { HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
+import { PropertyMap } from "./PropertyMap";
+import { LocalSignals } from "./LocalSignals";
 
 interface RightColumnProps {
   homeForecast: HomeForecast | null;
-  hvacPrediction: SystemPrediction | null;
   capitalTimeline: HomeCapitalTimeline | null;
   loading: boolean;
+  // Property location data
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string;
 }
 
 /**
- * RightColumn - "Am I okay?" Performance at a Glance
+ * RightColumn - Context Rail
  * 
- * Since chat is latent, the right column must:
- * - Carry reassurance
- * - Show system status clearly
- * - Answer "Am I okay?" at a glance
+ * Redesigned from "Performance at a Glance" to pure contextual intelligence.
  * 
- * This is where green/yellow/red and "Nothing urgent" do the emotional work.
+ * Contains:
+ * - PropertyMap (location visualization)
+ * - LocalSignals (weather, permits, market)
+ * 
+ * Guardrails (what it must NOT do):
+ * - Must NOT repeat health scores
+ * - Must NOT summarize timelines
+ * - Must NOT introduce CTAs
+ * - Must remain informational and glanceable
  */
 export function RightColumn({
-  homeForecast,
-  hvacPrediction,
-  capitalTimeline,
   loading,
+  latitude,
+  longitude,
+  address,
 }: RightColumnProps) {
-  // Get current quarter
-  const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)} ${new Date().getFullYear()}`;
-
   if (loading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-48 rounded-xl" />
         <Skeleton className="h-32 rounded-xl" />
-        <Skeleton className="h-40 rounded-xl" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Performance at a Glance */}
-      <PerformanceGlance
-        homeForecast={homeForecast}
-        hvacPrediction={hvacPrediction}
-        capitalTimeline={capitalTimeline}
-        quarter={currentQuarter}
+      {/* Property Map - Location visualization */}
+      <PropertyMap 
+        lat={latitude} 
+        lng={longitude}
+        address={address}
+        className="rounded-xl"
       />
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-card">
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-              Total Home Health
-            </p>
-            <p className="text-3xl font-bold text-foreground">
-              {homeForecast?.currentScore || 82}
-            </p>
-            {homeForecast && homeForecast.currentScore > homeForecast.ifLeftUntracked.score12mo && (
-              <div className="flex items-center justify-center gap-1 text-xs text-emerald-600 mt-1">
-                <TrendingUp className="h-3 w-3" />
-                <span>Protected</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card">
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-              Projected Capital
-            </p>
-            <p className="text-2xl font-bold text-foreground">
-              {capitalTimeline?.capitalOutlook?.horizons?.find(h => h.yearsAhead === 10)?.lowEstimate 
-                ? `$${Math.round((capitalTimeline.capitalOutlook.horizons.find(h => h.yearsAhead === 10)?.lowEstimate || 0) / 1000)}k`
-                : '$25k'}
-            </p>
-            <p className="text-xs text-muted-foreground">over 10 years</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Capital Outlook Card */}
-      {capitalTimeline?.capitalOutlook && (
-        <CapitalOutlookCard outlook={capitalTimeline.capitalOutlook} />
-      )}
-
-      {/* Location/Weather Summary (placeholder for map) */}
-      <Card className="bg-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Local Factors</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              Weather & climate monitoring active
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Habitta continuously monitors local conditions that affect your home systems.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Local Signals - Contextual intelligence */}
+      <LocalSignals 
+        weather={{
+          condition: 'Clear',
+          // Future: integrate with actual weather API
+        }}
+        className="rounded-xl"
+      />
     </div>
   );
 }

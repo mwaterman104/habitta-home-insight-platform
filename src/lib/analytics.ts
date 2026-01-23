@@ -1,14 +1,19 @@
 /**
  * Habitta Analytics - Lightweight Instrumentation
  * 
+ * @deprecated Use `import { track } from '@/lib/analytics'` for new events.
+ * Legacy functions below are kept for backward compatibility.
+ * 
  * V1: Console logging (dev visibility)
  * V2: Pipe to PostHog/Mixpanel/Supabase when needed
- * 
- * Tracks key engagement metrics for dashboard intelligence validation.
  */
 
 import type { NarrativePriority } from './narrativePriority';
 import type { AdvisorState } from '@/types/advisorState';
+
+// Re-export new analytics module
+export { track, trackWithContext, getSessionId } from './analytics/index';
+export type { HabittaEvent, EventContext, AnalyticsSurface } from './analytics/types';
 
 export type AnalyticsEvent =
   | { type: 'brief_viewed'; narrativePriority: NarrativePriority; dominantSystem?: string }
