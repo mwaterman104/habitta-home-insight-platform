@@ -122,9 +122,9 @@ export function PropertyMap({
   const climate = deriveClimateZone(state, city, lat);
   const ClimateIcon = climate.icon;
 
-  // Build the static map URL via edge function
+  // Build the static map URL via edge function (larger size for better quality)
   const mapUrl = hasCoordinates
-    ? `${SUPABASE_URL}/functions/v1/google-static-map?lat=${lat}&lng=${lng}&zoom=15&size=400x200`
+    ? `${SUPABASE_URL}/functions/v1/google-static-map?lat=${lat}&lng=${lng}&zoom=15&size=640x360`
     : null;
 
   return (
