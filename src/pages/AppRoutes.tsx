@@ -58,8 +58,8 @@ export function AppRoutes() {
             </ProtectedRoute>
           } />
           
-          {/* System Detail: Uses standardized /systems/:systemSlug route */}
-          <Route path="/systems/:systemSlug" element={
+          {/* System Detail: Uses standardized /systems/:systemKey route */}
+          <Route path="/systems/:systemKey" element={
             <ProtectedRoute>
               <SystemPage />
             </ProtectedRoute>
