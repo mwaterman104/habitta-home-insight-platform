@@ -1,5 +1,4 @@
 import { Cloud, FileText, TrendingUp, Thermometer } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface LocalSignalsProps {
   weather?: {
@@ -13,15 +12,15 @@ interface LocalSignalsProps {
 }
 
 /**
- * LocalSignals - Contextual intelligence for the Context Rail
+ * LocalSignals - Contextual intelligence signals
+ * 
+ * Redesigned to nest visually under PropertyMap.
+ * No longer a separate card - renders as a compact list.
  * 
  * Shows:
- * - Current weather impact
- * - Recent permits in area
- * - Market conditions (if available)
- * 
- * Must remain informational and glanceable.
- * Must NOT repeat health scores or introduce CTAs.
+ * - Current weather
+ * - Permit activity
+ * - Market conditions
  */
 export function LocalSignals({ 
   weather, 
@@ -35,20 +34,18 @@ export function LocalSignals({
       label: 'Weather',
       value: weather.temperature 
         ? `${weather.temperature}°F` 
-        : weather.condition || 'Monitoring active',
+        : weather.condition || 'Monitoring',
       detail: weather.humidity ? `${weather.humidity}% humidity` : undefined,
     },
     recentPermits !== undefined && {
       icon: FileText,
-      label: 'Nearby Permits',
-      value: `${recentPermits} recent`,
-      detail: 'In your neighborhood',
+      label: 'Permits',
+      value: `${recentPermits} nearby`,
     },
     marketTrend && {
       icon: TrendingUp,
       label: 'Market',
       value: marketTrend === 'up' ? 'Trending up' : marketTrend === 'down' ? 'Trending down' : 'Stable',
-      detail: 'Local home values',
     },
   ].filter(Boolean) as Array<{
     icon: React.ElementType;
@@ -57,51 +54,32 @@ export function LocalSignals({
     detail?: string;
   }>;
 
-  // Show default if no signals available
+  // If no signals, show minimal state
   if (signals.length === 0) {
     return (
-      <Card className={className}>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Local Factors</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Weather & climate monitoring active
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Habitta continuously monitors local conditions.
-          </p>
-        </CardContent>
-      </Card>
+      <div className={className}>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Cloud className="h-3.5 w-3.5" />
+          <span>Monitoring local conditions</span>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className={className}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Local Factors</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className={className}>
+      <div className="space-y-2">
         {signals.map((signal, i) => (
-          <div key={i} className="flex items-start gap-3">
-            <div className="h-7 w-7 rounded-md bg-muted flex items-center justify-center shrink-0">
-              <signal.icon className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs text-muted-foreground">{signal.label}</span>
-                <span className="text-sm font-medium">{signal.value}</span>
-              </div>
-              {signal.detail && (
-                <p className="text-xs text-muted-foreground">{signal.detail}</p>
-              )}
-            </div>
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <signal.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground">{signal.label}:</span>
+            <span className="font-medium">{signal.value}</span>
+            {signal.detail && (
+              <span className="text-muted-foreground">• {signal.detail}</span>
+            )}
           </div>
         ))}
-        <p className="text-xs text-muted-foreground pt-2 border-t">
-          Factors that may affect your home systems.
-        </p>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
