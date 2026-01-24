@@ -36,7 +36,7 @@ export function CapitalTimeline({ timeline, onSystemClick }: CapitalTimelineProp
     <Card className="rounded-2xl border-t-2 border-t-primary/20">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold">Home Systems Timeline</CardTitle>
+          <CardTitle className="heading-h3">Home Systems Timeline</CardTitle>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

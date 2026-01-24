@@ -62,7 +62,7 @@ export function TopHeader({
     <header className="h-16 border-b bg-card px-6 flex items-center justify-between shrink-0">
       {/* Left: Brand + Property Selector */}
       <div className="flex items-center gap-4">
-        <span className="text-xl font-bold text-primary">Habitta</span>
+        <span className="font-serif text-xl font-semibold text-primary">Habitta</span>
         
         <button 
           onClick={onAddressClick}

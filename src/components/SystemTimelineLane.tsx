@@ -92,7 +92,7 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
           >
             {/* System label */}
             <div className="w-28 flex-shrink-0">
-              <span className="text-sm font-medium text-foreground">
+              <span className="system-name text-sm text-foreground">
                 {system.systemLabel}
               </span>
               {showEstimatedLabel && (

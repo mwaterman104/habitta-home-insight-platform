@@ -111,7 +111,7 @@ export function HomeHealthCard({
         {/* 1. Trajectory Headline with Tooltip */}
         <div>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+            <span className="heading-h3 text-foreground">
               Home Health Forecast
             </span>
             <TooltipProvider>
@@ -132,11 +132,11 @@ export function HomeHealthCard({
           
           {/* Score trajectory: Current → Projected */}
           <div className="flex items-baseline gap-2 mt-1">
-            <span className={`text-5xl font-bold ${getCurrentScoreColor()}`}>
+            <span className={`text-kpi-lg text-[3rem] ${getCurrentScoreColor()} tabular-nums`}>
               {currentScore}
             </span>
             <span className="text-2xl text-muted-foreground">→</span>
-            <span className="text-2xl font-semibold text-amber-600">
+            <span className="text-kpi text-amber-600">
               {ifLeftUntracked.score24mo}
             </span>
           </div>
@@ -261,10 +261,10 @@ function LegacyHomeHealthCard({
   return (
     <Card className="rounded-2xl bg-gradient-to-br from-blue-50 to-slate-50 border-0 shadow-sm">
       <CardContent className="p-6">
-        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-medium">
+        <div className="heading-h3 text-foreground mb-1">
           Home Health
         </div>
-        <div className={`text-5xl font-bold mb-3 ${getScoreColor()}`}>
+        <div className={`text-kpi-lg text-[3rem] mb-3 ${getScoreColor()} tabular-nums`}>
           {overallScore}
         </div>
         <p className="text-gray-700 mb-3 leading-relaxed">
