@@ -212,3 +212,136 @@ export function getScoreChangeCopy(isImproved: boolean): string {
   }
   return 'Minor score movement reflects natural system aging—not a new issue.';
 }
+
+// =============================================================================
+// CONTEXT RAIL COPY GOVERNANCE
+// =============================================================================
+
+/**
+ * Context Card States
+ * 
+ * The Context Rail displays ONE card at a time based on Today's Focus.
+ * States are gated by focus type - never introduce independent conclusions.
+ */
+export type ContextCardState = 'climate_stress' | 'local_activity' | 'risk_context' | 'quiet';
+
+export interface ContextCardCopy {
+  label: string;
+  headline: string; // MUST be anchored to "this home/area/climate"
+  bullets: string[];
+  learnMoreLabel?: string;
+  learnMoreHref?: string;
+}
+
+/**
+ * Get context card copy based on state and climate zone
+ * 
+ * Rule: If headline can stand alone as a conclusion, it's too strong.
+ * Anchored headlines always reference "your home/area/climate".
+ */
+export function getContextCardCopy(
+  state: ContextCardState,
+  climateZone: 'high_heat' | 'coastal' | 'freeze_thaw' | 'moderate',
+  systemName?: string
+): ContextCardCopy {
+  switch (state) {
+    case 'climate_stress':
+      return getClimateStressCopy(climateZone);
+    
+    case 'local_activity':
+      return {
+        label: 'Local context',
+        headline: 'Replacement activity is common for homes in your area.',
+        bullets: [
+          `Similar homes often replace ${systemName || 'this system'} within typical age ranges`,
+          'Permits in your area suggest standard timing',
+        ],
+        learnMoreLabel: 'View system planning details',
+        learnMoreHref: systemName ? `/systems/${systemName}` : '/systems',
+      };
+    
+    case 'risk_context':
+      return {
+        label: 'Risk context',
+        headline: 'Roof age affects insurance and inspections for your home.',
+        bullets: [
+          'Tile roofs age slower but draw scrutiny later',
+          'Documentation matters more than age alone',
+        ],
+        learnMoreLabel: 'See roof details',
+        learnMoreHref: '/systems/roof',
+      };
+    
+    case 'quiet':
+    default:
+      return {
+        label: 'Home context',
+        headline: 'Conditions are typical for homes in your area.',
+        bullets: [
+          'No unusual environmental stress detected',
+          'Systems are aging within expected ranges',
+        ],
+      };
+  }
+}
+
+/**
+ * Get climate-specific copy with anchored headlines
+ */
+function getClimateStressCopy(
+  zone: 'high_heat' | 'coastal' | 'freeze_thaw' | 'moderate'
+): ContextCardCopy {
+  switch (zone) {
+    case 'high_heat':
+      return {
+        label: 'Climate context',
+        headline: 'High heat and humidity increase wear for homes like yours.',
+        bullets: [
+          'Increased runtime for HVAC systems',
+          'Higher corrosion risk for water heaters',
+          'Seasonal maintenance matters more here',
+        ],
+        learnMoreLabel: 'How climate affects your systems',
+        learnMoreHref: '/home-profile',
+      };
+    
+    case 'coastal':
+      return {
+        label: 'Climate context',
+        headline: 'Salt air exposure affects exterior and HVAC systems in your area.',
+        bullets: [
+          'Salt exposure accelerates metal corrosion',
+          'Exterior paint and siding wear faster',
+          'HVAC filters may need more frequent replacement',
+        ],
+        learnMoreLabel: 'How climate affects your systems',
+        learnMoreHref: '/home-profile',
+      };
+    
+    case 'freeze_thaw':
+      return {
+        label: 'Climate context',
+        headline: 'Freeze-thaw cycles stress plumbing and foundations in your climate.',
+        bullets: [
+          'Pipe insulation is critical for winter',
+          'Foundation stress from ground movement',
+          'Roof ice dams may form in heavy winters',
+        ],
+        learnMoreLabel: 'How climate affects your systems',
+        learnMoreHref: '/home-profile',
+      };
+    
+    case 'moderate':
+    default:
+      return {
+        label: 'Climate context',
+        headline: 'Climate conditions are within normal ranges for your area.',
+        bullets: [
+          'Standard maintenance cycles apply',
+          'No elevated environmental risk detected',
+        ],
+        learnMoreLabel: 'How climate affects your systems',
+        learnMoreHref: '/home-profile',
+      };
+  }
+}

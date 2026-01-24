@@ -1,43 +1,49 @@
-import { useState } from "react";
-import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { HomeForecast } from "@/types/systemPrediction";
-import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import { PropertyMap } from "./PropertyMap";
-import { LocalSignals } from "./LocalSignals";
-import { Card, CardContent } from "@/components/ui/card";
-import { TeachHabittaModal } from "@/components/TeachHabittaModal";
+import { FocusContextCard } from "./FocusContextCard";
+import { deriveClimateZone } from "@/lib/climateZone";
+import type { FocusContext, RiskLevel } from "@/types/advisorState";
+import type { SystemPrediction } from "@/types/systemPrediction";
+import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 
 interface RightColumnProps {
-  homeForecast: HomeForecast | null;
-  capitalTimeline: HomeCapitalTimeline | null;
   loading: boolean;
-  // Property location data
+  // Location
   latitude?: number | null;
   longitude?: number | null;
   address?: string;
   city?: string;
   state?: string;
-  // For TeachHabitta modal
-  homeId?: string;
-  onSystemAdded?: () => void;
+  // Authority coupling (from advisor state)
+  focusContext: FocusContext;
+  // Data for context card
+  hvacPrediction: SystemPrediction | null;
+  capitalTimeline: HomeCapitalTimeline | null;
+  homeAge?: number;
+  risk: RiskLevel;
+  confidence: number;
 }
 
 /**
  * RightColumn - Context Rail
  * 
- * Redesigned to visually nest LocalSignals under PropertyMap.
- * PropertyMap now includes climate zone indicator.
+ * Redesigned as a purposeful Context Rail with explicit Authority Contract.
+ * Answers: "What external or structural factors matter right now for this home?"
+ * 
+ * Authority Hierarchy:
+ * - Primary: Today's Focus (via focusContext)
+ * - Secondary: Context Rail (this component)
  * 
  * Contains:
- * - PropertyMap (with climate meaning)
- * - LocalSignals (nested under map)
+ * - PropertyMap (with climate meaning) - taller at h-72
+ * - FocusContextCard (authority-coupled, single card)
  * 
- * Guardrails (what it must NOT do):
- * - Must NOT repeat health scores
- * - Must NOT summarize timelines
- * - Must NOT introduce CTAs
- * - Must remain informational and glanceable
+ * Guardrails (what it MUST NOT do):
+ * - Must NOT introduce new system focus
+ * - Must NOT escalate urgency beyond Today's Focus
+ * - Must NOT present recommendations or actions
+ * - Must NOT contradict Today's Focus headline
+ * - Must NOT speak when Today's Focus is silent (except Quiet State)
  */
 export function RightColumn({
   loading,
@@ -46,23 +52,27 @@ export function RightColumn({
   address,
   city,
   state,
-  homeId,
-  onSystemAdded,
+  focusContext,
+  hvacPrediction,
+  capitalTimeline,
+  homeAge,
+  risk,
+  confidence,
 }: RightColumnProps) {
-  const [showTeachModal, setShowTeachModal] = useState(false);
+  const climate = deriveClimateZone(state, city, latitude);
   
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-48 rounded-xl" />
-        <Skeleton className="h-20 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Property Map - Location with climate meaning */}
+    <div className="space-y-6">
+      {/* Property Map - taller, explanatory */}
       <PropertyMap 
         lat={latitude} 
         lng={longitude}
@@ -72,50 +82,17 @@ export function RightColumn({
         className="rounded-xl"
       />
 
-      {/* Local Signals - Nested under map */}
-      <Card className="rounded-xl">
-        <CardContent className="py-3">
-          <p className="text-xs font-medium text-muted-foreground mb-2">
-            Local Factors
-          </p>
-          <LocalSignals 
-            weather={{
-              condition: 'Clear',
-              // Future: integrate with actual weather API
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Add System Affordance - Entry point for TeachHabittaModal */}
-      {homeId && (
-        <Card className="rounded-xl">
-          <CardContent className="py-3">
-            <button
-              onClick={() => setShowTeachModal(true)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
-            >
-              <Plus className="h-4 w-4" />
-              <div className="text-left">
-                <span className="block font-medium">Add a system or appliance</span>
-                <span className="text-xs">Help Habitta track something new</span>
-              </div>
-            </button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* TeachHabittaModal */}
-      {homeId && (
-        <TeachHabittaModal
-          open={showTeachModal}
-          onOpenChange={setShowTeachModal}
-          homeId={homeId}
-          onSystemAdded={() => {
-            onSystemAdded?.();
-          }}
-        />
-      )}
+      {/* Focus Context Card - authority-coupled */}
+      <FocusContextCard
+        focusContext={focusContext}
+        authoritySource="todays_focus"
+        climateZone={climate}
+        hvacPrediction={hvacPrediction}
+        capitalTimeline={capitalTimeline}
+        homeAge={homeAge}
+        risk={risk}
+        confidence={confidence}
+      />
     </div>
   );
 }

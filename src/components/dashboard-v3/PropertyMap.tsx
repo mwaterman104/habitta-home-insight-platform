@@ -68,7 +68,7 @@ export function PropertyMap({
   if (!hasCoordinates) {
     return (
       <Card className={cn("overflow-hidden", className)}>
-        <div className="aspect-video bg-muted flex items-center justify-center relative">
+        <div className="h-72 bg-muted flex items-center justify-center relative">
           {/* Climate-based gradient overlay */}
           <div
             className={cn(
@@ -103,7 +103,7 @@ export function PropertyMap({
 
   return (
     <Card className={cn("overflow-hidden", className)}>
-      <div className="aspect-video relative bg-muted">
+      <div className="h-72 relative bg-muted">
         {/* Loading skeleton */}
         {!imageLoaded && !imageError && (
           <Skeleton className="absolute inset-0" />

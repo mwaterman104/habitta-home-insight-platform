@@ -7,3 +7,5 @@ export { MiddleColumn } from './MiddleColumn';
 export { RightColumn } from './RightColumn';
 export { ChatDock } from './ChatDock';
 export { PerformanceGlance } from './PerformanceGlance';
+export { FocusContextCard } from './FocusContextCard';
+export { PropertyMap } from './PropertyMap';
