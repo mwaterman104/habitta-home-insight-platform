@@ -3,6 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Thermometer, Home, Wind, Loader2, Calendar } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { 
+  getBaselineStrengthLabel, 
+  isSnapshotThin,
+  getRoofConfidenceDisplay,
+  getCoolingConfidenceDisplay,
+} from "@/lib/onboardingHelpers";
 
 interface SnapshotData {
   city: string;
@@ -54,15 +60,10 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
 
   const climateInfo = getClimateStressLabel(snapshot.climate_stress);
   const hasHvacPermit = !!snapshot.hvac_permit_year;
-
-  // Generate confidence summary based on score
-  const getConfidenceSummary = () => {
-    if (isEnriching) return 'Finding more data...';
-    if (confidence >= 70) return 'High confidence from permit records';
-    if (confidence >= 50) return 'Moderate confidence from property data';
-    if (confidence >= 40) return 'Based on available public data';
-    return 'Limited data available';
-  };
+  
+  // Derive confidence labels (Risk 3: Separate confidence from source)
+  const roofConfidence = getRoofConfidenceDisplay(false); // No roof permit support yet
+  const coolingConfidence = getCoolingConfidenceDisplay(hasHvacPermit);
 
   return (
     <div className="space-y-6">
@@ -73,7 +74,7 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
         </Badge>
       </div>
 
-      {/* System Cards */}
+      {/* System Cards with Confidence Labels */}
       <div className="grid gap-3">
         {/* Year Built - show if available */}
         {snapshot.year_built && (
@@ -83,7 +84,12 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
                 <Calendar className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Year Built</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground">Year Built</p>
+                  <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
+                    Confirmed
+                  </Badge>
+                </div>
                 <p className="font-medium">{snapshot.year_built}</p>
               </div>
             </CardContent>
@@ -97,15 +103,13 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
               <Home className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Roof</p>
-              <p className="font-medium">
-                {getRoofLabel(snapshot.roof_type)}
-                {snapshot.roof_age_band !== 'unknown' && (
-                  <span className="text-muted-foreground font-normal">
-                    {' '}(estimated)
-                  </span>
-                )}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-muted-foreground">Roof</p>
+                <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
+                  {roofConfidence}
+                </Badge>
+              </div>
+              <p className="font-medium">{getRoofLabel(snapshot.roof_type)}</p>
             </div>
           </CardContent>
         </Card>
@@ -117,13 +121,16 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
               <Wind className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Cooling</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-muted-foreground">Cooling</p>
+                <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
+                  {coolingConfidence}
+                </Badge>
+              </div>
               <p className="font-medium">
                 {getCoolingLabel(snapshot.cooling_type)}
-                {hasHvacPermit ? (
+                {hasHvacPermit && (
                   <span className="text-primary font-normal"> (replaced {snapshot.hvac_permit_year})</span>
-                ) : (
-                  <span className="text-muted-foreground font-normal"> (likely)</span>
                 )}
               </p>
             </div>
@@ -137,7 +144,12 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
               <Thermometer className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-muted-foreground">Climate</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-muted-foreground">Climate</p>
+                <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
+                  Confirmed
+                </Badge>
+              </div>
               <Badge variant="outline" className={climateInfo.className}>
                 {climateInfo.text}
               </Badge>
@@ -146,18 +158,13 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
         </Card>
       </div>
 
-      {/* Confidence Score */}
+      {/* Baseline Strength (reframed from "Home Confidence") */}
       <Card className="bg-muted/50 border-0">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Home Confidence</span>
-            <span 
-              className={cn(
-                "text-2xl font-bold transition-all duration-500",
-                isEnriching && "animate-pulse"
-              )}
-            >
-              {confidence}%
+            <span className="text-sm font-medium">Home Baseline Strength</span>
+            <span className="text-base font-semibold text-foreground">
+              {getBaselineStrengthLabel(confidence)}
             </span>
           </div>
           <Progress 
@@ -169,8 +176,17 @@ export function InstantSnapshot({ snapshot, confidence, isEnriching = false }: I
           />
           <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
             {isEnriching && <Loader2 className="h-3 w-3 animate-spin" />}
-            {getConfidenceSummary()}
+            {isEnriching 
+              ? 'Finding more data...' 
+              : 'We refine this over time — with or without input.'}
           </p>
+          
+          {/* Thin data warning (Risk 5 Fix) */}
+          {!isEnriching && isSnapshotThin(confidence, !!snapshot.year_built) && (
+            <p className="text-xs text-muted-foreground mt-2 italic">
+              Some records were unavailable. We'll keep checking.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
