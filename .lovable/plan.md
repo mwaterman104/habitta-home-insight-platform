@@ -1,191 +1,272 @@
 
-
-# Switch PropertyMap to Google Maps Static API (Refined)
+# Habitta Typography System V1 Implementation
 
 ## Current State Assessment
 
-**Edge Function (`google-static-map`) - Already Has:**
-- ✅ Explicit `markers=color:red|${lat},${lng}` param (line 54)
-- ✅ Cache headers: `Cache-Control: public, max-age=86400` (line 79)  
-- ✅ Returns non-200 status on Google API failure
+| Aspect | Current | Target |
+|--------|---------|--------|
+| Primary Typeface | Inter → IBM Plex Sans fallback | IBM Plex Sans (exclusive) |
+| Secondary Typeface | Not configured | IBM Plex Serif (headers, system names) |
+| Font Weights | 300-700 loaded | 400, 500, 600 only |
+| Base Body Size | `clamp(0.875rem, ...)` (~14px) | 15px/22px (Desktop) |
+| Letter-spacing | Not applied | +0.2px on labels/controls |
 
-**Needs Enhancement:**
-- Content-type validation (Google can return 200 with error image)
-- Size sanity check (error images are typically < 1KB)
+**Key Finding:** IBM Plex Serif is not currently loaded or configured—this is the biggest gap.
 
 ---
 
-## Phase 1: Harden Edge Function
+## Implementation Plan
 
-**File: `supabase/functions/google-static-map/index.ts`**
+### Phase 1: Foundation Setup
 
-Add response validation before returning the image:
+**File: `src/index.css`**
 
-| Check | Purpose |
-|-------|---------|
-| Content-Type header | Ensure Google returned `image/png` not `text/html` error page |
-| Image size > 1KB | Google error images are tiny; valid maps are larger |
-| Explicit error detection | Look for known error patterns |
+Replace font imports and set base typography variables:
 
-```typescript
-// After fetching from Google
-const contentType = mapResponse.headers.get('content-type');
-if (!contentType?.includes('image/')) {
-  console.error('[google-static-map] Invalid content-type:', contentType);
-  return new Response(
-    JSON.stringify({ error: 'Invalid map response' }),
-    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
+| Change | Details |
+|--------|---------|
+| Remove Inter import | Inter is not in the typography spec |
+| Add IBM Plex Serif | Load weights 500, 600 (no italics) |
+| Adjust IBM Plex Sans weights | Remove 300, 700 (only 400, 500, 600) |
+| Set base body | 15px with 1.47 line-height |
 
-const imageBuffer = await mapResponse.arrayBuffer();
+New import line:
+```css
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap');
+```
 
-// Sanity check: Google error images are very small
-if (imageBuffer.byteLength < 1024) {
-  console.error('[google-static-map] Suspiciously small image:', imageBuffer.byteLength);
-  return new Response(
-    JSON.stringify({ error: 'Map service returned invalid image' }),
-    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+New base layer:
+```css
+body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.47; /* ~22px */
 }
 ```
 
 ---
 
-## Phase 2: Simplify PropertyMap Component
+### Phase 2: Tailwind Configuration
 
-**File: `src/components/dashboard-v3/PropertyMap.tsx`**
+**File: `tailwind.config.ts`**
 
-Replace current OSM tile logic with Google Static Maps edge function. Per QA guidance, use a **two-step fallback** (not three):
-
-```text
-1. Google Static Map (via edge function)
-   ↓ onError (HTTP error or load failure)
-2. Coordinate placeholder with climate badge
-```
-
-**Remove:**
-- OSM tile fallback (adds complexity, still has centering issues)
-- Manual `MapPin` overlay (Google marker handles this)
-- `getOsmTileUrl()` function
-- `getStaticMapUrl()` function (unused Geoapify code)
-
-**Add:**
-- `getGoogleMapUrl()` - builds edge function URL
-- `useMemo` for URL stability (prevents re-renders from regenerating URLs)
-
-### New URL Generator
+Update `fontFamily` to include serif and lock the sans stack:
 
 ```typescript
-const getGoogleMapUrl = useMemo(() => {
-  if (!lat || !lng) return null;
-  
-  const params = new URLSearchParams({
-    lat: lat.toString(),
-    lng: lng.toString(),
-    zoom: '16',
-    size: '640x360',
-    scale: '2',
-    maptype: 'roadmap'
-  });
-  
-  return `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/google-static-map?${params}`;
-}, [lat, lng]);
+fontFamily: {
+  sans: ['IBM Plex Sans', 'sans-serif'],
+  serif: ['IBM Plex Serif', 'serif'],
+},
 ```
 
-**Key:** Using `useMemo` ensures the URL is stable and doesn't regenerate on every render, respecting browser caching and avoiding unnecessary requests.
+Add custom font-size utilities matching the type scale:
+
+```typescript
+fontSize: {
+  // Headers (Serif)
+  'h1': ['1.75rem', { lineHeight: '2.25rem', fontWeight: '600' }],  // 28px/36px
+  'h2': ['1.375rem', { lineHeight: '1.875rem', fontWeight: '500' }], // 22px/30px
+  'h3': ['1.125rem', { lineHeight: '1.625rem', fontWeight: '500' }], // 18px/26px
+  // Body (Sans)
+  'body': ['0.9375rem', { lineHeight: '1.375rem' }],    // 15px/22px
+  'body-sm': ['0.875rem', { lineHeight: '1.25rem' }],   // 14px/20px
+  'meta': ['0.75rem', { lineHeight: '1rem' }],          // 12px/16px
+  // Labels & Controls
+  'label': ['0.8125rem', { lineHeight: '1rem', letterSpacing: '0.2px' }], // 13px
+  // KPI
+  'kpi': ['1.25rem', { lineHeight: '1.5rem', fontWeight: '600' }],  // 20px
+  'kpi-lg': ['1.5rem', { lineHeight: '1.75rem', fontWeight: '600' }], // 24px
+},
+```
 
 ---
 
-## Phase 3: Improve Climate Badge Contrast
+### Phase 3: Utility Classes
 
-**Current:** `bg-background/90 backdrop-blur-sm`
+**File: `src/index.css`** (utilities layer)
 
-Google Maps have busier backgrounds than OSM tiles. Enhance for readability:
+Add semantic typography classes for consistent usage:
 
-```typescript
-<div className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md border border-black/5">
-  <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
-  <span className="text-xs font-semibold text-foreground">{climate.label}</span>
-</div>
+```css
+@layer utilities {
+  /* Serif headers - use sparingly */
+  .heading-h1 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.75rem;
+    line-height: 2.25rem;
+    font-weight: 600;
+  }
+  
+  .heading-h2 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.375rem;
+    line-height: 1.875rem;
+    font-weight: 500;
+  }
+  
+  .heading-h3 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.125rem;
+    line-height: 1.625rem;
+    font-weight: 500;
+  }
+  
+  /* System names - serif emphasis */
+  .system-name {
+    font-family: 'IBM Plex Serif', serif;
+    font-weight: 500;
+  }
+  
+  /* Label/control text - with letter-spacing */
+  .text-label {
+    font-size: 0.8125rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+  
+  /* KPI numbers - tabular if available */
+  .text-kpi {
+    font-size: 1.25rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+}
 ```
 
-**Changes:**
-- Higher opacity: `bg-white/95` (was `/90`)
-- Stronger blur: `backdrop-blur-md` (was `-sm`)
-- Added border: `border border-black/5`
-- Bolder text: `font-semibold` (was `font-medium`)
-- Explicit z-index: `z-20`
-- Slightly larger padding for touch targets
+---
+
+### Phase 4: Component Refactoring
+
+Update key components to use the new typography system:
+
+#### A. Section Headers → Serif
+
+**Files to update:**
+- `src/components/CapitalTimeline.tsx` — "Home Systems Timeline"
+- `src/components/HomeHealthCard.tsx` — "Home Health Forecast"
+- `src/components/SystemOptimizationSection.tsx` — Section headers
+- `src/components/dashboard-v3/TopHeader.tsx` — "Habitta" brand (consider serif)
+- `src/pages/SystemsHub.tsx` — Page title, section headers
+
+Example change:
+```tsx
+// Before
+<CardTitle className="text-lg font-semibold">Home Systems Timeline</CardTitle>
+
+// After
+<CardTitle className="heading-h3">Home Systems Timeline</CardTitle>
+```
+
+#### B. System Names → Serif
+
+**Files to update:**
+- `src/components/SystemStatusCard.tsx` — `{systemName}`
+- `src/components/SystemTimelineLane.tsx` — System labels
+- `src/pages/SystemsHub.tsx` — System card titles
+
+Example change:
+```tsx
+// Before
+<h3 className="font-semibold text-gray-900">{systemName}</h3>
+
+// After
+<h3 className="system-name text-gray-900">{systemName}</h3>
+```
+
+#### C. Labels & Controls → Letter-spacing
+
+**Files to update:**
+- `src/components/ui/button.tsx` — Add `tracking-[0.2px]`
+- Badge/tab components — Use `text-label` class
+
+Example change:
+```tsx
+// Before (button.tsx)
+"text-sm font-medium"
+
+// After
+"text-[0.8125rem] font-medium tracking-[0.2px]"
+```
+
+#### D. KPI Numbers → Tabular
+
+**Files to update:**
+- `src/components/HomeHealthCard.tsx` — Score display (85 → 72)
+- Any numeric displays using large numbers
+
+Example change:
+```tsx
+// Before
+<span className="text-5xl font-bold">{currentScore}</span>
+
+// After
+<span className="text-[3rem] font-semibold tabular-nums">{currentScore}</span>
+```
+
+---
+
+### Phase 5: Mobile Scale Adjustment
+
+Add responsive overrides in `src/index.css`:
+
+```css
+@media (max-width: 768px) {
+  body {
+    font-size: 0.875rem; /* 14px min body */
+    line-height: 1.5;
+  }
+  
+  .heading-h1 { font-size: 1.5rem; line-height: 2rem; }
+  .heading-h2 { font-size: 1.25rem; line-height: 1.75rem; }
+  .heading-h3 { font-size: 1rem; line-height: 1.5rem; }
+}
+```
 
 ---
 
 ## Files Summary
 
-| File | Action | Changes |
-|------|--------|---------|
-| `supabase/functions/google-static-map/index.ts` | Modify | Add content-type validation, size sanity check |
-| `src/components/dashboard-v3/PropertyMap.tsx` | Modify | Switch to Google Maps, remove OSM, simplify fallback, enhance badge |
+| File | Action | Scope |
+|------|--------|-------|
+| `src/index.css` | Modify | Font imports, base styles, utility classes, mobile scale |
+| `tailwind.config.ts` | Modify | Font families, font-size scale |
+| `src/components/ui/button.tsx` | Modify | Letter-spacing for controls |
+| `src/components/CapitalTimeline.tsx` | Modify | Serif header |
+| `src/components/HomeHealthCard.tsx` | Modify | Serif header, KPI tabular nums |
+| `src/components/SystemStatusCard.tsx` | Modify | Serif system name |
+| `src/components/SystemOptimizationSection.tsx` | Modify | Serif section header |
+| `src/components/dashboard-v3/TopHeader.tsx` | Modify | Brand treatment |
+| `src/pages/SystemsHub.tsx` | Modify | Page title, section headers, system names |
 
 ---
 
-## Technical Details
+## Technical Notes
 
-### Visual Improvements
+### What Gets Removed
+- Inter font family (entire stack)
+- Font weights 300 and 700
+- `font-inter` Tailwind class
+- Existing `clamp()` responsive sizing (replaced with explicit mobile media query)
 
-| Aspect | OSM (Current) | Google (After) |
-|--------|---------------|----------------|
-| Centering | Single tile, offset | Exact coordinates |
-| Marker | Manual overlay | Native red marker |
-| Resolution | 256x256 tile | 640x360 @ 2x scale |
-| Labels | Limited | Full street names |
-| Consistency | Varies by tile | Predictable |
+### Case Rules Applied
+- Sentence case everywhere
+- Title case only for: System names (HVAC, Roof), Forecast section headers, Major summaries
 
-### Fallback Behavior
-
-```text
-Coordinates present?
-├── Yes → Load Google Static Map
-│         ├── Success → Show map with marker
-│         └── Error → Show coordinate placeholder
-│                     (calm, no error banners)
-└── No → Show climate gradient placeholder
-         (enrichment may be in progress)
-```
-
-### Edge Function Defaults (Server-Side)
-
-The edge function already enforces sensible defaults:
-- `zoom: '15'` (overridden to 16 by client)
-- `size: '400x200'` (overridden to 640x360 by client)
-- `scale: '2'` (retina)
-- `maptype: 'roadmap'`
-
-### Caching Strategy
-
-1. **Browser caching:** Edge function returns `Cache-Control: public, max-age=86400` (24 hours)
-2. **React stability:** `useMemo` prevents URL regeneration between renders
-3. **CDN caching:** Supabase edge functions support edge caching
+### Principles Enforced
+- No playful typography
+- No trendy type treatments
+- Calm > clever
+- Trust > excitement
 
 ---
 
-## Product Behavior
+## Visual Before/After
 
-**When map loads successfully:**
-- High-resolution Google Map with red marker centered on property
-- Climate zone badge (e.g., "High heat & humidity zone") in bottom-left
-- Smooth fade-in transition
-
-**When map fails to load:**
-- Shows simple coordinate placeholder: `26.6234, -80.2156`
-- Climate badge still visible
-- No error banners or alerts
-
-**When coordinates are missing:**
-- Shows climate-appropriate gradient background
-- Address text (if available)
-- Climate badge
-- Background enrichment may be running
-
-This maintains Habitta's "calm even when incomplete" design philosophy.
-
+| Element | Before | After |
+|---------|--------|-------|
+| Section Headers | `text-lg font-semibold` (Sans) | `heading-h3` (Serif 500) |
+| System Names | `font-semibold` (Sans) | `system-name` (Serif 500) |
+| KPI Score | `text-5xl font-bold` | `text-kpi-lg tabular-nums` |
+| Buttons | `text-sm font-medium` | `text-label tracking-[0.2px]` |
+| Body Copy | Inter 14-15px | IBM Plex Sans 400, 15px |
