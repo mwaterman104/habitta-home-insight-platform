@@ -51,6 +51,9 @@ const HomeProfilePage = () => {
   // Get intelligence data for the home
   const { systems, validationInsights, loading: intelligenceLoading } = useHomeIntelligence();
 
+  // Get systems data - must be called before any conditional returns
+  const { systems: systemsData, loading: systemsLoading } = useSystemsData(home?.id || '');
+
   // Build full address for Attom API when home data is available
   const fullAddress = home 
     ? `${home.address}, ${home.city}, ${home.state} ${home.zip_code}`
@@ -129,9 +132,6 @@ const HomeProfilePage = () => {
     );
   }
 
-  // Get systems data from the new hook
-  const { systems: systemsData, loading: systemsLoading } = useSystemsData(home.id);
-  
   // Determine home health status (simplified - could be enhanced with real logic)
   const getHomeHealthStatus = (): HomeHealthStatus => {
     // This would be derived from actual system health data
