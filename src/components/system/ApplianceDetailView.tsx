@@ -1,7 +1,19 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Wrench, HelpCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Wrench, HelpCircle, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   resolveApplianceIdentity,
   type ResolvedApplianceIdentity,
@@ -40,6 +52,7 @@ interface ApplianceDetailViewProps {
   appliance: ApplianceData;
   onBack?: () => void;
   onHelpHabittta?: () => void; // Opens TeachHabittaModal in correction mode
+  onDelete?: (id: string) => Promise<void>; // Delete handler
 }
 
 /**
@@ -56,7 +69,9 @@ export function ApplianceDetailView({
   appliance, 
   onBack,
   onHelpHabittta,
+  onDelete,
 }: ApplianceDetailViewProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const navigate = useNavigate();
   
   // Safely extract first image
@@ -113,6 +128,21 @@ export function ApplianceDetailView({
   const handleHelpHabittta = () => {
     if (onHelpHabittta) {
       onHelpHabittta();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await onDelete(appliance.id);
+      // Navigate back after successful deletion
+      handleBack();
+    } catch (error) {
+      console.error('Failed to delete appliance:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -327,7 +357,7 @@ export function ApplianceDetailView({
 
       {/* Notes */}
       {appliance.notes && (
-        <Card>
+        <Card className="mb-6">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Notes</CardTitle>
           </CardHeader>
@@ -335,6 +365,45 @@ export function ApplianceDetailView({
             <p className="text-sm text-muted-foreground">{appliance.notes}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Delete Action */}
+      {onDelete && (
+        <div className="pt-6 border-t">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Remove this appliance
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {identity.title}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will stop tracking this appliance. You can always add it again later.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Remove
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       )}
     </div>
   );
