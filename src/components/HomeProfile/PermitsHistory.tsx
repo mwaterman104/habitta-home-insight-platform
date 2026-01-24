@@ -93,11 +93,19 @@ export const PermitsHistory: React.FC<PermitsHistoryProps> = ({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Permits & Construction History ({permits.length})
-          </CardTitle>
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle className="heading-h3 flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Permits & construction history
+              {permits.length > 0 && (
+                <span className="text-muted-foreground font-normal">({permits.length})</span>
+              )}
+            </CardTitle>
+            <p className="text-meta text-muted-foreground">
+              Permit history helps Habitta infer system age, quality, and risk patterns.
+            </p>
+          </div>
           <Button
             variant="outline"
             size="sm"
