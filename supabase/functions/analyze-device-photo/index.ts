@@ -45,13 +45,21 @@ const SERIAL_PATTERNS = [
   /\b([A-Z]{2}\d{8,})\b/i,    // Format: AB12345678
 ];
 
-// System type display names
+// System type display names - includes specific appliance categories
 const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
   hvac: 'HVAC',
   water_heater: 'Water Heater',
-  appliance: 'Appliance',
   pool_equipment: 'Pool Equipment',
   electrical: 'Electrical Panel',
+  // Tier 1 Appliances (SPECIFIC - not generic 'appliance')
+  refrigerator: 'Refrigerator',
+  oven_range: 'Oven/Range',
+  dishwasher: 'Dishwasher',
+  washer: 'Washing Machine',
+  dryer: 'Dryer',
+  // Tier 2 Appliances
+  microwave: 'Microwave',
+  garbage_disposal: 'Garbage Disposal',
 };
 
 // Confidence state type
@@ -266,13 +274,22 @@ function analyzeDeviceText(text: string): AnalysisResult {
     }
   }
 
-  // Detect system type based on keywords
+  // Detect system type based on keywords - SPECIFIC appliance categories
   const systemTypeKeywords = {
+    // Structural systems (Tier 0)
     'hvac': ['heat pump', 'air conditioner', 'furnace', 'hvac', 'compressor', 'condenser', 'evaporator', 'central air'],
     'water_heater': ['water heater', 'hot water', 'tank', 'gallon', 'gal', 'thermostat'],
-    'appliance': ['refrigerator', 'dishwasher', 'washer', 'dryer', 'oven', 'range', 'microwave', 'stove', 'cooktop', 'freezer', 'ice maker', 'garbage disposal', 'hood', 'ventilation'],
     'pool_equipment': ['pool', 'pump', 'filter', 'heater', 'chlorinator', 'spa'],
     'electrical': ['breaker', 'panel', 'electrical', 'voltage', 'amp', 'circuit'],
+    // Tier 1 Appliances (SPECIFIC - not generic 'appliance')
+    'refrigerator': ['refrigerator', 'fridge', 'freezer'],
+    'oven_range': ['oven', 'range', 'stove', 'cooktop', 'cook top'],
+    'dishwasher': ['dishwasher', 'dish washer'],
+    'washer': ['washer', 'washing machine', 'front load wash', 'top load wash'],
+    'dryer': ['dryer', 'clothes dryer'],
+    // Tier 2 Appliances
+    'microwave': ['microwave'],
+    'garbage_disposal': ['disposal', 'garbage disposal', 'disposer'],
   };
 
   for (const [type, keywords] of Object.entries(systemTypeKeywords)) {
