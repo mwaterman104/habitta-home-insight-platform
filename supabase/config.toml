@@ -25,6 +25,9 @@ verify_jwt = false
 [functions.capital-timeline]
 verify_jwt = false
 
+[functions.backfill-home-coordinates]
+verify_jwt = false
+
 # User-facing functions (verify_jwt = true or handled in code)
 [functions.admin-users]
 verify_jwt = true

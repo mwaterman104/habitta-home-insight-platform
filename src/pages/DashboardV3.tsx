@@ -101,31 +101,55 @@ export default function DashboardV3() {
   const invalidateRiskDeltas = useInvalidateRiskDeltas();
   const queryClient = useQueryClient();
 
-  // Fetch user home
-  useEffect(() => {
+  // Fetch user home - extracted as callback for reuse
+  const fetchUserHome = useCallback(async () => {
     if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('homes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-    const fetchUserHome = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('homes')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (data) setUserHome(data);
-      } catch (error) {
-        console.error('Error fetching user home:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserHome();
+      if (error) throw error;
+      if (data) setUserHome(data);
+    } catch (error) {
+      console.error('Error fetching user home:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchUserHome();
+  }, [fetchUserHome]);
+
+  // Backfill coordinates if missing (fire-and-forget, silent failure)
+  useEffect(() => {
+    if (!userHome?.id) return;
+    if (userHome.latitude != null && userHome.longitude != null) return; // Already has coords
+
+    console.log('[DashboardV3] Triggering coordinate backfill for home:', userHome.id);
+    
+    supabase.functions.invoke('backfill-home-coordinates', {
+      body: { home_id: userHome.id }
+    }).then(({ data, error }) => {
+      if (error) {
+        console.error('[DashboardV3] Coordinate backfill failed:', error);
+        return;
+      }
+      if (data?.status === 'success' && data?.geo) {
+        console.log('[DashboardV3] Coordinates backfilled, refreshing home data');
+        fetchUserHome();
+      }
+    }).catch((err) => {
+      console.error('[DashboardV3] Coordinate backfill error:', err);
+      // Silent failure - map shows fallback, no error banner
+    });
+  }, [userHome?.id, userHome?.latitude, userHome?.longitude, fetchUserHome]);
 
   // Fetch predictions when home is available
   useEffect(() => {
