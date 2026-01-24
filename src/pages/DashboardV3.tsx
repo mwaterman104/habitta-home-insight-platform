@@ -35,6 +35,7 @@ interface UserHome {
   user_id: string;
   pulse_status?: string;
   confidence?: number;
+  year_built?: number;
 }
 
 /**
@@ -440,8 +441,8 @@ export default function DashboardV3() {
         >
           {/* Middle Column - Primary Canvas */}
           <ResizablePanel 
-            defaultSize={75} 
-            minSize={50}
+            defaultSize={60} 
+            minSize={55}
             className="!overflow-hidden"
           >
             <div className="h-full p-6 pb-0">
@@ -473,27 +474,26 @@ export default function DashboardV3() {
           {/* Drag Handle */}
           <ResizableHandle withHandle />
           
-          {/* Right Column - Performance at a Glance */}
+          {/* Right Column - Context Rail (40% default) */}
           <ResizablePanel 
-            defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '25')} 
-            minSize={15} 
-            maxSize={40}
+            defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '40')} 
+            minSize={30} 
+            maxSize={45}
           >
-            <aside className="border-l bg-muted/30 h-full overflow-y-auto p-6">
+            <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
               <RightColumn
-                homeForecast={homeForecast}
-                capitalTimeline={capitalTimeline}
                 loading={forecastLoading || hvacLoading || timelineLoading}
                 latitude={userHome.latitude}
                 longitude={userHome.longitude}
                 address={userHome.address}
                 city={userHome.city}
                 state={userHome.state}
-                homeId={userHome.id}
-                onSystemAdded={() => {
-                  // Invalidate relevant queries when a system is added
-                  queryClient.invalidateQueries({ queryKey: ['capital-timeline', userHome.id] });
-                }}
+                focusContext={focusContext}
+                hvacPrediction={hvacPrediction}
+                capitalTimeline={capitalTimeline}
+                homeAge={userHome.year_built ? new Date().getFullYear() - userHome.year_built : undefined}
+                risk={risk}
+                confidence={confidence}
               />
             </aside>
           </ResizablePanel>
