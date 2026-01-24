@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, ChevronRight, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Zap, Shield } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getStewardshipCopy } from "@/lib/stewardshipCopy";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 
@@ -19,6 +20,7 @@ interface SystemWatchProps {
   capitalTimeline: HomeCapitalTimeline | null;
   onSystemClick: (systemKey: string) => void;
   onChatExpand?: () => void;
+  nextReviewMonth?: string;
 }
 
 const SYSTEM_NAMES: Record<string, string> = {
@@ -32,21 +34,22 @@ const SYSTEM_NAMES: Record<string, string> = {
 };
 
 /**
- * SystemWatch - Authoritative planning window alert
+ * SystemWatch - Authoritative planning window alert with stewardship mode
+ * 
+ * V2: Uses validation language for healthy homes ("Baseline confirmed")
+ * instead of dismissive "No planning windows for 7 years"
  * 
  * Positioned at top of dashboard. Shows systems entering planning windows.
  * Boxed, high-visibility design. Plain English, no metrics.
- * 
- * Multi-system behavior:
- * - Shows most imminent system as primary
- * - Secondary systems summarized as count
  */
 export function SystemWatch({
   hvacPrediction,
   capitalTimeline,
   onSystemClick,
   onChatExpand,
+  nextReviewMonth,
 }: SystemWatchProps) {
+  const stewardshipCopy = getStewardshipCopy().systemWatchHealthy;
   const navigate = useNavigate();
 
   const planningWindowSystems = useMemo(() => {
@@ -102,7 +105,7 @@ export function SystemWatch({
     onChatExpand?.();
   };
 
-  // All-clear state
+  // All-clear state - STEWARDSHIP MODE (validation language)
   if (isAllClear) {
     return (
       <Card className={cn(
@@ -112,7 +115,7 @@ export function SystemWatch({
         <CardContent className="p-4">
           <div className="flex items-start gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <Shield className="h-4 w-4 text-emerald-600" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -122,11 +125,17 @@ export function SystemWatch({
                 </span>
               </div>
               <p className="text-sm text-foreground font-medium">
-                All systems healthy.
+                {stewardshipCopy.headline}
               </p>
               <p className="text-sm text-muted-foreground">
-                No planning windows for the next 7 years.
+                {stewardshipCopy.subtext}
               </p>
+              {/* Next review indicator - creates return rhythm */}
+              {nextReviewMonth && (
+                <p className="text-xs text-muted-foreground/70 mt-2">
+                  {stewardshipCopy.nextReviewText(nextReviewMonth)}
+                </p>
+              )}
             </div>
           </div>
         </CardContent>

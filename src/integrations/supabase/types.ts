@@ -1429,6 +1429,102 @@ export type Database = {
           },
         ]
       }
+      home_interactions: {
+        Row: {
+          created_at: string | null
+          home_id: string
+          id: string
+          interaction_type: string
+          response_value: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          home_id: string
+          id?: string
+          interaction_type: string
+          response_value?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          home_id?: string
+          id?: string
+          interaction_type?: string
+          response_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_interactions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_interactions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
+      home_review_state: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          home_id: string
+          home_state: string
+          id: string
+          last_annual_report: string | null
+          last_monthly_check: string | null
+          last_optional_advantage: string | null
+          last_quarterly_review: string | null
+          next_scheduled_review: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          home_id: string
+          home_state?: string
+          id?: string
+          last_annual_report?: string | null
+          last_monthly_check?: string | null
+          last_optional_advantage?: string | null
+          last_quarterly_review?: string | null
+          next_scheduled_review?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          home_id?: string
+          home_state?: string
+          id?: string
+          last_annual_report?: string | null
+          last_monthly_check?: string | null
+          last_optional_advantage?: string | null
+          last_quarterly_review?: string | null
+          next_scheduled_review?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_review_state_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: true
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_review_state_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: true
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       home_systems: {
         Row: {
           brand: string | null

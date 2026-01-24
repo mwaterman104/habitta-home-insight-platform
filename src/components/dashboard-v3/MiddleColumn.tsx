@@ -8,6 +8,11 @@ import { CapitalTimeline } from "@/components/CapitalTimeline";
 import { ChatDock } from "./ChatDock";
 import { SystemWatch } from "./SystemWatch";
 import { HabittaThinking } from "./HabittaThinking";
+import { MonthlyConfirmationCard } from "./MonthlyConfirmationCard";
+import { QuarterlyPositionCard } from "./QuarterlyPositionCard";
+import { StateOfHomeReport } from "./StateOfHomeReport";
+import { OptionalAdvantageCard } from "./OptionalAdvantageCard";
+import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
@@ -87,17 +92,18 @@ interface MiddleColumnProps {
  * MiddleColumn - Primary Canvas with Sticky ChatDock
  * 
  * V3.2 Architecture (Structural Transformation):
- * 1. SystemWatch (authoritative, boxed)
- * 2. HomeHealthCard (primary instrument)
- * 3. HabittaThinking (chat presence above fold) - NEW
- * 4. CapitalTimeline (systems planning)
- * 5. MaintenanceRoadmap (horizontal time model) - REPLACED
- * 6. ChatDock (sticky, connected)
+ * 1. SystemWatch (authoritative, boxed) - with stewardship mode
+ * 2. Engagement Cadence Cards (monthly/quarterly/annual) - NEW
+ * 3. HomeHealthCard (primary instrument)
+ * 4. HabittaThinking (chat presence above fold)
+ * 5. CapitalTimeline (systems planning)
+ * 6. MaintenanceRoadmap (horizontal time model)
+ * 7. ChatDock (sticky, connected)
  * 
- * Deprecated:
- * - TodaysHomeBrief (replaced by SystemWatch)
- * - MonthlyPriorityCTA (replaced by HabittaThinking)
- * - MaintenanceTimeline (replaced by MaintenanceRoadmap)
+ * Stewardship Mode:
+ * - Healthy homes get validation language, not dismissal
+ * - Cadence cards create return rhythm (monthly/quarterly/annual)
+ * - Priority ordering: Annual > Quarterly > Monthly
  */
 export function MiddleColumn({
   homeForecast,
@@ -130,6 +136,24 @@ export function MiddleColumn({
 
   // Track if chat was engaged this session
   const [chatEngagedThisSession, setChatEngagedThisSession] = useState(false);
+
+  // Engagement cadence hook - stewardship mode
+  const {
+    monthlyCard,
+    quarterlyCard,
+    annualCard,
+    advantageCard,
+    homeState,
+    nextScheduledReview,
+    respondToMonthly,
+    dismissQuarterly,
+    dismissAnnual,
+    dismissAdvantage,
+    loading: cadenceLoading,
+  } = useEngagementCadence(propertyId);
+
+  // Derive if home is in healthy/stewardship mode
+  const isHealthyState = homeState === 'healthy';
 
   // Derive systems in planning window for HabittaThinking
   const systemsInWindow = useMemo<SystemInWindow[]>(() => {
@@ -267,17 +291,59 @@ export function MiddleColumn({
             </div>
           )}
 
-          {/* 1. SystemWatch - Authoritative planning window alert (NEW) */}
+          {/* 1. SystemWatch - Authoritative planning window alert with stewardship mode */}
           <section>
             <SystemWatch
               hvacPrediction={hvacPrediction}
               capitalTimeline={capitalTimeline}
               onSystemClick={handleSystemClick}
               onChatExpand={handleChatExpand}
+              nextReviewMonth={isHealthyState ? nextScheduledReview : undefined}
             />
           </section>
 
-          {/* 2. Home Health Forecast - Primary instrument */}
+          {/* 2. Engagement Cadence Cards - Priority: Annual > Quarterly > Monthly */}
+          {annualCard && (
+            <section>
+              <StateOfHomeReport 
+                data={annualCard} 
+                onDismiss={dismissAnnual} 
+              />
+            </section>
+          )}
+
+          {!annualCard && quarterlyCard && (
+            <section>
+              <QuarterlyPositionCard 
+                position={quarterlyCard} 
+                homeId={propertyId} 
+                onDismiss={dismissQuarterly} 
+              />
+            </section>
+          )}
+
+          {!annualCard && !quarterlyCard && monthlyCard && (
+            <section>
+              <MonthlyConfirmationCard 
+                homeId={propertyId} 
+                onResponse={respondToMonthly} 
+                onDismiss={() => respondToMonthly('nothing_changed')} 
+              />
+            </section>
+          )}
+
+          {/* Optional advantage - only when no major cadence cards */}
+          {!annualCard && !quarterlyCard && advantageCard && (
+            <section>
+              <OptionalAdvantageCard 
+                advantage={advantageCard} 
+                homeId={propertyId} 
+                onDismiss={dismissAdvantage} 
+              />
+            </section>
+          )}
+
+          {/* 3. Home Health Forecast - Primary instrument with stewardship mode */}
           <section ref={healthCardRef}>
             {forecastLoading ? (
               <Skeleton className="h-64 rounded-2xl" />
@@ -285,6 +351,7 @@ export function MiddleColumn({
               <HomeHealthCard 
                 forecast={homeForecast}
                 onProtectClick={handleProtectClick}
+                isHealthyState={isHealthyState}
               />
             ) : (
               <HomeHealthCard 
@@ -294,11 +361,12 @@ export function MiddleColumn({
                 scoreDrivers="HVAC age, recent maintenance, and local climate"
                 whyBullets={getWhyBullets()}
                 confidenceScore={35}
+                isHealthyState={isHealthyState}
               />
             )}
           </section>
 
-          {/* 3. HabittaThinking - Chat presence above fold (NEW) */}
+          {/* 4. HabittaThinking - Chat presence above fold */}
           <section>
             <HabittaThinking
               systemsInWindow={systemsInWindow}
@@ -314,7 +382,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 4. Capital Timeline - Planning Windows */}
+          {/* 5. Capital Timeline - Planning Windows */}
           {timelineLoading ? (
             <Skeleton className="h-48 rounded-2xl" />
           ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
@@ -326,7 +394,7 @@ export function MiddleColumn({
             </section>
           ) : null}
 
-          {/* 5. Maintenance Roadmap - Horizontal time model */}
+          {/* 6. Maintenance Roadmap - Horizontal time model */}
           <section ref={maintenanceRef}>
             <MaintenanceRoadmap
               tasks={roadmapTasks}
@@ -335,7 +403,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 6. ChatDock - Sticky dockable panel (IN FLOW) */}
+          {/* 7. ChatDock - Sticky dockable panel (IN FLOW) */}
           <div className="sticky bottom-4">
             <ChatDock
               propertyId={propertyId}
