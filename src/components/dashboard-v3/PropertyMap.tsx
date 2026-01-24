@@ -1,13 +1,8 @@
-import { lazy, Suspense } from "react";
+import { useState } from "react";
 import { MapPin, Thermometer, Droplet, Snowflake, Sun } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-// Lazy load Leaflet to avoid duplicate React instance issues
-const LeafletMap = lazy(() =>
-  import("./LeafletMap").then((mod) => ({ default: mod.LeafletMap }))
-);
 
 interface ClimateZone {
   zone: "high_heat" | "coastal" | "freeze_thaw" | "moderate";
@@ -110,7 +105,7 @@ function deriveClimateZone(
  * Part of the Context Rail (Right Column).
  * Shows property location with climate zone meaning.
  *
- * Uses Leaflet + OpenStreetMap tiles - no API key required.
+ * Uses OpenStreetMap static tiles - no API key required.
  */
 export function PropertyMap({
   lat,
@@ -120,9 +115,32 @@ export function PropertyMap({
   state,
   className,
 }: PropertyMapProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  
   const hasCoordinates = lat != null && lng != null;
   const climate = deriveClimateZone(state, city, lat);
   const ClimateIcon = climate.icon;
+
+  // Generate static map URL using OpenStreetMap tiles via a static map service
+  const getStaticMapUrl = (latitude: number, longitude: number) => {
+    // Use OpenStreetMap static tiles directly - construct a simple tile URL
+    const zoom = 15;
+    const width = 400;
+    const height = 225;
+    
+    // Use staticmaps service with OSM tiles (no API key needed)
+    return `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=${width}&height=${height}&center=lonlat:${longitude},${latitude}&zoom=${zoom}&marker=lonlat:${longitude},${latitude};type:awesome;color:%23bb3f3f;size:medium&apiKey=demo`;
+  };
+
+  // Fallback to simple tile-based map if Geoapify doesn't work
+  const getOsmTileUrl = (latitude: number, longitude: number) => {
+    const zoom = 15;
+    const n = Math.pow(2, zoom);
+    const xtile = Math.floor((longitude + 180) / 360 * n);
+    const ytile = Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * n);
+    return `https://tile.openstreetmap.org/${zoom}/${xtile}/${ytile}.png`;
+  };
 
   // Fallback placeholder when no coordinates
   if (!hasCoordinates) {
@@ -167,10 +185,42 @@ export function PropertyMap({
 
   return (
     <Card className={cn("overflow-hidden", className)}>
-      <div className="aspect-video relative">
-        <Suspense fallback={<Skeleton className="absolute inset-0" />}>
-          <LeafletMap lat={lat} lng={lng} />
-        </Suspense>
+      <div className="aspect-video relative bg-muted">
+        {/* Loading skeleton */}
+        {!imageLoaded && !imageError && (
+          <Skeleton className="absolute inset-0" />
+        )}
+        
+        {/* Static map image - using OSM tile as fallback */}
+        {!imageError ? (
+          <img
+            src={getOsmTileUrl(lat, lng)}
+            alt={`Map of ${address || 'property location'}`}
+            className={cn(
+              "w-full h-full object-cover transition-opacity duration-300",
+              imageLoaded ? "opacity-100" : "opacity-0"
+            )}
+            onLoad={() => setImageLoaded(true)}
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          /* Fallback when image fails to load */
+          <div className="absolute inset-0 flex items-center justify-center bg-muted">
+            <div className="text-center space-y-2">
+              <MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
+              <p className="text-xs text-muted-foreground">
+                {lat?.toFixed(4)}, {lng?.toFixed(4)}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Marker overlay (since we're using a single tile) */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="relative">
+            <MapPin className="h-8 w-8 text-red-500 drop-shadow-md" style={{ transform: 'translateY(-50%)' }} />
+          </div>
+        </div>
 
         {/* Climate zone overlay badge */}
         <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm pointer-events-none">
