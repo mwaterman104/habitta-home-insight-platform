@@ -1,275 +1,242 @@
 
 
-# Manual Appliance Entry Implementation Plan
+# Fix: Map Not Displaying - Coordinate Backfill Edge Function
 
-## Overview
+## Problem Confirmed
 
-This plan adds a **secondary manual entry affordance** to TeachHabittaModal. Following the QA principle: "Photo-first, manual-second" — manual entry exists for agency, not as the primary path.
+The property at "9511 Phipps Ln, Wellington, FL 33414" has:
+- `latitude: null`
+- `longitude: null`  
+- `status: 'enriching'`
 
----
-
-## Architecture Decision: Reuse Correction UI
-
-Manual entry will **NOT** create a new form. It will:
-1. Route directly to the existing `correction` step
-2. Set `install_source: 'owner_reported'` 
-3. Apply appropriate confidence initialization
-
-This preserves:
-- Narrative flow
-- AI-led posture
-- Approximate, forgiving UX
-- Existing confidence-aware logic
+The enrichment pipeline never completed the coordinate geocoding for this home.
 
 ---
 
-## Changes to TeachHabittaModal.tsx
+## Architecture: Server-Side Enrichment Function
 
-### 1. Add Manual Entry Link to Capture Step
-
-**Location:** `renderCaptureStep()` (lines 436-520)
-
-Add a muted, text-only secondary affordance below the photo buttons:
-
-```text
-┌─────────────────────────────────────────────┐
-│    Teach Habitta something new              │
-│                                             │
-│    Take a photo or upload an image...       │
-│                                             │
-│    [ Take photo ]    [ Upload ]             │
-│                                             │
-│             [Cancel]                        │
-│                                             │
-│    ─────────────────────                    │
-│              or                             │
-│                                             │
-│       Enter details manually →              │
-│                                             │
-└─────────────────────────────────────────────┘
-```
-
-**Design Rules:**
-- "Enter details manually →" is text-only (no button styling)
-- Smaller font (`text-sm`)
-- Muted color (`text-muted-foreground`)
-- No icon
-- Clearly secondary
-
-### 2. Add State for Manual Entry Mode
-
-Add a new state variable to track whether user entered via manual path:
-
-```typescript
-const [isManualEntry, setIsManualEntry] = useState(false);
-```
-
-Reset it in the `useEffect` that clears state on modal close.
-
-### 3. Create handleManualEntry Function
-
-```typescript
-const handleManualEntry = () => {
-  setIsManualEntry(true);
-  setStep('correction');
-};
-```
-
-This routes directly to the correction step without photo/analysis.
-
-### 4. Update renderCorrectionStep Header for Manual Entry
-
-When `isManualEntry` is true, show a gentler intro:
+Following QA guidance, we'll create a **dedicated edge function** for coordinate backfill rather than mutating data directly from the dashboard. This keeps:
+- UI components as pure renderers (no DB mutations)
+- Single authoritative source for coordinates
+- Proper observability and logging
+- No race conditions with other enrichment processes
 
 ```text
-That's totally fine.
-Rough answers are more than enough.
+┌─────────────────────────────────────────────────────────────────┐
+│                      Dashboard (UI Layer)                       │
+│  DashboardV3.tsx                                                │
+│  Detects missing coords → Triggers backfill → Refreshes data    │
+│  (No direct DB mutations)                                       │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ invoke('backfill-home-coordinates')
+┌──────────────────────────▼──────────────────────────────────────┐
+│             backfill-home-coordinates (Edge Function)           │
+│  - Load home by ID                                              │
+│  - Guard: skip if coords already exist                          │
+│  - Call Smarty rooftop geocoding API                            │
+│  - Update homes table with lat/lng + source tracking            │
+│  - Return success/failed/noop                                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-When `isManualEntry` is false (came from photo), show existing:
+---
 
-```text
-Just help me get closer.
-Rough answers are totally fine.
-```
+## Phase 1: Create Edge Function
 
-### 5. Create handleSaveManualEntry Function
+### New File: `supabase/functions/backfill-home-coordinates/index.ts`
 
-New handler for manual entry saves with appropriate confidence initialization:
+**Responsibilities:**
+1. Accept `home_id` from request body
+2. Load home record from database
+3. Guard clause: skip if coordinates already exist (idempotent)
+4. Call Smarty rooftop geocoding API directly
+5. Update home with `latitude`, `longitude`, `geo_source`, `geo_updated_at`
+6. Return structured response: `{ status: 'success' | 'failed' | 'noop', geo? }`
+
+**Key Design Decisions:**
+- **No JWT verification** - internal function protected by `x-internal-secret` header
+- **Direct Smarty API call** - doesn't go through smarty-proxy to avoid auth chain complexity
+- **Source tracking** - records `geo_source: 'smarty_backfill'` for audit trail
+- **Observability** - logs home_id, success/failure, latency
 
 ```typescript
-const handleSaveManualEntry = async () => {
-  if (!selectedSystemType) {
-    setError('Please select what kind of system this is');
-    return;
-  }
+// Pseudocode structure
+serve(async (req) => {
+  // 1. Validate internal secret
+  // 2. Parse home_id from body
+  // 3. Fetch home from DB
+  // 4. Guard: return 'noop' if lat/lng exist
+  // 5. Call Smarty rooftop geocoding
+  // 6. Extract lat/lng from response
+  // 7. Update home record
+  // 8. Return success/failure
+});
+```
+
+### Response Shape
+
+```typescript
+interface BackfillResponse {
+  status: 'success' | 'failed' | 'noop';
+  home_id?: string;
+  geo?: {
+    latitude: number;
+    longitude: number;
+  };
+  reason?: string;  // For noop/failed cases
+}
+```
+
+---
+
+## Phase 2: Update config.toml
+
+Add the new function to the config with JWT verification disabled (uses internal secret):
+
+```toml
+[functions.backfill-home-coordinates]
+verify_jwt = false
+```
+
+---
+
+## Phase 3: Dashboard Trigger (Lightweight)
+
+### File: `src/pages/DashboardV3.tsx`
+
+Add a `useEffect` that **only triggers the backfill** - no state mutation in the dashboard:
+
+```typescript
+// After userHome is loaded, check for missing coordinates
+useEffect(() => {
+  if (!userHome?.id) return;
+  if (userHome.latitude != null && userHome.longitude != null) return; // Already has coords
   
-  setIsProcessing(true);
-  try {
-    // Calculate manufacture year from age range (midpoint)
-    const manufactureYear = selectedAgeRange !== null && selectedAgeRange !== undefined
-      ? new Date().getFullYear() - selectedAgeRange
-      : undefined;
-    
-    // Manual entry confidence (higher baseline than vision-only)
-    let confidence = 0.65; // owner-reported baseline
-    if (brandInput) confidence += 0.10;
-    if (selectedAgeRange !== null && selectedAgeRange !== undefined) confidence += 0.10;
-    confidence = Math.min(confidence, 0.9);
-    
-    const systemData: Partial<HomeSystem> = {
-      system_key: selectedSystemType,
-      brand: brandInput || undefined,
-      model: modelInput || undefined,
-      manufacture_year: manufactureYear,
-      confidence_scores: {
-        overall: confidence,
-      },
-      data_sources: ['owner_manual'],
-      source: {
-        method: 'manual',
-        entered_at: new Date().toISOString(),
-        install_source: 'owner_reported', // Critical: user authority
-      },
-    };
-    
-    const result = await addSystem(systemData);
-    if (result) {
-      onSystemAdded?.(result as HomeSystem);
-      setStep('success');
+  // Fire-and-forget: request backfill, don't wait for response
+  supabase.functions.invoke('backfill-home-coordinates', {
+    body: { home_id: userHome.id }
+  }).then(({ data }) => {
+    if (data?.status === 'success' && data?.geo) {
+      // Refresh home data to pick up new coordinates
+      // This re-triggers the existing fetchUserHome effect
+      refetchUserHome();
     }
-  } catch (err) {
-    console.error('Error saving system:', err);
-    setError('Failed to save. Please try again.');
-  } finally {
-    setIsProcessing(false);
-  }
-};
+  }).catch((err) => {
+    console.error('[DashboardV3] Coordinate backfill failed:', err);
+    // Silent failure - map shows fallback, no error banner
+  });
+}, [userHome?.id, userHome?.latitude, userHome?.longitude]);
 ```
 
-### 6. Update Save Button in Correction Step
+**Key behaviors:**
+- Fire-and-forget pattern (no blocking)
+- Silent failure (map shows calm fallback)
+- Triggers data refresh only on success
+- No direct state mutation from UI
 
-The Save button should call `handleSaveManualEntry` when `isManualEntry` is true, otherwise `handleSaveCorrection`:
+### Add refetchUserHome helper
+
+Refactor the existing `fetchUserHome` logic into a reusable function:
 
 ```typescript
-<Button
-  className="flex-1"
-  onClick={isManualEntry ? handleSaveManualEntry : handleSaveCorrection}
-  disabled={isProcessing || !selectedSystemType}
->
-  ...
-</Button>
-```
+const fetchUserHome = useCallback(async () => {
+  if (!user) return;
+  try {
+    const { data, error } = await supabase
+      .from('homes')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-### 7. Desktop Support: Add Manual Entry to QRPhotoSession View
-
-For desktop users who see the QR code flow, add the same secondary affordance:
-
-```tsx
-{/* In desktop renderCaptureStep, after QRPhotoSession */}
-<div className="text-center pt-4 border-t border-border">
-  <span className="text-xs text-muted-foreground">or</span>
-  <button
-    onClick={handleManualEntry}
-    className="block w-full text-sm text-muted-foreground hover:text-foreground mt-2"
-  >
-    Enter details manually →
-  </button>
-</div>
+    if (error) throw error;
+    if (data) setUserHome(data);
+  } catch (error) {
+    console.error('Error fetching user home:', error);
+  } finally {
+    setLoading(false);
+  }
+}, [user]);
 ```
 
 ---
 
-## Confidence Initialization Logic
+## Phase 4: Database Column Addition (Optional)
 
-| Entry Method | Base Confidence | Boosts |
-|--------------|----------------|--------|
-| Vision + Correction | 0.30 | +0.25 type, +0.15 brand, +0.15 age |
-| Manual Entry | **0.65** | +0.10 brand, +0.10 age |
+Add tracking columns to `homes` table if not present:
+- `geo_source: text` - e.g., 'smarty_backfill', 'onboarding', 'attom'
+- `geo_updated_at: timestamptz`
 
-**Why higher baseline for manual?**
-- User is stating what they know directly
-- This is "owner_reported" authority
-- Should not look "worse" than vision guesses
-
-**Cap remains 0.9** — we never claim certainty without permit/inspection verification.
+This enables future debugging and prevents duplicate geocoding calls from different sources.
 
 ---
 
-## UI After Manual Save
+## Smarty API Integration
 
-The appliance appears as:
+The edge function will call Smarty's rooftop geocoding API directly:
 
+```typescript
+const SMARTY_AUTH_ID = Deno.env.get("SMARTY_AUTH_ID")!;
+const SMARTY_AUTH_TOKEN = Deno.env.get("SMARTY_AUTH_TOKEN")!;
+
+const geoUrl = `https://us-rooftop-geo.api.smarty.com/lookup?${new URLSearchParams({
+  'auth-id': SMARTY_AUTH_ID,
+  'auth-token': SMARTY_AUTH_TOKEN,
+  street: home.address,
+  city: home.city,
+  state: home.state,
+  zipcode: home.zip_code || '',
+}).toString()}`;
+
+const response = await fetch(geoUrl);
+const geocode = await response.json();
+
+// Extract from Smarty response
+const latitude = geocode[0]?.metadata?.latitude;
+const longitude = geocode[0]?.metadata?.longitude;
 ```
-LG Refrigerator
-Model not identified
-~10–15 years old
-```
-
-With:
-- No "Needs confirmation" label (baseline is 0.65+)
-- Possibly "Estimated" if only category provided
-- "Help Habitta learn more" CTA still available for later photo enhancement
 
 ---
 
-## Edge Case Handling
+## Files Summary
 
-### User enters only category (no brand, no age)
-
-**Result:**
-- Appliance is tracked
-- Tier applied correctly
-- No nagging
-- Confidence: 0.65 (baseline owner_reported)
-
-### User later uploads a photo
-
-**Behavior:**
-- Photo enhances the same appliance (not a duplicate)
-- Can increase confidence
-- Never replaces user-reported data without confirmation
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/functions/backfill-home-coordinates/index.ts` | Create | Dedicated geocoding backfill function |
+| `supabase/config.toml` | Modify | Add function config |
+| `src/pages/DashboardV3.tsx` | Modify | Add lightweight trigger for missing coords |
 
 ---
 
-## Copy Rules (Locked)
+## Observability
 
-**Use:**
-- "Enter details manually"
-- "That's totally fine"
-- "Rough answers are more than enough"
-- "You can update this anytime"
-
-**Avoid:**
-- "Add appliance"
-- "Complete setup"
-- "Required fields"
-- "Accuracy"
+The edge function will log:
+- `[backfill-home-coordinates] Starting for home: {home_id}`
+- `[backfill-home-coordinates] Skipping - coords exist: {home_id}`
+- `[backfill-home-coordinates] Smarty response: {status}, {latency}ms`
+- `[backfill-home-coordinates] Updated home: {home_id} with lat={lat}, lng={lng}`
+- `[backfill-home-coordinates] Failed for home: {home_id}, reason: {error}`
 
 ---
 
-## Files to Modify
+## Product Behavior
 
-| File | Changes |
-|------|---------|
-| `src/components/TeachHabittaModal.tsx` | Add manual entry affordance, `isManualEntry` state, `handleManualEntry`, `handleSaveManualEntry`, update correction step header, update desktop QR view |
+**When coordinates are missing:**
+1. Dashboard loads normally
+2. Map shows calm fallback (climate zone placeholder)
+3. Background backfill triggers
+4. On success: data refreshes, map appears
+5. On failure: silent (no error banners, fallback remains)
 
-**No new files needed** — we're reusing what's already built.
+**No user-facing errors** - the experience should feel calm even when data is incomplete.
 
 ---
 
-## Summary of Changes
+## Technical Notes
 
-1. **New state:** `isManualEntry` boolean
-2. **New handler:** `handleManualEntry()` — routes to correction step
-3. **New handler:** `handleSaveManualEntry()` — saves with 0.65 baseline confidence
-4. **Updated UI:** Secondary "Enter details manually →" link in capture step (mobile + desktop)
-5. **Updated copy:** Context-aware header in correction step based on entry method
-
-This preserves:
-- Photo-first narrative
-- AI-led posture
-- Forgiving, approximate UX
-- Coherent confidence system
-- No form fatigue
+- **Secrets already configured**: `SMARTY_AUTH_ID` and `SMARTY_AUTH_TOKEN` exist
+- **Internal secret protection**: Uses existing `INTERNAL_ENRICH_SECRET` pattern
+- **Idempotent**: Safe to call multiple times (guard clause)
+- **Non-blocking**: Dashboard doesn't wait for geocoding to complete
 
