@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SystemDetailView } from "@/components/SystemDetailView";
 import { ApplianceDetailView } from "@/components/system/ApplianceDetailView";
 import type { SystemPrediction } from "@/types/systemPrediction";
@@ -41,6 +41,7 @@ export default function SystemPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   // Check if this is an appliance UUID vs a system key
   // UUIDs are 36 chars with dashes (e.g., "550e8400-e29b-41d4-a716-446655440000")
@@ -189,6 +190,31 @@ export default function SystemPage() {
     }
   };
 
+  // Handle appliance deletion
+  const handleDeleteAppliance = async (id: string) => {
+    const { error } = await supabase
+      .from('home_systems')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      toast({
+        title: 'Failed to remove',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+      throw error;
+    }
+    
+    // Invalidate queries to refresh lists
+    queryClient.invalidateQueries({ queryKey: ['home-systems'] });
+    
+    toast({
+      title: 'Removed',
+      description: 'This appliance is no longer being tracked.',
+    });
+  };
+
   // If this is an appliance, render the ApplianceDetailView
   if (isApplianceId) {
     if (isApplianceLoading) {
@@ -221,6 +247,7 @@ export default function SystemPage() {
         <ApplianceDetailView 
           appliance={applianceData} 
           onBack={handleBack}
+          onDelete={handleDeleteAppliance}
         />
       </DashboardV3Layout>
     );
