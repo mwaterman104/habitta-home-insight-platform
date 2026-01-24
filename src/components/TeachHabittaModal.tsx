@@ -122,6 +122,9 @@ export function TeachHabittaModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Manual entry mode (photo-first, manual-second)
+  const [isManualEntry, setIsManualEntry] = useState(false);
+  
   // Correction form state
   const [selectedSystemType, setSelectedSystemType] = useState<string>('');
   const [brandInput, setBrandInput] = useState('');
@@ -141,6 +144,7 @@ export function TeachHabittaModal({
       setPreviewUrl(null);
       setAnalysis(null);
       setError(null);
+      setIsManualEntry(false);
       setSelectedSystemType('');
       setBrandInput('');
       setModelInput('');
@@ -430,11 +434,66 @@ export function TeachHabittaModal({
     }
   };
 
+  // Manual entry handler - routes directly to correction step
+  const handleManualEntry = () => {
+    setIsManualEntry(true);
+    setStep('correction');
+  };
+
+  // Manual entry save handler with owner_reported confidence baseline
+  const handleSaveManualEntry = async () => {
+    if (!selectedSystemType) {
+      setError('Please select what kind of system this is');
+      return;
+    }
+    
+    setIsProcessing(true);
+    try {
+      // Calculate manufacture year from age range (midpoint)
+      const manufactureYear = selectedAgeRange !== null && selectedAgeRange !== undefined
+        ? new Date().getFullYear() - selectedAgeRange
+        : undefined;
+      
+      // Manual entry confidence (higher baseline than vision-only)
+      let confidence = 0.65; // owner-reported baseline
+      if (brandInput) confidence += 0.10;
+      if (selectedAgeRange !== null && selectedAgeRange !== undefined) confidence += 0.10;
+      confidence = Math.min(confidence, 0.9);
+      
+      const systemData: Partial<HomeSystem> = {
+        system_key: selectedSystemType,
+        brand: brandInput || undefined,
+        model: modelInput || undefined,
+        manufacture_year: manufactureYear,
+        confidence_scores: {
+          overall: confidence,
+        },
+        data_sources: ['owner_manual'],
+        source: {
+          method: 'manual',
+          entered_at: new Date().toISOString(),
+          install_source: 'owner_reported', // Critical: user authority
+        },
+      };
+      
+      const result = await addSystem(systemData);
+      if (result) {
+        onSystemAdded?.(result as HomeSystem);
+        setStep('success');
+      }
+    } catch (err) {
+      console.error('Error saving system:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Check if on desktop for QR code flow
   const isMobile = useIsMobile();
 
   const renderCaptureStep = () => {
-    // Desktop: Show QR code flow
+    // Desktop: Show QR code flow with manual entry option
     if (!isMobile) {
       return (
         <div className="space-y-6">
@@ -444,6 +503,17 @@ export function TeachHabittaModal({
             onCancel={() => onOpenChange(false)}
             onFallbackUpload={() => fileInputRef.current?.click()}
           />
+          
+          {/* Secondary manual entry affordance */}
+          <div className="text-center pt-4 border-t border-border">
+            <span className="text-xs text-muted-foreground">or</span>
+            <button
+              onClick={handleManualEntry}
+              className="block w-full text-sm text-muted-foreground hover:text-foreground mt-2 transition-colors"
+            >
+              Enter details manually →
+            </button>
+          </div>
           
           {/* Hidden file input for fallback upload */}
           <input
@@ -457,7 +527,7 @@ export function TeachHabittaModal({
       );
     }
 
-    // Mobile: Show camera/upload options
+    // Mobile: Show camera/upload options with manual entry affordance
     return (
       <div className="space-y-6">
         <div className="text-center">
@@ -497,6 +567,17 @@ export function TeachHabittaModal({
           >
             Cancel
           </Button>
+        </div>
+        
+        {/* Secondary manual entry affordance */}
+        <div className="text-center pt-4 border-t border-border">
+          <span className="text-xs text-muted-foreground">or</span>
+          <button
+            onClick={handleManualEntry}
+            className="block w-full text-sm text-muted-foreground hover:text-foreground mt-2 transition-colors"
+          >
+            Enter details manually →
+          </button>
         </div>
         
         {/* Hidden file inputs */}
@@ -583,17 +664,30 @@ export function TeachHabittaModal({
 
   const renderCorrectionStep = () => (
     <div className="space-y-5">
-      {/* Habitta's encouraging message */}
+      {/* Context-aware header based on entry method */}
       <div className="text-center">
         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
           <Sparkles className="h-5 w-5 text-primary" />
         </div>
-        <p className="text-sm font-medium">
-          Just help me get closer.
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Rough answers are totally fine.
-        </p>
+        {isManualEntry ? (
+          <>
+            <p className="text-sm font-medium">
+              That's totally fine.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Rough answers are more than enough.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium">
+              Just help me get closer.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Rough answers are totally fine.
+            </p>
+          </>
+        )}
       </div>
       
       {/* System type pills */}
@@ -651,19 +745,21 @@ export function TeachHabittaModal({
         <p className="text-xs text-destructive text-center">{error}</p>
       )}
       
-      {/* Actions */}
+      {/* Actions - different handlers for manual vs photo correction */}
       <div className="flex gap-3 pt-2">
-        <Button
-          variant="ghost"
-          className="text-muted-foreground"
-          onClick={handleSkipDetails}
-          disabled={isProcessing}
-        >
-          Skip details
-        </Button>
+        {!isManualEntry && (
+          <Button
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={handleSkipDetails}
+            disabled={isProcessing}
+          >
+            Skip details
+          </Button>
+        )}
         <Button
           className="flex-1"
-          onClick={handleSaveCorrection}
+          onClick={isManualEntry ? handleSaveManualEntry : handleSaveCorrection}
           disabled={isProcessing || !selectedSystemType}
         >
           {isProcessing ? (
