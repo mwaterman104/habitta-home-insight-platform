@@ -1,661 +1,567 @@
 
+# Engagement Cadence System — Refined Implementation Plan (QA-Approved)
 
-# Handshake Onboarding Flow — Refined Implementation Plan
+## Summary
 
-## Summary of Refinements (QA Approved)
-
-This plan incorporates 6 specific risk mitigations identified during QA review:
-
-| Risk | Mitigation |
-|------|------------|
-| Rigid 6s timing | Soft exit: 4s minimum, 6s typical |
-| Snapshot too fast after handshake | Add 300-500ms transition delay |
-| Confidence/source taxonomy gap | Separate `confidence` and `source` internally |
-| Hardcoded South Florida system order | Add explicit `getSystemPriorityByClimate()` helper |
-| Silent enrichment failure | Defensive UI line when snapshot is thin |
-| Repeat onboarding copy | Branch headline by home count |
-
-Plus one missing acceptance test: **User skips all systems and proceeds**.
+This plan transforms Habitta from a task-focused repair planner into a **living stewardship system** that maintains engagement through **validation, not surveillance**. The refinements ensure the system is operationally bulletproof, not just philosophically sound.
 
 ---
 
-## Files to Create/Modify
+## QA Refinements Integrated
 
-| File | Action | Scope |
-|------|--------|-------|
-| `src/components/onboarding/HomeHandshake.tsx` | **Create** | New handshake screen with refined timing |
-| `src/components/onboarding/OnboardingComplete.tsx` | **Create** | New closure screen |
-| `src/pages/OnboardingFlow.tsx` | Modify | New step flow, home count check, transition delay |
-| `src/components/onboarding/InstantSnapshot.tsx` | Modify | Confidence labels, baseline strength reframe, thin data warning |
-| `src/components/onboarding/CriticalSystemsStep.tsx` | Modify | Climate-based system order, inline feedback |
-| `src/lib/onboardingHelpers.ts` | **Create** | System priority helper, confidence display helpers |
+| Issue | Clarification | Implementation |
+|-------|---------------|----------------|
+| "Creates bond" is emotional, not mechanical | **Bond = accumulated historical context** — non-events filtered, continuity of observation, history expensive to walk away from | Explicit in StateOfHomeReport ("What Habitta filtered out"), copy governance, and annual brief structure |
+| "Watched over" risks creepy framing | **Reframe as validation** — "Your assumptions about your home are continuously validated" | Copy changes throughout: "validated" replaces "watching", "confirmation" replaces "monitoring" |
 
 ---
 
-## 1. NEW: HomeHandshake Component
+## Core Principle (Lock This In)
 
-**File:** `src/components/onboarding/HomeHandshake.tsx`
+> Habitta is a **continuously validating second brain** for the home.
+> 
+> Users return not because something is wrong, but because they want to **confirm their position remains valid**.
+> 
+> The bond is structural: **accumulated context, including what didn't matter, is expensive to walk away from.**
 
-### Props Interface
+---
 
+## Part 1: Database Schema Additions
+
+### New Table: `home_review_state`
+
+```sql
+CREATE TABLE home_review_state (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+  home_state TEXT NOT NULL DEFAULT 'healthy', -- 'healthy' | 'monitoring' | 'planning'
+  last_monthly_check TIMESTAMPTZ,
+  last_quarterly_review TIMESTAMPTZ,
+  last_annual_report TIMESTAMPTZ,
+  last_optional_advantage TIMESTAMPTZ,
+  next_scheduled_review TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(home_id)
+);
+```
+
+### New Table: `home_interactions`
+
+```sql
+CREATE TABLE home_interactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+  interaction_type TEXT NOT NULL, -- 'monthly_confirm' | 'quarterly_dismissed' | 'advantage_dismissed'
+  response_value TEXT, -- 'nothing_changed' | 'system_replaced' | 'renovation' | 'insurance_update'
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## Part 2: SystemWatch Copy Transformation
+
+**File:** `src/components/dashboard-v3/SystemWatch.tsx`
+
+### Current (Lines 124-129) — Problematic
+
+```tsx
+<p className="text-sm text-foreground font-medium">
+  All systems healthy.
+</p>
+<p className="text-sm text-muted-foreground">
+  No planning windows for the next 7 years.
+</p>
+```
+
+**Problem:** This says "come back in 7 years" — dismisses the user.
+
+### Target — Validation Language (QA Refinement #2)
+
+```tsx
+<p className="text-sm text-foreground font-medium">
+  Baseline confirmed.
+</p>
+<p className="text-sm text-muted-foreground">
+  Your home's assumptions are validated against current conditions.
+</p>
+{/* Next review indicator */}
+<p className="text-xs text-muted-foreground/70 mt-2">
+  Next scheduled review: {nextReviewMonth}
+</p>
+```
+
+**New prop added:**
 ```typescript
-interface HomeHandshakeProps {
-  city: string;
-  state: string;
-  isFirstHome: boolean; // For headline branching
-  onComplete: () => void;
+interface SystemWatchProps {
+  // ... existing props
+  nextReviewMonth?: string; // "March" | "June" etc.
 }
 ```
 
-### Refined Timing Logic (Risk 1 Fix)
+**Why this works:**
+- "Validated" = active confirmation, not passive monitoring
+- "Baseline confirmed" = acknowledgment, not dismissal
+- Next review = time is moving under supervision
+
+---
+
+## Part 3: New Components
+
+### 1. `MonthlyConfirmationCard.tsx`
+
+**Purpose:** 30-second monthly check-in. Non-anxious, dismissible.
 
 ```typescript
-// Timing constants
-const STEP_INTERVAL = 1500; // 1.5s per step
-const MINIMUM_DISPLAY = 4000; // 4s minimum (was 6s)
-const TYPICAL_DISPLAY = 6000; // 6s typical
+interface MonthlyConfirmationCardProps {
+  homeId: string;
+  onResponse: (response: MonthlyResponse) => void;
+  onDismiss: () => void;
+}
 
-// Auto-advance when:
-// - All 4 scan items complete AND
-// - Minimum 4 seconds elapsed
+type MonthlyResponse = 'nothing_changed' | 'system_replaced' | 'renovation' | 'insurance_update';
 ```
 
-Implementation:
+**UI Copy (Validation Language):**
+```tsx
+<p className="text-sm text-foreground font-medium">
+  This month's validation
+</p>
+<p className="text-sm text-muted-foreground">
+  Habitta's assumptions remain consistent with conditions.
+  Has anything changed that we wouldn't see?
+</p>
+```
+
+**Display Rules:**
+- Only for `home_state === 'healthy'`
+- Once per calendar month
+- Suppressed if quarterly card active
+- Suppressed if planning state exists
+- Response quietly increments `confidence += 0.01`
+
+### 2. `QuarterlyPositionCard.tsx`
+
+**Purpose:** Comparative intelligence that creates pull (curiosity, not duty).
+
 ```typescript
-const [completedSteps, setCompletedSteps] = useState(0);
-const [startTime] = useState(Date.now());
-const [canAdvance, setCanAdvance] = useState(false);
+interface QuarterlyPositionCardProps {
+  position: QuarterlyPosition;
+  homeId: string;
+  onDismiss: () => void;
+}
 
-// Sequential step completion
-useEffect(() => {
-  if (completedSteps < 4) {
-    const timer = setTimeout(() => {
-      setCompletedSteps(prev => prev + 1);
-    }, STEP_INTERVAL);
-    return () => clearTimeout(timer);
-  }
-}, [completedSteps]);
-
-// Check if can advance (all steps done + minimum time)
-useEffect(() => {
-  if (completedSteps === 4) {
-    const elapsed = Date.now() - startTime;
-    if (elapsed >= MINIMUM_DISPLAY) {
-      setCanAdvance(true);
-    } else {
-      const remaining = MINIMUM_DISPLAY - elapsed;
-      const timer = setTimeout(() => setCanAdvance(true), remaining);
-      return () => clearTimeout(timer);
-    }
-  }
-}, [completedSteps, startTime]);
-
-// Auto-advance when ready
-useEffect(() => {
-  if (canAdvance) {
-    onComplete();
-  }
-}, [canAdvance, onComplete]);
+interface QuarterlyPosition {
+  agingRate: 'better' | 'average' | 'faster';
+  percentile: number;
+  environmentalStress: 'normal' | 'elevated' | 'low';
+  maintenanceSignalStrength: 'high' | 'medium' | 'low';
+  positionChanged: boolean;
+}
 ```
 
-### Headline Branching (Risk 6 Fix)
+**UI:**
+- Header: "Quarterly Home Position"
+- Three metric rows with subtle indicators
+- Footer: "Position unchanged this quarter" or "Position improved"
+- **No action required** — just awareness
 
+**Display Rules:**
+- Once per quarter (background job trigger)
+- Suppressed if planning state active
+- If nothing changed, card still appears (that's the point)
+
+### 3. `StateOfHomeReport.tsx` (QA Refinement #1 — Bond Mechanism)
+
+**Purpose:** Annual stewardship briefing that **creates structural bond**.
+
+**The bond is explicit:** This report shows what Habitta filtered out — accumulated context that is expensive to recreate.
+
+**Sections:**
+1. **What held steady** — systems that performed as expected
+2. **What aged slightly** — normal wear, no concern
+3. **What Habitta filtered out** — noise you didn't need to see (THIS IS THE BOND)
+4. **Confidence trajectory** — year-over-year improvement
+
+**Section 3 ("What Habitta filtered out") makes the bond mechanical:**
 ```tsx
-<h1 className="text-2xl font-semibold">
-  {isFirstHome 
-    ? "Nice to meet your home."
-    : "Let's get this home under watch."}
-</h1>
-```
-
-### UI Structure
-
-```tsx
-<div className="min-h-screen flex flex-col items-center justify-center p-4">
-  <div className="w-full max-w-md text-center space-y-8">
-    {/* Logo - using existing component */}
-    <div className="flex justify-center">
-      <Logo className="h-12 w-12 text-primary animate-pulse" />
-    </div>
-    
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold">
-        {isFirstHome ? "Nice to meet your home." : "Let's get this home under watch."}
-      </h1>
-      <p className="text-muted-foreground">
-        We're building its baseline using everything we can find.
-      </p>
-    </div>
-
-    {/* Scan items with sequential completion */}
-    <div className="space-y-3 text-left max-w-xs mx-auto">
-      <ScanItem label="Pulling public property records" completed={completedSteps >= 1} />
-      <ScanItem label="Analyzing climate stress" completed={completedSteps >= 2} />
-      <ScanItem label="Matching similar homes nearby" completed={completedSteps >= 3} />
-      <ScanItem label="Estimating system lifecycles" completed={completedSteps >= 4} />
-    </div>
-
-    <p className="text-xs text-muted-foreground">
-      You can refine this later. We'll start with our best estimate.
-    </p>
-  </div>
+<div className="space-y-2">
+  <h4 className="text-sm font-medium text-muted-foreground">
+    What Habitta filtered out this year
+  </h4>
+  <ul className="text-sm text-muted-foreground space-y-1">
+    {filteredItems.map(item => (
+      <li key={item.id} className="flex items-start gap-2">
+        <span className="text-muted-foreground/50">—</span>
+        <span>{item.description}</span>
+      </li>
+    ))}
+  </ul>
+  <p className="text-xs text-muted-foreground/70 italic">
+    This accumulated context makes your baseline increasingly precise.
+  </p>
 </div>
 ```
 
-### ScanItem Sub-Component
+**Display Rules:**
+- Once per year (onboarding anniversary)
+- Always runs, never suppressed
+- Feels printable, official
 
-```tsx
-function ScanItem({ label, completed }: { label: string; completed: boolean }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className={cn(
-        "h-5 w-5 rounded-full flex items-center justify-center transition-all duration-300",
-        completed ? "bg-primary" : "bg-muted"
-      )}>
-        {completed ? (
-          <Check className="h-3 w-3 text-primary-foreground" />
-        ) : (
-          <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
-        )}
-      </div>
-      <span className={cn(
-        "text-sm transition-colors duration-300",
-        completed ? "text-foreground" : "text-muted-foreground"
-      )}>
-        {label}
-      </span>
-    </div>
-  );
-}
-```
+### 4. `OptionalAdvantageCard.tsx`
+
+**Purpose:** Surface timing-advantaged opportunities without sales pressure.
+
+**Display Rules:**
+- Only when `home_state === 'healthy'`
+- Only when `confidence >= 0.8`
+- Only when external signal favors homeowner
+- Max 1 shown at a time
+- Not repeated for 90 days after dismissal
+
+**Examples:**
+- "Insurance conditions this quarter are favorable for homes like yours."
+- "You're in a low-stress HVAC pricing window."
+- "Comparable homes are over-maintaining. You are not."
+
+### 5. `MapEnvironmentOverlay.tsx`
+
+**Purpose:** Ambient environmental confirmation on PropertyMap.
+
+**Overlay badges:**
+- "Seasonal heat stress: normal"
+- "No abnormal permit activity"
+- "No storm-related signals"
+
+**Placement:** Bottom-right corner, small muted badges, stacked vertically.
 
 ---
 
-## 2. OnboardingFlow.tsx — Flow Orchestration
+## Part 4: HomeHealthCard Modification
 
-### Step Type Update
+**File:** `src/components/HomeHealthCard.tsx`
 
-```typescript
-type Step = 'address' | 'handshake' | 'snapshot' | 'systems' | 'complete';
+### Current CTA (Line 175):
+```tsx
+<Button onClick={handleProtectClick}>
+  What should I do next?
+</Button>
 ```
 
-### Home Count Detection (Risk 6 Fix)
+### Target — Conditional CTA Based on Home State:
 
-Add state and check:
+```tsx
+<Button onClick={handleProtectClick}>
+  {isHealthyState 
+    ? "What's Habitta validating right now?"
+    : "What should I do next?"}
+</Button>
+```
+
+**New prop:**
+```typescript
+interface HomeHealthCardProps {
+  // ... existing props
+  isHealthyState?: boolean; // From home_review_state.home_state
+}
+```
+
+**Expanded section for healthy homes shows:**
+- Systems under passive validation
+- Environmental factors in scope
+- What is explicitly not worth thinking about
+
+---
+
+## Part 5: Copy Governance Extensions
+
+**File:** `src/lib/dashboardCopy.ts`
+
+### Add Stewardship Cadence Copy
 
 ```typescript
-const [isFirstHome, setIsFirstHome] = useState(true);
+// ============ STEWARDSHIP CADENCE COPY ============
 
-useEffect(() => {
-  const checkHomeCount = async () => {
-    if (!user) return;
-    
-    const { count } = await supabase
-      .from('homes')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id);
-
-    // If user already has homes, this is not their first
-    setIsFirstHome((count || 0) === 0);
-    
-    // Existing redirect logic for existing home
-    if (count && count > 0) {
-      navigate('/dashboard', { replace: true });
-    }
+export interface StewardshipCopy {
+  systemWatchHealthy: {
+    headline: string;
+    subtext: string;
+    nextReviewText: (month: string) => string;
   };
-
-  checkHomeCount();
-}, [user, navigate]);
-```
-
-### Transition Delay (Risk 2 Fix)
-
-Modify handshake → snapshot transition:
-
-```typescript
-// After handshake completes, add 400ms delay before showing snapshot
-const handleHandshakeComplete = () => {
-  // Add perceptual causality delay
-  setTimeout(() => {
-    setStep('snapshot');
-  }, 400); // 300-500ms delay preserves perceived causality
-};
-```
-
-### Address Step Copy Update
-
-```tsx
-{step === 'address' && (
-  <div className="space-y-6 animate-in fade-in duration-300">
-    <div className="text-center space-y-2">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Welcome to Habitta
-      </h1>
-      <p className="text-muted-foreground">
-        We quietly monitor the systems that keep your home running.
-      </p>
-    </div>
-
-    <Card className="border-0 shadow-lg">
-      <CardContent className="p-6">
-        <GooglePlacesAutocomplete
-          onSelect={handleAddressSelect}
-          placeholder="Enter your address..."
-          disabled={isLoading}
-        />
-        {isLoading && (
-          <div className="flex items-center justify-center gap-2 mt-4 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Setting up your home...</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-
-    <p className="text-xs text-center text-muted-foreground max-w-sm mx-auto">
-      We'll use public records, climate data, and regional patterns to build your home's baseline.
-    </p>
-  </div>
-)}
-```
-
-### Handshake Step Render
-
-```tsx
-{step === 'handshake' && state.snapshot && (
-  <HomeHandshake
-    city={state.snapshot.city}
-    state={state.snapshot.state}
-    isFirstHome={isFirstHome}
-    onComplete={handleHandshakeComplete}
-  />
-)}
-```
-
-### Complete Step Navigation
-
-```typescript
-// In CriticalSystemsStep onComplete callback:
-onComplete={async (systems) => {
-  // ... existing update logic ...
-  setStep('complete'); // Navigate to complete step, not dashboard
-}}
-onSkip={() => setStep('complete')} // Also go to complete
-```
-
-### Complete Step Render
-
-```tsx
-{step === 'complete' && (
-  <div className="space-y-6 animate-in fade-in duration-300">
-    <OnboardingComplete
-      onContinue={() => navigate('/dashboard', { replace: true })}
-    />
-  </div>
-)}
-```
-
----
-
-## 3. NEW: OnboardingComplete Component
-
-**File:** `src/components/onboarding/OnboardingComplete.tsx`
-
-```tsx
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Shield, Check, ArrowRight } from "lucide-react";
-
-interface OnboardingCompleteProps {
-  onContinue: () => void;
+  monthlyValidation: {
+    headline: string;
+    prompt: string;
+    responses: Record<MonthlyResponse, string>;
+    dismissText: string;
+  };
+  quarterlyPosition: {
+    header: string;
+    positionUnchanged: string;
+    positionImproved: string;
+    agingRateLabels: Record<'better' | 'average' | 'faster', string>;
+  };
+  healthCardHealthyMode: {
+    ctaLabel: string;
+    expandedHeader: string;
+    passiveValidationLabel: string;
+    notWorthThinkingLabel: string;
+  };
+  annualBrief: {
+    header: string;
+    filteredOutHeader: string;
+    filteredOutFooter: string;
+    accumulatedContextNote: string;
+  };
 }
 
-export function OnboardingComplete({ onContinue }: OnboardingCompleteProps) {
-  return (
-    <Card className="border-0 shadow-lg">
-      <CardContent className="pt-8 pb-6 space-y-6 text-center">
-        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-          <Shield className="h-8 w-8 text-primary" />
-        </div>
-        
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">Your home is now under watch.</h1>
-        </div>
-        
-        <ul className="text-left space-y-3 text-sm text-muted-foreground">
-          <li className="flex items-start gap-3">
-            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <span>System wear is tracked quietly in the background</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <span>Climate stress is factored automatically</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <span>You'll see issues early — not when they become urgent</span>
-          </li>
-        </ul>
-        
-        {/* Thesis statement - immutable */}
-        <blockquote className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-4 text-left">
-          Most home issues don't happen suddenly. They build quietly.<br />
-          Habitta exists to notice them early.
-        </blockquote>
-        
-        <Button onClick={onContinue} className="w-full h-12 text-base" size="lg">
-          Go to Home Pulse
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </CardContent>
-    </Card>
-  );
+export function getStewardshipCopy(): StewardshipCopy {
+  return {
+    systemWatchHealthy: {
+      headline: 'Baseline confirmed.',
+      subtext: 'Your home\'s assumptions are validated against current conditions.',
+      nextReviewText: (month) => `Next scheduled review: ${month}`,
+    },
+    monthlyValidation: {
+      headline: 'This month\'s validation',
+      prompt: 'Habitta\'s assumptions remain consistent. Has anything changed that we wouldn\'t see?',
+      responses: {
+        nothing_changed: 'Nothing changed',
+        system_replaced: 'System replaced',
+        renovation: 'Renovation',
+        insurance_update: 'Insurance update',
+      },
+      dismissText: 'Skip this month',
+    },
+    quarterlyPosition: {
+      header: 'Quarterly Home Position',
+      positionUnchanged: 'Position unchanged this quarter.',
+      positionImproved: 'Position improved this quarter.',
+      agingRateLabels: {
+        better: 'Aging slower than similar homes',
+        average: 'Aging at typical rate',
+        faster: 'Aging faster than similar homes',
+      },
+    },
+    healthCardHealthyMode: {
+      ctaLabel: 'What\'s Habitta validating right now?',
+      expandedHeader: 'Active Validation',
+      passiveValidationLabel: 'Systems under continuous validation',
+      notWorthThinkingLabel: 'What is explicitly not worth thinking about',
+    },
+    annualBrief: {
+      header: 'State of the Home',
+      filteredOutHeader: 'What Habitta filtered out this year',
+      filteredOutFooter: 'This accumulated context makes your baseline increasingly precise.',
+      accumulatedContextNote: 'This history is unique to your home and would be expensive to recreate.',
+    },
+  };
 }
 ```
 
 ---
 
-## 4. NEW: Onboarding Helpers Module
+## Part 6: MiddleColumn Integration
 
-**File:** `src/lib/onboardingHelpers.ts`
+**File:** `src/components/dashboard-v3/MiddleColumn.tsx`
 
-### Climate-Based System Priority (Risk 4 Fix)
+### Add Cadence Card Rendering
+
+Between SystemWatch and HomeHealthCard, add conditional cadence cards:
+
+```tsx
+{/* Cadence Cards - Priority ordering */}
+{annualCard && (
+  <section>
+    <StateOfHomeReport data={annualCard} onDismiss={handleAnnualDismiss} />
+  </section>
+)}
+
+{!annualCard && quarterlyCard && (
+  <section>
+    <QuarterlyPositionCard position={quarterlyCard} homeId={propertyId} onDismiss={handleQuarterlyDismiss} />
+  </section>
+)}
+
+{!annualCard && !quarterlyCard && monthlyCard && (
+  <section>
+    <MonthlyConfirmationCard homeId={propertyId} onResponse={handleMonthlyResponse} onDismiss={handleMonthlyDismiss} />
+  </section>
+)}
+
+{advantageCard && (
+  <section>
+    <OptionalAdvantageCard advantage={advantageCard} homeId={propertyId} onDismiss={handleAdvantageDismiss} />
+  </section>
+)}
+```
+
+**Priority ordering enforced:**
+- Annual suppresses all others
+- Quarterly suppresses monthly
+- Planning state suppresses all cadence cards
+
+---
+
+## Part 7: New Hook
+
+**File:** `src/hooks/useEngagementCadence.ts`
 
 ```typescript
-import { ClimateZoneType } from './climateZone';
-
-interface SystemConfig {
-  key: string;
-  label: string;
+interface UseEngagementCadenceReturn {
+  // Cards to display
+  monthlyCard: MonthlyCardData | null;
+  quarterlyCard: QuarterlyCardData | null;
+  annualCard: AnnualBriefData | null;
+  advantageCard: AdvantageData | null;
+  
+  // Home state
+  homeState: 'healthy' | 'monitoring' | 'planning';
+  nextScheduledReview: string;
+  
+  // Actions
+  respondToMonthly: (response: MonthlyResponse) => Promise<void>;
+  dismissQuarterly: () => Promise<void>;
+  dismissAdvantage: () => Promise<void>;
+  
+  loading: boolean;
 }
 
-/**
- * Get system priority order based on climate zone
- * 
- * Rationale:
- * - High heat: HVAC first (highest stress)
- * - Coastal: HVAC first (salt air exposure)
- * - Freeze-thaw: Roof/plumbing first (ice damage)
- * - Moderate: Standard order
- * 
- * This makes future expansion explicit.
- */
-export function getSystemPriorityByClimate(zone: ClimateZoneType): SystemConfig[] {
-  switch (zone) {
-    case 'high_heat':
-    case 'coastal':
-      return [
-        { key: 'hvac', label: 'HVAC' },
-        { key: 'roof', label: 'Roof' },
-        { key: 'water_heater', label: 'Water Heater' },
-      ];
-    case 'freeze_thaw':
-      return [
-        { key: 'roof', label: 'Roof' },
-        { key: 'hvac', label: 'HVAC' },
-        { key: 'water_heater', label: 'Water Heater' },
-      ];
-    case 'moderate':
-    default:
-      return [
-        { key: 'hvac', label: 'HVAC' },
-        { key: 'roof', label: 'Roof' },
-        { key: 'water_heater', label: 'Water Heater' },
-      ];
-  }
+export function useEngagementCadence(homeId: string): UseEngagementCadenceReturn {
+  // Fetch from edge function
+  // Cache in React Query
+  // Handle mutations
 }
 ```
 
-### Confidence Display Helpers (Risk 3 Fix)
+---
 
+## Part 8: Edge Function
+
+**File:** `supabase/functions/engagement-cadence/index.ts`
+
+**Endpoints:**
+- `GET /engagement-cadence?home_id={id}` — Returns applicable cadence cards
+- `POST /engagement-cadence` — Log interaction response
+
+**Core Logic:**
 ```typescript
-/**
- * Confidence level (how sure we are)
- * Separate from source (where the data came from)
- */
-export type ConfidenceDisplay = 'High confidence' | 'Moderate confidence' | 'Estimated' | 'Confirmed';
-
-/**
- * Data source (where the data came from)
- */
-export type SourceDisplay = 'Permit' | 'Owner-reported' | 'Inferred' | 'Deterministic';
-
-export interface SystemConfidenceInfo {
-  confidence: ConfidenceDisplay;
-  source: SourceDisplay;
-}
-
-/**
- * Derive display confidence and source from install source
- * 
- * Keeps confidence (how sure) and source (where from) as separate concepts.
- */
-export function getSystemConfidenceInfo(
-  installSource: string | null,
-  hasPermit: boolean = false
-): SystemConfidenceInfo {
-  if (hasPermit || installSource === 'permit' || installSource === 'permit_verified') {
-    return { confidence: 'High confidence', source: 'Permit' };
+async function getApplicableCadence(homeId: string): Promise<CadenceResult> {
+  const reviewState = await getReviewState(homeId);
+  const homeState = await deriveHomeState(homeId);
+  
+  // Planning overrides everything
+  if (homeState === 'planning') {
+    return { cards: [], suppressReason: 'planning_active' };
   }
   
-  if (installSource === 'user' || installSource === 'owner_reported') {
-    return { confidence: 'Moderate confidence', source: 'Owner-reported' };
+  const cards: CadenceCard[] = [];
+  
+  // Annual (highest priority)
+  if (isAnnualDue(reviewState)) {
+    cards.push({ type: 'annual', data: await buildAnnualBrief(homeId) });
+    return { cards }; // Suppresses others
   }
   
-  // Inferred/heuristic
-  return { confidence: 'Estimated', source: 'Inferred' };
-}
-
-/**
- * Get climate confidence (always deterministic)
- */
-export function getClimateConfidenceInfo(): SystemConfidenceInfo {
-  return { confidence: 'Confirmed', source: 'Deterministic' };
-}
-
-/**
- * Get baseline strength label from confidence score
- */
-export function getBaselineStrengthLabel(confidence: number): string {
-  if (confidence >= 70) return 'Strong baseline';
-  if (confidence >= 50) return 'Moderate baseline';
-  return 'Early baseline established';
-}
-
-/**
- * Check if snapshot is "thin" (enrichment may have failed)
- */
-export function isSnapshotThin(confidence: number, hasYearBuilt: boolean): boolean {
-  return confidence < 35 && !hasYearBuilt;
+  // Quarterly
+  if (isQuarterlyDue(reviewState)) {
+    cards.push({ type: 'quarterly', data: await buildQuarterlyPosition(homeId) });
+    return { cards }; // Suppresses monthly
+  }
+  
+  // Monthly
+  if (isMonthlyDue(reviewState)) {
+    cards.push({ type: 'monthly', data: null });
+  }
+  
+  // Optional advantage
+  if (homeState === 'healthy' && reviewState.confidence >= 0.8) {
+    const advantage = await checkForAdvantage(homeId);
+    if (advantage) cards.push({ type: 'advantage', data: advantage });
+  }
+  
+  return { cards };
 }
 ```
 
 ---
 
-## 5. InstantSnapshot.tsx — Discovery Reveal Reframe
+## Files Summary
 
-### Updated Props Interface
-
-```typescript
-interface InstantSnapshotProps {
-  snapshot: SnapshotData;
-  confidence: number;
-  isEnriching?: boolean;
-}
-```
-
-### Key Changes
-
-#### A. Add Confidence Labels to Cards
-
-```tsx
-// Derive confidence info for each card
-const roofConfidence = snapshot.hvac_permit_year 
-  ? { confidence: 'High confidence', source: 'Permit' }
-  : { confidence: 'Estimated', source: 'Inferred' };
-
-const coolingConfidence = snapshot.hvac_permit_year
-  ? { confidence: 'High confidence', source: 'Permit' }
-  : { confidence: 'Likely', source: 'Inferred' };
-
-// Climate is always deterministic
-const climateConfidence = 'Confirmed';
-```
-
-Updated card rendering:
-```tsx
-{/* Roof Card */}
-<Card className="border-muted">
-  <CardContent className="p-4 flex items-center gap-3">
-    <div className="p-2 rounded-lg bg-muted">
-      <Home className="h-5 w-5 text-muted-foreground" />
-    </div>
-    <div className="flex-1">
-      <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">Roof</p>
-        <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
-          {roofConfidence.confidence}
-        </Badge>
-      </div>
-      <p className="font-medium">{getRoofLabel(snapshot.roof_type)}</p>
-    </div>
-  </CardContent>
-</Card>
-```
-
-#### B. Replace "Home Confidence" with "Baseline Strength" (Risk 1 Psychological Fix)
-
-```tsx
-{/* Baseline Strength Section */}
-<Card className="bg-muted/50 border-0">
-  <CardContent className="p-4">
-    <div className="flex items-center justify-between mb-2">
-      <span className="text-sm font-medium">Home Baseline Strength</span>
-      <span className="text-base font-semibold text-foreground">
-        {getBaselineStrengthLabel(confidence)}
-      </span>
-    </div>
-    <Progress 
-      value={confidence} 
-      className={cn(
-        "h-2 transition-all duration-500",
-        isEnriching && "[&>div]:animate-pulse"
-      )} 
-    />
-    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-      {isEnriching && <Loader2 className="h-3 w-3 animate-spin" />}
-      {isEnriching 
-        ? 'Finding more data...' 
-        : 'We refine this over time — with or without input.'}
-    </p>
-    
-    {/* Thin data warning (Risk 5 Fix) */}
-    {!isEnriching && isSnapshotThin(confidence, !!snapshot.year_built) && (
-      <p className="text-xs text-muted-foreground mt-2 italic">
-        Some records were unavailable. We'll keep checking.
-      </p>
-    )}
-  </CardContent>
-</Card>
-```
-
----
-
-## 6. CriticalSystemsStep.tsx — Systems Lock-In Reframe
-
-### Climate-Based System Order (Risk 4 Fix)
-
-```typescript
-import { getSystemPriorityByClimate } from '@/lib/onboardingHelpers';
-import { deriveClimateZone } from '@/lib/climateZone';
-
-interface CriticalSystemsStepProps {
-  yearBuilt?: number;
-  city?: string;  // NEW: for climate derivation
-  state?: string; // NEW: for climate derivation
-  onComplete: (systems: {...}) => void;
-  onSkip?: () => void;
-  isSubmitting?: boolean;
-}
-
-// Inside component:
-const climateZone = deriveClimateZone(state, city);
-const SYSTEMS = getSystemPriorityByClimate(climateZone.zone);
-
-// Use SYSTEMS in render...
-```
-
-### Updated Copy
-
-```tsx
-<CardTitle>Let's lock in the essentials</CardTitle>
-<CardDescription>
-  Start with what you know. Skip anything you're unsure about.
-</CardDescription>
-```
-
-### Inline Feedback After First Answer
-
-```tsx
-const completedCount = Object.values(answers).filter(a => a.choice !== null).length;
-
-{/* Show micro-affirmation after first answer */}
-{completedCount === 1 && (
-  <p className="text-sm text-center text-primary animate-in fade-in duration-300">
-    That helps. We'll take it from here.
-  </p>
-)}
-```
+| File | Action | Scope |
+|------|--------|-------|
+| `supabase/migrations/YYYYMMDD_engagement_cadence.sql` | **Create** | New tables |
+| `supabase/functions/engagement-cadence/index.ts` | **Create** | Cadence evaluation logic |
+| `src/components/dashboard-v3/MonthlyConfirmationCard.tsx` | **Create** | Monthly check-in UI |
+| `src/components/dashboard-v3/QuarterlyPositionCard.tsx` | **Create** | Quarterly intelligence UI |
+| `src/components/dashboard-v3/StateOfHomeReport.tsx` | **Create** | Annual briefing UI |
+| `src/components/dashboard-v3/OptionalAdvantageCard.tsx` | **Create** | Timing-advantaged opportunities |
+| `src/components/dashboard-v3/MapEnvironmentOverlay.tsx` | **Create** | Environmental signals overlay |
+| `src/hooks/useEngagementCadence.ts` | **Create** | Cadence data hook |
+| `src/lib/dashboardCopy.ts` | **Modify** | Add stewardship copy functions |
+| `src/components/dashboard-v3/SystemWatch.tsx` | **Modify** | Replace "all clear" copy with validation language |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Integrate cadence cards |
+| `src/components/dashboard-v3/PropertyMap.tsx` | **Modify** | Add environmental overlays |
+| `src/components/HomeHealthCard.tsx` | **Modify** | Conditional CTA for healthy homes |
+| `supabase/functions/intelligence-engine/index.ts` | **Modify** | Add home state derivation |
+| `src/components/dashboard-v3/index.ts` | **Modify** | Export new components |
 
 ---
 
 ## Acceptance Tests
 
-### Handshake Screen
-- [ ] Displays after address selection
-- [ ] Shows 4 scan items completing sequentially (1.5s each)
-- [ ] Auto-advances after minimum 4 seconds (not rigid 6s)
-- [ ] No user action buttons visible
-- [ ] Displays correct city/state
-- [ ] Shows "Nice to meet your home" for first home
-- [ ] Shows "Let's get this home under watch" for additional homes
+### QA Refinement Validation
+- [ ] No copy uses "watching" or "monitored" — all replaced with "validated" / "confirmation"
+- [ ] Annual brief explicitly shows "What Habitta filtered out" section
+- [ ] Annual brief includes note about accumulated context being expensive to recreate
+- [ ] StateOfHomeReport renders filteredItems list with accumulated context footer
 
-### Transition
-- [ ] 300-500ms delay between handshake completion and snapshot render
-- [ ] Snapshot doesn't appear instantly after handshake (perceptual causality)
+### SystemWatch Healthy State
+- [ ] Shows "Baseline confirmed" (not "All systems healthy")
+- [ ] Shows "validated against current conditions" (not "nothing for 7 years")
+- [ ] Shows next scheduled review month
+- [ ] Retains emerald styling
 
-### Discovery Reveal (Snapshot)
-- [ ] Shows "Here's what we found so far" headline
-- [ ] Each card has confidence label ("High confidence", "Likely", "Estimated", "Confirmed")
-- [ ] "Home Confidence" replaced with "Home Baseline Strength"
-- [ ] Shows human-readable baseline label, not percentage
-- [ ] Shows "Some records were unavailable" when snapshot is thin (Risk 5)
-- [ ] Progress bar still visible but de-emphasized
+### Monthly Validation
+- [ ] Uses "validation" language, not "confirmation" or "check-in"
+- [ ] Appears only for healthy homes
+- [ ] Suppressed when quarterly/annual active
+- [ ] Response increments confidence by 0.01
 
-### Systems Lock-In
-- [ ] Shows "Let's lock in the essentials" headline
-- [ ] System order matches climate zone (HVAC first in high_heat)
-- [ ] Shows "That helps" feedback after first answer
-- [ ] Skip navigates to complete step (not dashboard)
-- [ ] **CRITICAL: User skips all systems and proceeds successfully** (missing test)
+### Quarterly Position
+- [ ] Shows aging rate vs similar homes
+- [ ] Shows environmental stress level
+- [ ] "Position unchanged" appears when nothing changed
+- [ ] Suppressed when planning state active
 
-### Closure Screen
-- [ ] Shows "Your home is now under watch"
-- [ ] Three bullet points with check icons
-- [ ] Thesis statement blockquote visible
-- [ ] "Go to Home Pulse" navigates to /dashboard
+### Annual Briefing
+- [ ] Shows "What held steady"
+- [ ] Shows "What Habitta filtered out" (the bond mechanism)
+- [ ] Shows confidence trajectory
+- [ ] Includes "accumulated context" note
+- [ ] Never suppressed
 
-### Edge Cases
-- [ ] User skips all systems → baseline still established, closure shown, dashboard populated
-- [ ] User returns to onboarding after session loss → appropriate headline shown
-- [ ] Enrichment fails silently → thin data warning displayed, flow continues
+### Home State Derivation
+- [ ] `planning` when any system <= 7 years remaining
+- [ ] `monitoring` when elevated signals present
+- [ ] `healthy` otherwise
 
 ---
 
-## Product Philosophy (Immutable)
+## Product Philosophy (Immutable — Now Anchored)
 
-> **Habitta onboarding is not about collecting data.**
-> **It's about demonstrating care, competence, and continuity.**
->
-> The system should always feel like it is doing more work than the homeowner.
+> **Habitta is not a to-do app.**
+> 
+> It is a **continuously validating second brain** for the home.
+> 
+> Users return to **confirm their position remains valid**, not to complete tasks.
+> 
+> **The bond is structural:** Accumulated context — including what didn't matter — is expensive to walk away from. This history is unique to each home and cannot be recreated elsewhere.
+> 
+> **Validation, not surveillance:** Habitta doesn't "watch" the home. It continuously **validates the homeowner's assumptions** about their property.
 
+This philosophy is now **operationally enforced** through:
+1. Copy governance (validation language)
+2. Annual brief structure (filtered-out section)
+3. Accumulated context disclosure (bond mechanism)
+4. Cadence rhythm (monthly/quarterly/annual)
