@@ -1,308 +1,169 @@
 
 
-# Right Column → Context Rail with Authority Contract
+# Handshake Onboarding Flow — Refined Implementation Plan
 
-## Executive Summary
+## Summary of Refinements (QA Approved)
 
-Transform the Right Column into a **purposeful Context Rail** with an explicit **Authority Contract** that ensures it remains structurally subordinate to Today's Focus. The rail answers: *"What external or structural factors matter right now for this home?"* — and it does so only because Today's Focus said to.
+This plan incorporates 6 specific risk mitigations identified during QA review:
 
----
+| Risk | Mitigation |
+|------|------------|
+| Rigid 6s timing | Soft exit: 4s minimum, 6s typical |
+| Snapshot too fast after handshake | Add 300-500ms transition delay |
+| Confidence/source taxonomy gap | Separate `confidence` and `source` internally |
+| Hardcoded South Florida system order | Add explicit `getSystemPriorityByClimate()` helper |
+| Silent enrichment failure | Defensive UI line when snapshot is thin |
+| Repeat onboarding copy | Branch headline by home count |
 
-## Authority Contract (NEW — Critical Addition)
-
-### Authority Hierarchy (Hard Rule)
-
-The dashboard speaks with **one authoritative voice at a time**:
-
-| Priority | Surface | Role |
-|----------|---------|------|
-| **Primary** | Today's Focus (via `focusContext`) | Decides what matters |
-| **Secondary** | Context Rail | Explains why it matters here |
-| Explanatory | Habitta's Thinking | Invites conversation |
-| Historical | Timeline | Records what's planned |
-
-**This hierarchy must never be violated in UI, copy, or logic.**
-
-### Context Rail Authority Constraints
-
-| MAY | MAY NOT |
-|-----|---------|
-| Explain environmental, regional, or structural factors | Introduce a new system focus |
-| Reinforce the rationale behind Today's Focus | Escalate urgency beyond Today's Focus |
-| Provide background without urgency | Present recommendations or actions |
-| | Contradict Today's Focus headline |
-| | Speak when Today's Focus is silent (except Quiet State) |
-
-**If any "MAY NOT" occurs, it is a bug — not a design choice.**
+Plus one missing acceptance test: **User skips all systems and proceeds**.
 
 ---
 
-## Layout Changes
+## Files to Create/Modify
 
-### Width Adjustment
-
-**File: `src/pages/DashboardV3.tsx`**
-
-| Panel | Before | After |
-|-------|--------|-------|
-| Middle Column | `defaultSize={75}`, `minSize={50}` | `defaultSize={60}`, `minSize={55}` |
-| Right Column | `defaultSize={25}`, `minSize={15}`, `maxSize={40}` | `defaultSize={40}`, `minSize={30}`, `maxSize={45}` |
-
-Also update:
-- Background from `bg-muted/30` to `bg-muted/10` (lighter)
-- Pass `focusContext`, `hvacPrediction`, `risk`, `confidence` to RightColumn
+| File | Action | Scope |
+|------|--------|-------|
+| `src/components/onboarding/HomeHandshake.tsx` | **Create** | New handshake screen with refined timing |
+| `src/components/onboarding/OnboardingComplete.tsx` | **Create** | New closure screen |
+| `src/pages/OnboardingFlow.tsx` | Modify | New step flow, home count check, transition delay |
+| `src/components/onboarding/InstantSnapshot.tsx` | Modify | Confidence labels, baseline strength reframe, thin data warning |
+| `src/components/onboarding/CriticalSystemsStep.tsx` | Modify | Climate-based system order, inline feedback |
+| `src/lib/onboardingHelpers.ts` | **Create** | System priority helper, confidence display helpers |
 
 ---
 
-## New Component: FocusContextCard
+## 1. NEW: HomeHandshake Component
 
-**File: `src/components/dashboard-v3/FocusContextCard.tsx`**
+**File:** `src/components/onboarding/HomeHandshake.tsx`
 
-Renamed from `DynamicContextCard` to reinforce hierarchy semantically.
-
-### Props Interface (Authority Coupling Enforced)
+### Props Interface
 
 ```typescript
-interface FocusContextCardProps {
-  // Authority coupling - REQUIRED
-  focusContext: FocusContext;
-  authoritySource: 'todays_focus'; // Must be this value or component won't render
-  
-  // Context data
-  climateZone: ClimateZone;
-  hvacPrediction: SystemPrediction | null;
-  capitalTimeline: HomeCapitalTimeline | null;
-  homeAge?: number;
-  risk: RiskLevel;
-  confidence: number;
+interface HomeHandshakeProps {
+  city: string;
+  state: string;
+  isFirstHome: boolean; // For headline branching
+  onComplete: () => void;
 }
 ```
 
-**Hard rule:** If `authoritySource !== 'todays_focus'`, component returns null.
-
-### Context State Types
+### Refined Timing Logic (Risk 1 Fix)
 
 ```typescript
-type ContextCardState = 'climate_stress' | 'local_activity' | 'risk_context' | 'quiet';
+// Timing constants
+const STEP_INTERVAL = 1500; // 1.5s per step
+const MINIMUM_DISPLAY = 4000; // 4s minimum (was 6s)
+const TYPICAL_DISPLAY = 6000; // 6s typical
+
+// Auto-advance when:
+// - All 4 scan items complete AND
+// - Minimum 4 seconds elapsed
 ```
 
-### Focus Type → Allowed Context States (Gate Logic)
-
-| Focus Type | Allowed States |
-|------------|----------------|
-| `SYSTEM` + planning window | `local_activity`, `climate_stress` |
-| `SYSTEM` + monitoring | `climate_stress` |
-| `SYSTEM` + action | `risk_context` |
-| `NONE` | `quiet` only |
-
-**If derived state doesn't match allowed set → fallback to `quiet`.**
-
-### Rendering Logic
-
+Implementation:
 ```typescript
-function deriveContextState(
-  focusContext: FocusContext,
-  climateZone: ClimateZone,
-  hvacPrediction: SystemPrediction | null,
-  risk: RiskLevel
-): ContextCardState {
-  // No focus = quiet (Authority Rule #1)
-  if (focusContext.type === 'NONE') {
-    return 'quiet';
+const [completedSteps, setCompletedSteps] = useState(0);
+const [startTime] = useState(Date.now());
+const [canAdvance, setCanAdvance] = useState(false);
+
+// Sequential step completion
+useEffect(() => {
+  if (completedSteps < 4) {
+    const timer = setTimeout(() => {
+      setCompletedSteps(prev => prev + 1);
+    }, STEP_INTERVAL);
+    return () => clearTimeout(timer);
   }
-  
-  // System in focus - determine appropriate context
-  if (focusContext.type === 'SYSTEM') {
-    const systemKey = focusContext.systemKey.toLowerCase();
-    
-    // Risk context for roof/structural systems with high risk
-    if ((systemKey === 'roof' || systemKey === 'foundation') && risk === 'HIGH') {
-      return 'risk_context';
-    }
-    
-    // Planning window = local activity context
-    if (hvacPrediction?.planning) {
-      return 'local_activity';
-    }
-    
-    // Climate stress for HVAC, water heater, roof
-    if (['hvac', 'water_heater', 'roof'].includes(systemKey)) {
-      if (climateZone.zone === 'high_heat' || climateZone.zone === 'coastal' || climateZone.zone === 'freeze_thaw') {
-        return 'climate_stress';
-      }
+}, [completedSteps]);
+
+// Check if can advance (all steps done + minimum time)
+useEffect(() => {
+  if (completedSteps === 4) {
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= MINIMUM_DISPLAY) {
+      setCanAdvance(true);
+    } else {
+      const remaining = MINIMUM_DISPLAY - elapsed;
+      const timer = setTimeout(() => setCanAdvance(true), remaining);
+      return () => clearTimeout(timer);
     }
   }
-  
-  // Default quiet
-  return 'quiet';
-}
+}, [completedSteps, startTime]);
+
+// Auto-advance when ready
+useEffect(() => {
+  if (canAdvance) {
+    onComplete();
+  }
+}, [canAdvance, onComplete]);
 ```
 
-### Card Anatomy (Constant Structure)
+### Headline Branching (Risk 6 Fix)
 
 ```tsx
-<Card className="rounded-xl bg-card/50">
-  <CardContent className="py-4 space-y-3">
-    {/* Authority disclosure - REQUIRED */}
-    <p className="text-xs text-muted-foreground uppercase tracking-wider">
-      Context for today's focus
-    </p>
-    
-    {/* Contextual label - muted */}
-    <p className="text-xs font-medium text-muted-foreground">
-      {contextLabel}
-    </p>
-    
-    {/* Headline - anchored to THIS home */}
-    <p className="system-name text-sm leading-relaxed">
-      {headline}
-    </p>
-    
-    {/* Supporting bullets - 2-3 max */}
-    <ul className="space-y-1.5 text-meta text-muted-foreground">
-      {bullets.map((bullet, i) => (
-        <li key={i} className="flex items-start gap-2">
-          <span className="mt-1.5 h-1 w-1 rounded-full bg-muted-foreground/40 shrink-0" />
-          <span>{bullet}</span>
-        </li>
-      ))}
-    </ul>
-    
-    {/* Optional learn-more link - not a CTA */}
-    {learnMoreLink && (
-      <Link 
-        to={learnMoreLink.href} 
-        className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-      >
-        {learnMoreLink.label}
-        <ChevronRight className="h-3 w-3" />
-      </Link>
-    )}
-  </CardContent>
-</Card>
+<h1 className="text-2xl font-semibold">
+  {isFirstHome 
+    ? "Nice to meet your home."
+    : "Let's get this home under watch."}
+</h1>
 ```
 
----
-
-## Copy Governance (Anchored Headlines)
-
-**File: `src/lib/dashboardCopy.ts`**
-
-Add context card copy with **anchored headlines** (tied to "this home" not generic):
-
-```typescript
-export type ContextCardState = 'climate_stress' | 'local_activity' | 'risk_context' | 'quiet';
-
-export interface ContextCardCopy {
-  label: string;
-  headline: string; // MUST be anchored to this home
-  bullets: string[];
-  learnMoreLabel?: string;
-  learnMoreHref?: string;
-}
-```
-
-### Copy by State
-
-| State | Label | Headline (Anchored) |
-|-------|-------|---------------------|
-| `climate_stress` (high_heat) | Climate context | "High heat and humidity increase wear for homes like yours." |
-| `climate_stress` (coastal) | Climate context | "Salt air exposure affects exterior and HVAC systems in your area." |
-| `climate_stress` (freeze_thaw) | Climate context | "Freeze-thaw cycles stress plumbing and foundations in your climate." |
-| `local_activity` | Local context | "Replacement activity is common for homes in your area." |
-| `risk_context` | Risk context | "Roof age affects insurance and inspections for your home." |
-| `quiet` | Home context | "Conditions are typical for homes in your area." |
-
-**Rule:** If headline can stand alone as a conclusion, it's too strong. Anchored headlines always reference "your home/area/climate".
-
----
-
-## RightColumn Refactor
-
-**File: `src/components/dashboard-v3/RightColumn.tsx`**
-
-### Updated Props Interface
-
-```typescript
-interface RightColumnProps {
-  loading: boolean;
-  // Location
-  latitude?: number | null;
-  longitude?: number | null;
-  address?: string;
-  city?: string;
-  state?: string;
-  // Authority coupling (from advisor state)
-  focusContext: FocusContext;
-  // Data for context card
-  hvacPrediction: SystemPrediction | null;
-  capitalTimeline: HomeCapitalTimeline | null;
-  homeAge?: number;
-  risk: RiskLevel;
-  confidence: number;
-}
-```
-
-### What Gets REMOVED
-
-- `LocalSignals` component (replaced by FocusContextCard)
-- "Add a system or appliance" Card (moves to Systems Hub)
-- `TeachHabittaModal` (moves to Systems Hub)
-- `homeForecast` prop (unused)
-- `homeId`, `onSystemAdded` props (no longer needed)
-
-### What Stays/Adds
-
-- `PropertyMap` (with increased height)
-- `FocusContextCard` (new, with authority coupling)
-
-### New Structure
+### UI Structure
 
 ```tsx
-export function RightColumn({
-  loading,
-  latitude, longitude, address, city, state,
-  focusContext,
-  hvacPrediction,
-  capitalTimeline,
-  homeAge,
-  risk,
-  confidence,
-}: RightColumnProps) {
-  const climate = deriveClimateZone(state, city, latitude);
-  
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-40 rounded-xl" />
-      </div>
-    );
-  }
+<div className="min-h-screen flex flex-col items-center justify-center p-4">
+  <div className="w-full max-w-md text-center space-y-8">
+    {/* Logo - using existing component */}
+    <div className="flex justify-center">
+      <Logo className="h-12 w-12 text-primary animate-pulse" />
+    </div>
+    
+    <div className="space-y-2">
+      <h1 className="text-2xl font-semibold">
+        {isFirstHome ? "Nice to meet your home." : "Let's get this home under watch."}
+      </h1>
+      <p className="text-muted-foreground">
+        We're building its baseline using everything we can find.
+      </p>
+    </div>
 
+    {/* Scan items with sequential completion */}
+    <div className="space-y-3 text-left max-w-xs mx-auto">
+      <ScanItem label="Pulling public property records" completed={completedSteps >= 1} />
+      <ScanItem label="Analyzing climate stress" completed={completedSteps >= 2} />
+      <ScanItem label="Matching similar homes nearby" completed={completedSteps >= 3} />
+      <ScanItem label="Estimating system lifecycles" completed={completedSteps >= 4} />
+    </div>
+
+    <p className="text-xs text-muted-foreground">
+      You can refine this later. We'll start with our best estimate.
+    </p>
+  </div>
+</div>
+```
+
+### ScanItem Sub-Component
+
+```tsx
+function ScanItem({ label, completed }: { label: string; completed: boolean }) {
   return (
-    <div className="space-y-6">
-      {/* Map - taller */}
-      <PropertyMap 
-        lat={latitude} 
-        lng={longitude}
-        address={address}
-        city={city}
-        state={state}
-        className="rounded-xl"
-      />
-
-      {/* Focus Context Card - authority-coupled */}
-      <FocusContextCard
-        focusContext={focusContext}
-        authoritySource="todays_focus"
-        climateZone={climate}
-        hvacPrediction={hvacPrediction}
-        capitalTimeline={capitalTimeline}
-        homeAge={homeAge}
-        risk={risk}
-        confidence={confidence}
-      />
+    <div className="flex items-center gap-3">
+      <div className={cn(
+        "h-5 w-5 rounded-full flex items-center justify-center transition-all duration-300",
+        completed ? "bg-primary" : "bg-muted"
+      )}>
+        {completed ? (
+          <Check className="h-3 w-3 text-primary-foreground" />
+        ) : (
+          <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
+        )}
+      </div>
+      <span className={cn(
+        "text-sm transition-colors duration-300",
+        completed ? "text-foreground" : "text-muted-foreground"
+      )}>
+        {label}
+      </span>
     </div>
   );
 }
@@ -310,141 +171,491 @@ export function RightColumn({
 
 ---
 
-## PropertyMap Enhancement
+## 2. OnboardingFlow.tsx — Flow Orchestration
 
-**File: `src/components/dashboard-v3/PropertyMap.tsx`**
+### Step Type Update
 
-Change height from `aspect-video` to `h-72` (288px fixed):
+```typescript
+type Step = 'address' | 'handshake' | 'snapshot' | 'systems' | 'complete';
+```
+
+### Home Count Detection (Risk 6 Fix)
+
+Add state and check:
+
+```typescript
+const [isFirstHome, setIsFirstHome] = useState(true);
+
+useEffect(() => {
+  const checkHomeCount = async () => {
+    if (!user) return;
+    
+    const { count } = await supabase
+      .from('homes')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    // If user already has homes, this is not their first
+    setIsFirstHome((count || 0) === 0);
+    
+    // Existing redirect logic for existing home
+    if (count && count > 0) {
+      navigate('/dashboard', { replace: true });
+    }
+  };
+
+  checkHomeCount();
+}, [user, navigate]);
+```
+
+### Transition Delay (Risk 2 Fix)
+
+Modify handshake → snapshot transition:
+
+```typescript
+// After handshake completes, add 400ms delay before showing snapshot
+const handleHandshakeComplete = () => {
+  // Add perceptual causality delay
+  setTimeout(() => {
+    setStep('snapshot');
+  }, 400); // 300-500ms delay preserves perceived causality
+};
+```
+
+### Address Step Copy Update
 
 ```tsx
-// Before
-<div className="aspect-video relative bg-muted">
+{step === 'address' && (
+  <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="text-center space-y-2">
+      <h1 className="text-2xl font-semibold tracking-tight">
+        Welcome to Habitta
+      </h1>
+      <p className="text-muted-foreground">
+        We quietly monitor the systems that keep your home running.
+      </p>
+    </div>
 
-// After  
-<div className="h-72 relative bg-muted">
+    <Card className="border-0 shadow-lg">
+      <CardContent className="p-6">
+        <GooglePlacesAutocomplete
+          onSelect={handleAddressSelect}
+          placeholder="Enter your address..."
+          disabled={isLoading}
+        />
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 mt-4 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Setting up your home...</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+
+    <p className="text-xs text-center text-muted-foreground max-w-sm mx-auto">
+      We'll use public records, climate data, and regional patterns to build your home's baseline.
+    </p>
+  </div>
+)}
+```
+
+### Handshake Step Render
+
+```tsx
+{step === 'handshake' && state.snapshot && (
+  <HomeHandshake
+    city={state.snapshot.city}
+    state={state.snapshot.state}
+    isFirstHome={isFirstHome}
+    onComplete={handleHandshakeComplete}
+  />
+)}
+```
+
+### Complete Step Navigation
+
+```typescript
+// In CriticalSystemsStep onComplete callback:
+onComplete={async (systems) => {
+  // ... existing update logic ...
+  setStep('complete'); // Navigate to complete step, not dashboard
+}}
+onSkip={() => setStep('complete')} // Also go to complete
+```
+
+### Complete Step Render
+
+```tsx
+{step === 'complete' && (
+  <div className="space-y-6 animate-in fade-in duration-300">
+    <OnboardingComplete
+      onContinue={() => navigate('/dashboard', { replace: true })}
+    />
+  </div>
+)}
 ```
 
 ---
 
-## DashboardV3 Integration
+## 3. NEW: OnboardingComplete Component
 
-**File: `src/pages/DashboardV3.tsx`**
-
-### Pass Additional Props to RightColumn
+**File:** `src/components/onboarding/OnboardingComplete.tsx`
 
 ```tsx
-<RightColumn
-  loading={forecastLoading || hvacLoading || timelineLoading}
-  latitude={userHome.latitude}
-  longitude={userHome.longitude}
-  address={userHome.address}
-  city={userHome.city}
-  state={userHome.state}
-  focusContext={focusContext}
-  hvacPrediction={hvacPrediction}
-  capitalTimeline={capitalTimeline}
-  homeAge={userHome.year_built ? new Date().getFullYear() - userHome.year_built : undefined}
-  risk={risk}
-  confidence={confidence}
-/>
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Shield, Check, ArrowRight } from "lucide-react";
+
+interface OnboardingCompleteProps {
+  onContinue: () => void;
+}
+
+export function OnboardingComplete({ onContinue }: OnboardingCompleteProps) {
+  return (
+    <Card className="border-0 shadow-lg">
+      <CardContent className="pt-8 pb-6 space-y-6 text-center">
+        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+          <Shield className="h-8 w-8 text-primary" />
+        </div>
+        
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">Your home is now under watch.</h1>
+        </div>
+        
+        <ul className="text-left space-y-3 text-sm text-muted-foreground">
+          <li className="flex items-start gap-3">
+            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            <span>System wear is tracked quietly in the background</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            <span>Climate stress is factored automatically</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            <span>You'll see issues early — not when they become urgent</span>
+          </li>
+        </ul>
+        
+        {/* Thesis statement - immutable */}
+        <blockquote className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-4 text-left">
+          Most home issues don't happen suddenly. They build quietly.<br />
+          Habitta exists to notice them early.
+        </blockquote>
+        
+        <Button onClick={onContinue} className="w-full h-12 text-base" size="lg">
+          Go to Home Pulse
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 ```
 
-### Remove onSystemAdded
+---
 
-The `onSystemAdded` callback and query invalidation logic moves to Systems Hub.
+## 4. NEW: Onboarding Helpers Module
+
+**File:** `src/lib/onboardingHelpers.ts`
+
+### Climate-Based System Priority (Risk 4 Fix)
+
+```typescript
+import { ClimateZoneType } from './climateZone';
+
+interface SystemConfig {
+  key: string;
+  label: string;
+}
+
+/**
+ * Get system priority order based on climate zone
+ * 
+ * Rationale:
+ * - High heat: HVAC first (highest stress)
+ * - Coastal: HVAC first (salt air exposure)
+ * - Freeze-thaw: Roof/plumbing first (ice damage)
+ * - Moderate: Standard order
+ * 
+ * This makes future expansion explicit.
+ */
+export function getSystemPriorityByClimate(zone: ClimateZoneType): SystemConfig[] {
+  switch (zone) {
+    case 'high_heat':
+    case 'coastal':
+      return [
+        { key: 'hvac', label: 'HVAC' },
+        { key: 'roof', label: 'Roof' },
+        { key: 'water_heater', label: 'Water Heater' },
+      ];
+    case 'freeze_thaw':
+      return [
+        { key: 'roof', label: 'Roof' },
+        { key: 'hvac', label: 'HVAC' },
+        { key: 'water_heater', label: 'Water Heater' },
+      ];
+    case 'moderate':
+    default:
+      return [
+        { key: 'hvac', label: 'HVAC' },
+        { key: 'roof', label: 'Roof' },
+        { key: 'water_heater', label: 'Water Heater' },
+      ];
+  }
+}
+```
+
+### Confidence Display Helpers (Risk 3 Fix)
+
+```typescript
+/**
+ * Confidence level (how sure we are)
+ * Separate from source (where the data came from)
+ */
+export type ConfidenceDisplay = 'High confidence' | 'Moderate confidence' | 'Estimated' | 'Confirmed';
+
+/**
+ * Data source (where the data came from)
+ */
+export type SourceDisplay = 'Permit' | 'Owner-reported' | 'Inferred' | 'Deterministic';
+
+export interface SystemConfidenceInfo {
+  confidence: ConfidenceDisplay;
+  source: SourceDisplay;
+}
+
+/**
+ * Derive display confidence and source from install source
+ * 
+ * Keeps confidence (how sure) and source (where from) as separate concepts.
+ */
+export function getSystemConfidenceInfo(
+  installSource: string | null,
+  hasPermit: boolean = false
+): SystemConfidenceInfo {
+  if (hasPermit || installSource === 'permit' || installSource === 'permit_verified') {
+    return { confidence: 'High confidence', source: 'Permit' };
+  }
+  
+  if (installSource === 'user' || installSource === 'owner_reported') {
+    return { confidence: 'Moderate confidence', source: 'Owner-reported' };
+  }
+  
+  // Inferred/heuristic
+  return { confidence: 'Estimated', source: 'Inferred' };
+}
+
+/**
+ * Get climate confidence (always deterministic)
+ */
+export function getClimateConfidenceInfo(): SystemConfidenceInfo {
+  return { confidence: 'Confirmed', source: 'Deterministic' };
+}
+
+/**
+ * Get baseline strength label from confidence score
+ */
+export function getBaselineStrengthLabel(confidence: number): string {
+  if (confidence >= 70) return 'Strong baseline';
+  if (confidence >= 50) return 'Moderate baseline';
+  return 'Early baseline established';
+}
+
+/**
+ * Check if snapshot is "thin" (enrichment may have failed)
+ */
+export function isSnapshotThin(confidence: number, hasYearBuilt: boolean): boolean {
+  return confidence < 35 && !hasYearBuilt;
+}
+```
 
 ---
 
-## "Add System" Relocation
+## 5. InstantSnapshot.tsx — Discovery Reveal Reframe
 
-**File: `src/pages/SystemsHub.tsx`**
+### Updated Props Interface
 
-Add a subtle "Add system" button in the Systems Hub page. This is an onboarding action, not contextual intelligence.
+```typescript
+interface InstantSnapshotProps {
+  snapshot: SnapshotData;
+  confidence: number;
+  isEnriching?: boolean;
+}
+```
+
+### Key Changes
+
+#### A. Add Confidence Labels to Cards
+
+```tsx
+// Derive confidence info for each card
+const roofConfidence = snapshot.hvac_permit_year 
+  ? { confidence: 'High confidence', source: 'Permit' }
+  : { confidence: 'Estimated', source: 'Inferred' };
+
+const coolingConfidence = snapshot.hvac_permit_year
+  ? { confidence: 'High confidence', source: 'Permit' }
+  : { confidence: 'Likely', source: 'Inferred' };
+
+// Climate is always deterministic
+const climateConfidence = 'Confirmed';
+```
+
+Updated card rendering:
+```tsx
+{/* Roof Card */}
+<Card className="border-muted">
+  <CardContent className="p-4 flex items-center gap-3">
+    <div className="p-2 rounded-lg bg-muted">
+      <Home className="h-5 w-5 text-muted-foreground" />
+    </div>
+    <div className="flex-1">
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-muted-foreground">Roof</p>
+        <Badge variant="outline" className="text-xs py-0 px-1.5 font-normal">
+          {roofConfidence.confidence}
+        </Badge>
+      </div>
+      <p className="font-medium">{getRoofLabel(snapshot.roof_type)}</p>
+    </div>
+  </CardContent>
+</Card>
+```
+
+#### B. Replace "Home Confidence" with "Baseline Strength" (Risk 1 Psychological Fix)
+
+```tsx
+{/* Baseline Strength Section */}
+<Card className="bg-muted/50 border-0">
+  <CardContent className="p-4">
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-sm font-medium">Home Baseline Strength</span>
+      <span className="text-base font-semibold text-foreground">
+        {getBaselineStrengthLabel(confidence)}
+      </span>
+    </div>
+    <Progress 
+      value={confidence} 
+      className={cn(
+        "h-2 transition-all duration-500",
+        isEnriching && "[&>div]:animate-pulse"
+      )} 
+    />
+    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+      {isEnriching && <Loader2 className="h-3 w-3 animate-spin" />}
+      {isEnriching 
+        ? 'Finding more data...' 
+        : 'We refine this over time — with or without input.'}
+    </p>
+    
+    {/* Thin data warning (Risk 5 Fix) */}
+    {!isEnriching && isSnapshotThin(confidence, !!snapshot.year_built) && (
+      <p className="text-xs text-muted-foreground mt-2 italic">
+        Some records were unavailable. We'll keep checking.
+      </p>
+    )}
+  </CardContent>
+</Card>
+```
 
 ---
 
-## Files Summary
+## 6. CriticalSystemsStep.tsx — Systems Lock-In Reframe
 
-| File | Action | Scope |
-|------|--------|-------|
-| `src/pages/DashboardV3.tsx` | Modify | Width 60/40, pass focusContext/risk/confidence to RightColumn |
-| `src/components/dashboard-v3/RightColumn.tsx` | Refactor | Remove LocalSignals/TeachHabitta, add FocusContextCard |
-| `src/components/dashboard-v3/PropertyMap.tsx` | Modify | Height from aspect-video to h-72 |
-| `src/components/dashboard-v3/FocusContextCard.tsx` | Create | Authority-coupled context card |
-| `src/lib/dashboardCopy.ts` | Modify | Add context card copy generators |
-| `src/pages/SystemsHub.tsx` | Modify | Add "Add system" affordance |
-| `src/components/dashboard-v3/LocalSignals.tsx` | Keep | No longer used in RightColumn; may deprecate later |
+### Climate-Based System Order (Risk 4 Fix)
+
+```typescript
+import { getSystemPriorityByClimate } from '@/lib/onboardingHelpers';
+import { deriveClimateZone } from '@/lib/climateZone';
+
+interface CriticalSystemsStepProps {
+  yearBuilt?: number;
+  city?: string;  // NEW: for climate derivation
+  state?: string; // NEW: for climate derivation
+  onComplete: (systems: {...}) => void;
+  onSkip?: () => void;
+  isSubmitting?: boolean;
+}
+
+// Inside component:
+const climateZone = deriveClimateZone(state, city);
+const SYSTEMS = getSystemPriorityByClimate(climateZone.zone);
+
+// Use SYSTEMS in render...
+```
+
+### Updated Copy
+
+```tsx
+<CardTitle>Let's lock in the essentials</CardTitle>
+<CardDescription>
+  Start with what you know. Skip anything you're unsure about.
+</CardDescription>
+```
+
+### Inline Feedback After First Answer
+
+```tsx
+const completedCount = Object.values(answers).filter(a => a.choice !== null).length;
+
+{/* Show micro-affirmation after first answer */}
+{completedCount === 1 && (
+  <p className="text-sm text-center text-primary animate-in fade-in duration-300">
+    That helps. We'll take it from here.
+  </p>
+)}
+```
 
 ---
 
 ## Acceptance Tests
 
-### Authority Validation (NEW)
+### Handshake Screen
+- [ ] Displays after address selection
+- [ ] Shows 4 scan items completing sequentially (1.5s each)
+- [ ] Auto-advances after minimum 4 seconds (not rigid 6s)
+- [ ] No user action buttons visible
+- [ ] Displays correct city/state
+- [ ] Shows "Nice to meet your home" for first home
+- [ ] Shows "Let's get this home under watch" for additional homes
 
-- [ ] Context card renders ONLY when focusContext exists
-- [ ] Context card never introduces a new system focus
-- [ ] Context card headline never contradicts Today's Focus
-- [ ] Context card never escalates urgency beyond Today's Focus
-- [ ] Changing Today's Focus updates Context Card state
-- [ ] Clearing Today's Focus (type: 'NONE') forces Context Rail into Quiet state
-- [ ] `authoritySource` must equal `'todays_focus'` or component returns null
+### Transition
+- [ ] 300-500ms delay between handshake completion and snapshot render
+- [ ] Snapshot doesn't appear instantly after handshake (perceptual causality)
 
-### FocusContextCard Rendering
+### Discovery Reveal (Snapshot)
+- [ ] Shows "Here's what we found so far" headline
+- [ ] Each card has confidence label ("High confidence", "Likely", "Estimated", "Confirmed")
+- [ ] "Home Confidence" replaced with "Home Baseline Strength"
+- [ ] Shows human-readable baseline label, not percentage
+- [ ] Shows "Some records were unavailable" when snapshot is thin (Risk 5)
+- [ ] Progress bar still visible but de-emphasized
 
-- [ ] Shows Climate Stress when HVAC/Roof in focus + high_heat zone
-- [ ] Shows Local Activity when planning window entered
-- [ ] Shows Quiet state when no focus and home is healthy
-- [ ] Headlines are anchored ("homes like yours" not generic)
-- [ ] "Context for today's focus" disclosure line is always visible
-- [ ] No action buttons or CTAs
-- [ ] Links are subtle (muted text, not button-style)
+### Systems Lock-In
+- [ ] Shows "Let's lock in the essentials" headline
+- [ ] System order matches climate zone (HVAC first in high_heat)
+- [ ] Shows "That helps" feedback after first answer
+- [ ] Skip navigates to complete step (not dashboard)
+- [ ] **CRITICAL: User skips all systems and proceeds successfully** (missing test)
 
-### RightColumn
+### Closure Screen
+- [ ] Shows "Your home is now under watch"
+- [ ] Three bullet points with check icons
+- [ ] Thesis statement blockquote visible
+- [ ] "Go to Home Pulse" navigates to /dashboard
 
-- [ ] Only two children: PropertyMap + FocusContextCard
-- [ ] No LocalSignals component rendered
-- [ ] No "Add system" button
-- [ ] Background is lighter (bg-muted/10)
-- [ ] Spacing is generous (space-y-6)
-
-### Width
-
-- [ ] Default right column is 40%
-- [ ] Minimum is 30%
-- [ ] Maximum is 45%
-- [ ] User resize persists to localStorage
-
-### PropertyMap
-
-- [ ] Height is 288px (h-72), not aspect-video
-- [ ] Climate badge renders correctly
-
----
-
-## Design Principles (Non-Negotiable)
-
-| Principle | Enforcement |
-|-----------|-------------|
-| **Authority Is Singular** | The dashboard speaks with one voice at a time. All secondary surfaces support that voice — never replace it. |
-| **Secondary Authority Only** | Context Rail may explain, reinforce, or contextualize Today's Focus, but never override, escalate, or introduce independent conclusions. |
-| One job | Context rail explains external factors only |
-| Depth > quantity | One deep card, not multiple shallow ones |
-| Calm > clever | No urgency language |
-| Stability = trust | Card only changes when focusContext changes |
-| Context, not control | No action buttons |
+### Edge Cases
+- [ ] User skips all systems → baseline still established, closure shown, dashboard populated
+- [ ] User returns to onboarding after session loss → appropriate headline shown
+- [ ] Enrichment fails silently → thin data warning displayed, flow continues
 
 ---
 
-## What Is Explicitly Banned
+## Product Philosophy (Immutable)
 
-| Element | Reason |
-|---------|--------|
-| Action buttons | Context, not control |
-| "Add system" | Onboarding action, belongs in Systems Hub |
-| Forecast charts | Duplicates left column |
-| Multiple stacked cards | Depth > quantity |
-| Alerts or warnings | No panic on context rail |
-| KPI dashboards | No metric creep |
-| Unanchored headlines | Authority drift prevention |
-| Context without focus | Authority violation |
+> **Habitta onboarding is not about collecting data.**
+> **It's about demonstrating care, competence, and continuity.**
+>
+> The system should always feel like it is doing more work than the homeowner.
 
