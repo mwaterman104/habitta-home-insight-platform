@@ -62,7 +62,7 @@ export function SystemStatusCard({
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-gray-900">{systemName}</h3>
+              <h3 className="system-name text-foreground">{systemName}</h3>
               <span className={`text-xs px-2 py-0.5 rounded-full ${statusLabel.color}`}>
                 {statusLabel.text}
               </span>

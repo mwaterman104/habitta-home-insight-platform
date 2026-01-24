@@ -20,9 +20,23 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'IBM Plex Sans', 'sans-serif'],
-        inter: ['Inter', 'sans-serif'],
-        'ibm-plex': ['IBM Plex Sans', 'sans-serif'],
+        sans: ['IBM Plex Sans', 'sans-serif'],
+        serif: ['IBM Plex Serif', 'serif'],
+      },
+      fontSize: {
+        // Headers (Serif) - use with font-serif
+        'h1': ['1.75rem', { lineHeight: '2.25rem', fontWeight: '600' }],   // 28px/36px
+        'h2': ['1.375rem', { lineHeight: '1.875rem', fontWeight: '500' }], // 22px/30px
+        'h3': ['1.125rem', { lineHeight: '1.625rem', fontWeight: '500' }], // 18px/26px
+        // Body (Sans)
+        'body': ['0.9375rem', { lineHeight: '1.375rem' }],     // 15px/22px
+        'body-sm': ['0.875rem', { lineHeight: '1.25rem' }],    // 14px/20px
+        'meta': ['0.75rem', { lineHeight: '1rem' }],           // 12px/16px
+        // Labels & Controls
+        'label': ['0.8125rem', { lineHeight: '1rem', letterSpacing: '0.2px' }], // 13px
+        // KPI
+        'kpi': ['1.25rem', { lineHeight: '1.5rem', fontWeight: '600' }],     // 20px
+        'kpi-lg': ['1.5rem', { lineHeight: '1.75rem', fontWeight: '600' }],  // 24px
       },
       colors: {
         warning: {

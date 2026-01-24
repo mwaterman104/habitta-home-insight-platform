@@ -269,7 +269,7 @@ export default function SystemsHub() {
         {/* Page Title */}
         <div className="flex items-center gap-2 mb-6">
           <Cpu className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-semibold">Your Home Systems</h1>
+          <h1 className="heading-h2">Your Home Systems</h1>
         </div>
 
         {isLoading ? (
@@ -297,7 +297,7 @@ export default function SystemsHub() {
             {/* Structural Systems Section */}
             {systemCards.length > 0 && (
               <section className="mb-8">
-                <h2 className="text-sm font-medium text-muted-foreground mb-3">Structural Systems</h2>
+                <h2 className="heading-h3 text-muted-foreground mb-3">Structural Systems</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {systemCards.map(system => (
                     <Card 
@@ -315,7 +315,7 @@ export default function SystemsHub() {
                             <span className="text-xl">
                               {SYSTEM_DISPLAY[system.key]?.icon || '🔧'}
                             </span>
-                            <CardTitle className="text-base">{system.name}</CardTitle>
+                            <CardTitle className="system-name text-base">{system.name}</CardTitle>
                           </div>
                           {getStatusBadge(system.status)}
                         </div>
@@ -345,7 +345,7 @@ export default function SystemsHub() {
               <section>
                 <div className="flex items-center gap-2 mb-3">
                   <Package className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-sm font-medium text-muted-foreground">Appliances</h2>
+                  <h2 className="heading-h3 text-muted-foreground">Appliances</h2>
                   <span className="text-xs text-muted-foreground">
                     {tier1Count > 0 && `${tier1Count} critical`}
                     {tier1Count > 0 && tier2Count > 0 && ' • '}
@@ -376,7 +376,7 @@ export default function SystemsHub() {
                               <span className="text-xl">{icon}</span>
                               <div>
                                 {/* Composed title with inline confidence label */}
-                                <CardTitle className="text-base">
+                                <CardTitle className="system-name text-base">
                                   {appliance.title}
                                   {appliance.confidenceLabel && (
                                     <span className="text-xs font-normal text-muted-foreground ml-1">

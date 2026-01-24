@@ -1,5 +1,5 @@
-/* Import fonts - Inter & IBM Plex Sans */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+/* Habitta Typography System V1 - IBM Plex Sans (functional) + IBM Plex Serif (emphasis) */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -90,15 +90,89 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
-    font-size: clamp(0.875rem, 0.8rem + 0.15vw, 0.95rem);
-    line-height: 1.5;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.9375rem; /* 15px - Primary Body */
+    line-height: 1.47; /* ~22px */
   }
 }
 
 @layer utilities {
+  /* ===== HABITTA TYPOGRAPHY SYSTEM V1 ===== */
+  
+  /* Serif headers - use sparingly for "meaning + emphasis" */
+  .heading-h1 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.75rem; /* 28px */
+    line-height: 2.25rem; /* 36px */
+    font-weight: 600;
+  }
+  
+  .heading-h2 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.375rem; /* 22px */
+    line-height: 1.875rem; /* 30px */
+    font-weight: 500;
+  }
+  
+  .heading-h3 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.625rem; /* 26px */
+    font-weight: 500;
+  }
+  
+  /* System names - serif emphasis for HVAC, Roof, Water Heater, etc. */
+  .system-name {
+    font-family: 'IBM Plex Serif', serif;
+    font-weight: 500;
+  }
+  
+  /* Label/control text - with letter-spacing for tabs, buttons, UI controls */
+  .text-label {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 1rem; /* 16px */
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+  
+  /* KPI numbers - tabular for alignment, semibold for emphasis */
+  .text-kpi {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .text-kpi-lg {
+    font-size: 1.5rem; /* 24px */
+    line-height: 1.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* Touch-friendly styles for mobile */
   @media (max-width: 768px) {
+    /* Mobile type scale - reduce by ~12-15%, min 14px body */
+    body {
+      font-size: 0.875rem; /* 14px min body */
+      line-height: 1.5;
+    }
+    
+    .heading-h1 {
+      font-size: 1.5rem; /* 24px */
+      line-height: 2rem;
+    }
+    
+    .heading-h2 {
+      font-size: 1.25rem; /* 20px */
+      line-height: 1.75rem;
+    }
+    
+    .heading-h3 {
+      font-size: 1rem; /* 16px */
+      line-height: 1.5rem;
+    }
+    
     .touch-friendly {
       min-height: 44px;
       touch-action: manipulation;
@@ -125,12 +199,12 @@
     }
   }
 
-  /* Responsive text utilities */
-  .text-responsive-xs { font-size: clamp(0.75rem, 0.7rem + 0.1vw, 0.8rem); }
-  .text-responsive-sm { font-size: clamp(0.875rem, 0.8rem + 0.15vw, 0.95rem); }
-  .text-responsive-base { font-size: clamp(1rem, 0.9rem + 0.2vw, 1.1rem); }
-  .text-responsive-lg { font-size: clamp(1.125rem, 1rem + 0.25vw, 1.25rem); }
-  .text-responsive-xl { font-size: clamp(1.25rem, 1.1rem + 0.3vw, 1.4rem); }
+  /* Responsive text utilities - legacy, use heading-* classes instead */
+  .text-responsive-xs { font-size: 0.75rem; }
+  .text-responsive-sm { font-size: 0.875rem; }
+  .text-responsive-base { font-size: 0.9375rem; }
+  .text-responsive-lg { font-size: 1.125rem; }
+  .text-responsive-xl { font-size: 1.25rem; }
   
   /* Mobile-first animation performance */
   @media (max-width: 768px) {

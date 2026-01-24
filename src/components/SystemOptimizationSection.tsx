@@ -48,7 +48,7 @@ export function SystemOptimizationSection({
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">System Optimization</h2>
+        <h2 className="heading-h3">System Optimization</h2>
         <p className="text-sm text-muted-foreground">
           Practical ways to extend lifespan, reduce risk, and avoid surprise costs.
         </p>
