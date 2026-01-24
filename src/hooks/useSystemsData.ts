@@ -7,6 +7,8 @@ export interface SystemData {
   user_id: string;  
   kind: string;
   install_year?: number;
+  install_source?: string; // DB value: 'permit' | 'user' | 'inferred' | null
+  replacement_status?: string; // DB value: 'original' | 'replaced' | 'unknown' | null
   confidence: number;
   status: string;
   material?: string;

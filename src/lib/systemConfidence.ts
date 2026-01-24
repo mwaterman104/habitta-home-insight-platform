@@ -329,3 +329,130 @@ export function isValidInstallSource(source: string): source is InstallSource {
 export function isValidReplacementStatus(status: string): status is ReplacementStatus {
   return ['original', 'replaced', 'unknown'].includes(status);
 }
+
+// =============================================================================
+// SOURCE NORMALIZATION (DB → Canonical Enum)
+// =============================================================================
+
+/**
+ * Normalize legacy DB install_source values to canonical enum
+ * 
+ * Legacy values: 'permit' | 'user' | 'inferred' | null
+ * Canonical: 'heuristic' | 'owner_reported' | 'inspection' | 'permit_verified'
+ */
+export function normalizeInstallSource(dbValue: string | null | undefined): InstallSource {
+  switch (dbValue) {
+    case 'permit':
+    case 'permit_verified':
+      return 'permit_verified';
+    case 'user':
+    case 'owner_reported':
+      return 'owner_reported';
+    case 'inspection':
+      return 'inspection';
+    case 'inferred':
+    case 'heuristic':
+    default:
+      return 'heuristic';
+  }
+}
+
+// =============================================================================
+// INSTALL YEAR CELL FORMATTING (Table Display)
+// =============================================================================
+
+export interface InstallYearCellResult {
+  display: string;
+  tooltip?: string;
+}
+
+/**
+ * Format install year for table cell display
+ * 
+ * Cases:
+ * - Exact year known: "2018"
+ * - Inferred/estimated: "~2012"
+ * - Year range: "2016–2018"
+ * - Unknown: "Unknown"
+ * - Original system: "1987 (original)"
+ * - Conflict: Primary + tooltip "Also reported: 2015"
+ */
+export function formatInstallYearCell(
+  installYear: number | null,
+  installSource: InstallSource,
+  replacementStatus: ReplacementStatus,
+  yearRange?: [number, number] | null,
+  conflictingYear?: number | null
+): InstallYearCellResult {
+  // Handle missing year
+  if (!installYear && !yearRange) {
+    return { display: 'Unknown' };
+  }
+  
+  // Year range case
+  if (yearRange && yearRange[0] !== yearRange[1]) {
+    return { display: `${yearRange[0]}–${yearRange[1]}` };
+  }
+  
+  // Build display string
+  let display: string;
+  
+  // Heuristic sources get tilde prefix
+  if (installSource === 'heuristic') {
+    display = `~${installYear}`;
+  } else {
+    display = `${installYear}`;
+  }
+  
+  // Original system suffix
+  if (replacementStatus === 'original') {
+    display += ' (original)';
+  }
+  
+  // Conflict tooltip
+  const tooltip = conflictingYear ? `Also reported: ${conflictingYear}` : undefined;
+  
+  return { display, tooltip };
+}
+
+// =============================================================================
+// INSTALL AUTHORITY RESOLUTION (Conflict Resolution)
+// =============================================================================
+
+export interface InstallAuthoritySource {
+  year: number;
+  source: InstallSource;
+  timestamp?: Date;
+}
+
+/**
+ * Resolve "best estimate" install year when multiple sources exist
+ * 
+ * Priority order (highest first):
+ * 1. permit_verified
+ * 2. inspection
+ * 3. owner_reported
+ * 4. heuristic
+ * 
+ * Within same priority: prefer more recent timestamp
+ */
+export function resolveInstallAuthority(
+  sources: InstallAuthoritySource[]
+): InstallAuthoritySource | null {
+  if (!sources.length) return null;
+  
+  const priorityOrder: InstallSource[] = ['permit_verified', 'inspection', 'owner_reported', 'heuristic'];
+  
+  const sorted = [...sources].sort((a, b) => {
+    const priorityA = priorityOrder.indexOf(a.source);
+    const priorityB = priorityOrder.indexOf(b.source);
+    
+    // Higher priority source wins
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    
+    // Same priority: prefer more recent timestamp
+    return (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0);
+  });
+  
+  return sorted[0];
+}

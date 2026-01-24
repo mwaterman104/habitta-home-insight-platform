@@ -4,26 +4,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAttomProperty } from '@/hooks/useAttomProperty';
 import { SimpleRefreshButton } from '@/components/SimpleRefreshButton';
 import { DashboardV3Layout } from '@/layouts/DashboardV3Layout';
 
 // Home Profile Components
+import { HomeProfileContextHeader, HomeHealthStatus } from '@/components/HomeProfile/HomeProfileContextHeader';
 import { PropertyHero } from '@/components/HomeProfile/PropertyHero';
 import { KeyMetrics } from '@/components/HomeProfile/KeyMetrics';
-import { PropertyDetails } from '@/components/HomeProfile/PropertyDetails';
-import { HomeDocuments } from '@/components/HomeProfile/HomeDocuments';
-import { PropertyHistory } from '@/components/HomeProfile/PropertyHistory';
+import { HomeStructure } from '@/components/HomeProfile/HomeStructure';
+import { SystemProvenance } from '@/components/HomeProfile/SystemProvenance';
 import { PermitsHistory } from '@/components/HomeProfile/PermitsHistory';
-import { SystemsOverview } from '@/components/SystemsOverview';
+import { SupportingRecords } from '@/components/HomeProfile/SupportingRecords';
+import { HomeActivityLog } from '@/components/HomeProfile/HomeActivityLog';
 
 // Hooks
 import { useHomeIntelligence } from '@/hooks/useHomeIntelligence';
-
-// Mock data - only for non-system related data
-import userProfileData from '../../client/mock/user_profile.json';
-import maintenanceHistoryData from '../../client/mock/maintenance_history.json';
+import { useSystemsData } from '@/hooks/useSystemsData';
 
 interface HomeData {
   id: string;
@@ -37,6 +36,8 @@ interface HomeData {
   bedrooms: number;
   bathrooms: number;
   created_at: string;
+  lat?: number;
+  lng?: number;
 }
 
 const HomeProfilePage = () => {
@@ -128,20 +129,35 @@ const HomeProfilePage = () => {
     );
   }
 
+  // Get systems data from the new hook
+  const { systems: systemsData, loading: systemsLoading } = useSystemsData(home.id);
+  
+  // Determine home health status (simplified - could be enhanced with real logic)
+  const getHomeHealthStatus = (): HomeHealthStatus => {
+    // This would be derived from actual system health data
+    return 'healthy';
+  };
+
   return (
     <DashboardV3Layout>
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-8">
-          {/* Property Hero */}
+          {/* Context Header - Critical framing */}
+          <HomeProfileContextHeader status={getHomeHealthStatus()} />
+
+          {/* Property Hero with "Used in forecasting" badge */}
           <div className="flex items-start justify-between">
-            <div className="flex-1">
+            <div className="flex-1 space-y-2">
               <PropertyHero
                 address={home.address}
                 city={home.city}
                 state={home.state}
                 zipCode={home.zip_code}
-                imageUrl={userProfileData.housePhotoUrl}
               />
+              {/* "Used in forecasting" badge */}
+              <Badge variant="secondary" className="text-meta">
+                Used in forecasting
+              </Badge>
             </div>
             <SimpleRefreshButton
               onRefresh={refetchAttomData}
@@ -152,40 +168,42 @@ const HomeProfilePage = () => {
 
           {/* Key Metrics - use Attom data when available */}
           <KeyMetrics
-            squareFeet={attomData?.propertyDetails?.sqft || home.square_feet || userProfileData.square_feet}
-            bedrooms={attomData?.propertyDetails?.bedrooms || home.bedrooms || userProfileData.bedrooms}
-            bathrooms={attomData?.propertyDetails?.bathrooms || home.bathrooms || userProfileData.bathrooms}
+            squareFeet={attomData?.propertyDetails?.sqft || home.square_feet}
+            bedrooms={attomData?.propertyDetails?.bedrooms || home.bedrooms}
+            bathrooms={attomData?.propertyDetails?.bathrooms || home.bathrooms}
             yearBuilt={attomData?.propertyDetails?.yearBuilt || home.year_built}
           />
 
-          {/* Property Details - pass Attom data */}
-          <PropertyDetails
+          {/* Home Structure & Materials - 2-column grouped layout */}
+          <HomeStructure
             propertyData={attomData || undefined}
-            propertyType={home.property_type || userProfileData.property_type}
+            propertyType={home.property_type}
+            city={home.city}
+            state={home.state}
+            lat={home.lat}
           />
 
-          {/* Permits History - new section */}
+          {/* System Sources & Confidence - The trust engine */}
+          <SystemProvenance 
+            systems={systemsData} 
+            yearBuilt={home.year_built}
+            onEditSystem={(systemId) => {
+              // Future: open edit modal
+              console.log('Edit system:', systemId);
+            }}
+          />
+
+          {/* Permits & Construction History */}
           <PermitsHistory
             homeId={home.id}
             address={fullAddress}
           />
 
-          {/* Systems Overview - Single source of truth from validation data */}
-          <SystemsOverview systems={systems} insights={validationInsights} />
+          {/* Supporting Records - Empty state, no mock data */}
+          <SupportingRecords documents={[]} />
 
-          {/* Home Documents */}
-          <HomeDocuments />
-
-          {/* Property History */}
-          <PropertyHistory 
-            history={maintenanceHistoryData.map(item => ({
-              id: item.id,
-              date: item.date,
-              title: item.title,
-              category: item.category,
-              notes: item.notes
-            }))}
-          />
+          {/* Home Activity Log - Empty state, no mock data */}
+          <HomeActivityLog activities={[]} />
         </div>
       </div>
     </DashboardV3Layout>
