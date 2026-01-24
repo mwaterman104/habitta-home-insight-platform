@@ -14,7 +14,7 @@ interface SystemCatalogData {
   display_name: string;
   typical_lifespan_years: number;
   appliance_tier: number;
-  maintenance_checks?: string[];
+  maintenance_checks?: unknown; // Json type from Supabase, parsed safely at runtime
 }
 
 interface ApplianceData {
