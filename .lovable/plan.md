@@ -1,242 +1,191 @@
 
 
-# Fix: Map Not Displaying - Coordinate Backfill Edge Function
+# Switch PropertyMap to Google Maps Static API (Refined)
 
-## Problem Confirmed
+## Current State Assessment
 
-The property at "9511 Phipps Ln, Wellington, FL 33414" has:
-- `latitude: null`
-- `longitude: null`  
-- `status: 'enriching'`
+**Edge Function (`google-static-map`) - Already Has:**
+- ✅ Explicit `markers=color:red|${lat},${lng}` param (line 54)
+- ✅ Cache headers: `Cache-Control: public, max-age=86400` (line 79)  
+- ✅ Returns non-200 status on Google API failure
 
-The enrichment pipeline never completed the coordinate geocoding for this home.
-
----
-
-## Architecture: Server-Side Enrichment Function
-
-Following QA guidance, we'll create a **dedicated edge function** for coordinate backfill rather than mutating data directly from the dashboard. This keeps:
-- UI components as pure renderers (no DB mutations)
-- Single authoritative source for coordinates
-- Proper observability and logging
-- No race conditions with other enrichment processes
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                      Dashboard (UI Layer)                       │
-│  DashboardV3.tsx                                                │
-│  Detects missing coords → Triggers backfill → Refreshes data    │
-│  (No direct DB mutations)                                       │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ invoke('backfill-home-coordinates')
-┌──────────────────────────▼──────────────────────────────────────┐
-│             backfill-home-coordinates (Edge Function)           │
-│  - Load home by ID                                              │
-│  - Guard: skip if coords already exist                          │
-│  - Call Smarty rooftop geocoding API                            │
-│  - Update homes table with lat/lng + source tracking            │
-│  - Return success/failed/noop                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
+**Needs Enhancement:**
+- Content-type validation (Google can return 200 with error image)
+- Size sanity check (error images are typically < 1KB)
 
 ---
 
-## Phase 1: Create Edge Function
+## Phase 1: Harden Edge Function
 
-### New File: `supabase/functions/backfill-home-coordinates/index.ts`
+**File: `supabase/functions/google-static-map/index.ts`**
 
-**Responsibilities:**
-1. Accept `home_id` from request body
-2. Load home record from database
-3. Guard clause: skip if coordinates already exist (idempotent)
-4. Call Smarty rooftop geocoding API directly
-5. Update home with `latitude`, `longitude`, `geo_source`, `geo_updated_at`
-6. Return structured response: `{ status: 'success' | 'failed' | 'noop', geo? }`
+Add response validation before returning the image:
 
-**Key Design Decisions:**
-- **No JWT verification** - internal function protected by `x-internal-secret` header
-- **Direct Smarty API call** - doesn't go through smarty-proxy to avoid auth chain complexity
-- **Source tracking** - records `geo_source: 'smarty_backfill'` for audit trail
-- **Observability** - logs home_id, success/failure, latency
+| Check | Purpose |
+|-------|---------|
+| Content-Type header | Ensure Google returned `image/png` not `text/html` error page |
+| Image size > 1KB | Google error images are tiny; valid maps are larger |
+| Explicit error detection | Look for known error patterns |
 
 ```typescript
-// Pseudocode structure
-serve(async (req) => {
-  // 1. Validate internal secret
-  // 2. Parse home_id from body
-  // 3. Fetch home from DB
-  // 4. Guard: return 'noop' if lat/lng exist
-  // 5. Call Smarty rooftop geocoding
-  // 6. Extract lat/lng from response
-  // 7. Update home record
-  // 8. Return success/failure
-});
-```
+// After fetching from Google
+const contentType = mapResponse.headers.get('content-type');
+if (!contentType?.includes('image/')) {
+  console.error('[google-static-map] Invalid content-type:', contentType);
+  return new Response(
+    JSON.stringify({ error: 'Invalid map response' }),
+    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 
-### Response Shape
+const imageBuffer = await mapResponse.arrayBuffer();
 
-```typescript
-interface BackfillResponse {
-  status: 'success' | 'failed' | 'noop';
-  home_id?: string;
-  geo?: {
-    latitude: number;
-    longitude: number;
-  };
-  reason?: string;  // For noop/failed cases
+// Sanity check: Google error images are very small
+if (imageBuffer.byteLength < 1024) {
+  console.error('[google-static-map] Suspiciously small image:', imageBuffer.byteLength);
+  return new Response(
+    JSON.stringify({ error: 'Map service returned invalid image' }),
+    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 ```
 
 ---
 
-## Phase 2: Update config.toml
+## Phase 2: Simplify PropertyMap Component
 
-Add the new function to the config with JWT verification disabled (uses internal secret):
+**File: `src/components/dashboard-v3/PropertyMap.tsx`**
 
-```toml
-[functions.backfill-home-coordinates]
-verify_jwt = false
+Replace current OSM tile logic with Google Static Maps edge function. Per QA guidance, use a **two-step fallback** (not three):
+
+```text
+1. Google Static Map (via edge function)
+   ↓ onError (HTTP error or load failure)
+2. Coordinate placeholder with climate badge
 ```
 
----
+**Remove:**
+- OSM tile fallback (adds complexity, still has centering issues)
+- Manual `MapPin` overlay (Google marker handles this)
+- `getOsmTileUrl()` function
+- `getStaticMapUrl()` function (unused Geoapify code)
 
-## Phase 3: Dashboard Trigger (Lightweight)
+**Add:**
+- `getGoogleMapUrl()` - builds edge function URL
+- `useMemo` for URL stability (prevents re-renders from regenerating URLs)
 
-### File: `src/pages/DashboardV3.tsx`
-
-Add a `useEffect` that **only triggers the backfill** - no state mutation in the dashboard:
+### New URL Generator
 
 ```typescript
-// After userHome is loaded, check for missing coordinates
-useEffect(() => {
-  if (!userHome?.id) return;
-  if (userHome.latitude != null && userHome.longitude != null) return; // Already has coords
+const getGoogleMapUrl = useMemo(() => {
+  if (!lat || !lng) return null;
   
-  // Fire-and-forget: request backfill, don't wait for response
-  supabase.functions.invoke('backfill-home-coordinates', {
-    body: { home_id: userHome.id }
-  }).then(({ data }) => {
-    if (data?.status === 'success' && data?.geo) {
-      // Refresh home data to pick up new coordinates
-      // This re-triggers the existing fetchUserHome effect
-      refetchUserHome();
-    }
-  }).catch((err) => {
-    console.error('[DashboardV3] Coordinate backfill failed:', err);
-    // Silent failure - map shows fallback, no error banner
+  const params = new URLSearchParams({
+    lat: lat.toString(),
+    lng: lng.toString(),
+    zoom: '16',
+    size: '640x360',
+    scale: '2',
+    maptype: 'roadmap'
   });
-}, [userHome?.id, userHome?.latitude, userHome?.longitude]);
+  
+  return `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/google-static-map?${params}`;
+}, [lat, lng]);
 ```
 
-**Key behaviors:**
-- Fire-and-forget pattern (no blocking)
-- Silent failure (map shows calm fallback)
-- Triggers data refresh only on success
-- No direct state mutation from UI
-
-### Add refetchUserHome helper
-
-Refactor the existing `fetchUserHome` logic into a reusable function:
-
-```typescript
-const fetchUserHome = useCallback(async () => {
-  if (!user) return;
-  try {
-    const { data, error } = await supabase
-      .from('homes')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) setUserHome(data);
-  } catch (error) {
-    console.error('Error fetching user home:', error);
-  } finally {
-    setLoading(false);
-  }
-}, [user]);
-```
+**Key:** Using `useMemo` ensures the URL is stable and doesn't regenerate on every render, respecting browser caching and avoiding unnecessary requests.
 
 ---
 
-## Phase 4: Database Column Addition (Optional)
+## Phase 3: Improve Climate Badge Contrast
 
-Add tracking columns to `homes` table if not present:
-- `geo_source: text` - e.g., 'smarty_backfill', 'onboarding', 'attom'
-- `geo_updated_at: timestamptz`
+**Current:** `bg-background/90 backdrop-blur-sm`
 
-This enables future debugging and prevents duplicate geocoding calls from different sources.
-
----
-
-## Smarty API Integration
-
-The edge function will call Smarty's rooftop geocoding API directly:
+Google Maps have busier backgrounds than OSM tiles. Enhance for readability:
 
 ```typescript
-const SMARTY_AUTH_ID = Deno.env.get("SMARTY_AUTH_ID")!;
-const SMARTY_AUTH_TOKEN = Deno.env.get("SMARTY_AUTH_TOKEN")!;
-
-const geoUrl = `https://us-rooftop-geo.api.smarty.com/lookup?${new URLSearchParams({
-  'auth-id': SMARTY_AUTH_ID,
-  'auth-token': SMARTY_AUTH_TOKEN,
-  street: home.address,
-  city: home.city,
-  state: home.state,
-  zipcode: home.zip_code || '',
-}).toString()}`;
-
-const response = await fetch(geoUrl);
-const geocode = await response.json();
-
-// Extract from Smarty response
-const latitude = geocode[0]?.metadata?.latitude;
-const longitude = geocode[0]?.metadata?.longitude;
+<div className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md border border-black/5">
+  <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
+  <span className="text-xs font-semibold text-foreground">{climate.label}</span>
+</div>
 ```
+
+**Changes:**
+- Higher opacity: `bg-white/95` (was `/90`)
+- Stronger blur: `backdrop-blur-md` (was `-sm`)
+- Added border: `border border-black/5`
+- Bolder text: `font-semibold` (was `font-medium`)
+- Explicit z-index: `z-20`
+- Slightly larger padding for touch targets
 
 ---
 
 ## Files Summary
 
-| File | Action | Purpose |
+| File | Action | Changes |
 |------|--------|---------|
-| `supabase/functions/backfill-home-coordinates/index.ts` | Create | Dedicated geocoding backfill function |
-| `supabase/config.toml` | Modify | Add function config |
-| `src/pages/DashboardV3.tsx` | Modify | Add lightweight trigger for missing coords |
+| `supabase/functions/google-static-map/index.ts` | Modify | Add content-type validation, size sanity check |
+| `src/components/dashboard-v3/PropertyMap.tsx` | Modify | Switch to Google Maps, remove OSM, simplify fallback, enhance badge |
 
 ---
 
-## Observability
+## Technical Details
 
-The edge function will log:
-- `[backfill-home-coordinates] Starting for home: {home_id}`
-- `[backfill-home-coordinates] Skipping - coords exist: {home_id}`
-- `[backfill-home-coordinates] Smarty response: {status}, {latency}ms`
-- `[backfill-home-coordinates] Updated home: {home_id} with lat={lat}, lng={lng}`
-- `[backfill-home-coordinates] Failed for home: {home_id}, reason: {error}`
+### Visual Improvements
+
+| Aspect | OSM (Current) | Google (After) |
+|--------|---------------|----------------|
+| Centering | Single tile, offset | Exact coordinates |
+| Marker | Manual overlay | Native red marker |
+| Resolution | 256x256 tile | 640x360 @ 2x scale |
+| Labels | Limited | Full street names |
+| Consistency | Varies by tile | Predictable |
+
+### Fallback Behavior
+
+```text
+Coordinates present?
+├── Yes → Load Google Static Map
+│         ├── Success → Show map with marker
+│         └── Error → Show coordinate placeholder
+│                     (calm, no error banners)
+└── No → Show climate gradient placeholder
+         (enrichment may be in progress)
+```
+
+### Edge Function Defaults (Server-Side)
+
+The edge function already enforces sensible defaults:
+- `zoom: '15'` (overridden to 16 by client)
+- `size: '400x200'` (overridden to 640x360 by client)
+- `scale: '2'` (retina)
+- `maptype: 'roadmap'`
+
+### Caching Strategy
+
+1. **Browser caching:** Edge function returns `Cache-Control: public, max-age=86400` (24 hours)
+2. **React stability:** `useMemo` prevents URL regeneration between renders
+3. **CDN caching:** Supabase edge functions support edge caching
 
 ---
 
 ## Product Behavior
 
+**When map loads successfully:**
+- High-resolution Google Map with red marker centered on property
+- Climate zone badge (e.g., "High heat & humidity zone") in bottom-left
+- Smooth fade-in transition
+
+**When map fails to load:**
+- Shows simple coordinate placeholder: `26.6234, -80.2156`
+- Climate badge still visible
+- No error banners or alerts
+
 **When coordinates are missing:**
-1. Dashboard loads normally
-2. Map shows calm fallback (climate zone placeholder)
-3. Background backfill triggers
-4. On success: data refreshes, map appears
-5. On failure: silent (no error banners, fallback remains)
+- Shows climate-appropriate gradient background
+- Address text (if available)
+- Climate badge
+- Background enrichment may be running
 
-**No user-facing errors** - the experience should feel calm even when data is incomplete.
-
----
-
-## Technical Notes
-
-- **Secrets already configured**: `SMARTY_AUTH_ID` and `SMARTY_AUTH_TOKEN` exist
-- **Internal secret protection**: Uses existing `INTERNAL_ENRICH_SECRET` pattern
-- **Idempotent**: Safe to call multiple times (guard clause)
-- **Non-blocking**: Dashboard doesn't wait for geocoding to complete
+This maintains Habitta's "calm even when incomplete" design philosophy.
 
