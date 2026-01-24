@@ -68,8 +68,28 @@ serve(async (req: Request) => {
       );
     }
 
+    // Validate content-type to catch error pages returned as 200
+    const contentType = mapResponse.headers.get('content-type');
+    if (!contentType?.includes('image/')) {
+      console.error('[google-static-map] Invalid content-type:', contentType);
+      return new Response(
+        JSON.stringify({ error: 'Invalid map response' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Return the image with appropriate headers
     const imageBuffer = await mapResponse.arrayBuffer();
+
+    // Sanity check: Google error images are very small (< 1KB)
+    if (imageBuffer.byteLength < 1024) {
+      console.error('[google-static-map] Suspiciously small image:', imageBuffer.byteLength, 'bytes');
+      return new Response(
+        JSON.stringify({ error: 'Map service returned invalid image' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log(`[google-static-map] Success, returning ${imageBuffer.byteLength} bytes`);
     
     return new Response(imageBuffer, {
