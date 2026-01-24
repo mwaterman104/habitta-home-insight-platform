@@ -1,376 +1,275 @@
 
-# Signal Orchestration Implementation Plan
+
+# Manual Appliance Entry Implementation Plan
 
 ## Overview
 
-This plan implements the **Resolved Appliance Identity** pattern with the three refinements from QA:
-1. Explicit confidence resolution separation
-2. Tier-aware lifespan/planning label suppression
-3. Locked "Needs confirmation" copy guardrails
+This plan adds a **secondary manual entry affordance** to TeachHabittaModal. Following the QA principle: "Photo-first, manual-second" — manual entry exists for agency, not as the primary path.
 
 ---
 
-## Architecture: Three-Layer Signal Orchestration
+## Architecture Decision: Reuse Correction UI
+
+Manual entry will **NOT** create a new form. It will:
+1. Route directly to the existing `correction` step
+2. Set `install_source: 'owner_reported'` 
+3. Apply appropriate confidence initialization
+
+This preserves:
+- Narrative flow
+- AI-led posture
+- Approximate, forgiving UX
+- Existing confidence-aware logic
+
+---
+
+## Changes to TeachHabittaModal.tsx
+
+### 1. Add Manual Entry Link to Capture Step
+
+**Location:** `renderCaptureStep()` (lines 436-520)
+
+Add a muted, text-only secondary affordance below the photo buttons:
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                      UI LAYER                                   │
-│  ApplianceDetailView / SystemsHub Cards                         │
-│  Consumes ResolvedApplianceIdentity ONLY                        │
-│  Never touches raw fields                                       │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│                  NORMALIZATION LAYER (NEW)                      │
-│  resolveApplianceIdentity(system, catalog) →                    │
-│  { title, subtitle, category, tier, confidenceState, ... }      │
-│                                                                 │
-│  Uses: resolveConfidenceState() (new explicit function)         │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│                   EXTRACTION LAYER                              │
-│  analyze-device-photo edge function                             │
-│  Extracts: brand, model, category, year, confidence_scores      │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│    Teach Habitta something new              │
+│                                             │
+│    Take a photo or upload an image...       │
+│                                             │
+│    [ Take photo ]    [ Upload ]             │
+│                                             │
+│             [Cancel]                        │
+│                                             │
+│    ─────────────────────                    │
+│              or                             │
+│                                             │
+│       Enter details manually →              │
+│                                             │
+└─────────────────────────────────────────────┘
 ```
 
----
+**Design Rules:**
+- "Enter details manually →" is text-only (no button styling)
+- Smaller font (`text-sm`)
+- Muted color (`text-muted-foreground`)
+- No icon
+- Clearly secondary
 
-## Phase 1: Explicit Confidence Resolution (QA Issue #1)
+### 2. Add State for Manual Entry Mode
 
-### Problem
-The plan called for overloading `confidenceStateFromScore` with a second parameter. This silently changes the meaning of confidence from "how sure the AI is" to "how sure the system should behave."
-
-### Solution
-Create a new explicit function `resolveConfidenceState` that clearly separates concerns.
-
-**File: `src/lib/systemConfidence.ts`** (add new function)
+Add a new state variable to track whether user entered via manual path:
 
 ```typescript
-/**
- * Resolve confidence state for UI display
- * 
- * EXPLICIT ORCHESTRATOR - separates visual score from user confirmation
- * 
- * Rules (locked):
- * - userConfirmed === true → always 'high' (Guardrail 3)
- * - visualScore ≥ 0.75 → 'high' 
- * - visualScore ≥ 0.40 → 'estimated'
- * - visualScore < 0.40 → 'needs_confirmation'
- */
-export function resolveConfidenceState(input: {
-  visualScore: number;
-  userConfirmed: boolean;
-}): ConfidenceState {
-  // User confirmation always grants high - this is immutable
-  if (input.userConfirmed) return 'high';
-  
-  // Vision-only scoring
-  if (input.visualScore >= 0.75) return 'high';
-  if (input.visualScore >= 0.40) return 'estimated';
-  return 'needs_confirmation';
-}
+const [isManualEntry, setIsManualEntry] = useState(false);
 ```
 
-This preserves the existing `confidenceStateFromScore` for backward compatibility while adding explicit orchestration logic.
+Reset it in the `useEffect` that clears state on modal close.
 
----
-
-## Phase 2: Create Resolved Appliance Identity Resolver
-
-**New File: `src/lib/resolveApplianceIdentity.ts`**
-
-This becomes the **sacred file** that all UI consumes. The UI never renders raw fields again.
-
-### Interface
+### 3. Create handleManualEntry Function
 
 ```typescript
-import { ConfidenceState, resolveConfidenceState, getConfidenceStateLabel } from './systemConfidence';
-
-export interface ResolvedApplianceIdentity {
-  // Core identity
-  title: string;                 // "LG Refrigerator"
-  subtitle: string;              // "Model E82904" | "Model not identified"
-  category: string | 'unknown';
-  tier: 1 | 2;
-  
-  // Confidence
-  confidenceState: ConfidenceState;
-  confidenceLabel: string | null; // "Estimated" or null for high
-  
-  // Age & Planning (Tier 1 ONLY)
-  ageLabel?: string;             // "~13 years old"
-  lifespanLabel?: string;        // "Typical lifespan: 10–14 years"
-  planningLabel?: string;        // "Within typical lifespan" | "Planning window"
-  
-  // Help messaging
-  helperMessage?: string;        // One sentence max, never mentions "confidence score"
-  showHelpCTA: boolean;          // Show "Help Habitta learn more"
-}
-```
-
-### Resolution Rules (Locked)
-
-| Field | Logic |
-|-------|-------|
-| `title` | `brand + catalog.display_name` if both known, else `brand + " appliance"`, else `display_name`, else `"Appliance"` |
-| `subtitle` | `"Model " + model` if known, else `"Model not identified"` (not "unknown" - database language) |
-| `confidenceState` | Uses `resolveConfidenceState({ visualScore, userConfirmed })` |
-| `ageLabel` | `"~" + age + " years old"` - always uses `~` prefix for estimates |
-| `lifespanLabel` | **Tier 1 only**: `"Typical lifespan: X–Y years"` (±2 year range). **Tier 2: undefined** |
-| `planningLabel` | **Tier 1 only**: `"Within typical lifespan"` / `"Later part of lifespan"` / `"Planning window"`. **Tier 2: undefined** |
-| `helperMessage` | One sentence max. Never mentions "confidence score". Never asks a question directly. |
-| `showHelpCTA` | `confidenceState !== 'high'` |
-
-### Key Guardrail: Tier 2 Suppression (QA Issue #2)
-
-```typescript
-// Tier 2 appliances should NOT invite planning thinking
-const lifespanLabel = tier === 1
-  ? `Typical lifespan: ${typicalLifespan - 2}–${typicalLifespan + 2} years`
-  : undefined;
-
-const planningLabel = tier === 1
-  ? derivePlanningLabel(remainingYears)
-  : undefined;
-```
-
----
-
-## Phase 3: Upgrade ApplianceDetailView
-
-**File: `src/components/system/ApplianceDetailView.tsx`**
-
-### Changes
-
-1. **Import and use resolver** instead of computing display values inline
-2. **Header shows composed identity** with inline confidence label
-3. **Rename "Details" → "What I know about this appliance"**
-4. **Add "Health & Planning" card** (Tier 1) or disclaimer (Tier 2)
-5. **Add "Confidence & Help CTA" section** when `confidenceState !== 'high'`
-
-### Header Update
-
-```tsx
-// Before (raw fields)
-<h1>{appliance.brand} {appliance.system_catalog?.display_name}</h1>
-<p>{appliance.model || 'Model unknown'}</p>
-
-// After (composed identity)
-<h1 className="text-xl font-semibold">
-  {identity.title}
-  {identity.confidenceLabel && (
-    <span className="text-sm font-normal text-muted-foreground ml-2">
-      · {identity.confidenceLabel}
-    </span>
-  )}
-</h1>
-<p className="text-muted-foreground text-sm">{identity.subtitle}</p>
-{identity.ageLabel && (
-  <p className="text-muted-foreground text-sm">{identity.ageLabel}</p>
-)}
-```
-
-### Card Renames and New Cards
-
-| Current | New |
-|---------|-----|
-| "Details" | "What I know about this appliance" |
-| "Planning Outlook" | "Health & Planning" |
-| (new) | "Confidence" section with CTA |
-
-### Tier 2 Behavior
-
-Tier 2 appliances:
-- Show `identity.subtitle` ("Model not identified" if unknown)
-- Show muted disclaimer: "I'll keep an eye on this, but it won't affect your home's outlook."
-- Do NOT show lifespan or planning cards
-- Do NOT show age framing (optional: can show age, not remaining years)
-
----
-
-## Phase 4: Upgrade SystemsHub Cards
-
-**File: `src/pages/SystemsHub.tsx`**
-
-### Changes
-
-1. **Use resolver for card content**
-2. **Add confidence label inline** with title
-3. **Replace status badges with meaningful copy** for Tier 1
-4. **Keep "Tracked" badge for Tier 2** (no status language)
-
-### Card Display
-
-**Tier 1 Card:**
-```
-┌───────────────────────────────────┐
-│ LG Refrigerator · Estimated       │
-│ ~13 years old                     │
-│ Within typical lifespan           │
-└───────────────────────────────────┘
-```
-
-**Tier 2 Card (muted):**
-```
-┌───────────────────────────────────┐
-│ Microwave · Estimated             │
-│ ~6 years old                      │
-│ Tracked                           │
-└───────────────────────────────────┘
-```
-
-### Status Language Mapping (Tier 1 only)
-
-| Internal Status | User Copy |
-|-----------------|-----------|
-| `healthy` | "Within typical lifespan" |
-| `planning` | "Later part of lifespan" |
-| `attention` | "Planning window" |
-
----
-
-## Phase 5: Upgrade Vision Extraction (Edge Function)
-
-**File: `supabase/functions/analyze-device-photo/index.ts`**
-
-### Problem
-Currently returns `system_type: 'appliance'` (generic). Should detect specific category.
-
-### Solution
-Expand `systemTypeKeywords` to include specific appliance categories:
-
-```typescript
-const systemTypeKeywords = {
-  // Structural systems (Tier 0)
-  'hvac': ['heat pump', 'air conditioner', 'furnace', ...],
-  'water_heater': ['water heater', 'hot water', ...],
-  'electrical': ['breaker', 'panel', ...],
-  'pool_equipment': ['pool', 'pump', 'filter', ...],
-  
-  // Tier 1 Appliances (SPECIFIC - not generic 'appliance')
-  'refrigerator': ['refrigerator', 'fridge', 'freezer'],
-  'oven_range': ['oven', 'range', 'stove', 'cooktop', 'cook top'],
-  'dishwasher': ['dishwasher', 'dish washer'],
-  'washer': ['washer', 'washing machine', 'front load wash', 'top load wash'],
-  'dryer': ['dryer', 'clothes dryer'],
-  
-  // Tier 2 Appliances
-  'microwave': ['microwave'],
-  'garbage_disposal': ['disposal', 'garbage disposal', 'disposer'],
+const handleManualEntry = () => {
+  setIsManualEntry(true);
+  setStep('correction');
 };
 ```
 
-Also update `SYSTEM_DISPLAY_NAMES` to include appliance-specific names for improved Habitta messaging.
+This routes directly to the correction step without photo/analysis.
 
----
+### 4. Update renderCorrectionStep Header for Manual Entry
 
-## Phase 6: Upgrade TeachHabittaModal Correction Step
+When `isManualEntry` is true, show a gentler intro:
 
-**File: `src/components/TeachHabittaModal.tsx`**
-
-### Changes
-
-1. **Update header copy**: "Just help me get closer. Rough answers are totally fine."
-2. **Add age range picker** instead of exact year input
-3. **Apply confidence boost logic** on user correction
-
-### Age Range Picker
-
-Replace year input with range buckets:
-
-```typescript
-const AGE_RANGES = [
-  { value: 2, label: 'Less than 5 years' },   // midpoint for modeling
-  { value: 7, label: '5–10 years' },
-  { value: 12, label: '10–15 years' },
-  { value: 17, label: '15+ years' },
-  { value: null, label: 'Not sure' },
-];
+```text
+That's totally fine.
+Rough answers are more than enough.
 ```
 
-Document: `value` represents the midpoint used for modeling, not an exact age.
+When `isManualEntry` is false (came from photo), show existing:
 
-### Confidence Boost Logic (On Save)
+```text
+Just help me get closer.
+Rough answers are totally fine.
+```
+
+### 5. Create handleSaveManualEntry Function
+
+New handler for manual entry saves with appropriate confidence initialization:
 
 ```typescript
-// When user confirms/corrects:
-let boostedConfidence = baseConfidence;
-if (userConfirmedSystemType) boostedConfidence += 0.25;
-if (userProvidedBrand) boostedConfidence += 0.15;
-if (userProvidedAgeRange) boostedConfidence += 0.15;
-boostedConfidence = Math.min(boostedConfidence, 0.9);
+const handleSaveManualEntry = async () => {
+  if (!selectedSystemType) {
+    setError('Please select what kind of system this is');
+    return;
+  }
+  
+  setIsProcessing(true);
+  try {
+    // Calculate manufacture year from age range (midpoint)
+    const manufactureYear = selectedAgeRange !== null && selectedAgeRange !== undefined
+      ? new Date().getFullYear() - selectedAgeRange
+      : undefined;
+    
+    // Manual entry confidence (higher baseline than vision-only)
+    let confidence = 0.65; // owner-reported baseline
+    if (brandInput) confidence += 0.10;
+    if (selectedAgeRange !== null && selectedAgeRange !== undefined) confidence += 0.10;
+    confidence = Math.min(confidence, 0.9);
+    
+    const systemData: Partial<HomeSystem> = {
+      system_key: selectedSystemType,
+      brand: brandInput || undefined,
+      model: modelInput || undefined,
+      manufacture_year: manufactureYear,
+      confidence_scores: {
+        overall: confidence,
+      },
+      data_sources: ['owner_manual'],
+      source: {
+        method: 'manual',
+        entered_at: new Date().toISOString(),
+        install_source: 'owner_reported', // Critical: user authority
+      },
+    };
+    
+    const result = await addSystem(systemData);
+    if (result) {
+      onSystemAdded?.(result as HomeSystem);
+      setStep('success');
+    }
+  } catch (err) {
+    console.error('Error saving system:', err);
+    setError('Failed to save. Please try again.');
+  } finally {
+    setIsProcessing(false);
+  }
+};
+```
+
+### 6. Update Save Button in Correction Step
+
+The Save button should call `handleSaveManualEntry` when `isManualEntry` is true, otherwise `handleSaveCorrection`:
+
+```typescript
+<Button
+  className="flex-1"
+  onClick={isManualEntry ? handleSaveManualEntry : handleSaveCorrection}
+  disabled={isProcessing || !selectedSystemType}
+>
+  ...
+</Button>
+```
+
+### 7. Desktop Support: Add Manual Entry to QRPhotoSession View
+
+For desktop users who see the QR code flow, add the same secondary affordance:
+
+```tsx
+{/* In desktop renderCaptureStep, after QRPhotoSession */}
+<div className="text-center pt-4 border-t border-border">
+  <span className="text-xs text-muted-foreground">or</span>
+  <button
+    onClick={handleManualEntry}
+    className="block w-full text-sm text-muted-foreground hover:text-foreground mt-2"
+  >
+    Enter details manually →
+  </button>
+</div>
 ```
 
 ---
 
-## Copy Guardrails (Locked - QA Issue #3)
+## Confidence Initialization Logic
 
-### "Needs confirmation" Rules
+| Entry Method | Base Confidence | Boosts |
+|--------------|----------------|--------|
+| Vision + Correction | 0.30 | +0.25 type, +0.15 brand, +0.15 age |
+| Manual Entry | **0.65** | +0.10 brand, +0.10 age |
 
-| Element | Behavior |
-|---------|----------|
-| Header label | Shown inline, muted |
-| Body message | Required: calm helper message |
-| CTA | Required: "Help Habitta learn more" |
-| Style | No red, no icons, no urgency |
+**Why higher baseline for manual?**
+- User is stating what they know directly
+- This is "owner_reported" authority
+- Should not look "worse" than vision guesses
 
-### Helper Message Rules
-
-- Maximum one sentence
-- Never mention "confidence score"
-- Never ask a question directly (CTA handles that)
-
-### Copy Examples
-
-**Estimated:**
-- Label: `· Estimated`
-- Helper: "This is an estimate based on the photo."
-
-**Needs confirmation:**
-- Label: `· Needs confirmation`
-- Helper: "I'm not fully sure about this yet — you can help me refine it."
+**Cap remains 0.9** — we never claim certainty without permit/inspection verification.
 
 ---
 
-## Files Summary
+## UI After Manual Save
 
-### New Files
+The appliance appears as:
 
-| File | Purpose |
-|------|---------|
-| `src/lib/resolveApplianceIdentity.ts` | Central resolver - sacred file for all appliance display logic |
+```
+LG Refrigerator
+Model not identified
+~10–15 years old
+```
 
-### Modified Files
+With:
+- No "Needs confirmation" label (baseline is 0.65+)
+- Possibly "Estimated" if only category provided
+- "Help Habitta learn more" CTA still available for later photo enhancement
+
+---
+
+## Edge Case Handling
+
+### User enters only category (no brand, no age)
+
+**Result:**
+- Appliance is tracked
+- Tier applied correctly
+- No nagging
+- Confidence: 0.65 (baseline owner_reported)
+
+### User later uploads a photo
+
+**Behavior:**
+- Photo enhances the same appliance (not a duplicate)
+- Can increase confidence
+- Never replaces user-reported data without confirmation
+
+---
+
+## Copy Rules (Locked)
+
+**Use:**
+- "Enter details manually"
+- "That's totally fine"
+- "Rough answers are more than enough"
+- "You can update this anytime"
+
+**Avoid:**
+- "Add appliance"
+- "Complete setup"
+- "Required fields"
+- "Accuracy"
+
+---
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/systemConfidence.ts` | Add `resolveConfidenceState()` explicit orchestrator |
-| `src/components/system/ApplianceDetailView.tsx` | Use resolver, new card layout, add Health & Planning, add Help CTA |
-| `src/pages/SystemsHub.tsx` | Use resolver for cards, add confidence label, status copy |
-| `src/components/TeachHabittaModal.tsx` | Update copy, add age range picker |
-| `supabase/functions/analyze-device-photo/index.ts` | Expand category detection from generic 'appliance' to specific types |
+| `src/components/TeachHabittaModal.tsx` | Add manual entry affordance, `isManualEntry` state, `handleManualEntry`, `handleSaveManualEntry`, update correction step header, update desktop QR view |
+
+**No new files needed** — we're reusing what's already built.
 
 ---
 
-## Expected Outcomes
+## Summary of Changes
 
-**Before:**
-- "LG Appliance" (no category)
-- "Model unknown" (raw database field)
-- No confidence signal
-- No age framing
-- User doesn't know what to do
+1. **New state:** `isManualEntry` boolean
+2. **New handler:** `handleManualEntry()` — routes to correction step
+3. **New handler:** `handleSaveManualEntry()` — saves with 0.65 baseline confidence
+4. **Updated UI:** Secondary "Enter details manually →" link in capture step (mobile + desktop)
+5. **Updated copy:** Context-aware header in correction step based on entry method
 
-**After:**
-- "LG Refrigerator · Estimated" (composed identity)
-- "Model E82904" or "Model not identified" (formatted)
-- "~13 years old" (age framing)
-- "Later part of lifespan" (planning context - Tier 1 only)
-- "Help Habitta learn more" (clear next action)
+This preserves:
+- Photo-first narrative
+- AI-led posture
+- Forgiving, approximate UX
+- Coherent confidence system
+- No form fatigue
 
-**Critical:**
-- Tier 2 appliances show NO lifespan/planning labels
-- Confidence is visible but never loud
-- The UI never renders raw fields again
