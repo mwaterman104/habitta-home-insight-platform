@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { MapPin, Thermometer, Droplet, Snowflake, Sun } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -105,7 +105,8 @@ function deriveClimateZone(
  * Part of the Context Rail (Right Column).
  * Shows property location with climate zone meaning.
  *
- * Uses OpenStreetMap static tiles - no API key required.
+ * Uses Google Static Maps API via edge function proxy.
+ * Fallback: coordinate placeholder (no OSM to avoid centering issues).
  */
 export function PropertyMap({
   lat,
@@ -117,32 +118,38 @@ export function PropertyMap({
 }: PropertyMapProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  
+
   const hasCoordinates = lat != null && lng != null;
   const climate = deriveClimateZone(state, city, lat);
   const ClimateIcon = climate.icon;
 
-  // Generate static map URL using OpenStreetMap tiles via a static map service
-  const getStaticMapUrl = (latitude: number, longitude: number) => {
-    // Use OpenStreetMap static tiles directly - construct a simple tile URL
-    const zoom = 15;
-    const width = 400;
-    const height = 225;
-    
-    // Use staticmaps service with OSM tiles (no API key needed)
-    return `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=${width}&height=${height}&center=lonlat:${longitude},${latitude}&zoom=${zoom}&marker=lonlat:${longitude},${latitude};type:awesome;color:%23bb3f3f;size:medium&apiKey=demo`;
-  };
+  // Build Google Static Map URL via edge function - memoized for stability
+  const googleMapUrl = useMemo(() => {
+    if (!hasCoordinates) return null;
 
-  // Fallback to simple tile-based map if Geoapify doesn't work
-  const getOsmTileUrl = (latitude: number, longitude: number) => {
-    const zoom = 15;
-    const n = Math.pow(2, zoom);
-    const xtile = Math.floor((longitude + 180) / 360 * n);
-    const ytile = Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * n);
-    return `https://tile.openstreetmap.org/${zoom}/${xtile}/${ytile}.png`;
-  };
+    const params = new URLSearchParams({
+      lat: lat!.toString(),
+      lng: lng!.toString(),
+      zoom: "16",
+      size: "640x360",
+      scale: "2",
+      maptype: "roadmap",
+    });
 
-  // Fallback placeholder when no coordinates
+    return `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/google-static-map?${params}`;
+  }, [lat, lng, hasCoordinates]);
+
+  // Climate badge component - enhanced contrast for busy Google Map backgrounds
+  const ClimateBadge = () => (
+    <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md border border-black/5">
+      <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-xs font-semibold text-foreground">
+        {climate.label}
+      </span>
+    </div>
+  );
+
+  // Fallback placeholder when no coordinates available
   if (!hasCoordinates) {
     return (
       <Card className={cn("overflow-hidden", className)}>
@@ -173,11 +180,7 @@ export function PropertyMap({
             </div>
           </div>
 
-          {/* Climate badge on fallback */}
-          <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm">
-            <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">{climate.label}</span>
-          </div>
+          <ClimateBadge />
         </div>
       </Card>
     );
@@ -190,12 +193,12 @@ export function PropertyMap({
         {!imageLoaded && !imageError && (
           <Skeleton className="absolute inset-0" />
         )}
-        
-        {/* Static map image - using OSM tile as fallback */}
-        {!imageError ? (
+
+        {/* Google Static Map or Coordinate Fallback */}
+        {!imageError && googleMapUrl ? (
           <img
-            src={getOsmTileUrl(lat, lng)}
-            alt={`Map of ${address || 'property location'}`}
+            src={googleMapUrl}
+            alt={`Map of ${address || "property location"}`}
             className={cn(
               "w-full h-full object-cover transition-opacity duration-300",
               imageLoaded ? "opacity-100" : "opacity-0"
@@ -204,29 +207,30 @@ export function PropertyMap({
             onError={() => setImageError(true)}
           />
         ) : (
-          /* Fallback when image fails to load */
+          /* Coordinate placeholder fallback - calm, no error banners */
           <div className="absolute inset-0 flex items-center justify-center bg-muted">
-            <div className="text-center space-y-2">
+            <div
+              className={cn(
+                "absolute inset-0 bg-gradient-to-br opacity-50",
+                climate.gradient
+              )}
+            />
+            <div className="text-center space-y-2 relative z-10">
               <MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm font-medium text-foreground">
                 {lat?.toFixed(4)}, {lng?.toFixed(4)}
               </p>
+              {address && (
+                <p className="text-xs text-muted-foreground max-w-[200px] truncate">
+                  {address}
+                </p>
+              )}
             </div>
           </div>
         )}
 
-        {/* Marker overlay (since we're using a single tile) */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="relative">
-            <MapPin className="h-8 w-8 text-red-500 drop-shadow-md" style={{ transform: 'translateY(-50%)' }} />
-          </div>
-        </div>
-
         {/* Climate zone overlay badge */}
-        <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/90 backdrop-blur-sm shadow-sm pointer-events-none">
-          <ClimateIcon className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs font-medium">{climate.label}</span>
-        </div>
+        <ClimateBadge />
       </div>
     </Card>
   );
