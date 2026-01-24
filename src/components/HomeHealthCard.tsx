@@ -25,6 +25,8 @@ interface HomeHealthCardProps {
   confidenceScore?: number;
   // New props
   onProtectClick?: () => void;
+  // Stewardship mode - healthy homes get different CTA
+  isHealthyState?: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export function HomeHealthCard({
   whyBullets = [],
   confidenceScore,
   onProtectClick,
+  isHealthyState = false,
 }: HomeHealthCardProps) {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -166,16 +169,20 @@ export function HomeHealthCard({
           ifUntracked={[ifLeftUntracked.score12mo, ifLeftUntracked.score24mo]}
         />
         
-        {/* 4. Primary CTA - Always visible */}
+        {/* 4. Primary CTA - Context-aware for stewardship mode */}
         <div className="text-center">
           <Button 
             onClick={handleProtectClick} 
             className="w-full bg-primary hover:bg-primary/90"
           >
-            What should I do next?
+            {isHealthyState 
+              ? "What's Habitta validating right now?"
+              : "What should I do next?"}
           </Button>
           <p className="text-xs text-muted-foreground mt-1">
-            Based on your home's forecast
+            {isHealthyState 
+              ? "Your home's assumptions are continuously validated"
+              : "Based on your home's forecast"}
           </p>
         </div>
         

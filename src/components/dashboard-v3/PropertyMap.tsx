@@ -4,6 +4,13 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { deriveClimateZone, ClimateZone } from "@/lib/climateZone";
+import { MapEnvironmentOverlay } from "./MapEnvironmentOverlay";
+
+interface EnvironmentalSignals {
+  heatStress: 'normal' | 'elevated' | 'low';
+  permitActivity: 'normal' | 'elevated';
+  weatherAlerts: boolean;
+}
 
 interface PropertyMapProps {
   lat?: number | null;
@@ -12,6 +19,7 @@ interface PropertyMapProps {
   city?: string;
   state?: string;
   className?: string;
+  environmentalSignals?: EnvironmentalSignals;
 }
 
 /**
@@ -30,6 +38,7 @@ export function PropertyMap({
   city,
   state,
   className,
+  environmentalSignals,
 }: PropertyMapProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -146,6 +155,14 @@ export function PropertyMap({
 
         {/* Climate zone overlay badge */}
         <ClimateBadge />
+        
+        {/* Environmental signals overlay - stewardship mode */}
+        {environmentalSignals && (
+          <MapEnvironmentOverlay 
+            signals={environmentalSignals}
+            className="absolute bottom-2 right-2 z-20"
+          />
+        )}
       </div>
     </Card>
   );
