@@ -1533,6 +1533,8 @@ export type Database = {
           created_at: string
           folio: string | null
           folio_source: string | null
+          geo_source: string | null
+          geo_updated_at: string | null
           id: string
           latitude: number | null
           longitude: number | null
@@ -1559,6 +1561,8 @@ export type Database = {
           created_at?: string
           folio?: string | null
           folio_source?: string | null
+          geo_source?: string | null
+          geo_updated_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
@@ -1585,6 +1589,8 @@ export type Database = {
           created_at?: string
           folio?: string | null
           folio_source?: string | null
+          geo_source?: string | null
+          geo_updated_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
