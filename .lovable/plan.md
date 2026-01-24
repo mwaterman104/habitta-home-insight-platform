@@ -1,471 +1,376 @@
 
-
-# Appliance Intelligence: Tiered Integration Plan
+# Signal Orchestration Implementation Plan
 
 ## Overview
 
-This plan integrates appliances into Habitta as **second-order systems** with strict tiering, capped health influence, and constrained intelligence—all while preserving the core "home-as-an-operating-system" model.
-
-Your QA feedback is locked in as non-negotiable guardrails.
-
----
-
-## Architecture Decision: Appliances Live Inside Systems Hub
-
-Per your recommendation, appliances will **not** get a parallel navigation item. Instead:
-
-- **Systems Hub** (`/systems`) becomes the unified view for all tracked items
-- Systems are visually grouped: **Structural Systems** (top) and **Appliances** (below)
-- Clicking an appliance navigates to `/systems/:applianceId` (same pattern as HVAC/Roof)
-
-This preserves one mental model and one navigation surface.
+This plan implements the **Resolved Appliance Identity** pattern with the three refinements from QA:
+1. Explicit confidence resolution separation
+2. Tier-aware lifespan/planning label suppression
+3. Locked "Needs confirmation" copy guardrails
 
 ---
 
-## Phase 1: Database Foundation (Tiering Model)
+## Architecture: Three-Layer Signal Orchestration
 
-### 1.1 Extend `system_catalog` with Tier + Health Weight
-
-```sql
-ALTER TABLE public.system_catalog
-ADD COLUMN IF NOT EXISTS appliance_tier INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS health_weight_cap DECIMAL(3,2) DEFAULT 1.0;
-
--- Existing structural systems = Tier 0 (not appliances)
-UPDATE system_catalog SET appliance_tier = 0, health_weight_cap = 1.0
-WHERE key IN ('hvac', 'roof', 'water_heater', 'electrical', 'plumbing', 'windows', 'flooring');
-
--- Add Tier 1 Critical Appliances
-INSERT INTO public.system_catalog 
-(key, display_name, typical_lifespan_years, cost_low, cost_high, risk_weights, maintenance_checks, appliance_tier, health_weight_cap)
-VALUES
-('refrigerator', 'Refrigerator', 12, 1000, 4000, '{"age":0.5,"usage":0.3}', '["Clean coils annually","Check seals"]', 1, 1.0),
-('oven_range', 'Oven/Range', 15, 800, 3500, '{"age":0.6,"usage":0.3}', '["Clean regularly","Check burners annually"]', 1, 1.0),
-('dishwasher', 'Dishwasher', 10, 400, 1200, '{"age":0.6}', '["Clean filter monthly","Check spray arms"]', 1, 1.0),
-('washer', 'Washing Machine', 10, 500, 1500, '{"age":0.5,"usage":0.4}', '["Clean drum monthly","Check hoses"]', 1, 1.0),
-('dryer', 'Dryer', 13, 400, 1200, '{"age":0.5,"usage":0.3}', '["Clean lint trap","Vent cleaning annually"]', 1, 1.0)
-ON CONFLICT (key) DO UPDATE SET
-  appliance_tier = EXCLUDED.appliance_tier,
-  health_weight_cap = EXCLUDED.health_weight_cap;
-
--- Add Tier 2 Contextual Appliances (no health impact)
-INSERT INTO public.system_catalog 
-(key, display_name, typical_lifespan_years, cost_low, cost_high, risk_weights, maintenance_checks, appliance_tier, health_weight_cap)
-VALUES
-('microwave', 'Microwave', 9, 150, 600, '{"age":0.7}', '["Clean interior regularly"]', 2, 0.0),
-('garbage_disposal', 'Garbage Disposal', 10, 100, 400, '{"age":0.6}', '["Run with cold water"]', 2, 0.0),
-('wine_cooler', 'Wine Cooler', 10, 300, 2000, '{"age":0.5}', '["Clean condenser annually"]', 2, 0.0)
-ON CONFLICT (key) DO UPDATE SET
-  appliance_tier = EXCLUDED.appliance_tier,
-  health_weight_cap = EXCLUDED.health_weight_cap;
-```
-
-### 1.2 Type Definitions
-
-```typescript
-// src/lib/systemMeta.ts additions
-export type ApplianceTier = 0 | 1 | 2;
-
-export interface ApplianceCategory {
-  key: string;
-  displayName: string;
-  tier: ApplianceTier;
-  healthWeightCap: number;
-  typicalLifespan: number;
-  icon: string;
-}
-
-export const TIER_1_APPLIANCES = [
-  'refrigerator', 'oven_range', 'dishwasher', 'washer', 'dryer'
-];
-
-export const TIER_2_APPLIANCES = [
-  'microwave', 'garbage_disposal', 'wine_cooler'
-];
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                      UI LAYER                                   │
+│  ApplianceDetailView / SystemsHub Cards                         │
+│  Consumes ResolvedApplianceIdentity ONLY                        │
+│  Never touches raw fields                                       │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                  NORMALIZATION LAYER (NEW)                      │
+│  resolveApplianceIdentity(system, catalog) →                    │
+│  { title, subtitle, category, tier, confidenceState, ... }      │
+│                                                                 │
+│  Uses: resolveConfidenceState() (new explicit function)         │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                   EXTRACTION LAYER                              │
+│  analyze-device-photo edge function                             │
+│  Extracts: brand, model, category, year, confidence_scores      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Phase 2: Visibility in Systems Hub
+## Phase 1: Explicit Confidence Resolution (QA Issue #1)
 
-### 2.1 Update SystemsHub to Show Appliances
+### Problem
+The plan called for overloading `confidenceStateFromScore` with a second parameter. This silently changes the meaning of confidence from "how sure the AI is" to "how sure the system should behave."
 
-Modify `/systems` to fetch both capital timeline systems AND `home_systems` appliances, then render them in grouped sections.
+### Solution
+Create a new explicit function `resolveConfidenceState` that clearly separates concerns.
 
-**Key Changes to `src/pages/SystemsHub.tsx`:**
-
-```typescript
-// Fetch appliances from home_systems
-const { data: appliances } = useQuery({
-  queryKey: ['home-appliances', userHome?.id],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('home_systems')
-      .select('*, system_catalog!inner(display_name, typical_lifespan_years, appliance_tier)')
-      .eq('home_id', userHome?.id)
-      .gte('system_catalog.appliance_tier', 1); // Tier 1 and 2 only
-    return data;
-  },
-  enabled: !!userHome?.id,
-});
-
-// Render as two sections
-<section>
-  <h2>Structural Systems</h2>
-  {/* HVAC, Roof, Water Heater cards */}
-</section>
-
-<section className="mt-8">
-  <h2>Appliances</h2>
-  <p className="text-sm text-muted-foreground">
-    {tier1Count} critical • {tier2Count} tracked
-  </p>
-  {/* Appliance cards with tier badge */}
-</section>
-```
-
-### 2.2 Appliance Card Visual Treatment
-
-- **Tier 1**: Full card styling, status badge (Healthy/Planning/Attention)
-- **Tier 2**: Muted styling, no status badge, subtle "Tracked" label
-- Both link to `/systems/:applianceKey`
+**File: `src/lib/systemConfidence.ts`** (add new function)
 
 ```typescript
-// Card rendering logic
-{appliances.map(appliance => (
-  <Card 
-    key={appliance.id}
-    className={cn(
-      "cursor-pointer",
-      appliance.tier === 2 && "opacity-70 border-dashed"
-    )}
-    onClick={() => navigate(`/systems/${appliance.id}`)}
-  >
-    <CardHeader>
-      <div className="flex justify-between">
-        <span>{appliance.brand} {appliance.system_catalog.display_name}</span>
-        {appliance.tier === 1 && getStatusBadge(appliance.status)}
-        {appliance.tier === 2 && (
-          <Badge variant="outline" className="text-muted-foreground">
-            Tracked
-          </Badge>
-        )}
-      </div>
-    </CardHeader>
-    <CardContent>
-      <p>{ageYears} years old</p>
-      {appliance.tier === 1 && remainingYears && (
-        <p>~{remainingYears} years remaining</p>
-      )}
-    </CardContent>
-  </Card>
-))}
-```
-
----
-
-## Phase 3: Appliance Detail Page
-
-### 3.1 Extend SystemPage for Appliances
-
-The existing `/systems/:systemKey` route will handle appliances by detecting whether the key is a structural system or appliance.
-
-**Changes to `src/pages/SystemPage.tsx`:**
-
-```typescript
-// Detect if this is an appliance (UUID) vs structural system (key)
-const isApplianceId = systemKey?.length === 36; // UUID format
-
-// Fetch appliance data if UUID
-const { data: applianceData } = useQuery({
-  queryKey: ['appliance-detail', systemKey],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('home_systems')
-      .select('*, system_catalog(*)')
-      .eq('id', systemKey)
-      .single();
-    return data;
-  },
-  enabled: isApplianceId,
-});
-
-// Render appliance-specific layout
-if (isApplianceId && applianceData) {
-  return <ApplianceDetailView appliance={applianceData} />;
+/**
+ * Resolve confidence state for UI display
+ * 
+ * EXPLICIT ORCHESTRATOR - separates visual score from user confirmation
+ * 
+ * Rules (locked):
+ * - userConfirmed === true → always 'high' (Guardrail 3)
+ * - visualScore ≥ 0.75 → 'high' 
+ * - visualScore ≥ 0.40 → 'estimated'
+ * - visualScore < 0.40 → 'needs_confirmation'
+ */
+export function resolveConfidenceState(input: {
+  visualScore: number;
+  userConfirmed: boolean;
+}): ConfidenceState {
+  // User confirmation always grants high - this is immutable
+  if (input.userConfirmed) return 'high';
+  
+  // Vision-only scoring
+  if (input.visualScore >= 0.75) return 'high';
+  if (input.visualScore >= 0.40) return 'estimated';
+  return 'needs_confirmation';
 }
 ```
 
-### 3.2 ApplianceDetailView Component
+This preserves the existing `confidenceStateFromScore` for backward compatibility while adding explicit orchestration logic.
+
+---
+
+## Phase 2: Create Resolved Appliance Identity Resolver
+
+**New File: `src/lib/resolveApplianceIdentity.ts`**
+
+This becomes the **sacred file** that all UI consumes. The UI never renders raw fields again.
+
+### Interface
 
 ```typescript
-// src/components/system/ApplianceDetailView.tsx
-export function ApplianceDetailView({ appliance }: Props) {
-  const tier = appliance.system_catalog.appliance_tier;
-  const ageYears = appliance.manufacture_year 
-    ? new Date().getFullYear() - appliance.manufacture_year 
-    : null;
-  const typicalLifespan = appliance.system_catalog.typical_lifespan_years;
-  const remainingYears = ageYears ? Math.max(0, typicalLifespan - ageYears) : null;
+import { ConfidenceState, resolveConfidenceState, getConfidenceStateLabel } from './systemConfidence';
 
-  return (
-    <DashboardV3Layout>
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Header with photo */}
-        <div className="flex gap-4 mb-6">
-          {appliance.images?.[0] && (
-            <img src={appliance.images[0]} className="w-24 h-24 rounded-lg object-cover" />
-          )}
-          <div>
-            <h1 className="text-xl font-semibold">
-              {appliance.brand} {appliance.system_catalog.display_name}
-            </h1>
-            <p className="text-muted-foreground">
-              {appliance.model || 'Model unknown'}
-            </p>
-            {tier === 2 && (
-              <Badge variant="outline" className="mt-2">
-                Tracked (low-impact)
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Lifespan card - Tier 1 only */}
-        {tier === 1 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Planning Outlook</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between">
-                <div>
-                  <p className="text-2xl font-bold">
-                    {remainingYears !== null ? `~${remainingYears} years` : 'Unknown'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    estimated remaining
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg">{ageYears ?? '?'} years old</p>
-                  <p className="text-sm text-muted-foreground">
-                    Typical lifespan: {typicalLifespan} years
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Tier 2 disclaimer */}
-        {tier === 2 && (
-          <Card className="mb-6 border-dashed">
-            <CardContent className="py-4">
-              <p className="text-sm text-muted-foreground">
-                I'll keep an eye on this, but it won't affect your home's outlook.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Maintenance tips */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Maintenance Tips</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {appliance.system_catalog.maintenance_checks?.map((tip, i) => (
-                <li key={i} className="flex gap-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  {tip}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-    </DashboardV3Layout>
-  );
+export interface ResolvedApplianceIdentity {
+  // Core identity
+  title: string;                 // "LG Refrigerator"
+  subtitle: string;              // "Model E82904" | "Model not identified"
+  category: string | 'unknown';
+  tier: 1 | 2;
+  
+  // Confidence
+  confidenceState: ConfidenceState;
+  confidenceLabel: string | null; // "Estimated" or null for high
+  
+  // Age & Planning (Tier 1 ONLY)
+  ageLabel?: string;             // "~13 years old"
+  lifespanLabel?: string;        // "Typical lifespan: 10–14 years"
+  planningLabel?: string;        // "Within typical lifespan" | "Planning window"
+  
+  // Help messaging
+  helperMessage?: string;        // One sentence max, never mentions "confidence score"
+  showHelpCTA: boolean;          // Show "Help Habitta learn more"
 }
+```
+
+### Resolution Rules (Locked)
+
+| Field | Logic |
+|-------|-------|
+| `title` | `brand + catalog.display_name` if both known, else `brand + " appliance"`, else `display_name`, else `"Appliance"` |
+| `subtitle` | `"Model " + model` if known, else `"Model not identified"` (not "unknown" - database language) |
+| `confidenceState` | Uses `resolveConfidenceState({ visualScore, userConfirmed })` |
+| `ageLabel` | `"~" + age + " years old"` - always uses `~` prefix for estimates |
+| `lifespanLabel` | **Tier 1 only**: `"Typical lifespan: X–Y years"` (±2 year range). **Tier 2: undefined** |
+| `planningLabel` | **Tier 1 only**: `"Within typical lifespan"` / `"Later part of lifespan"` / `"Planning window"`. **Tier 2: undefined** |
+| `helperMessage` | One sentence max. Never mentions "confidence score". Never asks a question directly. |
+| `showHelpCTA` | `confidenceState !== 'high'` |
+
+### Key Guardrail: Tier 2 Suppression (QA Issue #2)
+
+```typescript
+// Tier 2 appliances should NOT invite planning thinking
+const lifespanLabel = tier === 1
+  ? `Typical lifespan: ${typicalLifespan - 2}–${typicalLifespan + 2} years`
+  : undefined;
+
+const planningLabel = tier === 1
+  ? derivePlanningLabel(remainingYears)
+  : undefined;
 ```
 
 ---
 
-## Phase 4: Health Roll-Up (Constrained)
+## Phase 3: Upgrade ApplianceDetailView
 
-### 4.1 Tiered Median Scoring in Intelligence Engine
+**File: `src/components/system/ApplianceDetailView.tsx`**
 
-Update `supabase/functions/intelligence-engine/index.ts`:
+### Changes
 
-```typescript
-// New: Appliance health contribution (capped)
-async function calculateApplianceHealthPenalty(homeId: string): Promise<number> {
-  // Fetch Tier 1 appliances only
-  const { data: appliances } = await supabaseAdmin
-    .from('home_systems')
-    .select('manufacture_year, system_catalog!inner(typical_lifespan_years, appliance_tier)')
-    .eq('home_id', homeId)
-    .eq('system_catalog.appliance_tier', 1);
+1. **Import and use resolver** instead of computing display values inline
+2. **Header shows composed identity** with inline confidence label
+3. **Rename "Details" → "What I know about this appliance"**
+4. **Add "Health & Planning" card** (Tier 1) or disclaimer (Tier 2)
+5. **Add "Confidence & Help CTA" section** when `confidenceState !== 'high'`
 
-  if (!appliances || appliances.length === 0) return 0; // No penalty
+### Header Update
 
-  const currentYear = new Date().getFullYear();
-  
-  // Calculate status for each appliance
-  const applianceStatuses = appliances.map(a => {
-    const age = a.manufacture_year 
-      ? currentYear - a.manufacture_year 
-      : 5; // Conservative default
-    const lifespan = a.system_catalog.typical_lifespan_years;
-    const remaining = Math.max(0, lifespan - age);
-    
-    if (remaining <= 2) return 'attention';
-    if (remaining <= 5) return 'planning';
-    return 'healthy';
-  });
+```tsx
+// Before (raw fields)
+<h1>{appliance.brand} {appliance.system_catalog?.display_name}</h1>
+<p>{appliance.model || 'Model unknown'}</p>
 
-  // Count appliances in Attention
-  const attentionCount = applianceStatuses.filter(s => s === 'attention').length;
-
-  // RULE: Only apply penalty if 2+ appliances are in Attention
-  if (attentionCount < 2) return 0;
-
-  // Calculate penalty (capped at 5 points)
-  const penaltyPerAppliance = 2;
-  const maxPenalty = 5;
-  
-  return Math.min(attentionCount * penaltyPerAppliance, maxPenalty);
-}
-
-// Update calculateMultiSystemScore to include appliance penalty
-async function calculateMultiSystemScore(homeId: string): Promise<MultiSystemScoreResult> {
-  // ... existing structural calculation ...
-  
-  // Apply capped appliance penalty
-  const appliancePenalty = await calculateApplianceHealthPenalty(homeId);
-  
-  const finalScore = Math.round(baseStructuralScore - appliancePenalty);
-  
-  // Include in drivers if penalty applied
-  if (appliancePenalty > 0) {
-    drivers.appliances = {
-      penalty: appliancePenalty,
-      message: 'Multiple appliances nearing end of life'
-    };
-  }
-  
-  // ... rest of function ...
-}
+// After (composed identity)
+<h1 className="text-xl font-semibold">
+  {identity.title}
+  {identity.confidenceLabel && (
+    <span className="text-sm font-normal text-muted-foreground ml-2">
+      · {identity.confidenceLabel}
+    </span>
+  )}
+</h1>
+<p className="text-muted-foreground text-sm">{identity.subtitle}</p>
+{identity.ageLabel && (
+  <p className="text-muted-foreground text-sm">{identity.ageLabel}</p>
+)}
 ```
 
-### 4.2 UI Rules (Locked)
+### Card Renames and New Cards
 
-| Surface | Tier 1 Behavior | Tier 2 Behavior |
-|---------|-----------------|-----------------|
-| **Dashboard (Home Pulse)** | Counted in health if ≥2 in Attention. Max copy: "2 appliances nearing replacement" | Never shown |
-| **SystemWatch** | Only when confidence ≥ estimated AND planning window ≤ 3 years | Never shown |
-| **HabittaThinking** | Allowed with soft language: "Your refrigerator may be worth planning for." | Never triggered |
-| **Systems Hub** | Full status badge, remaining years | Muted card, "Tracked" badge |
+| Current | New |
+|---------|-----|
+| "Details" | "What I know about this appliance" |
+| "Planning Outlook" | "Health & Planning" |
+| (new) | "Confidence" section with CTA |
+
+### Tier 2 Behavior
+
+Tier 2 appliances:
+- Show `identity.subtitle` ("Model not identified" if unknown)
+- Show muted disclaimer: "I'll keep an eye on this, but it won't affect your home's outlook."
+- Do NOT show lifespan or planning cards
+- Do NOT show age framing (optional: can show age, not remaining years)
 
 ---
 
-## Phase 5: Appliance Type Recognition (TeachHabittaModal Update)
+## Phase 4: Upgrade SystemsHub Cards
 
-### 5.1 Update QUICK_SYSTEM_TYPES
+**File: `src/pages/SystemsHub.tsx`**
+
+### Changes
+
+1. **Use resolver for card content**
+2. **Add confidence label inline** with title
+3. **Replace status badges with meaningful copy** for Tier 1
+4. **Keep "Tracked" badge for Tier 2** (no status language)
+
+### Card Display
+
+**Tier 1 Card:**
+```
+┌───────────────────────────────────┐
+│ LG Refrigerator · Estimated       │
+│ ~13 years old                     │
+│ Within typical lifespan           │
+└───────────────────────────────────┘
+```
+
+**Tier 2 Card (muted):**
+```
+┌───────────────────────────────────┐
+│ Microwave · Estimated             │
+│ ~6 years old                      │
+│ Tracked                           │
+└───────────────────────────────────┘
+```
+
+### Status Language Mapping (Tier 1 only)
+
+| Internal Status | User Copy |
+|-----------------|-----------|
+| `healthy` | "Within typical lifespan" |
+| `planning` | "Later part of lifespan" |
+| `attention` | "Planning window" |
+
+---
+
+## Phase 5: Upgrade Vision Extraction (Edge Function)
+
+**File: `supabase/functions/analyze-device-photo/index.ts`**
+
+### Problem
+Currently returns `system_type: 'appliance'` (generic). Should detect specific category.
+
+### Solution
+Expand `systemTypeKeywords` to include specific appliance categories:
 
 ```typescript
-// src/components/TeachHabittaModal.tsx
-const QUICK_SYSTEM_TYPES = [
-  // Structural
-  'hvac',
-  'water_heater',
-  'roof',
-  'electrical',
-  'plumbing',
-  // Critical Appliances (Tier 1)
-  'refrigerator',
-  'oven_range',
-  'dishwasher',
-  'washer',
-  'dryer',
-  // Contextual (Tier 2)
-  'microwave',
-];
-
-const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
-  // ... existing ...
-  refrigerator: 'Refrigerator',
-  oven_range: 'Oven/Range',
-  dishwasher: 'Dishwasher',
-  washer: 'Washing Machine',
-  dryer: 'Dryer',
-  microwave: 'Microwave',
-  garbage_disposal: 'Garbage Disposal',
+const systemTypeKeywords = {
+  // Structural systems (Tier 0)
+  'hvac': ['heat pump', 'air conditioner', 'furnace', ...],
+  'water_heater': ['water heater', 'hot water', ...],
+  'electrical': ['breaker', 'panel', ...],
+  'pool_equipment': ['pool', 'pump', 'filter', ...],
+  
+  // Tier 1 Appliances (SPECIFIC - not generic 'appliance')
+  'refrigerator': ['refrigerator', 'fridge', 'freezer'],
+  'oven_range': ['oven', 'range', 'stove', 'cooktop', 'cook top'],
+  'dishwasher': ['dishwasher', 'dish washer'],
+  'washer': ['washer', 'washing machine', 'front load wash', 'top load wash'],
+  'dryer': ['dryer', 'clothes dryer'],
+  
+  // Tier 2 Appliances
+  'microwave': ['microwave'],
+  'garbage_disposal': ['disposal', 'garbage disposal', 'disposer'],
 };
 ```
 
-### 5.2 Add Tier Messaging on Save
+Also update `SYSTEM_DISPLAY_NAMES` to include appliance-specific names for improved Habitta messaging.
 
-When saving a Tier 2 appliance, show reassurance:
+---
+
+## Phase 6: Upgrade TeachHabittaModal Correction Step
+
+**File: `src/components/TeachHabittaModal.tsx`**
+
+### Changes
+
+1. **Update header copy**: "Just help me get closer. Rough answers are totally fine."
+2. **Add age range picker** instead of exact year input
+3. **Apply confidence boost logic** on user correction
+
+### Age Range Picker
+
+Replace year input with range buckets:
 
 ```typescript
-// In handleConfirmInterpretation or handleSaveCorrection
-const tier = TIER_2_APPLIANCES.includes(selectedSystemType) ? 2 : 1;
+const AGE_RANGES = [
+  { value: 2, label: 'Less than 5 years' },   // midpoint for modeling
+  { value: 7, label: '5–10 years' },
+  { value: 12, label: '10–15 years' },
+  { value: 17, label: '15+ years' },
+  { value: null, label: 'Not sure' },
+];
+```
 
-// Show appropriate success message
-const successMessage = tier === 2
-  ? "I'll keep an eye on this, but it won't affect your home's outlook."
-  : "Added. I'll start tracking this.";
+Document: `value` represents the midpoint used for modeling, not an exact age.
+
+### Confidence Boost Logic (On Save)
+
+```typescript
+// When user confirms/corrects:
+let boostedConfidence = baseConfidence;
+if (userConfirmedSystemType) boostedConfidence += 0.25;
+if (userProvidedBrand) boostedConfidence += 0.15;
+if (userProvidedAgeRange) boostedConfidence += 0.15;
+boostedConfidence = Math.min(boostedConfidence, 0.9);
 ```
 
 ---
 
-## Files to Create
+## Copy Guardrails (Locked - QA Issue #3)
+
+### "Needs confirmation" Rules
+
+| Element | Behavior |
+|---------|----------|
+| Header label | Shown inline, muted |
+| Body message | Required: calm helper message |
+| CTA | Required: "Help Habitta learn more" |
+| Style | No red, no icons, no urgency |
+
+### Helper Message Rules
+
+- Maximum one sentence
+- Never mention "confidence score"
+- Never ask a question directly (CTA handles that)
+
+### Copy Examples
+
+**Estimated:**
+- Label: `· Estimated`
+- Helper: "This is an estimate based on the photo."
+
+**Needs confirmation:**
+- Label: `· Needs confirmation`
+- Helper: "I'm not fully sure about this yet — you can help me refine it."
+
+---
+
+## Files Summary
+
+### New Files
 
 | File | Purpose |
 |------|---------|
-| `src/components/system/ApplianceDetailView.tsx` | Appliance-specific detail page component |
-| `src/lib/applianceTiers.ts` | Tier definitions and helper functions |
+| `src/lib/resolveApplianceIdentity.ts` | Central resolver - sacred file for all appliance display logic |
 
-## Files to Modify
+### Modified Files
 
-| File | Change |
-|------|--------|
-| `src/pages/SystemsHub.tsx` | Add appliances section, grouped display |
-| `src/pages/SystemPage.tsx` | Detect appliance vs structural, render accordingly |
-| `src/lib/systemMeta.ts` | Add appliance type definitions and tier constants |
-| `src/components/TeachHabittaModal.tsx` | Add appliance types, tier messaging |
-| `supabase/functions/intelligence-engine/index.ts` | Add `calculateApplianceHealthPenalty` with ≥2 rule |
-
-## Database Migration
-
-| Migration | Content |
-|-----------|---------|
-| `add_appliance_tiers.sql` | Add `appliance_tier` and `health_weight_cap` columns, seed appliance categories |
+| File | Changes |
+|------|---------|
+| `src/lib/systemConfidence.ts` | Add `resolveConfidenceState()` explicit orchestrator |
+| `src/components/system/ApplianceDetailView.tsx` | Use resolver, new card layout, add Health & Planning, add Help CTA |
+| `src/pages/SystemsHub.tsx` | Use resolver for cards, add confidence label, status copy |
+| `src/components/TeachHabittaModal.tsx` | Update copy, add age range picker |
+| `supabase/functions/analyze-device-photo/index.ts` | Expand category detection from generic 'appliance' to specific types |
 
 ---
 
-## Guardrails Summary (Locked)
+## Expected Outcomes
 
-1. **Tiering is non-negotiable**: Tier 1 = critical (health-impacting), Tier 2 = contextual (tracked only)
-2. **Appliances cap at 5-point penalty**: Never dominate health score
-3. **≥2 Attention rule**: Single aging appliance = advisory only
-4. **Status language is standardized**: Healthy / Planning / Attention everywhere
-5. **No parallel navigation**: Appliances live inside Systems Hub
-6. **Tier 2 messaging**: "I'll keep an eye on this, but it won't affect your home's outlook."
-7. **Brand intelligence is advisory**: Adjusts confidence, never generates urgency
+**Before:**
+- "LG Appliance" (no category)
+- "Model unknown" (raw database field)
+- No confidence signal
+- No age framing
+- User doesn't know what to do
 
----
+**After:**
+- "LG Refrigerator · Estimated" (composed identity)
+- "Model E82904" or "Model not identified" (formatted)
+- "~13 years old" (age framing)
+- "Later part of lifespan" (planning context - Tier 1 only)
+- "Help Habitta learn more" (clear next action)
 
-## Recommended Build Order
-
-1. **Database migration** → Tier columns + appliance catalog entries
-2. **SystemsHub update** → Show appliances in grouped section
-3. **ApplianceDetailView** → Detail page for appliance clicks
-4. **TeachHabittaModal** → Add appliance type options
-5. **Intelligence engine** → Health roll-up with ≥2 rule
-
-Phase 3 (Brand Intelligence) can follow as a separate iteration once visibility and tiering are proven in production.
-
+**Critical:**
+- Tier 2 appliances show NO lifespan/planning labels
+- Confidence is visible but never loud
+- The UI never renders raw fields again
