@@ -232,9 +232,11 @@ export function getConfidenceLevelLabel(level: ConfidenceLevel): string {
 // =============================================================================
 
 /**
- * Compute confidence state from score
+ * Compute confidence state from score (backward compatible)
  * 
  * Guardrail 1: High confidence requires user confirmation OR strong visual certainty
+ * 
+ * @deprecated Prefer resolveConfidenceState() for explicit orchestration
  */
 export function confidenceStateFromScore(
   score: number,
@@ -246,6 +248,31 @@ export function confidenceStateFromScore(
   // Vision-only requires strong certainty for high (Guardrail 1)
   if (score >= 0.75) return 'high';
   if (score >= 0.40) return 'estimated';
+  return 'needs_confirmation';
+}
+
+/**
+ * Resolve confidence state for UI display
+ * 
+ * EXPLICIT ORCHESTRATOR - separates visual score from user confirmation
+ * This is the preferred function for appliance identity resolution.
+ * 
+ * Rules (locked):
+ * - userConfirmed === true → always 'high' (Guardrail 3)
+ * - visualScore ≥ 0.75 → 'high' 
+ * - visualScore ≥ 0.40 → 'estimated'
+ * - visualScore < 0.40 → 'needs_confirmation'
+ */
+export function resolveConfidenceState(input: {
+  visualScore: number;
+  userConfirmed: boolean;
+}): ConfidenceState {
+  // User confirmation always grants high - this is immutable
+  if (input.userConfirmed) return 'high';
+  
+  // Vision-only scoring thresholds
+  if (input.visualScore >= 0.75) return 'high';
+  if (input.visualScore >= 0.40) return 'estimated';
   return 'needs_confirmation';
 }
 

@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Calendar, Wrench } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Wrench, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { 
-  getApplianceTier, 
-  calculateApplianceStatus,
+  resolveApplianceIdentity,
+  type ResolvedApplianceIdentity,
+} from "@/lib/resolveApplianceIdentity";
+import { 
   APPLIANCE_ICONS
 } from "@/lib/applianceTiers";
+import { Json } from "@/integrations/supabase/types";
 
 interface SystemCatalogData {
   key: string;
@@ -27,47 +29,78 @@ interface ApplianceData {
   manufacture_year?: number;
   install_date?: string;
   last_service_date?: string;
-  images?: string[] | unknown;
+  images?: Json | null;
   notes?: string;
+  confidence_scores?: Json | null; // Json from Supabase, cast at runtime
+  source?: Json | null;
   system_catalog: SystemCatalogData | null;
 }
 
 interface ApplianceDetailViewProps {
   appliance: ApplianceData;
   onBack?: () => void;
+  onHelpHabittta?: () => void; // Opens TeachHabittaModal in correction mode
 }
 
 /**
  * ApplianceDetailView - Detail page for tracked appliances
  * 
+ * Uses resolveApplianceIdentity to compose raw data into meaning.
+ * The UI never renders raw fields directly.
+ * 
  * Tier-aware rendering:
- * - Tier 1: Shows full planning outlook with remaining years
- * - Tier 2: Shows muted disclaimer, no health impact messaging
+ * - Tier 1: Shows Health & Planning with lifespan framing
+ * - Tier 2: Shows muted disclaimer, no planning messaging
  */
-export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewProps) {
+export function ApplianceDetailView({ 
+  appliance, 
+  onBack,
+  onHelpHabittta,
+}: ApplianceDetailViewProps) {
   const navigate = useNavigate();
-  const tier = appliance.system_catalog?.appliance_tier ?? getApplianceTier(appliance.system_key);
-  const typicalLifespan = appliance.system_catalog?.typical_lifespan_years ?? 12;
   
   // Safely extract first image
   const firstImage = Array.isArray(appliance.images) && appliance.images.length > 0 
     ? appliance.images[0] as string 
     : null;
   
-  const currentYear = new Date().getFullYear();
-  const ageYears = appliance.manufacture_year 
-    ? currentYear - appliance.manufacture_year 
-    : null;
-  const remainingYears = ageYears !== null 
-    ? Math.max(0, typicalLifespan - ageYears) 
-    : null;
-  
-  const status = calculateApplianceStatus(ageYears, typicalLifespan);
-  
-  // Get base key for icon lookup (strip unique suffix)
+  // Get base key for icon lookup
   const baseKey = appliance.system_key.split('_')[0];
   const fullBaseKey = appliance.system_key.includes('oven') ? 'oven_range' : baseKey;
   const icon = APPLIANCE_ICONS[fullBaseKey as keyof typeof APPLIANCE_ICONS] || '🔧';
+  
+  // === RESOLVE IDENTITY (The Sacred Pattern) ===
+  const catalogInput = appliance.system_catalog ? {
+    key: appliance.system_catalog.key,
+    display_name: appliance.system_catalog.display_name,
+    typical_lifespan_years: appliance.system_catalog.typical_lifespan_years,
+    appliance_tier: appliance.system_catalog.appliance_tier,
+  } : null;
+  
+  // Safely parse confidence_scores from Json
+  const confidenceScores = (
+    appliance.confidence_scores && 
+    typeof appliance.confidence_scores === 'object' &&
+    !Array.isArray(appliance.confidence_scores)
+  ) ? appliance.confidence_scores as Record<string, number> : null;
+  
+  // Safely parse source from Json
+  const sourceData = (
+    appliance.source && 
+    typeof appliance.source === 'object' &&
+    !Array.isArray(appliance.source)
+  ) ? appliance.source as { install_source?: string } : null;
+  
+  const identity: ResolvedApplianceIdentity = resolveApplianceIdentity(
+    {
+      brand: appliance.brand,
+      model: appliance.model,
+      manufacture_year: appliance.manufacture_year,
+      confidence_scores: confidenceScores,
+      source: sourceData,
+    },
+    catalogInput
+  );
   
   const handleBack = () => {
     if (onBack) {
@@ -76,27 +109,10 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
       navigate('/systems');
     }
   };
-
-  const getStatusBadge = () => {
-    switch (status) {
-      case 'healthy':
-        return (
-          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-            Healthy
-          </Badge>
-        );
-      case 'planning':
-        return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-            Planning
-          </Badge>
-        );
-      case 'attention':
-        return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-            Attention
-          </Badge>
-        );
+  
+  const handleHelpHabittta = () => {
+    if (onHelpHabittta) {
+      onHelpHabittta();
     }
   };
 
@@ -104,7 +120,7 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
   const maintenanceChecks: string[] = (() => {
     const checks = appliance.system_catalog?.maintenance_checks;
     if (!checks) return [];
-    if (Array.isArray(checks)) return checks;
+    if (Array.isArray(checks)) return checks as string[];
     if (typeof checks === 'string') {
       try {
         return JSON.parse(checks);
@@ -128,12 +144,12 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
         Back
       </Button>
 
-      {/* Header with photo */}
+      {/* Header with photo - Uses Resolved Identity */}
       <div className="flex gap-4 mb-6">
         {firstImage ? (
           <img 
             src={firstImage} 
-            alt={appliance.system_catalog?.display_name || 'Appliance'} 
+            alt={identity.title} 
             className="w-24 h-24 rounded-xl object-cover border"
           />
         ) : (
@@ -144,58 +160,56 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
         <div className="flex-1">
           <div className="flex items-start justify-between gap-2">
             <div>
+              {/* Composed title with inline confidence label */}
               <h1 className="text-xl font-semibold">
-                {appliance.brand ? `${appliance.brand} ` : ''}
-                {appliance.system_catalog?.display_name || 'Appliance'}
+                {identity.title}
+                {identity.confidenceLabel && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    · {identity.confidenceLabel}
+                  </span>
+                )}
               </h1>
+              {/* Subtitle (model) */}
               <p className="text-muted-foreground text-sm">
-                {appliance.model || 'Model unknown'}
+                {identity.subtitle}
               </p>
+              {/* Age label */}
+              {identity.ageLabel && (
+                <p className="text-muted-foreground text-sm">
+                  {identity.ageLabel}
+                </p>
+              )}
             </div>
-            {tier === 1 && getStatusBadge()}
           </div>
-          {tier === 2 && (
-            <Badge variant="outline" className="mt-2 text-muted-foreground">
-              Tracked (low-impact)
-            </Badge>
-          )}
         </div>
       </div>
 
-      {/* Tier 1: Planning Outlook Card */}
-      {tier === 1 && (
+      {/* Tier 1: Health & Planning Card */}
+      {identity.tier === 1 && (
         <Card className="mb-6">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              Planning Outlook
-            </CardTitle>
+            <CardTitle className="text-base">Health & Planning</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-end">
-              <div>
-                <p className="text-2xl font-bold">
-                  {remainingYears !== null ? `~${remainingYears} years` : 'Unknown'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  estimated remaining
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-lg">
-                  {ageYears !== null ? `${ageYears} years old` : 'Age unknown'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Typical lifespan: {typicalLifespan} years
-                </p>
-              </div>
-            </div>
+          <CardContent className="space-y-3">
+            {identity.planningLabel && (
+              <p className="text-lg font-medium">{identity.planningLabel}</p>
+            )}
+            {identity.lifespanLabel && (
+              <p className="text-sm text-muted-foreground">
+                {identity.lifespanLabel}
+              </p>
+            )}
+            {!identity.planningLabel && !identity.lifespanLabel && (
+              <p className="text-sm text-muted-foreground">
+                Not enough information to estimate planning outlook yet.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* Tier 2: Disclaimer Card */}
-      {tier === 2 && (
+      {identity.tier === 2 && (
         <Card className="mb-6 border-dashed">
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">
@@ -205,10 +219,10 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
         </Card>
       )}
 
-      {/* Details Card */}
+      {/* What I know about this appliance (renamed from "Details") */}
       <Card className="mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Details</CardTitle>
+          <CardTitle className="text-base">What I know about this appliance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {appliance.brand && (
@@ -229,10 +243,16 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
               <span className="text-sm font-medium font-mono text-xs">{appliance.serial}</span>
             </div>
           )}
-          {appliance.manufacture_year && (
+          {identity.ageLabel && (
             <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">Manufacture Year</span>
-              <span className="text-sm font-medium">{appliance.manufacture_year}</span>
+              <span className="text-sm text-muted-foreground">Estimated age</span>
+              <span className="text-sm font-medium">{identity.ageLabel}</span>
+            </div>
+          )}
+          {identity.lifespanLabel && (
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Typical lifespan</span>
+              <span className="text-sm font-medium">{identity.lifespanLabel.replace('Typical lifespan: ', '')}</span>
             </div>
           )}
           {appliance.install_date && (
@@ -251,12 +271,41 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
               </span>
             </div>
           )}
+          
+          {/* Sparse state message */}
+          {!appliance.brand && !appliance.model && (
+            <p className="text-sm text-muted-foreground pt-2 border-t">
+              I'm still learning — rough details are okay.
+            </p>
+          )}
         </CardContent>
       </Card>
 
+      {/* Confidence & Help CTA (only if not high confidence) */}
+      {identity.showHelpCTA && (
+        <Card className="mb-6 border-dashed">
+          <CardContent className="py-4 space-y-3">
+            {identity.helperMessage && (
+              <p className="text-sm text-muted-foreground">
+                {identity.helperMessage}
+              </p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={handleHelpHabittta}
+            >
+              <HelpCircle className="h-4 w-4 mr-2" />
+              Help Habitta learn more
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Maintenance Tips */}
       {maintenanceChecks.length > 0 && (
-        <Card>
+        <Card className="mb-6">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Wrench className="h-4 w-4 text-muted-foreground" />
@@ -278,7 +327,7 @@ export function ApplianceDetailView({ appliance, onBack }: ApplianceDetailViewPr
 
       {/* Notes */}
       {appliance.notes && (
-        <Card className="mt-6">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Notes</CardTitle>
           </CardHeader>

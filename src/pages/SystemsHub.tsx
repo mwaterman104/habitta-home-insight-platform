@@ -19,6 +19,10 @@ import {
   getApplianceTier,
   type ApplianceKey
 } from "@/lib/applianceTiers";
+import { 
+  resolveApplianceIdentity,
+  getStatusCopy,
+} from "@/lib/resolveApplianceIdentity";
 
 interface SystemCardData {
   key: string;
@@ -38,6 +42,10 @@ interface ApplianceCardData {
   status: 'healthy' | 'planning' | 'attention';
   remainingYears?: number;
   typicalLifespan: number;
+  // New: Resolved identity fields
+  title: string;
+  confidenceLabel: string | null;
+  statusCopy: string;
 }
 
 const SYSTEM_DISPLAY: Record<string, { name: string; icon: string }> = {
@@ -52,15 +60,15 @@ const SYSTEM_DISPLAY: Record<string, { name: string; icon: string }> = {
 /**
  * SystemsHub - Overview of all home systems and appliances
  * 
- * Accessible via /systems from the left navigation.
- * Displays structural systems (Tier 0) and appliances (Tier 1 & 2) in grouped sections.
- * Each card links to detail page.
+ * Uses resolveApplianceIdentity for consistent display logic.
+ * Displays structural systems (Tier 0) and appliances (Tier 1 & 2).
  */
 export default function SystemsHub() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showTeachModal, setShowTeachModal] = useState(false);
+  
   // Fetch user's home
   const { data: userHome } = useQuery({
     queryKey: ['user-home', user?.id],
@@ -89,7 +97,7 @@ export default function SystemsHub() {
       if (!userHome?.id) return [];
       const { data, error } = await supabase
         .from('home_systems')
-        .select('id, system_key, brand, model, manufacture_year, images')
+        .select('id, system_key, brand, model, manufacture_year, images, confidence_scores, source')
         .eq('home_id', userHome.id);
       if (error) throw error;
       return data || [];
@@ -139,7 +147,7 @@ export default function SystemsHub() {
     });
   }, [capitalTimeline, currentYear]);
 
-  // Build appliance cards (Tier 1 and 2)
+  // Build appliance cards using resolveApplianceIdentity
   const applianceCards = useMemo<ApplianceCardData[]>(() => {
     if (!appliancesRaw || !catalogData) return [];
     
@@ -147,7 +155,7 @@ export default function SystemsHub() {
     const catalogMap = new Map(catalogData.map(c => [c.key, c]));
     
     return appliancesRaw.map(appliance => {
-      // Extract base key from system_key (e.g., "oven_range_lg_abc123" -> "oven_range")
+      // Extract base key from system_key
       const baseKey = appliance.system_key.split('_').slice(0, 2).join('_');
       const singleKey = appliance.system_key.split('_')[0];
       
@@ -174,6 +182,39 @@ export default function SystemsHub() {
       const rawTier = catalogEntry?.appliance_tier ?? getApplianceTier(baseKey);
       const effectiveTier: 1 | 2 = rawTier === 1 ? 1 : rawTier === 2 ? 2 : 1;
       
+      // === USE RESOLVER for identity ===
+      const catalogInput = catalogEntry ? {
+        key: catalogEntry.key,
+        display_name: catalogEntry.display_name,
+        typical_lifespan_years: catalogEntry.typical_lifespan_years,
+        appliance_tier: catalogEntry.appliance_tier,
+      } : null;
+      
+      // Safely parse confidence_scores
+      const confidenceScores = (
+        appliance.confidence_scores && 
+        typeof appliance.confidence_scores === 'object' &&
+        !Array.isArray(appliance.confidence_scores)
+      ) ? appliance.confidence_scores as Record<string, number> : null;
+      
+      // Safely parse source
+      const sourceData = (
+        appliance.source && 
+        typeof appliance.source === 'object' &&
+        !Array.isArray(appliance.source)
+      ) ? appliance.source as { install_source?: string } : null;
+      
+      const identity = resolveApplianceIdentity(
+        {
+          brand: appliance.brand,
+          model: appliance.model,
+          manufacture_year: appliance.manufacture_year,
+          confidence_scores: confidenceScores,
+          source: sourceData,
+        },
+        catalogInput
+      );
+      
       return {
         id: appliance.id,
         systemKey: appliance.system_key,
@@ -184,8 +225,12 @@ export default function SystemsHub() {
         status,
         remainingYears,
         typicalLifespan,
+        // Resolved identity fields
+        title: identity.title,
+        confidenceLabel: identity.confidenceLabel,
+        statusCopy: getStatusCopy(status, effectiveTier),
       };
-    }).filter(a => a.tier === 1 || a.tier === 2); // Only show Tier 1 and 2
+    }).filter(a => a.tier === 1 || a.tier === 2);
   }, [appliancesRaw, catalogData, currentYear]);
 
   // Count by tier
@@ -233,14 +278,18 @@ export default function SystemsHub() {
               <Skeleton key={i} className="h-40 rounded-xl" />
             ))}
           </div>
-        ) : systemCards.length === 0 ? (
+        ) : systemCards.length === 0 && applianceCards.length === 0 ? (
           <Card className="rounded-xl">
             <CardContent className="p-8 text-center">
               <Cpu className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-              <h2 className="text-lg font-medium mb-2">No systems data yet</h2>
-              <p className="text-sm text-muted-foreground">
-                System information will appear here once we have more data about your home.
+              <h2 className="text-lg font-medium mb-2">No systems tracked yet</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add your first system or appliance to get started.
               </p>
+              <Button onClick={() => setShowTeachModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add System
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -275,7 +324,7 @@ export default function SystemsHub() {
                         <div className="space-y-1">
                           {system.ageYears !== undefined && (
                             <p className="text-sm text-muted-foreground">
-                              {system.ageYears} years old
+                              ~{system.ageYears} years old
                             </p>
                           )}
                           {system.remainingYears !== undefined && (
@@ -291,7 +340,7 @@ export default function SystemsHub() {
               </section>
             )}
             
-            {/* Appliances Section */}
+            {/* Appliances Section - Using Resolved Identity */}
             {applianceCards.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
@@ -326,31 +375,30 @@ export default function SystemsHub() {
                             <div className="flex items-center gap-2">
                               <span className="text-xl">{icon}</span>
                               <div>
+                                {/* Composed title with inline confidence label */}
                                 <CardTitle className="text-base">
-                                  {appliance.brand ? `${appliance.brand} ` : ''}{appliance.name}
+                                  {appliance.title}
+                                  {appliance.confidenceLabel && (
+                                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                                      · {appliance.confidenceLabel}
+                                    </span>
+                                  )}
                                 </CardTitle>
                               </div>
                             </div>
-                            {appliance.tier === 1 && getStatusBadge(appliance.status)}
-                            {appliance.tier === 2 && (
-                              <Badge variant="outline" className="text-muted-foreground text-xs">
-                                Tracked
-                              </Badge>
-                            )}
                           </div>
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-1">
                             {appliance.ageYears !== undefined && (
                               <p className="text-sm text-muted-foreground">
-                                {appliance.ageYears} years old
+                                ~{appliance.ageYears} years old
                               </p>
                             )}
-                            {appliance.tier === 1 && appliance.remainingYears !== undefined && (
-                              <p className="text-sm text-muted-foreground">
-                                ~{appliance.remainingYears} years remaining
-                              </p>
-                            )}
+                            {/* Status copy using resolver */}
+                            <p className="text-sm text-muted-foreground">
+                              {appliance.statusCopy}
+                            </p>
                           </div>
                         </CardContent>
                       </Card>
@@ -359,27 +407,10 @@ export default function SystemsHub() {
                 </div>
               </section>
             )}
-            
-            {/* Empty state for no systems or appliances */}
-            {systemCards.length === 0 && applianceCards.length === 0 && (
-              <Card className="rounded-xl">
-                <CardContent className="p-8 text-center">
-                  <Cpu className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-                  <h2 className="text-lg font-medium mb-2">No systems tracked yet</h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Add your first system or appliance to get started.
-                  </p>
-                  <Button onClick={() => setShowTeachModal(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add System
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
           </>
         )}
 
-        {/* Floating Action Button - Guardrail 4: z-30 (above nav, below modals) */}
+        {/* Floating Action Button */}
         <Button
           onClick={() => setShowTeachModal(true)}
           className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg z-30"
@@ -395,7 +426,6 @@ export default function SystemsHub() {
           onOpenChange={setShowTeachModal}
           homeId={userHome?.id || ''}
           onSystemAdded={() => {
-            // Invalidate relevant queries when a system is added
             queryClient.invalidateQueries({ queryKey: ['capital-timeline', userHome?.id] });
             queryClient.invalidateQueries({ queryKey: ['home-appliances', userHome?.id] });
           }}

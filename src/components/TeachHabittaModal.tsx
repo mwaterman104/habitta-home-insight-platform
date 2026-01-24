@@ -99,6 +99,15 @@ const QUICK_SYSTEM_TYPES = [
 // Tier 2 appliances for messaging
 const TIER_2_APPLIANCES = ['microwave', 'garbage_disposal', 'wine_cooler'];
 
+// Age ranges (value = midpoint used for modeling)
+const AGE_RANGES = [
+  { value: 2, label: 'Less than 5 years' },
+  { value: 7, label: '5–10 years' },
+  { value: 12, label: '10–15 years' },
+  { value: 17, label: '15+ years' },
+  { value: null, label: 'Not sure' },
+];
+
 export function TeachHabittaModal({
   open,
   onOpenChange,
@@ -117,7 +126,7 @@ export function TeachHabittaModal({
   const [selectedSystemType, setSelectedSystemType] = useState<string>('');
   const [brandInput, setBrandInput] = useState('');
   const [modelInput, setModelInput] = useState('');
-  const [installYear, setInstallYear] = useState('');
+  const [selectedAgeRange, setSelectedAgeRange] = useState<number | null | undefined>(undefined);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -135,7 +144,7 @@ export function TeachHabittaModal({
       setSelectedSystemType('');
       setBrandInput('');
       setModelInput('');
-      setInstallYear('');
+      setSelectedAgeRange(undefined);
     }
   }, [open]);
 
@@ -241,8 +250,13 @@ export function TeachHabittaModal({
         if (analysisData.model) {
           setModelInput(analysisData.model);
         }
+        // Map manufacture_year to age range if available
         if (analysisData.manufacture_year) {
-          setInstallYear(analysisData.manufacture_year.toString());
+          const age = new Date().getFullYear() - analysisData.manufacture_year;
+          if (age < 5) setSelectedAgeRange(2);
+          else if (age < 10) setSelectedAgeRange(7);
+          else if (age < 15) setSelectedAgeRange(12);
+          else setSelectedAgeRange(17);
         }
         setStep('correction');
       } else {
@@ -310,8 +324,13 @@ export function TeachHabittaModal({
       if (analysis.model) {
         setModelInput(analysis.model);
       }
+      // Map manufacture_year to age range
       if (analysis.manufacture_year) {
-        setInstallYear(analysis.manufacture_year.toString());
+        const age = new Date().getFullYear() - analysis.manufacture_year;
+        if (age < 5) setSelectedAgeRange(2);
+        else if (age < 10) setSelectedAgeRange(7);
+        else if (age < 15) setSelectedAgeRange(12);
+        else setSelectedAgeRange(17);
       }
     }
     setStep('correction');
@@ -325,20 +344,36 @@ export function TeachHabittaModal({
     
     setIsProcessing(true);
     try {
+      // Calculate manufacture year from age range (midpoint)
+      const manufactureYear = selectedAgeRange !== null && selectedAgeRange !== undefined
+        ? new Date().getFullYear() - selectedAgeRange
+        : undefined;
+      
+      // Confidence boost logic (Guardrail 3)
+      let boostedConfidence = 0.30; // base heuristic
+      if (selectedSystemType) boostedConfidence += 0.25;
+      if (brandInput) boostedConfidence += 0.15;
+      if (selectedAgeRange !== null && selectedAgeRange !== undefined) boostedConfidence += 0.15;
+      boostedConfidence = Math.min(boostedConfidence, 0.9);
+      
       const systemData: Partial<HomeSystem> = {
         system_key: selectedSystemType,
         brand: brandInput || undefined,
         model: modelInput || undefined,
         serial: analysis?.serial,
-        manufacture_year: installYear ? parseInt(installYear) : undefined,
+        manufacture_year: manufactureYear,
         capacity_rating: analysis?.capacity_rating,
         fuel_type: analysis?.fuel_type,
-        confidence_scores: analysis?.confidence_scores || {},
+        confidence_scores: {
+          ...analysis?.confidence_scores,
+          overall: boostedConfidence,
+        },
         data_sources: ['vision', 'owner_corrected'],
         source: {
           method: 'vision',
           corrected_at: new Date().toISOString(),
           install_source: 'owner_reported',
+          boosted_confidence: boostedConfidence,
         },
       };
       
@@ -363,12 +398,17 @@ export function TeachHabittaModal({
     
     setIsProcessing(true);
     try {
+      // Calculate manufacture year from age range if provided
+      const manufactureYear = selectedAgeRange !== null && selectedAgeRange !== undefined
+        ? new Date().getFullYear() - selectedAgeRange
+        : analysis?.manufacture_year;
+      
       const systemData: Partial<HomeSystem> = {
         system_key: selectedSystemType || analysis?.system_type || 'unknown',
         brand: brandInput || analysis?.brand,
         model: modelInput || analysis?.model,
         serial: analysis?.serial,
-        manufacture_year: installYear ? parseInt(installYear) : analysis?.manufacture_year,
+        manufacture_year: manufactureYear,
         data_sources: ['vision'],
         source: {
           method: 'vision',
@@ -543,22 +583,22 @@ export function TeachHabittaModal({
 
   const renderCorrectionStep = () => (
     <div className="space-y-5">
-      {/* Habitta's uncertain message */}
+      {/* Habitta's encouraging message */}
       <div className="text-center">
         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
           <Sparkles className="h-5 w-5 text-primary" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          {error || analysis?.habitta_message || "I'm not totally sure what this is yet — can you help me out?"}
+        <p className="text-sm font-medium">
+          Just help me get closer.
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Rough answers are fine.
+          Rough answers are totally fine.
         </p>
       </div>
       
       {/* System type pills */}
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">System type</Label>
+        <Label className="text-xs text-muted-foreground">What kind of system is this?</Label>
         <div className="flex flex-wrap gap-2">
           {QUICK_SYSTEM_TYPES.map((type) => (
             <Button
@@ -574,34 +614,42 @@ export function TeachHabittaModal({
         </div>
       </div>
       
-      {/* Optional fields */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="brand" className="text-xs text-muted-foreground">
-            Brand (optional)
-          </Label>
-          <Input
-            id="brand"
-            value={brandInput}
-            onChange={(e) => setBrandInput(e.target.value)}
-            placeholder="e.g. Carrier"
-            className="h-9"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="year" className="text-xs text-muted-foreground">
-            Install year (optional)
-          </Label>
-          <Input
-            id="year"
-            value={installYear}
-            onChange={(e) => setInstallYear(e.target.value)}
-            placeholder="e.g. 2018"
-            type="number"
-            className="h-9"
-          />
+      {/* Brand input (optional) */}
+      <div className="space-y-1.5">
+        <Label htmlFor="brand" className="text-xs text-muted-foreground">
+          Brand (optional)
+        </Label>
+        <Input
+          id="brand"
+          value={brandInput}
+          onChange={(e) => setBrandInput(e.target.value)}
+          placeholder="e.g. LG, Whirlpool"
+          className="h-9"
+        />
+      </div>
+      
+      {/* Age range picker (replaces exact year input) */}
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">About how old is it? (optional)</Label>
+        <div className="flex flex-wrap gap-2">
+          {AGE_RANGES.map((range) => (
+            <Button
+              key={range.label}
+              variant={selectedAgeRange === range.value ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedAgeRange(range.value)}
+              className="text-xs"
+            >
+              {range.label}
+            </Button>
+          ))}
         </div>
       </div>
+      
+      {/* Error message */}
+      {error && (
+        <p className="text-xs text-destructive text-center">{error}</p>
+      )}
       
       {/* Actions */}
       <div className="flex gap-3 pt-2">
