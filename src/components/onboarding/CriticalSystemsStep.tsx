@@ -4,17 +4,19 @@
  * Onboarding step to gather system replacement info for Roof, Water Heater, HVAC.
  * Uses consistent binary-first pattern for all systems.
  * 
- * Title: "Tell us about your home's major systems"
- * Subtext: "This improves accuracy. Skip anything you're unsure about."
+ * Title: "Let's lock in the essentials"
+ * Subtext: "Start with what you know. Skip anything you're unsure about."
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Check, HelpCircle, X, Home, Flame, Droplet, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSystemPriorityByClimate, type SystemConfig } from '@/lib/onboardingHelpers';
+import { deriveClimateZone } from '@/lib/climateZone';
 
 type ReplacementChoice = 'replaced' | 'unknown' | 'original' | null;
 
@@ -25,6 +27,8 @@ interface SystemAnswer {
 
 interface CriticalSystemsStepProps {
   yearBuilt?: number;
+  city?: string;  // NEW: for climate-based system order
+  state?: string; // NEW: for climate-based system order
   onComplete: (systems: {
     roof?: SystemAnswer;
     water_heater?: SystemAnswer;
@@ -34,16 +38,19 @@ interface CriticalSystemsStepProps {
   isSubmitting?: boolean;
 }
 
-const SYSTEMS = [
-  { key: 'roof', label: 'Roof', icon: Home },
-  { key: 'water_heater', label: 'Water Heater', icon: Droplet },
-  { key: 'hvac', label: 'HVAC', icon: Flame },
-] as const;
+// Icon mapping for dynamic systems
+const SYSTEM_ICONS: Record<string, React.ElementType> = {
+  roof: Home,
+  water_heater: Droplet,
+  hvac: Flame,
+};
 
-type SystemKey = typeof SYSTEMS[number]['key'];
+type SystemKey = 'hvac' | 'roof' | 'water_heater';
 
 export function CriticalSystemsStep({
   yearBuilt,
+  city,
+  state,
   onComplete,
   onSkip,
   isSubmitting = false,
@@ -57,6 +64,12 @@ export function CriticalSystemsStep({
   const [yearInput, setYearInput] = useState('');
 
   const currentYear = new Date().getFullYear();
+
+  // Derive climate zone and get climate-based system order (Risk 4 Fix)
+  const systems = useMemo((): SystemConfig[] => {
+    const climateZone = deriveClimateZone(state, city);
+    return getSystemPriorityByClimate(climateZone.zone);
+  }, [city, state]);
 
   const handleChoice = (system: SystemKey, choice: ReplacementChoice) => {
     if (choice === 'replaced') {
@@ -100,8 +113,8 @@ export function CriticalSystemsStep({
 
   // Year input modal for a specific system
   if (currentSystem) {
-    const systemInfo = SYSTEMS.find(s => s.key === currentSystem);
-    const Icon = systemInfo?.icon || Home;
+    const systemInfo = systems.find(s => s.key === currentSystem);
+    const Icon = SYSTEM_ICONS[currentSystem] || Home;
     
     return (
       <Card className="w-full max-w-md mx-auto">
@@ -156,15 +169,16 @@ export function CriticalSystemsStep({
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Tell us about your home's major systems</CardTitle>
+        <CardTitle>Let's lock in the essentials</CardTitle>
         <CardDescription>
-          This improves accuracy. Skip anything you're unsure about.
+          Start with what you know. Skip anything you're unsure about.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {SYSTEMS.map(({ key, label, icon: Icon }) => {
+        {systems.map(({ key, label }) => {
           const answer = answers[key];
           const isAnswered = answer.choice !== null;
+          const Icon = SYSTEM_ICONS[key] || Home;
           
           return (
             <div key={key} className="space-y-3">
@@ -237,6 +251,13 @@ export function CriticalSystemsStep({
             </div>
           );
         })}
+
+        {/* Micro-affirmation after first answer (inline feedback) */}
+        {completedCount === 1 && (
+          <p className="text-sm text-center text-primary animate-in fade-in duration-300">
+            That helps. We'll take it from here.
+          </p>
+        )}
 
         <div className="flex gap-3 pt-4 border-t">
           {onSkip && (

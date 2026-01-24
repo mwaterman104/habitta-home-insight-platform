@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { GooglePlacesAutocomplete } from "@/components/onboarding/GooglePlacesAutocomplete";
 import { InstantSnapshot } from "@/components/onboarding/InstantSnapshot";
-import { HVACAgePicker } from "@/components/onboarding/HVACAgePicker";
 import { CriticalSystemsStep } from "@/components/onboarding/CriticalSystemsStep";
+import { HomeHandshake } from "@/components/onboarding/HomeHandshake";
+import { OnboardingComplete } from "@/components/onboarding/OnboardingComplete";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ArrowRight, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -43,38 +44,42 @@ interface OnboardingState {
   snapshot: SnapshotData | null;
   confidence: number;
   selectedAddress: PlaceDetails | null;
-  hvacAgeBand: string | null;
   isEnriching: boolean;
 }
 
-type Step = 'address' | 'snapshot' | 'systems' | 'hvac';
+// Updated step flow: address → handshake → snapshot → systems → complete
+type Step = 'address' | 'handshake' | 'snapshot' | 'systems' | 'complete';
 
 export default function OnboardingFlow() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('address');
   const [isLoading, setIsLoading] = useState(false);
+  const [isFirstHome, setIsFirstHome] = useState(true); // Risk 6: Branch headline
   const [state, setState] = useState<OnboardingState>({
     home_id: null,
     hvac_system_id: null,
     snapshot: null,
     confidence: 0,
     selectedAddress: null,
-    hvacAgeBand: null,
     isEnriching: false,
   });
 
-  // Redirect to dashboard if already has a home
+  // Check for existing homes and set isFirstHome flag
   useEffect(() => {
     const checkExistingHome = async () => {
       if (!user) return;
       
-      const { data: homes } = await supabase
+      const { data: homes, count } = await supabase
         .from('homes')
-        .select('id')
+        .select('id', { count: 'exact' })
         .eq('user_id', user.id)
         .limit(1);
 
+      // Set isFirstHome based on count
+      setIsFirstHome((count || 0) === 0);
+
+      // Redirect if already has a home (keep existing behavior)
       if (homes && homes.length > 0) {
         navigate('/dashboard', { replace: true });
       }
@@ -157,7 +162,7 @@ export default function OnboardingFlow() {
     };
   }, [state.home_id]);
 
-  // Handle address selection - immediately creates home
+  // Handle address selection - creates home and transitions to handshake
   const handleAddressSelect = async (details: PlaceDetails) => {
     setIsLoading(true);
 
@@ -185,12 +190,11 @@ export default function OnboardingFlow() {
         snapshot: data.snapshot,
         confidence: data.confidence,
         selectedAddress: details,
-        hvacAgeBand: null,
         isEnriching: true, // Start enriching indicator
       });
 
-      // Immediately move to snapshot (no loading spinner between)
-      setStep('snapshot');
+      // Navigate to handshake step (not directly to snapshot)
+      setStep('handshake');
     } catch (err: any) {
       console.error('[OnboardingFlow] Create home error:', err);
       toast.error('Unable to verify address. Please try again.');
@@ -199,63 +203,60 @@ export default function OnboardingFlow() {
     }
   };
 
-  // Handle HVAC age answer
-  const handleHVACAnswer = async (ageBand: string | null) => {
-    setState(prev => ({ ...prev, hvacAgeBand: ageBand }));
-  };
+  // Handle handshake completion with perceptual causality delay (Risk 2 Fix)
+  const handleHandshakeComplete = useCallback(() => {
+    // Add 400ms delay to preserve perceived causality
+    // Prevents "wait, this was already there" feeling
+    setTimeout(() => {
+      setStep('snapshot');
+    }, 400);
+  }, []);
 
-  // Continue from HVAC question to Home Pulse
-  const handleContinueToHomePulse = async () => {
+  // Handle systems step completion → navigate to complete step
+  const handleSystemsComplete = async (systems: Record<string, any>) => {
     setIsLoading(true);
-
     try {
-      // Update HVAC system with user input if provided
-      if (state.hvacAgeBand && state.hvac_system_id) {
-        // Calculate approximate install year from age band
-        const currentYear = new Date().getFullYear();
-        const ageMapping: Record<string, number> = {
-          '0-5': 2,
-          '5-10': 7,
-          '10-15': 12,
-          '15+': 18,
+      // Call update-system-install for each answered system
+      const updatePromises = Object.entries(systems).map(async ([key, answer]) => {
+        if (!answer || answer.choice === null) return;
+        
+        const payload: Record<string, any> = {
+          homeId: state.home_id,
+          systemKey: key,
+          replacementStatus: answer.choice,
         };
-        const estimatedAge = ageMapping[state.hvacAgeBand] || 10;
-        const installYear = currentYear - estimatedAge;
-
-        await supabase
-          .from('systems')
-          .update({
-            install_year: installYear,
-            install_source: 'user',
-            confidence: 0.7, // Increased confidence with user input
-          })
-          .eq('id', state.hvac_system_id);
-
-        // Update home confidence
-        const newConfidence = Math.min(65, state.confidence + 25);
-        await supabase
-          .from('homes')
-          .update({ confidence: newConfidence })
-          .eq('id', state.home_id);
-
-        // Update snapshot confidence
-        await supabase
-          .from('property_snapshot')
-          .update({ confidence_score: newConfidence })
-          .eq('home_id', state.home_id);
-      }
-
-      // Navigate to Home Pulse
-      navigate('/dashboard', { replace: true });
-    } catch (err) {
-      console.error('[OnboardingFlow] Update error:', err);
-      // Still navigate even if update fails
-      navigate('/dashboard', { replace: true });
+        
+        if (answer.choice === 'replaced' && answer.year) {
+          payload.installYear = answer.year;
+          payload.installSource = 'owner_reported';
+        }
+        
+        if (answer.choice === 'unknown') {
+          payload.installMetadata = { user_acknowledged_unknown: true };
+        }
+        
+        return supabase.functions.invoke('update-system-install', {
+          body: payload,
+        });
+      });
+      
+      await Promise.all(updatePromises);
+      setStep('complete'); // Navigate to complete step, not dashboard
+    } catch (error) {
+      console.error('[OnboardingFlow] Systems update error:', error);
+      setStep('complete'); // Still proceed to complete even on error
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Skip HVAC question
+  // Handle skip → also goes to complete step
   const handleSkip = () => {
+    setStep('complete');
+  };
+
+  // Handle final navigation to dashboard
+  const handleContinueToDashboard = () => {
     navigate('/dashboard', { replace: true });
   };
 
@@ -267,10 +268,10 @@ export default function OnboardingFlow() {
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="text-center space-y-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Let's pull up your home
+                Welcome to Habitta
               </h1>
               <p className="text-muted-foreground">
-                Start typing your address below
+                We quietly monitor the systems that keep your home running.
               </p>
             </div>
 
@@ -290,21 +291,31 @@ export default function OnboardingFlow() {
               </CardContent>
             </Card>
 
-            <p className="text-xs text-center text-muted-foreground">
-              We'll use this to find information about your home's systems
+            <p className="text-xs text-center text-muted-foreground max-w-sm mx-auto">
+              We'll use public records, climate data, and regional patterns to build your home's baseline.
             </p>
           </div>
         )}
 
-        {/* Step: Instant Snapshot */}
+        {/* Step: Handshake — The soul of onboarding */}
+        {step === 'handshake' && state.snapshot && (
+          <HomeHandshake
+            city={state.snapshot.city}
+            state={state.snapshot.state}
+            isFirstHome={isFirstHome}
+            onComplete={handleHandshakeComplete}
+          />
+        )}
+
+        {/* Step: Discovery Reveal (Snapshot) */}
         {step === 'snapshot' && state.snapshot && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="text-center space-y-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Here's what we know
+                Here's what we found so far
               </h1>
               <p className="text-muted-foreground">
-                This is based on available public data
+                Based on public data and homes like yours in {state.snapshot.city}, {state.snapshot.state}
               </p>
             </div>
 
@@ -319,13 +330,13 @@ export default function OnboardingFlow() {
               className="w-full h-12 text-base"
               size="lg"
             >
-              Tell us about your systems
+              Continue
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         )}
 
-        {/* Step: Critical Systems */}
+        {/* Step: Systems Lock-In */}
         {step === 'systems' && state.home_id && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <button
@@ -338,100 +349,19 @@ export default function OnboardingFlow() {
 
             <CriticalSystemsStep
               yearBuilt={state.snapshot?.year_built ?? undefined}
-              onComplete={async (systems) => {
-                setIsLoading(true);
-                try {
-                  // Call update-system-install for each answered system
-                  const updatePromises = Object.entries(systems).map(async ([key, answer]) => {
-                    if (!answer || answer.choice === null) return;
-                    
-                    const payload: Record<string, any> = {
-                      homeId: state.home_id,
-                      systemKey: key,
-                      replacementStatus: answer.choice,
-                    };
-                    
-                    if (answer.choice === 'replaced' && answer.year) {
-                      payload.installYear = answer.year;
-                      payload.installSource = 'owner_reported';
-                    }
-                    
-                    if (answer.choice === 'unknown') {
-                      payload.installMetadata = { user_acknowledged_unknown: true };
-                    }
-                    
-                    return supabase.functions.invoke('update-system-install', {
-                      body: payload,
-                    });
-                  });
-                  
-                  await Promise.all(updatePromises);
-                  navigate('/dashboard', { replace: true });
-                } catch (error) {
-                  console.error('[OnboardingFlow] Systems update error:', error);
-                  navigate('/dashboard', { replace: true });
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              onSkip={() => navigate('/dashboard', { replace: true })}
+              city={state.snapshot?.city}
+              state={state.snapshot?.state}
+              onComplete={handleSystemsComplete}
+              onSkip={handleSkip}
               isSubmitting={isLoading}
             />
           </div>
         )}
 
-        {/* Step: HVAC Age Question */}
-        {step === 'hvac' && (
+        {/* Step: Completion — Closure screen */}
+        {step === 'complete' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <button
-              onClick={() => setStep('snapshot')}
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </button>
-
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                How old is your A/C?
-              </h1>
-              <p className="text-muted-foreground">
-                This helps us estimate your A/C health
-              </p>
-            </div>
-
-            <HVACAgePicker
-              onSelect={handleHVACAnswer}
-              selectedValue={state.hvacAgeBand}
-            />
-
-            <div className="flex gap-3">
-              <Button
-                variant="ghost"
-                onClick={handleSkip}
-                className="flex-1 h-12"
-                disabled={isLoading}
-              >
-                Skip
-              </Button>
-              <Button
-                onClick={handleContinueToHomePulse}
-                className="flex-1 h-12"
-                disabled={isLoading || !state.hvacAgeBand}
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Continue'
-                )}
-              </Button>
-            </div>
-
-            {state.hvacAgeBand && state.hvacAgeBand !== 'unknown' && (
-              <p className="text-xs text-center text-muted-foreground">
-                Your confidence score will increase to ~{Math.min(65, state.confidence + 25)}%
-              </p>
-            )}
+            <OnboardingComplete onContinue={handleContinueToDashboard} />
           </div>
         )}
       </div>
