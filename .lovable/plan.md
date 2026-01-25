@@ -1,488 +1,40 @@
 
-# Engagement Cadence System — Refined Implementation Plan (QA-Approved)
+
+# Home Health Outlook — Unified Module Implementation Plan (QC-Approved)
 
 ## Summary
 
-This plan transforms Habitta from a task-focused repair planner into a **living stewardship system** that maintains engagement through **validation, not surveillance**. The refinements ensure the system is operationally bulletproof, not just philosophically sound.
+This plan consolidates Habitta's fragmented health display (HomeHealthCard + DualPathForecast + CapitalTimeline) into a **single unified truth surface** that establishes inspector-grade credibility through explicit causality.
+
+**Transformation:**
+- **Before:** Score card → DualPathForecast bars ("With Habitta / If untracked") → Separate CapitalTimeline
+- **After:** Score → Causality ("What's influencing this") → System Trajectories (unified causal chain)
 
 ---
 
-## QA Refinements Integrated
+## QC Refinements Integrated
 
-| Issue | Clarification | Implementation |
-|-------|---------------|----------------|
-| "Creates bond" is emotional, not mechanical | **Bond = accumulated historical context** — non-events filtered, continuity of observation, history expensive to walk away from | Explicit in StateOfHomeReport ("What Habitta filtered out"), copy governance, and annual brief structure |
-| "Watched over" risks creepy framing | **Reframe as validation** — "Your assumptions about your home are continuously validated" | Copy changes throughout: "validated" replaces "watching", "confirmation" replaces "monitoring" |
-
----
-
-## Core Principle (Lock This In)
-
-> Habitta is a **continuously validating second brain** for the home.
-> 
-> Users return not because something is wrong, but because they want to **confirm their position remains valid**.
-> 
-> The bond is structural: **accumulated context, including what didn't matter, is expensive to walk away from.**
+| Issue | Resolution |
+|-------|------------|
+| `trajectorysSectionTitle` typo | Fixed to `trajectoriesSectionTitle` |
+| `deriveContributorLevel` underspecified | Added doc comment explaining heuristic nature, override potential |
+| `climateContext` semantics undefined | Defined as `ClimateContextType` with explicit values |
+| Visual indicator colors too alarming | Desaturated to clay/ochre/sage palette |
+| Fallback handling incomplete | Explicit "limited information" copy, no invented causality |
+| Cost range location rule undocumented | Added explicit rule: costs only in Trajectories section |
 
 ---
 
-## Part 1: Database Schema Additions
-
-### New Table: `home_review_state`
-
-```sql
-CREATE TABLE home_review_state (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
-  home_state TEXT NOT NULL DEFAULT 'healthy', -- 'healthy' | 'monitoring' | 'planning'
-  last_monthly_check TIMESTAMPTZ,
-  last_quarterly_review TIMESTAMPTZ,
-  last_annual_report TIMESTAMPTZ,
-  last_optional_advantage TIMESTAMPTZ,
-  next_scheduled_review TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(home_id)
-);
-```
-
-### New Table: `home_interactions`
-
-```sql
-CREATE TABLE home_interactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
-  interaction_type TEXT NOT NULL, -- 'monthly_confirm' | 'quarterly_dismissed' | 'advantage_dismissed'
-  response_value TEXT, -- 'nothing_changed' | 'system_replaced' | 'renovation' | 'insurance_update'
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
----
-
-## Part 2: SystemWatch Copy Transformation
-
-**File:** `src/components/dashboard-v3/SystemWatch.tsx`
-
-### Current (Lines 124-129) — Problematic
-
-```tsx
-<p className="text-sm text-foreground font-medium">
-  All systems healthy.
-</p>
-<p className="text-sm text-muted-foreground">
-  No planning windows for the next 7 years.
-</p>
-```
-
-**Problem:** This says "come back in 7 years" — dismisses the user.
-
-### Target — Validation Language (QA Refinement #2)
-
-```tsx
-<p className="text-sm text-foreground font-medium">
-  Baseline confirmed.
-</p>
-<p className="text-sm text-muted-foreground">
-  Your home's assumptions are validated against current conditions.
-</p>
-{/* Next review indicator */}
-<p className="text-xs text-muted-foreground/70 mt-2">
-  Next scheduled review: {nextReviewMonth}
-</p>
-```
-
-**New prop added:**
-```typescript
-interface SystemWatchProps {
-  // ... existing props
-  nextReviewMonth?: string; // "March" | "June" etc.
-}
-```
-
-**Why this works:**
-- "Validated" = active confirmation, not passive monitoring
-- "Baseline confirmed" = acknowledgment, not dismissal
-- Next review = time is moving under supervision
-
----
-
-## Part 3: New Components
-
-### 1. `MonthlyConfirmationCard.tsx`
-
-**Purpose:** 30-second monthly check-in. Non-anxious, dismissible.
-
-```typescript
-interface MonthlyConfirmationCardProps {
-  homeId: string;
-  onResponse: (response: MonthlyResponse) => void;
-  onDismiss: () => void;
-}
-
-type MonthlyResponse = 'nothing_changed' | 'system_replaced' | 'renovation' | 'insurance_update';
-```
-
-**UI Copy (Validation Language):**
-```tsx
-<p className="text-sm text-foreground font-medium">
-  This month's validation
-</p>
-<p className="text-sm text-muted-foreground">
-  Habitta's assumptions remain consistent with conditions.
-  Has anything changed that we wouldn't see?
-</p>
-```
-
-**Display Rules:**
-- Only for `home_state === 'healthy'`
-- Once per calendar month
-- Suppressed if quarterly card active
-- Suppressed if planning state exists
-- Response quietly increments `confidence += 0.01`
-
-### 2. `QuarterlyPositionCard.tsx`
-
-**Purpose:** Comparative intelligence that creates pull (curiosity, not duty).
-
-```typescript
-interface QuarterlyPositionCardProps {
-  position: QuarterlyPosition;
-  homeId: string;
-  onDismiss: () => void;
-}
-
-interface QuarterlyPosition {
-  agingRate: 'better' | 'average' | 'faster';
-  percentile: number;
-  environmentalStress: 'normal' | 'elevated' | 'low';
-  maintenanceSignalStrength: 'high' | 'medium' | 'low';
-  positionChanged: boolean;
-}
-```
-
-**UI:**
-- Header: "Quarterly Home Position"
-- Three metric rows with subtle indicators
-- Footer: "Position unchanged this quarter" or "Position improved"
-- **No action required** — just awareness
-
-**Display Rules:**
-- Once per quarter (background job trigger)
-- Suppressed if planning state active
-- If nothing changed, card still appears (that's the point)
-
-### 3. `StateOfHomeReport.tsx` (QA Refinement #1 — Bond Mechanism)
-
-**Purpose:** Annual stewardship briefing that **creates structural bond**.
-
-**The bond is explicit:** This report shows what Habitta filtered out — accumulated context that is expensive to recreate.
-
-**Sections:**
-1. **What held steady** — systems that performed as expected
-2. **What aged slightly** — normal wear, no concern
-3. **What Habitta filtered out** — noise you didn't need to see (THIS IS THE BOND)
-4. **Confidence trajectory** — year-over-year improvement
-
-**Section 3 ("What Habitta filtered out") makes the bond mechanical:**
-```tsx
-<div className="space-y-2">
-  <h4 className="text-sm font-medium text-muted-foreground">
-    What Habitta filtered out this year
-  </h4>
-  <ul className="text-sm text-muted-foreground space-y-1">
-    {filteredItems.map(item => (
-      <li key={item.id} className="flex items-start gap-2">
-        <span className="text-muted-foreground/50">—</span>
-        <span>{item.description}</span>
-      </li>
-    ))}
-  </ul>
-  <p className="text-xs text-muted-foreground/70 italic">
-    This accumulated context makes your baseline increasingly precise.
-  </p>
-</div>
-```
-
-**Display Rules:**
-- Once per year (onboarding anniversary)
-- Always runs, never suppressed
-- Feels printable, official
-
-### 4. `OptionalAdvantageCard.tsx`
-
-**Purpose:** Surface timing-advantaged opportunities without sales pressure.
-
-**Display Rules:**
-- Only when `home_state === 'healthy'`
-- Only when `confidence >= 0.8`
-- Only when external signal favors homeowner
-- Max 1 shown at a time
-- Not repeated for 90 days after dismissal
-
-**Examples:**
-- "Insurance conditions this quarter are favorable for homes like yours."
-- "You're in a low-stress HVAC pricing window."
-- "Comparable homes are over-maintaining. You are not."
-
-### 5. `MapEnvironmentOverlay.tsx`
-
-**Purpose:** Ambient environmental confirmation on PropertyMap.
-
-**Overlay badges:**
-- "Seasonal heat stress: normal"
-- "No abnormal permit activity"
-- "No storm-related signals"
-
-**Placement:** Bottom-right corner, small muted badges, stacked vertically.
-
----
-
-## Part 4: HomeHealthCard Modification
-
-**File:** `src/components/HomeHealthCard.tsx`
-
-### Current CTA (Line 175):
-```tsx
-<Button onClick={handleProtectClick}>
-  What should I do next?
-</Button>
-```
-
-### Target — Conditional CTA Based on Home State:
-
-```tsx
-<Button onClick={handleProtectClick}>
-  {isHealthyState 
-    ? "What's Habitta validating right now?"
-    : "What should I do next?"}
-</Button>
-```
-
-**New prop:**
-```typescript
-interface HomeHealthCardProps {
-  // ... existing props
-  isHealthyState?: boolean; // From home_review_state.home_state
-}
-```
-
-**Expanded section for healthy homes shows:**
-- Systems under passive validation
-- Environmental factors in scope
-- What is explicitly not worth thinking about
-
----
-
-## Part 5: Copy Governance Extensions
-
-**File:** `src/lib/dashboardCopy.ts`
-
-### Add Stewardship Cadence Copy
-
-```typescript
-// ============ STEWARDSHIP CADENCE COPY ============
-
-export interface StewardshipCopy {
-  systemWatchHealthy: {
-    headline: string;
-    subtext: string;
-    nextReviewText: (month: string) => string;
-  };
-  monthlyValidation: {
-    headline: string;
-    prompt: string;
-    responses: Record<MonthlyResponse, string>;
-    dismissText: string;
-  };
-  quarterlyPosition: {
-    header: string;
-    positionUnchanged: string;
-    positionImproved: string;
-    agingRateLabels: Record<'better' | 'average' | 'faster', string>;
-  };
-  healthCardHealthyMode: {
-    ctaLabel: string;
-    expandedHeader: string;
-    passiveValidationLabel: string;
-    notWorthThinkingLabel: string;
-  };
-  annualBrief: {
-    header: string;
-    filteredOutHeader: string;
-    filteredOutFooter: string;
-    accumulatedContextNote: string;
-  };
-}
-
-export function getStewardshipCopy(): StewardshipCopy {
-  return {
-    systemWatchHealthy: {
-      headline: 'Baseline confirmed.',
-      subtext: 'Your home\'s assumptions are validated against current conditions.',
-      nextReviewText: (month) => `Next scheduled review: ${month}`,
-    },
-    monthlyValidation: {
-      headline: 'This month\'s validation',
-      prompt: 'Habitta\'s assumptions remain consistent. Has anything changed that we wouldn\'t see?',
-      responses: {
-        nothing_changed: 'Nothing changed',
-        system_replaced: 'System replaced',
-        renovation: 'Renovation',
-        insurance_update: 'Insurance update',
-      },
-      dismissText: 'Skip this month',
-    },
-    quarterlyPosition: {
-      header: 'Quarterly Home Position',
-      positionUnchanged: 'Position unchanged this quarter.',
-      positionImproved: 'Position improved this quarter.',
-      agingRateLabels: {
-        better: 'Aging slower than similar homes',
-        average: 'Aging at typical rate',
-        faster: 'Aging faster than similar homes',
-      },
-    },
-    healthCardHealthyMode: {
-      ctaLabel: 'What\'s Habitta validating right now?',
-      expandedHeader: 'Active Validation',
-      passiveValidationLabel: 'Systems under continuous validation',
-      notWorthThinkingLabel: 'What is explicitly not worth thinking about',
-    },
-    annualBrief: {
-      header: 'State of the Home',
-      filteredOutHeader: 'What Habitta filtered out this year',
-      filteredOutFooter: 'This accumulated context makes your baseline increasingly precise.',
-      accumulatedContextNote: 'This history is unique to your home and would be expensive to recreate.',
-    },
-  };
-}
-```
-
----
-
-## Part 6: MiddleColumn Integration
-
-**File:** `src/components/dashboard-v3/MiddleColumn.tsx`
-
-### Add Cadence Card Rendering
-
-Between SystemWatch and HomeHealthCard, add conditional cadence cards:
-
-```tsx
-{/* Cadence Cards - Priority ordering */}
-{annualCard && (
-  <section>
-    <StateOfHomeReport data={annualCard} onDismiss={handleAnnualDismiss} />
-  </section>
-)}
-
-{!annualCard && quarterlyCard && (
-  <section>
-    <QuarterlyPositionCard position={quarterlyCard} homeId={propertyId} onDismiss={handleQuarterlyDismiss} />
-  </section>
-)}
-
-{!annualCard && !quarterlyCard && monthlyCard && (
-  <section>
-    <MonthlyConfirmationCard homeId={propertyId} onResponse={handleMonthlyResponse} onDismiss={handleMonthlyDismiss} />
-  </section>
-)}
-
-{advantageCard && (
-  <section>
-    <OptionalAdvantageCard advantage={advantageCard} homeId={propertyId} onDismiss={handleAdvantageDismiss} />
-  </section>
-)}
-```
-
-**Priority ordering enforced:**
-- Annual suppresses all others
-- Quarterly suppresses monthly
-- Planning state suppresses all cadence cards
-
----
-
-## Part 7: New Hook
-
-**File:** `src/hooks/useEngagementCadence.ts`
-
-```typescript
-interface UseEngagementCadenceReturn {
-  // Cards to display
-  monthlyCard: MonthlyCardData | null;
-  quarterlyCard: QuarterlyCardData | null;
-  annualCard: AnnualBriefData | null;
-  advantageCard: AdvantageData | null;
-  
-  // Home state
-  homeState: 'healthy' | 'monitoring' | 'planning';
-  nextScheduledReview: string;
-  
-  // Actions
-  respondToMonthly: (response: MonthlyResponse) => Promise<void>;
-  dismissQuarterly: () => Promise<void>;
-  dismissAdvantage: () => Promise<void>;
-  
-  loading: boolean;
-}
-
-export function useEngagementCadence(homeId: string): UseEngagementCadenceReturn {
-  // Fetch from edge function
-  // Cache in React Query
-  // Handle mutations
-}
-```
-
----
-
-## Part 8: Edge Function
-
-**File:** `supabase/functions/engagement-cadence/index.ts`
-
-**Endpoints:**
-- `GET /engagement-cadence?home_id={id}` — Returns applicable cadence cards
-- `POST /engagement-cadence` — Log interaction response
-
-**Core Logic:**
-```typescript
-async function getApplicableCadence(homeId: string): Promise<CadenceResult> {
-  const reviewState = await getReviewState(homeId);
-  const homeState = await deriveHomeState(homeId);
-  
-  // Planning overrides everything
-  if (homeState === 'planning') {
-    return { cards: [], suppressReason: 'planning_active' };
-  }
-  
-  const cards: CadenceCard[] = [];
-  
-  // Annual (highest priority)
-  if (isAnnualDue(reviewState)) {
-    cards.push({ type: 'annual', data: await buildAnnualBrief(homeId) });
-    return { cards }; // Suppresses others
-  }
-  
-  // Quarterly
-  if (isQuarterlyDue(reviewState)) {
-    cards.push({ type: 'quarterly', data: await buildQuarterlyPosition(homeId) });
-    return { cards }; // Suppresses monthly
-  }
-  
-  // Monthly
-  if (isMonthlyDue(reviewState)) {
-    cards.push({ type: 'monthly', data: null });
-  }
-  
-  // Optional advantage
-  if (homeState === 'healthy' && reviewState.confidence >= 0.8) {
-    const advantage = await checkForAdvantage(homeId);
-    if (advantage) cards.push({ type: 'advantage', data: advantage });
-  }
-  
-  return { cards };
-}
-```
+## What Gets Eliminated (Ruthlessly)
+
+| Component/Copy | Reason |
+|----------------|--------|
+| `DualPathForecast.tsx` | "With Habitta / If untracked" implies we change physics |
+| `withHabittaCare` branch in HomeForecast | Stewardship doesn't promise score stabilization |
+| "24-Month Outlook (Relative Home Health Index)" | Fake precision, churny SaaS language |
+| Green/amber bar comparison | Binary framing creates false certainty |
+| "-4 points" math attribution | Treats users like children |
+| Time horizon in score | Irrelevant unless user explicitly asks |
 
 ---
 
@@ -490,78 +42,582 @@ async function getApplicableCadence(homeId: string): Promise<CadenceResult> {
 
 | File | Action | Scope |
 |------|--------|-------|
-| `supabase/migrations/YYYYMMDD_engagement_cadence.sql` | **Create** | New tables |
-| `supabase/functions/engagement-cadence/index.ts` | **Create** | Cadence evaluation logic |
-| `src/components/dashboard-v3/MonthlyConfirmationCard.tsx` | **Create** | Monthly check-in UI |
-| `src/components/dashboard-v3/QuarterlyPositionCard.tsx` | **Create** | Quarterly intelligence UI |
-| `src/components/dashboard-v3/StateOfHomeReport.tsx` | **Create** | Annual briefing UI |
-| `src/components/dashboard-v3/OptionalAdvantageCard.tsx` | **Create** | Timing-advantaged opportunities |
-| `src/components/dashboard-v3/MapEnvironmentOverlay.tsx` | **Create** | Environmental signals overlay |
-| `src/hooks/useEngagementCadence.ts` | **Create** | Cadence data hook |
-| `src/lib/dashboardCopy.ts` | **Modify** | Add stewardship copy functions |
-| `src/components/dashboard-v3/SystemWatch.tsx` | **Modify** | Replace "all clear" copy with validation language |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Integrate cadence cards |
-| `src/components/dashboard-v3/PropertyMap.tsx` | **Modify** | Add environmental overlays |
-| `src/components/HomeHealthCard.tsx` | **Modify** | Conditional CTA for healthy homes |
-| `supabase/functions/intelligence-engine/index.ts` | **Modify** | Add home state derivation |
-| `src/components/dashboard-v3/index.ts` | **Modify** | Export new components |
+| `src/lib/homeHealthOutlookCopy.ts` | **Create** | Copy governance module with banned phrases enforcement |
+| `src/components/HomeHealthOutlook.tsx` | **Create** | Unified 3-layer component (Score → Causality → Trajectories) |
+| `src/components/home-health/DualPathForecast.tsx` | **Delete** | No longer needed |
+| `src/components/home-health/index.ts` | **Modify** | Remove DualPathForecast export |
+| `src/components/HomeHealthCard.tsx` | **Modify** | Simplify for fallback use only |
+| `src/components/CapitalTimeline.tsx` | **Modify** | Rename header, add contributor indicator support |
+| `src/components/SystemTimelineLane.tsx` | **Modify** | Add contributor indicator, refine tooltip copy |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Replace HomeHealthCard + CapitalTimeline with unified component |
+| `src/types/systemPrediction.ts` | **Modify** | Remove `withHabittaCare`, add `systemInfluences` |
+| `src/lib/dashboardCopy.ts` | **Modify** | Remove obsolete bar graph copy |
+
+---
+
+## Part 1: Copy Governance Module
+
+**File:** `src/lib/homeHealthOutlookCopy.ts`
+
+### Purpose
+
+Single source of truth for Home Health Outlook copy. Enforces product doctrine with compile-time banned phrase validation.
+
+### Types
+
+```typescript
+// Contributor level (interpretive, not mathematical)
+export type ContributorLevel = 'primary' | 'moderate' | 'minor';
+
+// Climate context with explicit semantics (QC refinement)
+export type ClimateContextType = 
+  | 'south_florida'    // High heat, humidity, UV exposure
+  | 'coastal'          // Salt air, corrosion risk
+  | 'freeze_thaw'      // Ice, foundation stress
+  | 'temperate';       // Standard wear patterns
+
+// Install source for causality descriptions
+export type InstallSourceType = 'permit' | 'inferred' | 'unknown';
+
+// Lifecycle position
+export type LifecyclePosition = 'early' | 'mid' | 'late' | 'end';
+
+// System influence for causality section
+export interface SystemInfluence {
+  systemKey: 'hvac' | 'roof' | 'water_heater';
+  displayName: string;
+  contributorLevel: ContributorLevel;
+  description: string; // Plain English causality (generated by deriveInfluenceDescription)
+}
+
+// Full copy contract
+export interface HomeHealthOutlookCopy {
+  header: string;
+  scoreSubtext: string;
+  causalitySectionTitle: string;
+  trajectoriesSectionTitle: string;  // Fixed typo
+  trajectoriesSectionSubhead: string;
+  legendLabels: Record<ContributorLevel, string>;
+  interactionCopy: {
+    whyThisMatters: string;
+    stabilizeHint: string;
+  };
+  tooltipRefinements: {
+    estimatedSource: string;
+    observedWindow: string;
+  };
+  fallbackCopy: {
+    limitedInfoNote: string;  // QC refinement
+  };
+}
+```
+
+### Key Functions
+
+```typescript
+/**
+ * Determines contributor level using heuristic judgment,
+ * not strict point math. May be overridden by climate stress
+ * or lifecycle signals.
+ * 
+ * Thresholds are NOT absolute:
+ * - Primary: remainingYears <= 5 AND confidence > 0.5
+ * - Moderate: remainingYears <= 10 OR (remainingYears <= 7 AND confidence < 0.5)
+ * - Minor: remainingYears > 10
+ * 
+ * Climate stress can elevate a system by one level.
+ * Lifecycle position can also override (end-of-life → at least moderate).
+ */
+export function deriveContributorLevel(
+  remainingYears: number,
+  confidence: number,
+  lifecyclePosition?: LifecyclePosition,
+  climateContext?: ClimateContextType
+): ContributorLevel;
+
+/**
+ * Generate plain English causality description for a system.
+ * No timelines, no costs, no urgent verbs.
+ */
+export function deriveInfluenceDescription(
+  systemKey: SystemKey,
+  installSource: InstallSourceType,
+  lifecyclePosition: LifecyclePosition,
+  hasRecentService: boolean,
+  climateContext?: ClimateContextType
+): string;
+
+/**
+ * Get static copy for the outlook module.
+ */
+export function getHomeHealthOutlookCopy(): HomeHealthOutlookCopy;
+```
+
+### Banned Phrases (Enforced)
+
+The module will include a validation function and constant list:
+
+```typescript
+// These phrases are explicitly prohibited in any outlook copy
+export const BANNED_PHRASES = [
+  'If left untracked',
+  'Without Habitta',
+  'With Habitta',
+  'Prevent failure',
+  'Avoid disaster',
+  'Your home will',
+  'points',
+  '24-Month Outlook',
+  'failing',
+  'urgent',
+  'critical',
+  'immediately',
+] as const;
+```
+
+### Static Copy
+
+```typescript
+export function getHomeHealthOutlookCopy(): HomeHealthOutlookCopy {
+  return {
+    header: 'Home Health',
+    scoreSubtext: 'This outlook reflects system age, climate exposure, and current maintenance visibility.',
+    causalitySectionTitle: "What's influencing this outlook",
+    trajectoriesSectionTitle: 'System Trajectories',
+    trajectoriesSectionSubhead: 'These systems shape how your home\'s health evolves over time.',
+    legendLabels: {
+      primary: 'Meaningfully affects overall home health trajectory',
+      moderate: 'Gradual influence',
+      minor: 'Limited near-term impact',
+    },
+    interactionCopy: {
+      whyThisMatters: 'This system is currently influencing your home\'s projected health trend due to its age and verification status.',
+      stabilizeHint: 'Updating maintenance history or install details can stabilize this outlook.',
+    },
+    tooltipRefinements: {
+      estimatedSource: 'Based on permits, records, and regional averages',
+      observedWindow: 'Observed replacement window',
+    },
+    fallbackCopy: {
+      limitedInfoNote: 'Limited information available. Estimates will improve as details are added.',
+    },
+  };
+}
+```
+
+---
+
+## Part 2: Unified Component
+
+**File:** `src/components/HomeHealthOutlook.tsx`
+
+### Props
+
+```typescript
+interface HomeHealthOutlookProps {
+  forecast: HomeForecast;
+  capitalTimeline: HomeCapitalTimeline | null;
+  onSystemClick: (systemKey: string) => void;
+  isLoading?: boolean;
+}
+```
+
+### Component Structure
+
+**Layer 1: Score (Outcome)**
+- Header: "Home Health" (not "Forecast")
+- Score trajectory: `{currentScore} → {projectedScore}` (arrow indicates direction)
+- Subtext: Reflects system age, climate, maintenance visibility
+- **No time horizon shown** (unless explicitly requested)
+- **No "With Habitta" comparison**
+
+**Layer 2: Causality (What's Influencing This)**
+- Section title: "What's influencing this outlook"
+- Max 3 systems listed, ordered by contributor level (primary first)
+- Each system: Name + plain English description
+- **No timelines, no costs, no urgent verbs**
+
+**Layer 3: Evidence (System Trajectories)**
+- Renamed from "Home Systems Timeline"
+- Each row has contributor indicator (thin left edge):
+  - Clay/rust = Primary contributor (desaturated red)
+  - Ochre = Moderate contributor (desaturated amber)
+  - Sage = Minor contributor (desaturated green)
+- **Cost ranges appear ONLY here** (not in causality, not in score)
+- Clicking system shows interaction copy
+
+### Visual Color Palette (QC Refinement)
+
+Desaturated to reduce alarm while maintaining semantics:
+
+```typescript
+const CONTRIBUTOR_COLORS = {
+  primary: 'bg-red-300/70',    // Clay/rust - desaturated
+  moderate: 'bg-amber-300/70', // Ochre - desaturated
+  minor: 'bg-emerald-300/70',  // Sage - desaturated
+} as const;
+```
+
+### Rendering Structure
+
+```tsx
+<Card className="rounded-2xl border-t-2 border-t-primary/20">
+  <CardContent className="p-5 space-y-4">
+    {/* Layer 1: Score */}
+    <div className="space-y-1">
+      <span className="heading-h3 text-foreground">{copy.header}</span>
+      <div className="flex items-baseline gap-2">
+        <span className="text-5xl font-semibold tabular-nums">{currentScore}</span>
+        <span className="text-xl text-muted-foreground">→</span>
+        <span className="text-3xl text-muted-foreground tabular-nums">{projectedScore}</span>
+      </div>
+      <p className="text-sm text-muted-foreground">{copy.scoreSubtext}</p>
+    </div>
+
+    {/* Layer 2: Causality */}
+    <div className="space-y-3 pt-4 border-t">
+      <h4 className="text-sm font-medium text-muted-foreground">
+        {copy.causalitySectionTitle}
+      </h4>
+      {systemInfluences.slice(0, 3).map(influence => (
+        <div key={influence.systemKey} className="space-y-0.5">
+          <span className="font-medium">{influence.displayName}</span>
+          <p className="text-sm text-muted-foreground">{influence.description}</p>
+        </div>
+      ))}
+    </div>
+
+    {/* Layer 3: System Trajectories */}
+    <div className="space-y-3 pt-4 border-t">
+      <div>
+        <h4 className="text-sm font-medium">{copy.trajectoriesSectionTitle}</h4>
+        <p className="text-xs text-muted-foreground">{copy.trajectoriesSectionSubhead}</p>
+      </div>
+      {/* Timeline lanes with contributor indicators */}
+      {capitalTimeline?.systems.map(system => (
+        <SystemTimelineLane
+          key={system.systemId}
+          system={system}
+          startYear={currentYear}
+          endYear={endYear}
+          contributorLevel={getContributorLevel(system.systemId)}
+          showContributorIndicator={true}
+          onClick={() => handleSystemClick(system.systemId)}
+        />
+      ))}
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-3 bg-red-300/70 rounded-full" />
+          <span>Primary</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-3 bg-amber-300/70 rounded-full" />
+          <span>Moderate</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-3 bg-emerald-300/70 rounded-full" />
+          <span>Minor</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Interaction: Selected system explanation */}
+    {selectedSystem && (
+      <div className="bg-muted/50 rounded-lg p-3 space-y-1 animate-in fade-in">
+        <p className="text-sm font-medium">Why this matters</p>
+        <p className="text-sm text-muted-foreground">{copy.interactionCopy.whyThisMatters}</p>
+        <p className="text-xs text-muted-foreground italic">{copy.interactionCopy.stabilizeHint}</p>
+      </div>
+    )}
+  </CardContent>
+</Card>
+```
+
+---
+
+## Part 3: Fallback Component
+
+**File:** `src/components/HomeHealthOutlook.tsx` (same file, separate component)
+
+```typescript
+interface HomeHealthOutlookFallbackProps {
+  score: number;
+  isHealthyState?: boolean;
+}
+
+/**
+ * HomeHealthOutlookFallback - Renders when full forecast unavailable
+ * 
+ * CRITICAL (QC refinement):
+ * - Explicitly states "limited information"
+ * - Does NOT invent causality
+ * - Does NOT show trajectories (no data to support them)
+ */
+export function HomeHealthOutlookFallback({ score, isHealthyState }: HomeHealthOutlookFallbackProps) {
+  const copy = getHomeHealthOutlookCopy();
+  
+  return (
+    <Card className="rounded-2xl border-t-2 border-t-muted/40">
+      <CardContent className="p-5 space-y-3">
+        <div className="space-y-1">
+          <span className="heading-h3 text-foreground">{copy.header}</span>
+          <div className="text-4xl font-semibold tabular-nums text-muted-foreground">
+            {score}
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground italic">
+          {copy.fallbackCopy.limitedInfoNote}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+---
+
+## Part 4: SystemTimelineLane Modifications
+
+**File:** `src/components/SystemTimelineLane.tsx`
+
+### New Props
+
+```typescript
+interface SystemTimelineLaneProps {
+  system: ExtendedSystemTimelineEntry;
+  startYear: number;
+  endYear: number;
+  onClick?: () => void;
+  // NEW: Contributor level for score connection
+  contributorLevel?: ContributorLevel;
+  // NEW: Whether to show the contributor indicator
+  showContributorIndicator?: boolean;
+}
+```
+
+### Changes
+
+1. **Add contributor indicator** (thin left edge, desaturated colors):
+```tsx
+{showContributorIndicator && contributorLevel && (
+  <div className={cn(
+    "w-1.5 h-full rounded-full mr-2 shrink-0",
+    contributorLevel === 'primary' && "bg-red-300/70",
+    contributorLevel === 'moderate' && "bg-amber-300/70",
+    contributorLevel === 'minor' && "bg-emerald-300/70"
+  )} />
+)}
+```
+
+2. **Rename tooltip labels** (lines 99-101):
+   - "Estimated" → "Based on permits, records, and regional averages"
+
+3. **Rename legend labels** (currently in CapitalTimeline):
+   - "Most likely" → "Observed replacement window"
+
+---
+
+## Part 5: CapitalTimeline Modifications
+
+**File:** `src/components/CapitalTimeline.tsx`
+
+### Changes
+
+1. **Rename header** (line 39):
+   - From: `Home Systems Timeline`
+   - To: `System Trajectories`
+
+2. **Update subhead** (if present):
+   - Add: "These systems shape how your home's health evolves over time."
+
+3. **Update legend** (lines 96-98):
+   - From: "Most likely"
+   - To: "Observed replacement window"
+
+---
+
+## Part 6: Type System Updates
+
+**File:** `src/types/systemPrediction.ts`
+
+### HomeForecast Changes
+
+**Remove:**
+```typescript
+// DELETE - Stewardship doesn't promise score stabilization
+withHabittaCare: {
+  score12mo: number;
+  score24mo: number;
+  stabilizers: string[];
+};
+```
+
+**Add:**
+```typescript
+// ADD - Explicit causality for unified module
+systemInfluences?: Array<{
+  systemKey: 'hvac' | 'roof' | 'water_heater';
+  contributorLevel: 'primary' | 'moderate' | 'minor';
+  lifecyclePosition: 'early' | 'mid' | 'late' | 'end';
+  installSource: 'permit' | 'inferred' | 'unknown';
+  hasRecentService: boolean;
+  climateContext?: 'south_florida' | 'coastal' | 'freeze_thaw' | 'temperate';
+}>;
+```
+
+---
+
+## Part 7: MiddleColumn Integration
+
+**File:** `src/components/dashboard-v3/MiddleColumn.tsx`
+
+### Layout Change
+
+**Current (lines 346-395):**
+```
+3. HomeHealthCard
+4. HabittaThinking
+5. CapitalTimeline
+```
+
+**New:**
+```
+3. HomeHealthOutlook (unified - replaces both HomeHealthCard and CapitalTimeline)
+4. HabittaThinking
+```
+
+### Integration Code
+
+```tsx
+import { HomeHealthOutlook, HomeHealthOutlookFallback } from "@/components/HomeHealthOutlook";
+
+// In render:
+{/* 3. Home Health Outlook - Unified truth surface */}
+<section ref={healthCardRef}>
+  {forecastLoading || timelineLoading ? (
+    <Skeleton className="h-96 rounded-2xl" />
+  ) : homeForecast && capitalTimeline ? (
+    <HomeHealthOutlook
+      forecast={homeForecast}
+      capitalTimeline={capitalTimeline}
+      onSystemClick={handleSystemClick}
+    />
+  ) : (
+    <HomeHealthOutlookFallback 
+      score={getOverallScore()}
+      isHealthyState={isHealthyState}
+    />
+  )}
+</section>
+```
+
+---
+
+## Part 8: DualPathForecast Removal
+
+**File:** `src/components/home-health/DualPathForecast.tsx` — **DELETE**
+
+**File:** `src/components/home-health/index.ts` — Remove export:
+```typescript
+// DELETE this line:
+export { DualPathForecast } from './DualPathForecast';
+```
+
+---
+
+## Part 9: HomeHealthCard Simplification
+
+**File:** `src/components/HomeHealthCard.tsx`
+
+### Changes
+
+1. **Remove DualPathForecast import** (line 9)
+2. **Remove DualPathForecast rendering** (lines 166-170)
+3. **Remove withHabittaCare references** (lines 75, 155-163)
+4. **Keep LegacyHomeHealthCard** for backward compatibility only
+5. **Add deprecation notice** in component docstring
+
+The component becomes a legacy fallback only, eventually to be removed.
+
+---
+
+## Product Doctrine (Immutable — Enforced by Code)
+
+### Cost Range Location Rule (QC Addition)
+
+> **System Trajectories is the ONLY place cost ranges appear.**
+> 
+> Never in:
+> - Score section
+> - Causality section
+> - System Watch
+> - Alerts
+> 
+> Costs belong after understanding, not before.
+> This keeps Habitta from drifting into "financial anxiety dashboard."
+
+### Score Semantics
+
+> **X → Y means:** "If current assumptions remain unchanged, this is the expected directional shift."
+> 
+> It does NOT mean: Failure, Neglect, Urgency, or Loss caused by cancellation.
+
+### Contributor Levels
+
+> **Contributor levels are interpretive, not mathematical.**
+> 
+> Never show point deltas to users.
+> Internally, calculate them. Externally, don't.
+
+### The Screenshot Test
+
+> A user should be able to screenshot this module and send it to their spouse, contractor, realtor, or inspector — and no one rolls their eyes.
 
 ---
 
 ## Acceptance Tests
 
-### QA Refinement Validation
-- [ ] No copy uses "watching" or "monitored" — all replaced with "validated" / "confirmation"
-- [ ] Annual brief explicitly shows "What Habitta filtered out" section
-- [ ] Annual brief includes note about accumulated context being expensive to recreate
-- [ ] StateOfHomeReport renders filteredItems list with accumulated context footer
+### Score Layer
+- [ ] Shows score trajectory without time horizon (X → Y)
+- [ ] Arrow indicates direction without blame
+- [ ] Subtext mentions "system age, climate exposure, and maintenance visibility"
+- [ ] No "With Habitta" / "If untracked" comparison visible
+- [ ] No costs shown in score section
 
-### SystemWatch Healthy State
-- [ ] Shows "Baseline confirmed" (not "All systems healthy")
-- [ ] Shows "validated against current conditions" (not "nothing for 7 years")
-- [ ] Shows next scheduled review month
-- [ ] Retains emerald styling
+### Causality Layer
+- [ ] Title is "What's influencing this outlook"
+- [ ] Max 3 systems shown, ordered by contributor level
+- [ ] Each system has plain English description
+- [ ] No timelines in causality section
+- [ ] No costs in causality section
+- [ ] No alarmist verbs ("failing", "urgent", "critical")
 
-### Monthly Validation
-- [ ] Uses "validation" language, not "confirmation" or "check-in"
-- [ ] Appears only for healthy homes
-- [ ] Suppressed when quarterly/annual active
-- [ ] Response increments confidence by 0.01
+### Trajectories Layer
+- [ ] Section titled "System Trajectories" (not "Timeline")
+- [ ] Subhead: "These systems shape how your home's health evolves over time"
+- [ ] Each row has contributor indicator (desaturated dot on left)
+- [ ] Indicator colors: clay = primary, ochre = moderate, sage = minor
+- [ ] Cost ranges appear ONLY here
+- [ ] No point math shown ("-4 points")
+- [ ] "Estimated" → "Based on permits, records, and regional averages"
+- [ ] "Most likely" → "Observed replacement window"
 
-### Quarterly Position
-- [ ] Shows aging rate vs similar homes
-- [ ] Shows environmental stress level
-- [ ] "Position unchanged" appears when nothing changed
-- [ ] Suppressed when planning state active
+### Fallback
+- [ ] Shows score without trajectory
+- [ ] Explicitly states "Limited information available"
+- [ ] Does NOT invent causality
+- [ ] Does NOT show system trajectories
 
-### Annual Briefing
-- [ ] Shows "What held steady"
-- [ ] Shows "What Habitta filtered out" (the bond mechanism)
-- [ ] Shows confidence trajectory
-- [ ] Includes "accumulated context" note
-- [ ] Never suppressed
+### Interaction
+- [ ] Clicking system shows "Why this matters" explanation
+- [ ] Explanation mentions age and verification status
+- [ ] Optional "stabilize" hint appears when relevant
 
-### Home State Derivation
-- [ ] `planning` when any system <= 7 years remaining
-- [ ] `monitoring` when elevated signals present
-- [ ] `healthy` otherwise
+### Banned Phrases
+- [ ] "If left untracked" — NOWHERE
+- [ ] "Without Habitta" — NOWHERE
+- [ ] "With Habitta" — NOWHERE
+- [ ] "24-Month Outlook" — NOWHERE
+- [ ] "-X points" — NOWHERE
 
----
-
-## Product Philosophy (Immutable — Now Anchored)
-
-> **Habitta is not a to-do app.**
-> 
-> It is a **continuously validating second brain** for the home.
-> 
-> Users return to **confirm their position remains valid**, not to complete tasks.
-> 
-> **The bond is structural:** Accumulated context — including what didn't matter — is expensive to walk away from. This history is unique to each home and cannot be recreated elsewhere.
-> 
-> **Validation, not surveillance:** Habitta doesn't "watch" the home. It continuously **validates the homeowner's assumptions** about their property.
-
-This philosophy is now **operationally enforced** through:
-1. Copy governance (validation language)
-2. Annual brief structure (filtered-out section)
-3. Accumulated context disclosure (bond mechanism)
-4. Cadence rhythm (monthly/quarterly/annual)
