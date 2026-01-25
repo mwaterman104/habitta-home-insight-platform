@@ -1,5 +1,7 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { ContributorLevel } from "@/lib/homeHealthOutlookCopy";
 
 interface ExtendedSystemTimelineEntry extends SystemTimelineEntry {
   // Pre-formatted labels from server (UI renders blindly)
@@ -13,6 +15,10 @@ interface SystemTimelineLaneProps {
   startYear: number;
   endYear: number;
   onClick?: () => void;
+  // NEW: Contributor level for score connection
+  contributorLevel?: ContributorLevel;
+  // NEW: Whether to show the contributor indicator
+  showContributorIndicator?: boolean;
 }
 
 /**
@@ -24,7 +30,14 @@ interface SystemTimelineLaneProps {
  * IMPORTANT: Uses server-provided `installedLine` for labels when available.
  * Falls back to local derivation only for backward compatibility.
  */
-export function SystemTimelineLane({ system, startYear, endYear, onClick }: SystemTimelineLaneProps) {
+export function SystemTimelineLane({ 
+  system, 
+  startYear, 
+  endYear, 
+  onClick,
+  contributorLevel,
+  showContributorIndicator = false,
+}: SystemTimelineLaneProps) {
   const { earlyYear, likelyYear, lateYear } = system.replacementWindow;
   const range = endYear - startYear;
   
@@ -90,14 +103,24 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
             className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 rounded-lg py-2 px-1 -mx-1 transition-colors"
             onClick={onClick}
           >
+            {/* Contributor indicator - desaturated colors */}
+            {showContributorIndicator && contributorLevel && (
+              <div className={cn(
+                "w-1.5 h-7 rounded-full shrink-0",
+                contributorLevel === 'primary' && "bg-red-300/70",
+                contributorLevel === 'moderate' && "bg-amber-300/70",
+                contributorLevel === 'minor' && "bg-emerald-300/70"
+              )} />
+            )}
+            
             {/* System label */}
-            <div className="w-28 flex-shrink-0">
+            <div className={cn("flex-shrink-0", showContributorIndicator ? "w-24" : "w-28")}>
               <span className="system-name text-sm text-foreground">
                 {system.systemLabel}
               </span>
               {showEstimatedLabel && (
                 <span className="block text-[10px] text-muted-foreground">
-                  Estimated
+                  Based on permits, records, and regional averages
                 </span>
               )}
             </div>
@@ -173,9 +196,9 @@ export function SystemTimelineLane({ system, startYear, endYear, onClick }: Syst
               </p>
             )}
             <p className="text-sm">
-              Likely replacement: <strong>{likelyYear}</strong>
+              Observed replacement window: <strong>{likelyYear}</strong>
               <br />
-              Window: {earlyYear}–{lateYear}
+              Range: {earlyYear}–{lateYear}
             </p>
             <p className="text-xs text-muted-foreground italic">
               {system.disclosureNote}

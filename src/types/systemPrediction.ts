@@ -29,12 +29,18 @@ export interface HomeForecast {
     drivers: string[];  // What causes decay
   };
   
-  /** Trajectory with proactive tracking + recommended actions */
-  withHabittaCare: {
-    score12mo: number;    // Flat or very slight decay
-    score24mo: number;    // Stabilized
-    stabilizers: string[];
-  };
+  /** 
+   * System influences for causality section in HomeHealthOutlook
+   * Each entry describes why a system contributes to the score trajectory
+   */
+  systemInfluences?: Array<{
+    systemKey: 'hvac' | 'roof' | 'water_heater';
+    contributorLevel: 'primary' | 'moderate' | 'minor';
+    lifecyclePosition: 'early' | 'mid' | 'late' | 'end';
+    installSource: 'permit' | 'inferred' | 'unknown';
+    hasRecentService: boolean;
+    climateContext?: 'south_florida' | 'coastal' | 'freeze_thaw' | 'temperate';
+  }>;
   
   /** Forecast completeness (NOT additive precision) */
   forecastCompleteness: {

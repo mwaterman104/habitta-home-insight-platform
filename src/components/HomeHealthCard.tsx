@@ -6,7 +6,6 @@ import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { HomeForecast } from "@/types/systemPrediction";
 import { 
-  DualPathForecast, 
   ForecastCompleteness, 
   SilentRiskCallout, 
   FinancialAnchor 
@@ -30,13 +29,12 @@ interface HomeHealthCardProps {
 }
 
 /**
- * HomeHealthCard - Conversion-optimized trajectory display
+ * HomeHealthCard - Legacy component for backward compatibility
  * 
- * Key principles:
- * - Trajectory > Snapshot (85 → 72)
- * - Maintenance slows decay, doesn't reverse it
- * - Progressive disclosure to avoid CTA overload
- * - Probabilistic language ("Typical for homes like yours")
+ * @deprecated Use HomeHealthOutlook instead for the unified truth surface.
+ * This component is maintained only for fallback scenarios where
+ * HomeForecast data structure is available but HomeHealthOutlook
+ * cannot be used.
  */
 export function HomeHealthCard({ 
   forecast,
@@ -72,12 +70,11 @@ export function HomeHealthCard({
   const { 
     currentScore, 
     ifLeftUntracked, 
-    withHabittaCare,
     forecastCompleteness,
     silentRisks,
     financialOutlook,
     trajectoryQualifier,
-    // New multi-system transparency fields
+    // Multi-system transparency fields
     systemConfidence,
     missingFactorsBySystem,
     quietlyMonitored,
@@ -150,26 +147,7 @@ export function HomeHealthCard({
           </p>
         </div>
         
-        {/* 2. Control Subheadline */}
-        <p className="text-sm text-gray-700">
-          With Habitta Care, your home stays stable and predictable at{' '}
-          <strong className="text-green-700">
-            {withHabittaCare.score12mo}–{withHabittaCare.score24mo}
-          </strong>.
-          <br />
-          <span className="text-sm text-muted-foreground">
-            If left untracked, gradual wear accumulates — often unnoticed.
-          </span>
-        </p>
-        
-        {/* 3. Dual-Path Visual */}
-        <DualPathForecast 
-          current={currentScore}
-          withCare={[withHabittaCare.score12mo, withHabittaCare.score24mo]}
-          ifUntracked={[ifLeftUntracked.score12mo, ifLeftUntracked.score24mo]}
-        />
-        
-        {/* 4. Primary CTA - Context-aware for stewardship mode */}
+        {/* 2. Primary CTA - Context-aware for stewardship mode */}
         <div className="text-center">
           <Button 
             onClick={handleProtectClick} 
@@ -186,7 +164,7 @@ export function HomeHealthCard({
           </p>
         </div>
         
-        {/* 5. Expand for details - Progressive disclosure */}
+        {/* 3. Expand for details - Progressive disclosure */}
         <Button 
           variant="ghost" 
           size="sm" 
