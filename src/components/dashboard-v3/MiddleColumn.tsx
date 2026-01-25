@@ -2,9 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { HomeHealthCard } from "@/components/HomeHealthCard";
+import { HomeHealthOutlook, HomeHealthOutlookFallback } from "@/components/HomeHealthOutlook";
 import { MaintenanceRoadmap } from "./MaintenanceRoadmap";
-import { CapitalTimeline } from "@/components/CapitalTimeline";
 import { ChatDock } from "./ChatDock";
 import { SystemWatch } from "./SystemWatch";
 import { HabittaThinking } from "./HabittaThinking";
@@ -198,14 +197,14 @@ export function MiddleColumn({
 
   // Phase 2: View tracking for HomeHealthCard
   useViewTracker(healthCardRef, {
-    eventName: 'home_health_forecast_viewed',
+    eventName: 'home_health_outlook_viewed',
     properties: {
       current_score: homeForecast?.currentScore,
-      projected_score_12mo: homeForecast?.ifLeftUntracked?.score12mo,
-      has_habitta_care: !!homeForecast?.withHabittaCare
+      projected_score: homeForecast?.ifLeftUntracked?.score24mo,
+      systems_visible: capitalTimeline?.systems?.length ?? 0,
     },
     context: { surface: 'dashboard' },
-    enabled: !!homeForecast
+    enabled: !!homeForecast || !!capitalTimeline
   });
 
   // Phase 2: View tracking for Timeline
@@ -343,24 +342,25 @@ export function MiddleColumn({
             </section>
           )}
 
-          {/* 3. Home Health Forecast - Primary instrument with stewardship mode */}
+          {/* 3. Home Health Outlook - Unified truth surface */}
           <section ref={healthCardRef}>
-            {forecastLoading ? (
-              <Skeleton className="h-64 rounded-2xl" />
-            ) : homeForecast ? (
-              <HomeHealthCard 
+            {forecastLoading || timelineLoading ? (
+              <Skeleton className="h-96 rounded-2xl" />
+            ) : homeForecast && capitalTimeline ? (
+              <HomeHealthOutlook
                 forecast={homeForecast}
-                onProtectClick={handleProtectClick}
-                isHealthyState={isHealthyState}
+                capitalTimeline={capitalTimeline}
+                onSystemClick={handleSystemClick}
+              />
+            ) : homeForecast ? (
+              <HomeHealthOutlook
+                forecast={homeForecast}
+                capitalTimeline={null}
+                onSystemClick={handleSystemClick}
               />
             ) : (
-              <HomeHealthCard 
-                overallScore={getOverallScore()}
-                systemsNeedingAttention={getSystemsNeedingAttention()}
-                lastUpdated="today"
-                scoreDrivers="HVAC age, recent maintenance, and local climate"
-                whyBullets={getWhyBullets()}
-                confidenceScore={35}
+              <HomeHealthOutlookFallback 
+                score={getOverallScore()}
                 isHealthyState={isHealthyState}
               />
             )}
@@ -382,19 +382,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 5. Capital Timeline - Planning Windows */}
-          {timelineLoading ? (
-            <Skeleton className="h-48 rounded-2xl" />
-          ) : capitalTimeline && capitalTimeline.systems.length >= 2 ? (
-            <section ref={timelineRef}>
-              <CapitalTimeline 
-                timeline={capitalTimeline} 
-                onSystemClick={handleSystemClick}
-              />
-            </section>
-          ) : null}
-
-          {/* 6. Maintenance Roadmap - Horizontal time model */}
+          {/* 5. Maintenance Roadmap - Horizontal time model */}
           <section ref={maintenanceRef}>
             <MaintenanceRoadmap
               tasks={roadmapTasks}
@@ -403,7 +391,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 7. ChatDock - Sticky dockable panel (IN FLOW) */}
+          {/* 6. ChatDock - Sticky dockable panel (IN FLOW) */}
           <div className="sticky bottom-4">
             <ChatDock
               propertyId={propertyId}
