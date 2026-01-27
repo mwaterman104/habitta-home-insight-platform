@@ -8,6 +8,11 @@
  * - > 0.7 → 'Majority financed'
  * - > 0.4 → 'Balanced ownership'
  * - ≤ 0.4 → 'Largely owned'
+ * 
+ * MarketValueState:
+ * - 'verified' → Authoritative API value available
+ * - 'unverified' → APIs unavailable, but ownership context exists
+ * - 'unknown' → Insufficient data
  */
 
 export type FinancingPosture = 
@@ -18,6 +23,15 @@ export type FinancingPosture =
 export type EquityConfidence = 'High' | 'Moderate' | 'Early';
 
 export type MortgageSource = 'inferred' | 'public_records' | null;
+
+/**
+ * Market value verification state.
+ * Determines how the equity card renders - with value, with state message, or empty.
+ */
+export type MarketValueState =
+  | 'verified'      // Authoritative API value
+  | 'unverified'    // APIs unavailable, ownership context exists
+  | 'unknown';      // Insufficient data
 
 /**
  * Derive financing posture from market value and mortgage balance.
@@ -38,17 +52,24 @@ export function deriveFinancingPosture(
 }
 
 /**
- * Derive equity confidence based on data availability and source.
+ * Derive equity confidence based on data availability, source, and market value state.
  * 
  * @param hasMarketValue - Whether market value is available
  * @param hasMortgageData - Whether mortgage data is available
  * @param mortgageSource - Source of mortgage data ('inferred' | 'public_records' | null)
+ * @param marketValueState - Verification state of market value
  */
 export function deriveEquityConfidence(
   hasMarketValue: boolean,
   hasMortgageData: boolean,
-  mortgageSource: MortgageSource
+  mortgageSource: MortgageSource,
+  marketValueState?: MarketValueState
 ): EquityConfidence {
+  // Unverified or unknown market value always returns Early confidence
+  if (marketValueState === 'unverified' || marketValueState === 'unknown') {
+    return 'Early';
+  }
+  
   // Both values from public records = High confidence
   if (hasMarketValue && hasMortgageData && mortgageSource === 'public_records') {
     return 'High';

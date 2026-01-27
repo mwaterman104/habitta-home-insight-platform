@@ -6,7 +6,7 @@ import { ContextDrawer } from "./ContextDrawer";
 import { HomeStatusHeader } from "./HomeStatusHeader";
 import { HomePositionAnchor } from "./HomePositionAnchor";
 import { EquityPositionCard } from "./EquityPositionCard";
-import { deriveFinancingPosture, deriveEquityConfidence, type MortgageSource } from "@/lib/equityPosition";
+import { deriveFinancingPosture, deriveEquityConfidence, type MortgageSource, type MarketValueState } from "@/lib/equityPosition";
 import { LifecycleHorizon } from "./LifecycleHorizon";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
@@ -77,8 +77,9 @@ interface MiddleColumnProps {
   onTaskComplete?: (taskId: string) => void;
   // Selective Intelligence Upgrade props - Equity Position
   marketValue?: number | null;
+  marketValueState?: MarketValueState;
   mortgageBalance?: number | null;
-  mortgageConfidence?: MortgageSource;
+  mortgageSource?: MortgageSource;
   city?: string | null;
   state?: string | null;
 }
@@ -132,8 +133,9 @@ export function MiddleColumn({
   onUserReply,
   onTaskComplete,
   marketValue,
+  marketValueState,
   mortgageBalance,
-  mortgageConfidence,
+  mortgageSource,
   city,
   state,
 }: MiddleColumnProps) {
@@ -354,9 +356,10 @@ export function MiddleColumn({
             
             {/* SECONDARY HERO: Equity Position */}
             <EquityPositionCard
-              marketValue={marketValue}
+              marketValue={marketValue ?? null}
+              marketValueState={marketValueState ?? 'unknown'}
               financingPosture={deriveFinancingPosture(marketValue ?? null, mortgageBalance ?? null)}
-              confidence={deriveEquityConfidence(!!marketValue, !!mortgageBalance, mortgageConfidence ?? null)}
+              confidence={deriveEquityConfidence(!!marketValue, !!mortgageBalance, mortgageSource ?? null, marketValueState)}
               city={city}
               state={state}
             />

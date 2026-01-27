@@ -7,7 +7,7 @@
  * Doctrine: Equity information may only increase understanding, never motivation.
  */
 
-import type { FinancingPosture, EquityConfidence } from './equityPosition';
+import type { FinancingPosture, EquityConfidence, MarketValueState } from './equityPosition';
 
 /**
  * Get the "What this enables" line based on financing posture.
@@ -98,4 +98,33 @@ export function getPostureUnavailableText(): string {
  */
 export function getViewMarketContextText(): string {
   return 'View market context';
+}
+
+/**
+ * Get market context display based on valuation state.
+ * Returns empty string for verified (will show actual value).
+ */
+export function getMarketContextDisplay(
+  marketValueState: MarketValueState
+): string {
+  switch (marketValueState) {
+    case 'verified':
+      return ''; // Will show actual value
+    case 'unverified':
+      return 'Market value not yet established';
+    case 'unknown':
+      return 'Insufficient data to establish market context';
+  }
+}
+
+/**
+ * Get enablement line for unverified posture.
+ */
+export function getUnverifiedEnablementLine(
+  posture: FinancingPosture | null
+): string {
+  if (!posture) {
+    return 'Additional property data would improve financial insight.';
+  }
+  return 'This ownership profile typically supports optional financing, pending market verification.';
 }
