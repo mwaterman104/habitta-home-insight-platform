@@ -2574,21 +2574,23 @@ serve(async (req) => {
     
     // For user-authenticated calls, validate ownership
     if (isUserAuth && propertyId) {
-      const token = authHeader!.replace('Bearer ', '');
+      // Create a user-scoped client with the authorization header
+      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader! } }
+      });
       
-      // Use getClaims() for proper JWT validation instead of getUser()
-      // getClaims validates the token and extracts claims without requiring a round-trip
-      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      // Validate the token by calling getUser with the user-scoped client
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
       
-      if (claimsError || !claimsData?.claims) {
-        console.error('[intelligence-engine] Token validation failed:', claimsError?.message);
+      if (userError || !user) {
+        console.error('[intelligence-engine] Token validation failed:', userError?.message);
         return new Response(
           JSON.stringify({ error: 'Invalid token' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      const userId = claimsData.claims.sub as string;
+      const userId = user.id;
       
       // Verify the home belongs to the user
       console.log(`[intelligence-engine] Verifying ownership: propertyId=${propertyId}, userId=${userId}`);
