@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatDock } from "./ChatDock";
 import { StateOfHomeReport } from "./StateOfHomeReport";
@@ -6,11 +6,13 @@ import { ContextDrawer } from "./ContextDrawer";
 import { HomeStatusHeader } from "./HomeStatusHeader";
 import { HomePositionAnchor } from "./HomePositionAnchor";
 import { EquityPositionCard } from "./EquityPositionCard";
+import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { deriveFinancingPosture, deriveEquityConfidence, type MortgageSource, type MarketValueState } from "@/lib/equityPosition";
 import { LifecycleHorizon } from "./LifecycleHorizon";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
+import { deriveSystemState, PLANNING_MONTHS, DATA_GAP_CONFIDENCE } from "@/types/systemState";
 import { 
   arbitrateTodaysFocus, 
   resolvePosition, 
@@ -295,6 +297,68 @@ export function MiddleColumn({
     return getOutlookSummary(approaching, todaysFocus.state === 'stable');
   }, [systemSignals, todaysFocus.state]);
 
+  // ============================================
+  // CHAT SPEC V1: Derive baseline systems for evidence layer
+  // ============================================
+  const baselineSystems = useMemo<BaselineSystem[]>(() => {
+    const currentYear = new Date().getFullYear();
+    
+    return capitalTimeline?.systems.map(sys => {
+      const installYear = sys.installYear ?? currentYear - 10;
+      const expectedEnd = sys.replacementWindow.likelyYear;
+      const yearsRemaining = expectedEnd - currentYear;
+      const monthsRemaining = yearsRemaining * 12;
+      const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
+                               sys.dataQuality === 'medium' ? 0.5 : 0.3;
+      
+      // Derive state using the new system state model
+      let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+      
+      if (confidenceValue < DATA_GAP_CONFIDENCE) {
+        state = 'data_gap';
+      } else if (monthsRemaining < 12 && systemSignals.some(s => s.key === sys.systemId && s.risk === 'HIGH')) {
+        // Elevated requires deviation, not just time
+        state = 'elevated';
+      } else if (monthsRemaining < PLANNING_MONTHS) {
+        state = 'planning_window';
+      }
+      
+      return {
+        key: sys.systemId,
+        displayName: sys.systemLabel,
+        state,
+        confidence: confidenceValue,
+        monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
+      };
+    }) ?? [];
+  }, [capitalTimeline, systemSignals]);
+
+  // Derive overall lifecycle position from systems
+  const lifecyclePosition = useMemo<'Early' | 'Mid-Life' | 'Late'>(() => {
+    if (baselineSystems.length === 0) return 'Mid-Life';
+    const avgMonths = baselineSystems.reduce((sum, s) => sum + (s.monthsRemaining ?? 120), 0) / baselineSystems.length;
+    if (avgMonths > 180) return 'Early';
+    if (avgMonths > 60) return 'Mid-Life';
+    return 'Late';
+  }, [baselineSystems]);
+
+  // Derive overall confidence level
+  const confidenceLevel = useMemo<'Unknown' | 'Early' | 'Moderate' | 'High'>(() => {
+    if (baselineSystems.length === 0) return 'Unknown';
+    const avgConfidence = baselineSystems.reduce((sum, s) => sum + s.confidence, 0) / baselineSystems.length;
+    if (avgConfidence >= 0.7) return 'High';
+    if (avgConfidence >= 0.5) return 'Moderate';
+    if (avgConfidence >= 0.3) return 'Early';
+    return 'Unknown';
+  }, [baselineSystems]);
+
+  // Handle "Why?" click to trigger interpretive mode
+  const handleWhyClick = useCallback((systemKey: string) => {
+    track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
+    onSystemClick(systemKey);
+    onChatExpandChange(true);
+  }, [onSystemClick, onChatExpandChange]);
+
   // View tracking for status header
   useViewTracker(statusHeaderRef, {
     eventName: 'todays_focus_viewed',
@@ -394,9 +458,21 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 6. CHAT - AMBIENT (sticky, minimal presence) */}
+          {/* 6. BASELINE SURFACE - Evidence Layer (Chat Spec V1) */}
+          {baselineSystems.length > 0 && (
+            <section>
+              <BaselineSurface
+                lifecyclePosition={lifecyclePosition}
+                confidenceLevel={confidenceLevel}
+                systems={baselineSystems}
+                onWhyClick={handleWhyClick}
+              />
+            </section>
+          )}
+
+          {/* 7. CHAT - AMBIENT (sticky, minimal presence) */}
           <div className="sticky bottom-4">
-          <ChatDock
+            <ChatDock
               propertyId={propertyId}
               isExpanded={chatExpanded}
               onExpandChange={onChatExpandChange}
