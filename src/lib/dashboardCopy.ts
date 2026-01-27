@@ -43,7 +43,8 @@ export function getBriefCopy(result: NarrativeResult): HomeBrief {
       secondary: 'No immediate action required today.'
     },
     planning_opportunity: {
-      primary: `One system is entering its planning window. This isn't urgent, but early awareness improves cost and timing flexibility.`,
+      // Doctrine compliance: Replace "planning window" with lifecycle language
+      primary: `One system is in a later lifecycle stage. Early awareness helps with timing flexibility.`,
       secondary: 'Confirming details now helps keep future decisions predictable.'
     },
     confidence_improved: {
@@ -194,13 +195,14 @@ export function getChatPromptCopy(): { placeholder: string; emptyState: string }
 export function getSystemStatusLabel(monthsToPlanning?: number): string {
   if (!monthsToPlanning) return '';
   
+  // Doctrine compliance: Replace "planning window/range" with lifecycle language
   if (monthsToPlanning > 84) { // > 7 years
-    return 'Long-term planning horizon';
+    return 'Long-term horizon';
   }
   if (monthsToPlanning > 36) { // 3-7 years
-    return 'Future planning window';
+    return 'Mid-lifecycle horizon';
   }
-  return 'Approaching planning range';
+  return 'Later lifecycle range';
 }
 
 /**

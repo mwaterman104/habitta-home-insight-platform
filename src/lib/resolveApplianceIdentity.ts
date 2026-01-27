@@ -209,8 +209,9 @@ function derivePlanningLabel(
   
   const remainingYears = Math.max(0, typicalLifespan - age);
   
+  // Doctrine compliance: Replace "planning window" with lifecycle language
   if (remainingYears <= 2) {
-    return 'Planning window';
+    return 'Later-stage lifecycle';
   } else if (remainingYears <= 5) {
     return 'Later part of lifespan';
   } else {
@@ -232,13 +233,14 @@ export function getStatusCopy(
 ): string {
   if (tier === 2) return 'Tracked';
   
+  // Doctrine compliance: Replace "planning window" with lifecycle language
   switch (status) {
     case 'healthy':
       return 'Within typical lifespan';
     case 'planning':
       return 'Later part of lifespan';
     case 'attention':
-      return 'Planning window';
+      return 'Later-stage lifecycle';
     default:
       return '';
   }

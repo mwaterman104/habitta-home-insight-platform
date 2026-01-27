@@ -152,7 +152,7 @@ export function generateOpeningMessage(
     case 'CONFIDENCE_IMPROVED':
       return getConfidenceImprovedMessage(systemName, confidence);
     case 'PLANNING_WINDOW_ENTERED':
-      return getPlanningWindowMessage(systemName, trigger.monthsRemaining, confidence);
+      return getLifecycleStageMessage(systemName, trigger.monthsRemaining, confidence);
     default:
       return {
         observation: `I'm focusing on your ${systemName}.`,
@@ -225,7 +225,8 @@ function getConfidenceImprovedMessage(
   };
 }
 
-function getPlanningWindowMessage(
+// Renamed from getPlanningWindowMessage per doctrine compliance
+function getLifecycleStageMessage(
   systemName: string,
   monthsRemaining: number,
   confidence: ConfidenceBucket
@@ -233,10 +234,11 @@ function getPlanningWindowMessage(
   const yearsRemaining = Math.round(monthsRemaining / 12);
   
   return {
-    observation: `You're entering a good planning window for your ${systemName}.`,
+    // Doctrine compliance: Replace "planning window" with lifecycle language
+    observation: `Your ${systemName} is in a later lifecycle stage.`,
     implication: confidence === 'HIGH'
-      ? `Based on verified records, attention may be needed in roughly ${yearsRemaining} year${yearsRemaining !== 1 ? 's' : ''}.`
-      : `Current estimates suggest this may need attention within ${yearsRemaining}–${yearsRemaining + 2} years.`,
-    optionsPreview: 'Acting now gives you more options and avoids last-minute decisions.'
+      ? `Based on verified records, this may warrant consideration in roughly ${yearsRemaining} year${yearsRemaining !== 1 ? 's' : ''}.`
+      : `Current estimates suggest this may be worth reviewing within ${yearsRemaining}–${yearsRemaining + 2} years.`,
+    optionsPreview: 'Understanding this early provides more flexibility.'
   };
 }

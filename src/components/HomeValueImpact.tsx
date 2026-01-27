@@ -10,12 +10,12 @@ interface HomeValueImpactProps {
  */
 export function HomeValueImpact({ isVerified }: HomeValueImpactProps) {
   if (!isVerified) {
-    return (
-      <div className="py-3">
-        <p className="text-sm text-muted-foreground">
-          Complete maintenance tasks to earn Habitta Verified status.
-        </p>
-      </div>
+  return (
+    <div className="py-3">
+      <p className="text-sm text-muted-foreground">
+        Maintenance documentation supports verified status.
+      </p>
+    </div>
     );
   }
 

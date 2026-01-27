@@ -127,12 +127,11 @@ export function getTodaysFocusCopy(
   
   const copyMap: Record<FocusState, string> = {
     stable: 'Nothing requires attention right now.',
-    // QA Fix #3: Avoid "planning window" on main dashboard
-    // OLD: `Your ${systemName} is entering its planning window.`
-    // NEW: Non-directive lifecycle language
+    // Doctrine compliance: Lifecycle language, not "planning window"
     planning: `Your ${systemName} is in a later stage of its lifecycle.`,
     advisory: 'Market conditions make this a strong refinance period.',
-    risk: `${systemNameCapitalized} wear has crossed our attention threshold.`,
+    // Doctrine compliance: Observational, not threshold language
+    risk: `${systemNameCapitalized} is showing elevated wear patterns.`,
   };
   
   return copyMap[state];
@@ -170,10 +169,11 @@ export function getRationale(
   const systemName = formatSystemName(sourceSystem);
   
   const rationales: Record<FocusState, string> = {
-    stable: 'All monitored systems are performing within expected parameters for homes of this age and type.',
+    stable: 'All observed systems are performing within expected parameters for homes of this age and type.',
     planning: `This surfaced because similar homes in your region begin experiencing ${systemName} issues at this stage.`,
     advisory: 'Regional market data indicates favorable conditions for equity-based decisions.',
-    risk: `This surfaced because ${systemName} indicators have crossed the threshold where proactive planning typically saves costs.`,
+    // Doctrine compliance: Remove "threshold" language
+    risk: `This surfaced because ${systemName} indicators suggest elevated wear relative to comparable homes.`,
   };
   
   return rationales[focusState];
@@ -191,7 +191,7 @@ export function getDefaultSignals(
   
   const signalMap: Record<FocusState, string[]> = {
     stable: [
-      'No systems approaching planning windows',
+      'No systems in later lifecycle stages',
       'Maintenance schedule is current',
       'Regional stress levels are normal',
     ],
