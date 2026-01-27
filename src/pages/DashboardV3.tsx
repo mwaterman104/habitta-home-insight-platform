@@ -488,12 +488,6 @@ export default function DashboardV3() {
                 address={userHome.address}
                 city={userHome.city}
                 state={userHome.state}
-                focusContext={focusContext}
-                hvacPrediction={hvacPrediction}
-                capitalTimeline={capitalTimeline}
-                homeAge={userHome.year_built ? new Date().getFullYear() - userHome.year_built : undefined}
-                risk={risk}
-                confidence={confidence}
               />
             </aside>
           </ResizablePanel>
