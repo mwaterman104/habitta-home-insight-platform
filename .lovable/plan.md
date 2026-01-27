@@ -1,40 +1,41 @@
 
 
-# Home Health Outlook — Unified Module Implementation Plan (QC-Approved)
-
-## Summary
-
-This plan consolidates Habitta's fragmented health display (HomeHealthCard + DualPathForecast + CapitalTimeline) into a **single unified truth surface** that establishes inspector-grade credibility through explicit causality.
-
-**Transformation:**
-- **Before:** Score card → DualPathForecast bars ("With Habitta / If untracked") → Separate CapitalTimeline
-- **After:** Score → Causality ("What's influencing this") → System Trajectories (unified causal chain)
+# Habitta Dashboard Enhancements — Implementation Plan
+## Position Strip Integrated, Timeline Preserved as Evidence
 
 ---
 
-## QC Refinements Integrated
+## Executive Summary
 
-| Issue | Resolution |
-|-------|------------|
-| `trajectorysSectionTitle` typo | Fixed to `trajectoriesSectionTitle` |
-| `deriveContributorLevel` underspecified | Added doc comment explaining heuristic nature, override potential |
-| `climateContext` semantics undefined | Defined as `ClimateContextType` with explicit values |
-| Visual indicator colors too alarming | Desaturated to clay/ochre/sage palette |
-| Fallback handling incomplete | Explicit "limited information" copy, no invented causality |
-| Cost range location rule undocumented | Added explicit rule: costs only in Trajectories section |
+This plan transforms the dashboard from a multi-card information display into a **single-narrative authority surface** that answers:
+
+> "What matters about my home right now — and where do I stand?"
+
+The dashboard delivers **two immediate truths in under three seconds**:
+1. **What Habitta is focused on** (Today's Focus)
+2. **Where the homeowner sits in the lifecycle** (Position Strip)
+
+Timelines and tasks are preserved only as **supporting evidence**, never as primary signals.
 
 ---
 
-## What Gets Eliminated (Ruthlessly)
+## Core Transformation
 
-| Component/Copy | Reason |
-|----------------|--------|
-| `DualPathForecast.tsx` | "With Habitta / If untracked" implies we change physics |
-| `withHabittaCare` branch in HomeForecast | Stewardship doesn't promise score stabilization |
-| "24-Month Outlook (Relative Home Health Index)" | Fake precision, churny SaaS language |
-| Green/amber bar comparison | Binary framing creates false certainty |
-| "-4 points" math attribution | Treats users like children |
-| Time horizon in score | Irrelevant unless user explicitly asks |
+```text
+BEFORE
+SystemWatch → Cadence Cards → HomeHealthOutlook → HabittaThinking → MaintenanceRoadmap → ChatDock
+
+AFTER
+Today's Focus (primary authority)
+→ Position Strip (instant orientation)
+→ System Watch (conditional)
+→ Context Drawer (collapsed)
+→ ChatDock (sticky)
+```
+
+**Architectural Principle (Locked):**
+> Judgment first. Position second. Evidence last.
+> Chronology never leads. Orientation always does.
 
 ---
 
@@ -42,333 +43,159 @@ This plan consolidates Habitta's fragmented health display (HomeHealthCard + Dua
 
 | File | Action | Scope |
 |------|--------|-------|
-| `src/lib/homeHealthOutlookCopy.ts` | **Create** | Copy governance module with banned phrases enforcement |
-| `src/components/HomeHealthOutlook.tsx` | **Create** | Unified 3-layer component (Score → Causality → Trajectories) |
-| `src/components/home-health/DualPathForecast.tsx` | **Delete** | No longer needed |
-| `src/components/home-health/index.ts` | **Modify** | Remove DualPathForecast export |
-| `src/components/HomeHealthCard.tsx` | **Modify** | Simplify for fallback use only |
-| `src/components/CapitalTimeline.tsx` | **Modify** | Rename header, add contributor indicator support |
-| `src/components/SystemTimelineLane.tsx` | **Modify** | Add contributor indicator, refine tooltip copy |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Replace HomeHealthCard + CapitalTimeline with unified component |
-| `src/types/systemPrediction.ts` | **Modify** | Remove `withHabittaCare`, add `systemInfluences` |
-| `src/lib/dashboardCopy.ts` | **Modify** | Remove obsolete bar graph copy |
+| `src/lib/todaysFocusCopy.ts` | **Create** | Copy governance for Today's Focus + Context Drawer |
+| `src/components/dashboard-v3/TodaysFocusCard.tsx` | **Create** | New primary authority component |
+| `src/components/dashboard-v3/PositionStrip.tsx` | **Create** | Lifecycle position visualization |
+| `src/components/dashboard-v3/ContextDrawer.tsx` | **Create** | Merged intelligence drawer (collapsed by default) |
+| `src/lib/narrativePriority.ts` | **Modify** | Add `arbitrateTodaysFocus()` and `resolvePosition()` |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Replace hierarchy with new structure |
+| `src/components/dashboard-v3/SystemWatch.tsx` | **Modify** | Sharpen to one-line alert, remove timelines/buttons |
+| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Add focus context injection |
+| `src/components/dashboard-v3/index.ts` | **Modify** | Export new components |
+
+**Components to Remove from Main Flow:**
+- `HomeHealthOutlook` (Position + Focus supersede)
+- `HabittaThinking` (Merged into Context Drawer)
+- `MaintenanceRoadmap` (Replaced by Position Strip in main flow)
+- Cadence Cards (Move to Context Drawer, not primary signals)
 
 ---
 
 ## Part 1: Copy Governance Module
 
-**File:** `src/lib/homeHealthOutlookCopy.ts`
+**File:** `src/lib/todaysFocusCopy.ts`
 
 ### Purpose
-
-Single source of truth for Home Health Outlook copy. Enforces product doctrine with compile-time banned phrase validation.
+Single source of truth for Today's Focus and Context Drawer copy. Enforces copy contract:
+- One sentence only
+- Statement, not suggestion
+- No percentages, dates, or "You should" language
 
 ### Types
 
 ```typescript
-// Contributor level (interpretive, not mathematical)
-export type ContributorLevel = 'primary' | 'moderate' | 'minor';
+export type FocusState = 'stable' | 'planning' | 'advisory' | 'risk';
+export type SourceSystem = 'hvac' | 'roof' | 'water_heater' | 'market' | null;
+export type PositionLabel = 'Early' | 'Mid-Life' | 'Late';
+export type ConfidenceLanguage = 'high' | 'moderate' | 'early';
 
-// Climate context with explicit semantics (QC refinement)
-export type ClimateContextType = 
-  | 'south_florida'    // High heat, humidity, UV exposure
-  | 'coastal'          // Salt air, corrosion risk
-  | 'freeze_thaw'      // Ice, foundation stress
-  | 'temperate';       // Standard wear patterns
-
-// Install source for causality descriptions
-export type InstallSourceType = 'permit' | 'inferred' | 'unknown';
-
-// Lifecycle position
-export type LifecyclePosition = 'early' | 'mid' | 'late' | 'end';
-
-// System influence for causality section
-export interface SystemInfluence {
-  systemKey: 'hvac' | 'roof' | 'water_heater';
-  displayName: string;
-  contributorLevel: ContributorLevel;
-  description: string; // Plain English causality (generated by deriveInfluenceDescription)
+export interface TodaysFocus {
+  state: FocusState;
+  message: string;
+  sourceSystem: SourceSystem;
+  changedSinceLastVisit: boolean;
 }
 
-// Full copy contract
-export interface HomeHealthOutlookCopy {
-  header: string;
-  scoreSubtext: string;
-  causalitySectionTitle: string;
-  trajectoriesSectionTitle: string;  // Fixed typo
-  trajectoriesSectionSubhead: string;
-  legendLabels: Record<ContributorLevel, string>;
-  interactionCopy: {
-    whyThisMatters: string;
-    stabilizeHint: string;
-  };
-  tooltipRefinements: {
-    estimatedSource: string;
-    observedWindow: string;
-  };
-  fallbackCopy: {
-    limitedInfoNote: string;  // QC refinement
-  };
+export interface PositionStripData {
+  label: PositionLabel;
+  relativePosition: number;  // 0.0 → 1.0
+  confidence: ConfidenceLanguage;
+  sourceSystem?: SourceSystem;
 }
-```
 
-### Key Functions
+export interface ContextDrawerData {
+  rationale: string;
+  signals: string[];  // max 3
+  confidenceLanguage: ConfidenceLanguage;
+}
 
-```typescript
-/**
- * Determines contributor level using heuristic judgment,
- * not strict point math. May be overridden by climate stress
- * or lifecycle signals.
- * 
- * Thresholds are NOT absolute:
- * - Primary: remainingYears <= 5 AND confidence > 0.5
- * - Moderate: remainingYears <= 10 OR (remainingYears <= 7 AND confidence < 0.5)
- * - Minor: remainingYears > 10
- * 
- * Climate stress can elevate a system by one level.
- * Lifecycle position can also override (end-of-life → at least moderate).
- */
-export function deriveContributorLevel(
-  remainingYears: number,
-  confidence: number,
-  lifecyclePosition?: LifecyclePosition,
-  climateContext?: ClimateContextType
-): ContributorLevel;
-
-/**
- * Generate plain English causality description for a system.
- * No timelines, no costs, no urgent verbs.
- */
-export function deriveInfluenceDescription(
-  systemKey: SystemKey,
-  installSource: InstallSourceType,
-  lifecyclePosition: LifecyclePosition,
-  hasRecentService: boolean,
-  climateContext?: ClimateContextType
-): string;
-
-/**
- * Get static copy for the outlook module.
- */
-export function getHomeHealthOutlookCopy(): HomeHealthOutlookCopy;
+export interface CapitalAdvisory {
+  insight: string;
+  category: 'equity' | 'refi' | 'exit' | 'renovation';
+}
 ```
 
 ### Banned Phrases (Enforced)
 
-The module will include a validation function and constant list:
-
 ```typescript
-// These phrases are explicitly prohibited in any outlook copy
 export const BANNED_PHRASES = [
-  'If left untracked',
-  'Without Habitta',
-  'With Habitta',
-  'Prevent failure',
-  'Avoid disaster',
-  'Your home will',
-  'points',
-  '24-Month Outlook',
-  'failing',
+  '!',                    // No exclamation points
+  'You should',
+  'We recommend',
+  'Don\'t worry',
+  'Based on our AI',
+  'Good news',
+  'You\'re all set',
+  'Nice work',
+  '%',                    // No percentages
+  'in the next',
+  'within',
   'urgent',
   'critical',
   'immediately',
 ] as const;
 ```
 
-### Static Copy
+### State-Based Copy Generation
 
 ```typescript
-export function getHomeHealthOutlookCopy(): HomeHealthOutlookCopy {
-  return {
-    header: 'Home Health',
-    scoreSubtext: 'This outlook reflects system age, climate exposure, and current maintenance visibility.',
-    causalitySectionTitle: "What's influencing this outlook",
-    trajectoriesSectionTitle: 'System Trajectories',
-    trajectoriesSectionSubhead: 'These systems shape how your home\'s health evolves over time.',
-    legendLabels: {
-      primary: 'Meaningfully affects overall home health trajectory',
-      moderate: 'Gradual influence',
-      minor: 'Limited near-term impact',
-    },
-    interactionCopy: {
-      whyThisMatters: 'This system is currently influencing your home\'s projected health trend due to its age and verification status.',
-      stabilizeHint: 'Updating maintenance history or install details can stabilize this outlook.',
-    },
-    tooltipRefinements: {
-      estimatedSource: 'Based on permits, records, and regional averages',
-      observedWindow: 'Observed replacement window',
-    },
-    fallbackCopy: {
-      limitedInfoNote: 'Limited information available. Estimates will improve as details are added.',
-    },
+export function getTodaysFocusCopy(
+  state: FocusState,
+  sourceSystem: SourceSystem
+): string {
+  const systemName = formatSystemName(sourceSystem);
+  
+  const copyMap: Record<FocusState, string> = {
+    stable: 'Nothing requires attention right now.',
+    planning: `Your ${systemName} is entering its planning window.`,
+    advisory: 'Market conditions make this a strong refinance period.',
+    risk: `${systemName} wear has crossed our attention threshold.`,
   };
+  
+  return copyMap[state];
+}
+
+export function getPositionCopy(label: PositionLabel): string {
+  return `Position: ${label}`;
 }
 ```
 
 ---
 
-## Part 2: Unified Component
+## Part 2: Today's Focus Card (Primary Authority)
 
-**File:** `src/components/HomeHealthOutlook.tsx`
+**File:** `src/components/dashboard-v3/TodaysFocusCard.tsx`
 
-### Props
-
-```typescript
-interface HomeHealthOutlookProps {
-  forecast: HomeForecast;
-  capitalTimeline: HomeCapitalTimeline | null;
-  onSystemClick: (systemKey: string) => void;
-  isLoading?: boolean;
-}
-```
+### Rendering Rules
+- **Always visible** — never hidden
+- **One sentence only** — hard limit enforced
+- **No buttons** unless `state !== 'stable'`
+- **Visual weight > all other components**
+- **No charts, percentages, or dates**
 
 ### Component Structure
 
-**Layer 1: Score (Outcome)**
-- Header: "Home Health" (not "Forecast")
-- Score trajectory: `{currentScore} → {projectedScore}` (arrow indicates direction)
-- Subtext: Reflects system age, climate, maintenance visibility
-- **No time horizon shown** (unless explicitly requested)
-- **No "With Habitta" comparison**
-
-**Layer 2: Causality (What's Influencing This)**
-- Section title: "What's influencing this outlook"
-- Max 3 systems listed, ordered by contributor level (primary first)
-- Each system: Name + plain English description
-- **No timelines, no costs, no urgent verbs**
-
-**Layer 3: Evidence (System Trajectories)**
-- Renamed from "Home Systems Timeline"
-- Each row has contributor indicator (thin left edge):
-  - Clay/rust = Primary contributor (desaturated red)
-  - Ochre = Moderate contributor (desaturated amber)
-  - Sage = Minor contributor (desaturated green)
-- **Cost ranges appear ONLY here** (not in causality, not in score)
-- Clicking system shows interaction copy
-
-### Visual Color Palette (QC Refinement)
-
-Desaturated to reduce alarm while maintaining semantics:
-
-```typescript
-const CONTRIBUTOR_COLORS = {
-  primary: 'bg-red-300/70',    // Clay/rust - desaturated
-  moderate: 'bg-amber-300/70', // Ochre - desaturated
-  minor: 'bg-emerald-300/70',  // Sage - desaturated
-} as const;
-```
-
-### Rendering Structure
-
 ```tsx
-<Card className="rounded-2xl border-t-2 border-t-primary/20">
-  <CardContent className="p-5 space-y-4">
-    {/* Layer 1: Score */}
-    <div className="space-y-1">
-      <span className="heading-h3 text-foreground">{copy.header}</span>
-      <div className="flex items-baseline gap-2">
-        <span className="text-5xl font-semibold tabular-nums">{currentScore}</span>
-        <span className="text-xl text-muted-foreground">→</span>
-        <span className="text-3xl text-muted-foreground tabular-nums">{projectedScore}</span>
-      </div>
-      <p className="text-sm text-muted-foreground">{copy.scoreSubtext}</p>
-    </div>
-
-    {/* Layer 2: Causality */}
-    <div className="space-y-3 pt-4 border-t">
-      <h4 className="text-sm font-medium text-muted-foreground">
-        {copy.causalitySectionTitle}
-      </h4>
-      {systemInfluences.slice(0, 3).map(influence => (
-        <div key={influence.systemKey} className="space-y-0.5">
-          <span className="font-medium">{influence.displayName}</span>
-          <p className="text-sm text-muted-foreground">{influence.description}</p>
-        </div>
-      ))}
-    </div>
-
-    {/* Layer 3: System Trajectories */}
-    <div className="space-y-3 pt-4 border-t">
-      <div>
-        <h4 className="text-sm font-medium">{copy.trajectoriesSectionTitle}</h4>
-        <p className="text-xs text-muted-foreground">{copy.trajectoriesSectionSubhead}</p>
-      </div>
-      {/* Timeline lanes with contributor indicators */}
-      {capitalTimeline?.systems.map(system => (
-        <SystemTimelineLane
-          key={system.systemId}
-          system={system}
-          startYear={currentYear}
-          endYear={endYear}
-          contributorLevel={getContributorLevel(system.systemId)}
-          showContributorIndicator={true}
-          onClick={() => handleSystemClick(system.systemId)}
-        />
-      ))}
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2">
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-3 bg-red-300/70 rounded-full" />
-          <span>Primary</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-3 bg-amber-300/70 rounded-full" />
-          <span>Moderate</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-3 bg-emerald-300/70 rounded-full" />
-          <span>Minor</span>
-        </div>
-      </div>
-    </div>
-
-    {/* Interaction: Selected system explanation */}
-    {selectedSystem && (
-      <div className="bg-muted/50 rounded-lg p-3 space-y-1 animate-in fade-in">
-        <p className="text-sm font-medium">Why this matters</p>
-        <p className="text-sm text-muted-foreground">{copy.interactionCopy.whyThisMatters}</p>
-        <p className="text-xs text-muted-foreground italic">{copy.interactionCopy.stabilizeHint}</p>
-      </div>
-    )}
-  </CardContent>
-</Card>
-```
-
----
-
-## Part 3: Fallback Component
-
-**File:** `src/components/HomeHealthOutlook.tsx` (same file, separate component)
-
-```typescript
-interface HomeHealthOutlookFallbackProps {
-  score: number;
-  isHealthyState?: boolean;
+interface TodaysFocusCardProps {
+  focus: TodaysFocus;
+  onContextExpand?: () => void;
 }
 
-/**
- * HomeHealthOutlookFallback - Renders when full forecast unavailable
- * 
- * CRITICAL (QC refinement):
- * - Explicitly states "limited information"
- * - Does NOT invent causality
- * - Does NOT show trajectories (no data to support them)
- */
-export function HomeHealthOutlookFallback({ score, isHealthyState }: HomeHealthOutlookFallbackProps) {
-  const copy = getHomeHealthOutlookCopy();
-  
+export function TodaysFocusCard({ focus, onContextExpand }: TodaysFocusCardProps) {
   return (
-    <Card className="rounded-2xl border-t-2 border-t-muted/40">
-      <CardContent className="p-5 space-y-3">
-        <div className="space-y-1">
-          <span className="heading-h3 text-foreground">{copy.header}</span>
-          <div className="text-4xl font-semibold tabular-nums text-muted-foreground">
-            {score}
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground italic">
-          {copy.fallbackCopy.limitedInfoNote}
+    <Card className="rounded-xl border-0 bg-transparent">
+      <CardContent className="py-6">
+        {/* Primary statement - center of authority */}
+        <p className="text-lg font-medium text-foreground leading-relaxed">
+          {focus.message}
         </p>
+        
+        {/* Context trigger - only if not stable */}
+        {focus.state !== 'stable' && onContextExpand && (
+          <button
+            onClick={onContextExpand}
+            className="text-sm text-muted-foreground hover:text-foreground mt-3"
+          >
+            Why?
+          </button>
+        )}
+        
+        {/* Changed indicator - subtle */}
+        {focus.changedSinceLastVisit && (
+          <span className="text-xs text-muted-foreground/70 block mt-2">
+            Updated since your last visit
+          </span>
+        )}
       </CardContent>
     </Card>
   );
@@ -377,247 +204,540 @@ export function HomeHealthOutlookFallback({ score, isHealthyState }: HomeHealthO
 
 ---
 
-## Part 4: SystemTimelineLane Modifications
+## Part 3: Position Strip (New Component)
 
-**File:** `src/components/SystemTimelineLane.tsx`
+**File:** `src/components/dashboard-v3/PositionStrip.tsx`
 
-### New Props
+### Purpose
+Give instant positional clarity without dates, tasks, or anxiety.
+Answers: "Am I early, mid-life, or late — right now?"
 
-```typescript
-interface SystemTimelineLaneProps {
-  system: ExtendedSystemTimelineEntry;
-  startYear: number;
-  endYear: number;
-  onClick?: () => void;
-  // NEW: Contributor level for score connection
-  contributorLevel?: ContributorLevel;
-  // NEW: Whether to show the contributor indicator
-  showContributorIndicator?: boolean;
+### Rendering Rules
+- **Always visible**
+- **Non-interactive by default**
+- **Single horizontal bar**
+- **One marker only: "Current Position"**
+- **Muted, neutral color palette**
+- **No numbers, dates, or milestones**
+
+### Component Structure
+
+```tsx
+interface PositionStripProps {
+  label: 'Early' | 'Mid-Life' | 'Late';
+  relativePosition: number;  // 0.0 → 1.0
+  confidence: 'high' | 'moderate' | 'early';
+  sourceSystem?: string | null;
+  onExpand?: () => void;
+}
+
+export function PositionStrip({ 
+  label, 
+  relativePosition, 
+  confidence,
+  onExpand 
+}: PositionStripProps) {
+  // Calculate marker position (0-100%)
+  const markerPosition = Math.min(Math.max(relativePosition * 100, 5), 95);
+  
+  return (
+    <Card className="rounded-xl border bg-muted/30">
+      <CardContent className="py-4 px-5">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-foreground">
+            Position: {label}
+          </span>
+          {onExpand && (
+            <button
+              onClick={onExpand}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Details
+            </button>
+          )}
+        </div>
+        
+        {/* Bar visualization */}
+        <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+          {/* Gradient fill up to marker */}
+          <div 
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-200/70 via-amber-200/70 to-red-200/70 rounded-full"
+            style={{ width: '100%' }}
+          />
+          
+          {/* Current position marker */}
+          <div 
+            className="absolute top-1/2 -translate-y-1/2 h-4 w-1.5 bg-foreground rounded-full shadow-sm"
+            style={{ left: `${markerPosition}%`, transform: 'translate(-50%, -50%)' }}
+          />
+        </div>
+        
+        {/* Position indicator */}
+        <div className="flex justify-center mt-2">
+          <span className="text-xs text-muted-foreground">
+            Current Position
+          </span>
+        </div>
+        
+        {/* Confidence (optional, text only) */}
+        {confidence !== 'high' && (
+          <p className="text-xs text-muted-foreground/70 mt-2 text-center">
+            Position confidence: {confidence === 'moderate' ? 'Moderate' : 'Early'}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 ```
 
-### Changes
+### Visual Structure
 
-1. **Add contributor indicator** (thin left edge, desaturated colors):
+```text
+Position: Mid-Life
+
+▮▮▮▮▮▯▯▯▯
+        ▲
+   Current Position
+   
+Position confidence: Moderate
+```
+
+---
+
+## Part 4: System Watch Modifications
+
+**File:** `src/components/dashboard-v3/SystemWatch.tsx`
+
+### Changes (Sharpen and Demote)
+
+1. **Remove timeline language** (lines 177-180):
+   - Delete: `${primarySystem.remainingYears}–${primarySystem.remainingYears + 2} years until likely replacement`
+
+2. **Remove action buttons** (lines 191-212):
+   - Delete "View Details" and "Ask Habitta" buttons
+
+3. **One sentence only**:
+   - Keep: "Your {System} is entering its planning window."
+   - Remove all other content
+
+4. **Visibility rules**:
+   - Render ONLY if system is in planning/risk AND not already the Today's Focus source
+   - Max ONE instance
+
+### Modified Component (Sharpened)
+
 ```tsx
-{showContributorIndicator && contributorLevel && (
-  <div className={cn(
-    "w-1.5 h-full rounded-full mr-2 shrink-0",
-    contributorLevel === 'primary' && "bg-red-300/70",
-    contributorLevel === 'moderate' && "bg-amber-300/70",
-    contributorLevel === 'minor' && "bg-emerald-300/70"
-  )} />
-)}
+// Render only if triggered AND not already focus
+if (isAllClear || primarySystem?.key === focusSourceSystem) {
+  return null;
+}
+
+return (
+  <div className="text-sm text-muted-foreground py-2 px-1">
+    {primarySystem.name} is approaching a decision window.
+  </div>
+);
 ```
 
-2. **Rename tooltip labels** (lines 99-101):
-   - "Estimated" → "Based on permits, records, and regional averages"
+---
 
-3. **Rename legend labels** (currently in CapitalTimeline):
-   - "Most likely" → "Observed replacement window"
+## Part 5: Context Drawer (Collapsed by Default)
+
+**File:** `src/components/dashboard-v3/ContextDrawer.tsx`
+
+### Purpose
+Replaces: HomeHealthOutlook causality, HabittaThinking, cadence cards
+
+### Trigger Conditions (Collapsed by Default)
+Opens only when:
+- User clicks "Why?"
+- OR System Watch is visible
+- OR `changedSinceLastVisit === true`
+
+### Content Structure (Fixed Order)
+
+```tsx
+interface ContextDrawerProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  context: ContextDrawerData;
+  capitalAdvisory?: CapitalAdvisory;
+  focusState: FocusState;
+}
+
+export function ContextDrawer({
+  isOpen,
+  onOpenChange,
+  context,
+  capitalAdvisory,
+}: ContextDrawerProps) {
+  return (
+    <Collapsible open={isOpen} onOpenChange={onOpenChange}>
+      <CollapsibleContent>
+        <Card className="rounded-xl border-0 bg-muted/20">
+          <CardContent className="py-4 space-y-4">
+            {/* Section A: Why This Surfaced */}
+            <div className="space-y-1">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Why this surfaced
+              </h4>
+              <p className="text-sm text-foreground">
+                {context.rationale}
+              </p>
+            </div>
+            
+            {/* Section B: What We're Seeing (Signals) */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                What we're seeing
+              </h4>
+              <ul className="space-y-1.5">
+                {context.signals.slice(0, 3).map((signal, i) => (
+                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="mt-1.5 h-1 w-1 rounded-full bg-muted-foreground/40" />
+                    {signal}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            {/* Section C: Confidence */}
+            <div className="space-y-1">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Confidence
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                {getConfidenceDescription(context.confidenceLanguage)}
+              </p>
+            </div>
+            
+            {/* Section D: Capital Advisory (quiet tier) */}
+            {capitalAdvisory && (
+              <div className="pt-3 border-t">
+                <p className="text-sm text-muted-foreground italic">
+                  {capitalAdvisory.insight}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+```
 
 ---
 
-## Part 5: CapitalTimeline Modifications
+## Part 6: Narrative Arbitration Enhancement
 
-**File:** `src/components/CapitalTimeline.tsx`
+**File:** `src/lib/narrativePriority.ts`
 
-### Changes
+### New Functions
 
-1. **Rename header** (line 39):
-   - From: `Home Systems Timeline`
-   - To: `System Trajectories`
-
-2. **Update subhead** (if present):
-   - Add: "These systems shape how your home's health evolves over time."
-
-3. **Update legend** (lines 96-98):
-   - From: "Most likely"
-   - To: "Observed replacement window"
-
----
-
-## Part 6: Type System Updates
-
-**File:** `src/types/systemPrediction.ts`
-
-### HomeForecast Changes
-
-**Remove:**
 ```typescript
-// DELETE - Stewardship doesn't promise score stabilization
-withHabittaCare: {
-  score12mo: number;
-  score24mo: number;
-  stabilizers: string[];
-};
-```
+/**
+ * Arbitrate Today's Focus from system signals
+ * Priority: RISK > PLANNING > ADVISORY > STABLE
+ */
+export function arbitrateTodaysFocus(ctx: NarrativeContext): TodaysFocus {
+  // Priority 1: Risk threshold crossed
+  const highRiskSystem = ctx.systems.find(s => s.risk === 'HIGH');
+  if (highRiskSystem) {
+    return {
+      state: 'risk',
+      message: `${formatSystemDisplayName(highRiskSystem.key)} wear has crossed our attention threshold.`,
+      sourceSystem: highRiskSystem.key as SourceSystem,
+      changedSinceLastVisit: ctx.hasChangedSinceLastVisit ?? false,
+    };
+  }
+  
+  // Priority 2: Planning window
+  const planningSystem = ctx.systems.find(s => 
+    s.monthsToPlanning && s.monthsToPlanning < 36
+  );
+  if (planningSystem) {
+    return {
+      state: 'planning',
+      message: `Your ${formatSystemDisplayName(planningSystem.key).toLowerCase()} is entering its planning window.`,
+      sourceSystem: planningSystem.key as SourceSystem,
+      changedSinceLastVisit: ctx.hasChangedSinceLastVisit ?? false,
+    };
+  }
+  
+  // Priority 3: Market advisory (future)
+  // Priority 4: Stable
+  return {
+    state: 'stable',
+    message: 'Nothing requires attention right now.',
+    sourceSystem: null,
+    changedSinceLastVisit: false,
+  };
+}
 
-**Add:**
-```typescript
-// ADD - Explicit causality for unified module
-systemInfluences?: Array<{
-  systemKey: 'hvac' | 'roof' | 'water_heater';
-  contributorLevel: 'primary' | 'moderate' | 'minor';
-  lifecyclePosition: 'early' | 'mid' | 'late' | 'end';
-  installSource: 'permit' | 'inferred' | 'unknown';
-  hasRecentService: boolean;
-  climateContext?: 'south_florida' | 'coastal' | 'freeze_thaw' | 'temperate';
-}>;
+/**
+ * Resolve lifecycle position from system signals
+ * Position is derived from dominant system's lifecycle stage
+ */
+export function resolvePosition(ctx: NarrativeContext): PositionStripData {
+  const dominantSystem = getDominantLifecycleSystem(ctx.systems);
+  
+  // Derive position label from lifecycle stage
+  const positionScore = dominantSystem?.positionScore ?? 0.5;
+  const label: PositionLabel = 
+    positionScore < 0.33 ? 'Early' :
+    positionScore < 0.66 ? 'Mid-Life' : 'Late';
+  
+  // Derive confidence
+  const avgConfidence = ctx.systems.reduce((sum, s) => sum + s.confidence, 0) / 
+    Math.max(ctx.systems.length, 1);
+  const confidence: ConfidenceLanguage = 
+    avgConfidence >= 0.7 ? 'high' :
+    avgConfidence >= 0.4 ? 'moderate' : 'early';
+  
+  return {
+    label,
+    relativePosition: positionScore,
+    confidence,
+    sourceSystem: dominantSystem?.key as SourceSystem,
+  };
+}
+
+function getDominantLifecycleSystem(systems: SystemSignal[]): SystemSignal & { positionScore: number } | null {
+  if (systems.length === 0) return null;
+  
+  // Sort by urgency (lowest remaining years = highest position score)
+  const sorted = [...systems].sort((a, b) => {
+    const aMonths = a.monthsToPlanning ?? 120;
+    const bMonths = b.monthsToPlanning ?? 120;
+    return aMonths - bMonths;
+  });
+  
+  const dominant = sorted[0];
+  // Calculate position score (0 = just installed, 1 = end of life)
+  const months = dominant.monthsToPlanning ?? 120;
+  const positionScore = Math.max(0, Math.min(1, 1 - (months / 180)));
+  
+  return { ...dominant, positionScore };
+}
 ```
 
 ---
 
-## Part 7: MiddleColumn Integration
+## Part 7: Middle Column Layout (Restructured)
 
 **File:** `src/components/dashboard-v3/MiddleColumn.tsx`
 
-### Layout Change
+### New Layout Order
 
-**Current (lines 346-395):**
-```
-3. HomeHealthCard
-4. HabittaThinking
-5. CapitalTimeline
-```
-
-**New:**
-```
-3. HomeHealthOutlook (unified - replaces both HomeHealthCard and CapitalTimeline)
-4. HabittaThinking
+```text
+1. Enriching indicator (unchanged)
+2. Annual State of Home (conditional interrupt)
+3. Today's Focus (PRIMARY - always visible)
+4. Position Strip (ALWAYS VISIBLE)
+5. System Watch (conditional, sharpened)
+6. Context Drawer (collapsed by default)
+7. ChatDock (sticky)
 ```
 
-### Integration Code
+### Implementation Changes
+
+Replace lines 280-408 with:
 
 ```tsx
-import { HomeHealthOutlook, HomeHealthOutlookFallback } from "@/components/HomeHealthOutlook";
+return (
+  <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    <ScrollArea className="h-full" ref={scrollAreaRef}>
+      <div className="space-y-4 max-w-3xl mx-auto px-4 py-6">
+        {/* 0. Enriching indicator (transient) */}
+        {isEnriching && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            Still analyzing your home...
+          </div>
+        )}
 
-// In render:
-{/* 3. Home Health Outlook - Unified truth surface */}
-<section ref={healthCardRef}>
-  {forecastLoading || timelineLoading ? (
-    <Skeleton className="h-96 rounded-2xl" />
-  ) : homeForecast && capitalTimeline ? (
-    <HomeHealthOutlook
-      forecast={homeForecast}
-      capitalTimeline={capitalTimeline}
-      onSystemClick={handleSystemClick}
-    />
-  ) : (
-    <HomeHealthOutlookFallback 
-      score={getOverallScore()}
-      isHealthyState={isHealthyState}
-    />
-  )}
-</section>
+        {/* 1. Annual State of Home - interrupt only */}
+        {annualCard && (
+          <section>
+            <StateOfHomeReport data={annualCard} onDismiss={dismissAnnual} />
+          </section>
+        )}
+
+        {/* 2. Today's Focus - PRIMARY AUTHORITY */}
+        <section>
+          <TodaysFocusCard
+            focus={todaysFocus}
+            onContextExpand={() => setContextOpen(true)}
+          />
+        </section>
+
+        {/* 3. Position Strip - ALWAYS VISIBLE */}
+        <section>
+          <PositionStrip
+            label={position.label}
+            relativePosition={position.relativePosition}
+            confidence={position.confidence}
+            sourceSystem={position.sourceSystem}
+            onExpand={() => setContextOpen(true)}
+          />
+        </section>
+
+        {/* 4. System Watch - conditional, sharpened */}
+        {shouldShowSystemWatch && (
+          <section>
+            <SystemWatchInline
+              system={primaryPlanningSystem}
+            />
+          </section>
+        )}
+
+        {/* 5. Context Drawer - collapsed by default */}
+        <section>
+          <ContextDrawer
+            isOpen={contextOpen}
+            onOpenChange={setContextOpen}
+            context={contextDrawerData}
+            capitalAdvisory={capitalAdvisory}
+            focusState={todaysFocus.state}
+          />
+        </section>
+
+        {/* 6. ChatDock - sticky, pre-contextualized */}
+        <div className="sticky bottom-4">
+          <ChatDock
+            propertyId={propertyId}
+            isExpanded={chatExpanded}
+            onExpandChange={onChatExpandChange}
+            todaysFocus={todaysFocus}
+            // ... other props
+          />
+        </div>
+      </div>
+    </ScrollArea>
+  </div>
+);
 ```
 
 ---
 
-## Part 8: DualPathForecast Removal
+## Part 8: ChatDock Context Injection
 
-**File:** `src/components/home-health/DualPathForecast.tsx` — **DELETE**
+**File:** `src/components/dashboard-v3/ChatDock.tsx`
 
-**File:** `src/components/home-health/index.ts` — Remove export:
+### New Prop
+
 ```typescript
-// DELETE this line:
-export { DualPathForecast } from './DualPathForecast';
+interface ChatDockProps {
+  // ... existing props
+  todaysFocus?: TodaysFocus;  // NEW: For prompt injection
+}
+```
+
+### Prompt Injection Logic
+
+```typescript
+const getPlaceholder = () => {
+  if (todaysFocus?.state === 'stable') {
+    return "You're reviewing your home while everything is stable. What would you like to explore?";
+  }
+  if (todaysFocus?.sourceSystem) {
+    return `Ask about your ${formatSystemName(todaysFocus.sourceSystem)}...`;
+  }
+  return "What would you like to understand better?";
+};
+```
+
+### Updated Empty State Copy
+
+```tsx
+{messages.length === 0 && (
+  <div className="text-center py-8 text-muted-foreground">
+    <p className="text-sm">
+      {todaysFocus?.state === 'stable'
+        ? "Your home is stable. What would you like to explore?"
+        : "What are you thinking about regarding your home?"
+      }
+    </p>
+  </div>
+)}
 ```
 
 ---
 
-## Part 9: HomeHealthCard Simplification
+## Component Elimination Summary
 
-**File:** `src/components/HomeHealthCard.tsx`
-
-### Changes
-
-1. **Remove DualPathForecast import** (line 9)
-2. **Remove DualPathForecast rendering** (lines 166-170)
-3. **Remove withHabittaCare references** (lines 75, 155-163)
-4. **Keep LegacyHomeHealthCard** for backward compatibility only
-5. **Add deprecation notice** in component docstring
-
-The component becomes a legacy fallback only, eventually to be removed.
+| Component | Action | Reason |
+|-----------|--------|--------|
+| `HomeHealthOutlook` | **Remove from main flow** | Position + Focus supersede; keep for detail pages |
+| `HabittaThinking` | **Remove** | Merged into Context Drawer |
+| `MaintenanceRoadmap` | **Remove from main flow** | Replaced by Position Strip |
+| `MonthlyConfirmationCard` | **Move to Context Drawer** | Not primary signal |
+| `QuarterlyPositionCard` | **Move to Context Drawer** | Not primary signal |
+| `OptionalAdvantageCard` | **Move to Context Drawer** | Capital advisory belongs in quiet tier |
 
 ---
 
-## Product Doctrine (Immutable — Enforced by Code)
+## Copy Contract Enforcement
 
-### Cost Range Location Rule (QC Addition)
+### Litmus Test
+> "Would I trust this sentence if I were making a six-figure decision about my home?"
 
-> **System Trajectories is the ONLY place cost ranges appear.**
-> 
-> Never in:
-> - Score section
-> - Causality section
-> - System Watch
-> - Alerts
-> 
-> Costs belong after understanding, not before.
-> This keeps Habitta from drifting into "financial anxiety dashboard."
+### Voice Identity
+- Steward, not coach
+- Advisor, not dashboard
+- Professional observer, not narrator
 
-### Score Semantics
+### Position Strip Copy Rules
+- **Allowed:** "Position: Mid-Life", "Position: Late Stage"
+- **Forbidden:** "Years remaining", "Replacement soon", "End of life"
 
-> **X → Y means:** "If current assumptions remain unchanged, this is the expected directional shift."
-> 
-> It does NOT mean: Failure, Neglect, Urgency, or Loss caused by cancellation.
-
-### Contributor Levels
-
-> **Contributor levels are interpretive, not mathematical.**
-> 
-> Never show point deltas to users.
-> Internally, calculate them. Externally, don't.
-
-### The Screenshot Test
-
-> A user should be able to screenshot this module and send it to their spouse, contractor, realtor, or inspector — and no one rolls their eyes.
+### Today's Focus Copy Rules
+- **Allowed:** Declarative, calm, judgment-based
+- **Forbidden:** Dates, percentages, "You should" language
 
 ---
 
 ## Acceptance Tests
 
-### Score Layer
-- [ ] Shows score trajectory without time horizon (X → Y)
-- [ ] Arrow indicates direction without blame
-- [ ] Subtext mentions "system age, climate exposure, and maintenance visibility"
-- [ ] No "With Habitta" / "If untracked" comparison visible
-- [ ] No costs shown in score section
+### Today's Focus
+- [ ] Always visible, never hidden
+- [ ] Exactly one sentence
+- [ ] No buttons when state === 'stable'
+- [ ] No charts, percentages, or dates
 
-### Causality Layer
-- [ ] Title is "What's influencing this outlook"
-- [ ] Max 3 systems shown, ordered by contributor level
-- [ ] Each system has plain English description
-- [ ] No timelines in causality section
-- [ ] No costs in causality section
-- [ ] No alarmist verbs ("failing", "urgent", "critical")
+### Position Strip
+- [ ] Always visible
+- [ ] Single horizontal bar with one marker
+- [ ] No numbers, dates, or milestones
+- [ ] Confidence shown as text only (not numeric)
+- [ ] No "Years remaining" language
 
-### Trajectories Layer
-- [ ] Section titled "System Trajectories" (not "Timeline")
-- [ ] Subhead: "These systems shape how your home's health evolves over time"
-- [ ] Each row has contributor indicator (desaturated dot on left)
-- [ ] Indicator colors: clay = primary, ochre = moderate, sage = minor
-- [ ] Cost ranges appear ONLY here
-- [ ] No point math shown ("-4 points")
-- [ ] "Estimated" → "Based on permits, records, and regional averages"
-- [ ] "Most likely" → "Observed replacement window"
+### System Watch
+- [ ] Max one system at a time
+- [ ] Max one sentence
+- [ ] Hidden when nothing triggered
+- [ ] No timelines, buttons, or recommendations
 
-### Fallback
-- [ ] Shows score without trajectory
-- [ ] Explicitly states "Limited information available"
-- [ ] Does NOT invent causality
-- [ ] Does NOT show system trajectories
+### Context Drawer
+- [ ] Collapsed by default
+- [ ] Opens on "Why?" click
+- [ ] Fixed section order: Rationale → Signals → Confidence → Capital
 
-### Interaction
-- [ ] Clicking system shows "Why this matters" explanation
-- [ ] Explanation mentions age and verification status
-- [ ] Optional "stabilize" hint appears when relevant
+### Copy Contract
+- [ ] No exclamation points anywhere
+- [ ] No "You should", "We recommend", "Don't worry"
+- [ ] No percentages shown to users
 
-### Banned Phrases
-- [ ] "If left untracked" — NOWHERE
-- [ ] "Without Habitta" — NOWHERE
-- [ ] "With Habitta" — NOWHERE
-- [ ] "24-Month Outlook" — NOWHERE
-- [ ] "-X points" — NOWHERE
+---
+
+## Strategic Outcome
+
+This architecture delivers:
+- **Psychological switching cost** — users feel watched over
+- **Authority posture** — less talking, more judgment
+- **Annual pricing leverage** — stewardship > utility
+- **Position clarity** — instant orientation without anxiety
 
