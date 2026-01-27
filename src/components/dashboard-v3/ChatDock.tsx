@@ -19,6 +19,7 @@ import {
   getModeBehavior,
 } from "@/lib/chatModeCopy";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
+import { ChatPhotoUpload } from "./ChatPhotoUpload";
 
 // System display names for context-aware placeholder (legacy fallback)
 const SYSTEM_NAMES: Record<string, string> = {
@@ -81,6 +82,7 @@ export function ChatDock({
   systemsWithLowConfidence = [],
 }: ChatDockProps) {
   const [input, setInput] = useState("");
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasShownOpening, setHasShownOpening] = useState(false);
@@ -323,12 +325,13 @@ export function ChatDock({
               <button 
                 className="flex items-center gap-1 hover:text-foreground transition-colors"
                 onClick={() => {
-                  // Navigate to photo capture or trigger modal
-                  // This links to existing photo capture flow
+                  // Scroll down to input and trigger photo upload
+                  inputRef.current?.focus();
+                  // The ChatPhotoUpload button is now visible in the input area
                 }}
               >
                 <Camera className="h-3 w-3" />
-                <span>Improve accuracy</span>
+                <span>Improve accuracy with a photo</span>
               </button>
             </div>
           )}
@@ -338,6 +341,15 @@ export function ChatDock({
       {/* Input - always visible */}
       <div className="p-3 border-t shrink-0">
         <div className="flex gap-2">
+          {/* Photo upload button */}
+          <ChatPhotoUpload
+            homeId={propertyId}
+            onPhotoReady={(photoUrl) => {
+              // Send photo URL as message for AI analysis
+              sendMessage(`[Photo uploaded: ${photoUrl}] Please analyze this photo and help me understand what you can see.`);
+            }}
+            disabled={loading}
+          />
           <Input
             ref={inputRef}
             value={input}
