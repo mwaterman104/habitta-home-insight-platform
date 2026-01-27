@@ -2574,13 +2574,11 @@ serve(async (req) => {
     
     // For user-authenticated calls, validate ownership
     if (isUserAuth && propertyId) {
-      // Create a user-scoped client with the authorization header
-      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-        global: { headers: { Authorization: authHeader! } }
-      });
+      // Extract token and validate it by passing directly to getUser()
+      const token = authHeader!.replace('Bearer ', '');
       
-      // Validate the token by calling getUser with the user-scoped client
-      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      // Validate the token by passing it directly to getUser (not relying on session)
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       
       if (userError || !user) {
         console.error('[intelligence-engine] Token validation failed:', userError?.message);
