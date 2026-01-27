@@ -1,667 +1,671 @@
 
 
-# System Update Contract — Corrected Implementation
+# Chat Spec V1 — Amended Implementation Plan
 
-## QA Corrections Applied
+## QA Corrections Summary
 
-This plan incorporates all required corrections from the executive QA review:
+This amended plan incorporates all critical corrections from the executive QA review:
 
-| Issue | Status | Fix Applied |
-|-------|--------|-------------|
-| **Critical #1**: Provenance storage inconsistent | **Fixed** | Single canonical location: `field_provenance` column |
-| **Critical #2**: Provenance read path wrong | **Fixed** | Read/write from dedicated `field_provenance` column |
-| **Critical #3**: `wasOverwrite` undefined | **Fixed** | Explicitly tracked in `resolveFieldUpdates` |
-| **Medium #4**: Confidence triggers too easily | **Fixed** | Minimum delta gate (0.05) added |
-| **Medium #5**: Held updates lost | **Noted** | Staging table optional for v1, architecture supports future |
+| Issue | Type | Fix Applied |
+|-------|------|-------------|
+| Mode priority order wrong | **Critical** | Baseline Establishment now outranks Planning Window |
+| Elevated trigger too loose | **Critical** | Requires `deviation_detected` flag, not just time |
+| Confidence under-specified | **Critical** | Explicit rules for what changes confidence |
+| Interpretive mode needs timeout | **Subtle Risk** | Hard limit of 1 explanation, auto-return |
+| Planning window needs memory | **Subtle Risk** | `planning_window_acknowledged_at` persistence |
+| Baseline surface needs "Why?" affordance | **Subtle Risk** | Per-system trigger for Interpretive mode |
 
 ---
 
-## Schema Migration
+## Part 1: Corrected Chat Mode System
 
-Add dedicated `field_provenance` column to `home_systems` table for canonical provenance storage.
+### Mode Priority Order (Critical Fix #1)
 
-```sql
--- Add field_provenance as top-level column (not nested in source)
-ALTER TABLE home_systems
-ADD COLUMN IF NOT EXISTS field_provenance jsonb DEFAULT '{}'::jsonb;
+The mode priority is restructured to ensure **baseline gates advice**:
 
--- Add convenience column for overall confidence score
-ALTER TABLE home_systems
-ADD COLUMN IF NOT EXISTS confidence_score numeric DEFAULT 0;
-
--- Add last_updated_at for audit
-ALTER TABLE home_systems
-ADD COLUMN IF NOT EXISTS last_updated_at timestamptz DEFAULT now();
-
--- Comment for clarity
-COMMENT ON COLUMN home_systems.field_provenance IS 
-  'Canonical field-level provenance. Each key (brand, model, etc.) maps to {source, confidence, updated_at}. 
-   This is the ONLY location for provenance data - do not use source.field_provenance.';
+```text
+PRIORITY ORDER (highest to lowest):
+1. Elevated Attention    (safety exception - but gates behavior by confidence)
+2. Baseline Establishment (incomplete confidence blocks advisory)
+3. Planning Window Advisory
+4. Interpretive          (user-triggered, ephemeral)
+5. Silent Steward        (default)
 ```
 
-**Rationale**: This fixes Critical #1 and #2 by creating a single, queryable, predictable location for provenance.
+**Key Rule**: Elevated Attention may override Baseline only to **confirm facts**, not recommend action. If confidence is low, Elevated mode asks questions, not gives advice.
+
+### Files to Modify
+
+**File:** `src/types/chatMode.ts`
+
+Replace current 4-mode system with 5-mode spec-compliant system:
+
+```typescript
+export type ChatMode = 
+  | 'silent_steward'              // Default: All stable, waits for user
+  | 'baseline_establishment'      // New user or data gaps
+  | 'interpretive'                // User asks "why/how" (ephemeral)
+  | 'planning_window_advisory'    // System aging, preparation focus
+  | 'elevated_attention';         // Deviation detected, more directive
+
+/**
+ * System State - Each system must be in exactly one state.
+ * No compound states. No "Stable but..." language.
+ */
+export type SystemState = 
+  | 'stable'           // Within expected range
+  | 'planning_window'  // Aging curve intersects threshold
+  | 'elevated'         // Deviation detected (NOT just time)
+  | 'data_gap';        // Confidence below threshold
+```
+
+**File:** `src/lib/chatModeSelector.ts`
+
+Corrected mode derivation with proper priority:
+
+```typescript
+export function determineChatMode(ctx: ChatModeInput): ChatMode {
+  const { systemConfidence, criticalSystemsCoverage, systems } = ctx;
+  
+  // Baseline confidence gate (Critical Fix #1)
+  const isBaselineIncomplete = 
+    systemConfidence === 'Early' || 
+    criticalSystemsCoverage < 0.5;
+
+  // Check for elevated deviation (Critical Fix #2 - requires actual deviation)
+  const hasElevatedDeviation = systems?.some(s => 
+    s.deviation_detected === true || 
+    (s.months_remaining !== undefined && 
+     s.months_remaining < ELEVATED_MONTHS && 
+     s.anomaly_flags?.length > 0)
+  );
+
+  // Priority 1: Elevated Attention (safety exception)
+  // BUT: If baseline incomplete, Elevated mode only asks questions
+  if (hasElevatedDeviation) {
+    return 'elevated_attention';
+    // Note: The Elevated mode BEHAVIOR is constrained by isBaselineIncomplete
+  }
+
+  // Priority 2: Baseline Establishment (gates advisory)
+  if (isBaselineIncomplete) {
+    return 'baseline_establishment';
+  }
+
+  // Priority 3: Planning Window (only after baseline complete)
+  const hasPlanningWindow = systems?.some(s => 
+    s.state === 'planning_window' || 
+    (s.months_remaining !== undefined && s.months_remaining < PLANNING_MONTHS)
+  );
+  if (hasPlanningWindow) {
+    return 'planning_window_advisory';
+  }
+
+  // Priority 4: Interpretive (triggered by user action, handled separately)
+  // Priority 5: Silent Steward (default)
+  return 'silent_steward';
+}
+```
 
 ---
 
-## Files Summary
+## Part 2: Elevated Trigger Fix (Critical #2)
+
+### Problem
+
+Current code: `months < 12 → elevated`
+
+This conflates **aging** with **deviation**. A water heater being old is planning. A water heater behaving oddly is elevated.
+
+### Solution
+
+Add `deviation_detected` field to system prediction data and require it for Elevated state.
+
+**File:** `src/types/systemState.ts` (NEW)
+
+```typescript
+/**
+ * System State Model
+ * 
+ * DOCTRINE: Elevated requires deviation, not just time.
+ */
+
+export interface SystemStateModel {
+  key: string;
+  displayName: string;
+  state: 'stable' | 'planning_window' | 'elevated' | 'data_gap';
+  confidence: number;
+  monthsRemaining?: number;
+  
+  // Critical Fix #2: Required for Elevated state
+  deviation_detected: boolean;
+  anomaly_flags?: string[];  // e.g., ['unusual_runtime', 'efficiency_drop']
+  
+  lastStateChange?: Date;
+}
+
+// Thresholds
+export const PLANNING_MONTHS = 36;    // <3 years
+export const ELEVATED_MONTHS = 12;    // <1 year AND deviation
+export const DATA_GAP_CONFIDENCE = 0.4;
+
+/**
+ * Derive system state from prediction data
+ * Critical Fix #2: Elevated requires deviation, not just time
+ */
+export function deriveSystemState(prediction: SystemPrediction): SystemStateModel {
+  const months = prediction.lifespan?.years_remaining_p50 
+    ? prediction.lifespan.years_remaining_p50 * 12 
+    : undefined;
+  const confidence = prediction.lifespan?.confidence_0_1 ?? 0.5;
+  
+  // Extract deviation signals from prediction
+  const deviation_detected = prediction.deviation_detected ?? false;
+  const anomaly_flags = prediction.anomaly_flags ?? [];
+  
+  // Data Gap: Confidence too low
+  if (confidence < DATA_GAP_CONFIDENCE) {
+    return { 
+      state: 'data_gap', 
+      deviation_detected: false,
+      anomaly_flags: [],
+      ...
+    };
+  }
+  
+  // Elevated: Deviation detected OR (time < threshold AND anomaly present)
+  // Critical Fix #2: NOT just time
+  if (deviation_detected || 
+      (months && months < ELEVATED_MONTHS && anomaly_flags.length > 0)) {
+    return { 
+      state: 'elevated', 
+      deviation_detected: true,
+      anomaly_flags,
+      ...
+    };
+  }
+  
+  // Planning Window: Time-based only (no deviation)
+  if (months && months < PLANNING_MONTHS) {
+    return { state: 'planning_window', deviation_detected: false, ... };
+  }
+  
+  // Stable: Default
+  return { state: 'stable', deviation_detected: false, ... };
+}
+```
+
+**File:** `src/types/systemPrediction.ts` (Modify)
+
+Add deviation fields to SystemPrediction:
+
+```typescript
+export interface SystemPrediction {
+  // ... existing fields
+  
+  /**
+   * Critical Fix #2: Deviation detection for Elevated state
+   * True only when actual deviation observed, not just aging
+   */
+  deviation_detected?: boolean;
+  
+  /**
+   * Specific anomaly flags that triggered deviation
+   * e.g., ['unusual_runtime', 'efficiency_drop', 'unexpected_noise']
+   */
+  anomaly_flags?: string[];
+}
+```
+
+---
+
+## Part 3: Confidence Rules (Critical #3)
+
+### Problem
+
+Confidence is referenced everywhere but never defined what changes it. This breaks determinism.
+
+### Solution
+
+Create explicit, auditable confidence rules.
+
+**File:** `src/lib/confidenceRules.ts` (NEW)
+
+```typescript
+/**
+ * Confidence Rules - Explicit, Deterministic
+ * 
+ * DOCTRINE: Confidence may only change through these explicit paths.
+ * No background magic. No implicit derivation.
+ * 
+ * Critical Fix #3: Define exactly what changes confidence.
+ */
+
+export type ConfidenceChangeReason = 
+  | 'user_provided_data'
+  | 'system_state_confirmed'
+  | 'time_decay'
+  | 'external_data_corroboration'
+  | 'contradictory_signal';
+
+export interface ConfidenceChange {
+  reason: ConfidenceChangeReason;
+  direction: 'increase' | 'decrease' | 'unchanged';
+  delta: number;
+  timestamp: string;
+}
+
+/**
+ * CONFIDENCE INCREASE RULES (Explicit)
+ * 
+ * Confidence increases only when:
+ * 1. User confirms system details (photo, manual entry)
+ * 2. System state remains stable over time (confirmation via no-change)
+ * 3. External data corroborates prediction (permit matches estimate)
+ */
+export const CONFIDENCE_INCREASE_TRIGGERS: Record<string, number> = {
+  'user_photo_analysis': 0.15,
+  'user_manual_confirmation': 0.20,
+  'permit_verification': 0.25,
+  'quarterly_stable_confirmation': 0.01,
+  'external_data_match': 0.10,
+};
+
+/**
+ * CONFIDENCE DECREASE RULES (Explicit)
+ * 
+ * Confidence decays when:
+ * 1. Data gaps persist beyond threshold
+ * 2. Contradictory signals appear (photo ≠ permit)
+ * 3. Time passes without confirmation (slow decay)
+ */
+export const CONFIDENCE_DECREASE_TRIGGERS: Record<string, number> = {
+  'data_gap_persists_30d': -0.05,
+  'contradictory_signal': -0.10,
+  'no_confirmation_90d': -0.02,
+};
+
+/**
+ * Apply confidence change with explicit logging
+ */
+export function applyConfidenceChange(
+  currentConfidence: number,
+  reason: ConfidenceChangeReason,
+  delta: number
+): { newConfidence: number; change: ConfidenceChange } {
+  const newConfidence = Math.max(0, Math.min(1, currentConfidence + delta));
+  
+  return {
+    newConfidence,
+    change: {
+      reason,
+      direction: delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'unchanged',
+      delta,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+```
+
+---
+
+## Part 4: Interpretive Mode Timeout (Subtle Risk #1)
+
+### Problem
+
+"Exit: After explanation completes" is ambiguous. Risk of "lecture mode."
+
+### Solution
+
+Hard limit: Interpretive mode handles exactly ONE explanation, then auto-returns.
+
+**File:** `src/lib/chatGovernance.ts`
+
+```typescript
+/**
+ * Message Frequency Rules (Hard Limits)
+ */
+export const GOVERNANCE_RULES = {
+  /** Max auto-initiations per session */
+  maxAutoInitiationsPerSession: 1,
+  
+  /** Max consecutive agent messages without user input */
+  maxConsecutiveAgentMessages: 3,
+  
+  /** Cooldown between same trigger type */
+  cooldownBetweenSameTrigger: 24 * 60 * 60 * 1000, // 24 hours
+  
+  /** Subtle Risk #1 Fix: Max interpretive messages before auto-return */
+  maxInterpretiveMessages: 1,
+};
+
+/**
+ * Chat Governance State
+ */
+export interface ChatGovernanceState {
+  autoInitiationsThisSession: number;
+  consecutiveAgentMessages: number;
+  interpretiveMessagesCount: number;
+  previousMode: ChatMode | null;
+}
+
+/**
+ * Check if interpretive mode should auto-return
+ * Subtle Risk #1 Fix: Hard timeout after 1 explanation
+ */
+export function shouldExitInterpretive(state: ChatGovernanceState): boolean {
+  return state.interpretiveMessagesCount >= GOVERNANCE_RULES.maxInterpretiveMessages;
+}
+```
+
+**File:** `src/hooks/useChatGovernance.ts` (NEW)
+
+```typescript
+/**
+ * Chat Governance Hook
+ * Tracks message limits and mode transitions
+ */
+export function useChatGovernance(chatMode: ChatMode) {
+  const [state, setState] = useState<ChatGovernanceState>({
+    autoInitiationsThisSession: 0,
+    consecutiveAgentMessages: 0,
+    interpretiveMessagesCount: 0,
+    previousMode: null,
+  });
+  
+  // Track mode changes
+  useEffect(() => {
+    if (chatMode === 'interpretive') {
+      // Store previous mode for return
+      setState(prev => ({ 
+        ...prev, 
+        previousMode: prev.previousMode ?? chatMode,
+        interpretiveMessagesCount: 0,
+      }));
+    }
+  }, [chatMode]);
+  
+  // Check if should exit interpretive
+  const shouldExitInterpretive = state.interpretiveMessagesCount >= 1;
+  const returnMode = state.previousMode ?? 'silent_steward';
+  
+  return { state, shouldExitInterpretive, returnMode };
+}
+```
+
+---
+
+## Part 5: Planning Window Acknowledgment (Subtle Risk #2)
+
+### Problem
+
+"Once per entry into window" but no persistence. Users who log in frequently hear the same message.
+
+### Solution
+
+Persist acknowledgment timestamp per system.
+
+**File:** `src/lib/chatGovernance.ts`
+
+```typescript
+/**
+ * Planning Window Acknowledgment Persistence
+ * Subtle Risk #2 Fix: Remember when planning window was acknowledged
+ */
+
+export interface PlanningWindowAcknowledgment {
+  systemKey: string;
+  acknowledgedAt: string;  // ISO timestamp
+  windowEnteredAt: string; // ISO timestamp
+}
+
+const PLANNING_ACK_KEY = 'habitta_planning_ack';
+
+export function getPlanningAcknowledgments(): PlanningWindowAcknowledgment[] {
+  try {
+    const stored = localStorage.getItem(PLANNING_ACK_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function acknowledgePlanningWindow(systemKey: string): void {
+  try {
+    const acks = getPlanningAcknowledgments();
+    const existing = acks.findIndex(a => a.systemKey === systemKey);
+    
+    const newAck: PlanningWindowAcknowledgment = {
+      systemKey,
+      acknowledgedAt: new Date().toISOString(),
+      windowEnteredAt: new Date().toISOString(),
+    };
+    
+    if (existing >= 0) {
+      acks[existing] = newAck;
+    } else {
+      acks.push(newAck);
+    }
+    
+    localStorage.setItem(PLANNING_ACK_KEY, JSON.stringify(acks));
+  } catch {
+    // Silent failure
+  }
+}
+
+export function wasPlanningWindowAcknowledged(systemKey: string): boolean {
+  const acks = getPlanningAcknowledgments();
+  return acks.some(a => a.systemKey === systemKey);
+}
+```
+
+---
+
+## Part 6: Baseline Surface with "Why?" Affordance (Subtle Risk #3)
+
+### Problem
+
+Tooltips removed (correct), but users need explanation path.
+
+### Solution
+
+Per-system "Why?" affordance that triggers Interpretive mode.
+
+**File:** `src/components/dashboard-v3/BaselineSurface.tsx` (NEW)
+
+```typescript
+/**
+ * Baseline Surface - Evidence Layer
+ * 
+ * Always visible, non-interactive except for "Why?" triggers.
+ * Visual rules:
+ * - No tooltips (chat explains)
+ * - No green (green = "done", homes never are)
+ * - No motion except on state change
+ */
+
+interface BaselineSurfaceProps {
+  lifecyclePosition: 'Early' | 'Mid-Life' | 'Late';
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  systems: SystemStateModel[];
+  onWhyClick: (systemKey: string) => void;  // Triggers Interpretive mode
+}
+
+export function BaselineSurface({
+  lifecyclePosition,
+  confidenceLevel,
+  systems,
+  onWhyClick,
+}: BaselineSurfaceProps) {
+  return (
+    <div className="space-y-4">
+      {/* Home Baseline Summary */}
+      <div className="flex justify-between text-sm text-muted-foreground">
+        <span>Lifecycle: {lifecyclePosition}</span>
+        <span>Confidence: {confidenceLevel}</span>
+      </div>
+      
+      {/* Systems Timeline */}
+      <div className="space-y-2">
+        {systems.map(system => (
+          <div key={system.key} className="flex items-center gap-3">
+            {/* System label */}
+            <span className="w-24 text-sm truncate">{system.displayName}</span>
+            
+            {/* Timeline bar */}
+            <div className="flex-1 h-2 bg-muted rounded-full relative">
+              <div 
+                className={cn(
+                  "absolute top-0 left-0 h-full rounded-full",
+                  getStateColor(system.state)
+                )}
+                style={{ width: `${getTimelinePosition(system)}%` }}
+              />
+              {/* Position marker */}
+              <div 
+                className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-foreground"
+                style={{ left: `${getTimelinePosition(system)}%` }}
+              />
+            </div>
+            
+            {/* State label + Why? */}
+            <span className={cn(
+              "text-xs w-28 flex items-center gap-1",
+              getStateTextColor(system.state)
+            )}>
+              {getStateLabel(system.state)}
+              {/* Subtle Risk #3 Fix: "Why?" affordance */}
+              <button 
+                onClick={() => onWhyClick(system.key)}
+                className="text-muted-foreground hover:text-foreground text-xs"
+              >
+                Why?
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Color mapping (no green)
+function getStateColor(state: SystemState): string {
+  switch (state) {
+    case 'stable': return 'bg-muted-foreground/20';
+    case 'planning_window': return 'bg-amber-500/30';
+    case 'elevated': return 'bg-red-500/30';
+    case 'data_gap': return 'bg-muted/50';
+  }
+}
+```
+
+---
+
+## Part 7: Elevated Mode Behavior Constraint
+
+### Key Doctrine
+
+Elevated Attention may override Baseline only to **confirm facts**, not recommend action.
+
+**File:** `src/lib/chatModeCopy.ts` (Modify)
+
+```typescript
+/**
+ * Elevated Mode Behavior - Constrained by Confidence
+ * 
+ * If baseline incomplete:
+ *   - Elevated mode ASKS questions
+ *   - Does NOT give recommendations
+ *   - Tone: "I'm seeing something unusual, can you confirm X?"
+ * 
+ * If baseline complete:
+ *   - Elevated mode is DIRECTIVE
+ *   - Clear next steps allowed
+ *   - Tone: "This is outside normal range. I recommend X."
+ */
+
+export interface ElevatedModeBehavior {
+  canRecommend: boolean;
+  canGiveTimelines: boolean;
+  canMentionCosts: boolean;
+  toneDirective: 'questioning' | 'advisory';
+}
+
+export function getElevatedBehavior(
+  isBaselineComplete: boolean
+): ElevatedModeBehavior {
+  if (!isBaselineComplete) {
+    // Baseline incomplete: Elevated asks questions only
+    return {
+      canRecommend: false,
+      canGiveTimelines: false,
+      canMentionCosts: false,
+      toneDirective: 'questioning',
+    };
+  }
+  
+  // Baseline complete: Elevated is directive
+  return {
+    canRecommend: true,
+    canGiveTimelines: true,
+    canMentionCosts: true,
+    toneDirective: 'advisory',
+  };
+}
+```
+
+---
+
+## Part 8: Updated File Summary
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/systemUpdates/authority.ts` | **Create** | Authority rank definitions |
-| `src/lib/systemUpdates/resolveFieldUpdates.ts` | **Create** | Field-level authority resolution with `wasOverwrite` tracking |
-| `src/lib/systemUpdates/confidenceCalculator.ts` | **Create** | Deterministic confidence scoring with delta gate |
-| `src/lib/systemUpdates/chatSummaryBuilder.ts` | **Create** | Chat-safe output formatting |
-| `src/lib/systemUpdates/applySystemUpdate.ts` | **Create** | Core enforcement gate |
-| `src/lib/systemUpdates/index.ts` | **Create** | Module exports |
-| `src/hooks/useHomeSystems.ts` | **Modify** | Add `field_provenance` support to interface |
-| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Wire photo analysis to `applySystemUpdate` |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass system update callback |
-| `src/pages/DashboardV3.tsx` | **Modify** | Pass `useHomeSystems` refetch to MiddleColumn |
+| `src/types/chatMode.ts` | **Modify** | 5-mode system with correct types |
+| `src/types/systemState.ts` | **Create** | Explicit system state model with deviation_detected |
+| `src/types/systemPrediction.ts` | **Modify** | Add deviation_detected and anomaly_flags |
+| `src/lib/chatModeSelector.ts` | **Modify** | Corrected priority order |
+| `src/lib/confidenceRules.ts` | **Create** | Explicit confidence change rules |
+| `src/lib/chatGovernance.ts` | **Modify** | Add interpretive timeout + planning acknowledgment |
+| `src/lib/chatModeCopy.ts` | **Modify** | Add elevated behavior constraints |
+| `src/hooks/useChatGovernance.ts` | **Create** | Governance state hook |
+| `src/hooks/useChatMode.ts` | **Modify** | Support 5-mode system |
+| `src/components/dashboard-v3/BaselineSurface.tsx` | **Create** | Evidence layer with "Why?" affordance |
+| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Visual redesign + mode behaviors |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | New layout with BaselineSurface |
 
 ---
 
-## Part 1: Authority Definitions
-
-**File:** `src/lib/systemUpdates/authority.ts`
-
-```typescript
-/**
- * Authority Rank Definitions
- * 
- * Higher authority never gets overwritten by lower authority.
- * This is the spine of the system update contract.
- */
-
-export type SystemUpdateSource =
-  | 'professional_override'  // Pro verification (future)
-  | 'user_confirmed'         // User explicitly confirmed/corrected
-  | 'photo_analysis'         // AI vision extraction
-  | 'permit_record'          // Public permit data
-  | 'inferred';              // Heuristic/age-based estimation
-
-export const AUTHORITY_RANK: Record<SystemUpdateSource, number> = {
-  professional_override: 5,
-  user_confirmed: 4,
-  photo_analysis: 3,
-  permit_record: 2,
-  inferred: 1,
-};
-
-export interface FieldProvenance {
-  source: SystemUpdateSource;
-  confidence: number;
-  updated_at: string;
-}
-```
-
----
-
-## Part 2: Field Resolution with wasOverwrite (Critical #3 Fix)
-
-**File:** `src/lib/systemUpdates/resolveFieldUpdates.ts`
-
-```typescript
-import { AUTHORITY_RANK, type SystemUpdateSource, type FieldProvenance } from './authority';
-
-interface ResolveInput {
-  existingFields: Record<string, any>;
-  existingProvenance: Record<string, FieldProvenance>;
-  extractedData: Record<string, any>;
-  source: SystemUpdateSource;
-  confidenceSignal: {
-    visual_certainty?: number;
-    source_reliability: number;
-  };
-}
-
-interface ResolveResult {
-  updateApplied: boolean;
-  wasOverwrite: boolean;  // Critical #3: Explicitly tracked
-  requiresConfirmation: boolean;
-  updatedFields: Record<string, any>;
-  updatedProvenance: Record<string, FieldProvenance>;
-  fieldsUpdated: string[];
-  fieldsHeld: string[];
-  confidenceDelta: number;
-  newConfidence: number;
-}
-
-export function resolveFieldUpdates(input: ResolveInput): ResolveResult {
-  const { existingFields, existingProvenance, extractedData, source, confidenceSignal } = input;
-  
-  const updatedFields: Record<string, any> = {};
-  const updatedProvenance: Record<string, FieldProvenance> = { ...existingProvenance };
-  const fieldsUpdated: string[] = [];
-  const fieldsHeld: string[] = [];
-  
-  let applied = false;
-  let wasOverwrite = false;  // Critical #3: Track if we're overwriting existing data
-  let held = false;
-
-  const incomingRank = AUTHORITY_RANK[source];
-  const incomingConfidence = confidenceSignal.visual_certainty ?? confidenceSignal.source_reliability;
-
-  Object.entries(extractedData).forEach(([field, value]) => {
-    if (value === undefined || value === null) return;
-
-    const current = existingProvenance[field];
-    const currentRank = current ? AUTHORITY_RANK[current.source] : 0;
-    const existingValue = existingFields[field];
-
-    if (!current || incomingRank > currentRank) {
-      // Accept: new field or higher authority
-      updatedFields[field] = value;
-      updatedProvenance[field] = {
-        source,
-        confidence: incomingConfidence,
-        updated_at: new Date().toISOString(),
-      };
-      fieldsUpdated.push(field);
-      applied = true;
-      
-      // Critical #3: Mark as overwrite if existing value existed
-      if (existingValue !== undefined && existingValue !== null) {
-        wasOverwrite = true;
-      }
-    } else if (incomingRank === currentRank && value !== existingValue) {
-      // Same authority, different value → hold for confirmation
-      fieldsHeld.push(field);
-      held = true;
-    }
-    // Lower authority → silently ignore (no action needed)
-  });
-
-  // Calculate confidence scores
-  const oldConfidence = calculateConfidenceFromProvenance(existingProvenance);
-  const newConfidence = calculateConfidenceFromProvenance(updatedProvenance);
-  const confidenceDelta = newConfidence - oldConfidence;
-
-  return {
-    updateApplied: applied,
-    wasOverwrite,  // Critical #3: Return it
-    requiresConfirmation: held && !applied,
-    updatedFields,
-    updatedProvenance,
-    fieldsUpdated,
-    fieldsHeld,
-    confidenceDelta,
-    newConfidence,
-  };
-}
-
-// Import from confidenceCalculator
-function calculateConfidenceFromProvenance(provenance: Record<string, FieldProvenance>): number {
-  const FIELD_WEIGHTS: Record<string, number> = {
-    brand: 0.25,
-    model: 0.25,
-    manufacture_year: 0.20,
-    serial: 0.15,
-    capacity_rating: 0.10,
-    fuel_type: 0.05,
-  };
-
-  let score = 0;
-  Object.entries(FIELD_WEIGHTS).forEach(([field, weight]) => {
-    const fieldProv = provenance[field];
-    if (fieldProv) {
-      score += weight * fieldProv.confidence;
-    }
-  });
-
-  return Math.min(1, Number(score.toFixed(2)));
-}
-```
-
----
-
-## Part 3: Confidence Calculator with Delta Gate (Medium #4 Fix)
-
-**File:** `src/lib/systemUpdates/confidenceCalculator.ts`
-
-```typescript
-import type { FieldProvenance } from './authority';
-
-const FIELD_WEIGHTS: Record<string, number> = {
-  brand: 0.25,
-  model: 0.25,
-  manufacture_year: 0.20,
-  serial: 0.15,
-  capacity_rating: 0.10,
-  fuel_type: 0.05,
-};
-
-/**
- * Minimum confidence delta required to trigger mode recompute.
- * Medium #4 Fix: Prevents trivial updates from inflating confidence.
- */
-export const MINIMUM_MEANINGFUL_DELTA = 0.05;
-
-export function calculateSystemConfidence(
-  provenance: Record<string, FieldProvenance>
-): number {
-  let score = 0;
-
-  Object.entries(FIELD_WEIGHTS).forEach(([field, weight]) => {
-    const fieldProv = provenance[field];
-    if (fieldProv) {
-      score += weight * fieldProv.confidence;
-    }
-  });
-
-  return Math.min(1, Number(score.toFixed(2)));
-}
-
-/**
- * Check if confidence delta is meaningful enough to trigger mode recompute.
- * Medium #4 Fix: Only trigger mode transition for substantial changes.
- */
-export function isMeaningfulDelta(delta: number): boolean {
-  return Math.abs(delta) >= MINIMUM_MEANINGFUL_DELTA;
-}
-```
-
----
-
-## Part 4: Chat Summary Builder
-
-**File:** `src/lib/systemUpdates/chatSummaryBuilder.ts`
-
-```typescript
-const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
-  hvac: 'HVAC system',
-  water_heater: 'water heater',
-  roof: 'roof',
-  electrical: 'electrical panel',
-  refrigerator: 'refrigerator',
-  oven_range: 'oven/range',
-  dishwasher: 'dishwasher',
-  washer: 'washing machine',
-  dryer: 'dryer',
-};
-
-export function buildChatSummary(params: {
-  applied: boolean;
-  held: boolean;
-  wasOverwrite: boolean;
-  fieldsUpdated: string[];
-  fieldsHeld: string[];
-  systemType?: string;
-  brand?: string;
-}): string {
-  const { applied, held, wasOverwrite, systemType, brand } = params;
-
-  if (applied && !held) {
-    const systemName = systemType 
-      ? SYSTEM_DISPLAY_NAMES[systemType] || systemType 
-      : 'system';
-    const brandNote = brand ? ` (${brand})` : '';
-    
-    // Minor #6: Be slightly more specific
-    return `I analyzed the photo and identified key details about your ${systemName}${brandNote}. I've updated your home profile and will use this to refine future assessments.`;
-  }
-
-  if (held) {
-    return `I detected some details that differ from existing records. Can you confirm before I update your home profile?`;
-  }
-
-  return `I saved the photo but couldn't extract enough details. A closer shot of the manufacturer label would help improve accuracy.`;
-}
-```
-
----
-
-## Part 5: Main Update Gate (Corrected)
-
-**File:** `src/lib/systemUpdates/applySystemUpdate.ts`
-
-```typescript
-import { supabase } from '@/integrations/supabase/client';
-import { resolveFieldUpdates } from './resolveFieldUpdates';
-import { buildChatSummary } from './chatSummaryBuilder';
-import { isMeaningfulDelta, MINIMUM_MEANINGFUL_DELTA } from './confidenceCalculator';
-import type { SystemUpdateSource, FieldProvenance } from './authority';
-
-export interface ApplySystemUpdateInput {
-  home_id: string;
-  system_key: string;
-  source: SystemUpdateSource;
-  extracted_data: {
-    brand?: string;
-    model?: string;
-    serial?: string;
-    manufacture_year?: number;
-    capacity_rating?: string;
-    fuel_type?: string;
-  };
-  confidence_signal: {
-    visual_certainty?: number;
-    source_reliability: number;
-  };
-  image_url?: string;
-}
-
-export interface SystemUpdateResult {
-  system_id: string;
-  update_applied: boolean;
-  confidence_delta: number;
-  authority_applied: 'accepted' | 'merged' | 'held_for_confirmation';
-  chat_summary: string;
-  fields_updated: string[];
-  fields_held: string[];
-  should_trigger_mode_recompute: boolean;  // Medium #4: Gated by delta
-}
-
-export async function applySystemUpdate(
-  input: ApplySystemUpdateInput
-): Promise<SystemUpdateResult> {
-  const { home_id, system_key, source, extracted_data, confidence_signal, image_url } = input;
-
-  // 1. Find existing system of same type
-  const { data: existingSystems } = await supabase
-    .from('home_systems')
-    .select('*')
-    .eq('home_id', home_id)
-    .ilike('system_key', `${system_key}%`)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  const existing = existingSystems?.[0] ?? null;
-  
-  // Critical #2 Fix: Read provenance from dedicated column, not nested source
-  const existingProvenance = (existing?.field_provenance as Record<string, FieldProvenance>) ?? {};
-  const existingFields = {
-    brand: existing?.brand,
-    model: existing?.model,
-    serial: existing?.serial,
-    manufacture_year: existing?.manufacture_year,
-    capacity_rating: existing?.capacity_rating,
-    fuel_type: existing?.fuel_type,
-  };
-
-  // 2. Resolve field updates with authority rules
-  const resolved = resolveFieldUpdates({
-    existingFields,
-    existingProvenance,
-    extractedData: extracted_data,
-    source,
-    confidenceSignal: confidence_signal,
-  });
-
-  // 3. Build chat summary (includes wasOverwrite for accurate messaging)
-  const chatSummary = buildChatSummary({
-    applied: resolved.updateApplied,
-    held: resolved.requiresConfirmation,
-    wasOverwrite: resolved.wasOverwrite,
-    fieldsUpdated: resolved.fieldsUpdated,
-    fieldsHeld: resolved.fieldsHeld,
-    systemType: extracted_data.system_type || system_key,
-    brand: extracted_data.brand,
-  });
-
-  // 4. If held for confirmation, return early (no DB write)
-  if (!resolved.updateApplied && resolved.requiresConfirmation) {
-    return {
-      system_id: existing?.id ?? '',
-      update_applied: false,
-      confidence_delta: 0,
-      authority_applied: 'held_for_confirmation',
-      chat_summary: chatSummary,
-      fields_updated: [],
-      fields_held: resolved.fieldsHeld,
-      should_trigger_mode_recompute: false,
-    };
-  }
-
-  // 5. Persist to database
-  let systemId = existing?.id;
-
-  if (existing) {
-    // Merge into existing record
-    const newImages = image_url 
-      ? [...(existing.images || []), image_url]
-      : existing.images;
-
-    // Critical #2 Fix: Write provenance to dedicated column
-    await supabase
-      .from('home_systems')
-      .update({
-        ...resolved.updatedFields,
-        images: newImages,
-        data_sources: [...new Set([...(existing.data_sources || []), source])],
-        confidence_scores: { 
-          ...(existing.confidence_scores || {}),
-          overall: resolved.newConfidence 
-        },
-        field_provenance: resolved.updatedProvenance,  // Dedicated column
-        confidence_score: resolved.newConfidence,      // Convenience column
-        last_updated_at: new Date().toISOString(),
-        source: {
-          ...(existing.source || {}),
-          last_update_source: source,
-          last_update_at: new Date().toISOString(),
-        },
-      })
-      .eq('id', existing.id);
-  } else {
-    // Create new system record
-    const { data: inserted } = await supabase
-      .from('home_systems')
-      .insert({
-        home_id,
-        system_key: generateUniqueSystemKey(system_key, extracted_data.brand),
-        ...resolved.updatedFields,
-        images: image_url ? [image_url] : [],
-        data_sources: [source],
-        confidence_scores: { overall: resolved.newConfidence },
-        field_provenance: resolved.updatedProvenance,
-        confidence_score: resolved.newConfidence,
-        source: {
-          original_type: system_key,
-          last_update_source: source,
-          last_update_at: new Date().toISOString(),
-        },
-      })
-      .select()
-      .single();
-
-    systemId = inserted?.id;
-  }
-
-  // Medium #4 Fix: Only trigger mode recompute if delta is meaningful
-  const shouldTrigger = isMeaningfulDelta(resolved.confidenceDelta);
-
-  // Critical #3 Fix: Use wasOverwrite for authority_applied
-  const authorityApplied = resolved.wasOverwrite ? 'accepted' : 'merged';
-
-  return {
-    system_id: systemId!,
-    update_applied: true,
-    confidence_delta: resolved.confidenceDelta,
-    authority_applied: authorityApplied,
-    chat_summary: chatSummary,
-    fields_updated: resolved.fieldsUpdated,
-    fields_held: [],
-    should_trigger_mode_recompute: shouldTrigger,
-  };
-}
-
-/**
- * Generate deterministic unique system key.
- * Minor #7: Same home + type + brand = same key (prevents duplicates)
- */
-function generateUniqueSystemKey(systemType: string, brand?: string): string {
-  const brandSuffix = brand?.toLowerCase().replace(/\s+/g, '_') || '';
-  const timestamp = Date.now().toString(36);
-  return brandSuffix 
-    ? `${systemType}_${brandSuffix}_${timestamp}` 
-    : `${systemType}_${timestamp}`;
-}
-```
-
----
-
-## Part 6: ChatDock Integration
-
-**File:** `src/components/dashboard-v3/ChatDock.tsx`
-
-Update the `onPhotoReady` callback to use the enforcement gate:
-
-```typescript
-// Add import
-import { applySystemUpdate } from '@/lib/systemUpdates';
-
-// Update ChatDockProps
-interface ChatDockProps {
-  // ... existing props
-  onSystemUpdated?: () => void;  // Callback when system is updated
-}
-
-// Replace the photo handler in the component
-const handlePhotoAnalysis = async (photoUrl: string) => {
-  try {
-    // 1. Call analyze-device-photo
-    const response = await fetch(
-      `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
-        },
-        body: JSON.stringify({ image_url: photoUrl }),
-      }
-    );
-
-    const { analysis } = await response.json();
-
-    if (!analysis || !analysis.system_type) {
-      sendMessage("I saved the photo but couldn't extract clear details. A closer shot of the manufacturer label would help improve accuracy.");
-      return;
-    }
-
-    // 2. Apply system update through enforcement gate
-    const result = await applySystemUpdate({
-      home_id: propertyId,
-      system_key: analysis.system_type,
-      source: 'photo_analysis',
-      extracted_data: {
-        brand: analysis.brand,
-        model: analysis.model,
-        serial: analysis.serial,
-        manufacture_year: analysis.manufacture_year,
-        capacity_rating: analysis.capacity_rating,
-        fuel_type: analysis.fuel_type,
-      },
-      confidence_signal: {
-        visual_certainty: analysis.visual_certainty,
-        source_reliability: 0.7,
-      },
-      image_url: photoUrl,
-    });
-
-    // 3. Send chat summary (ONLY after persistence)
-    sendMessage(result.chat_summary);
-
-    // 4. Trigger mode recompute ONLY if meaningful (Medium #4)
-    if (result.update_applied && result.should_trigger_mode_recompute) {
-      onSystemUpdated?.();
-    }
-  } catch (err) {
-    console.error('Photo analysis error:', err);
-    sendMessage("I had trouble processing this image. The photo was saved and I'll try again shortly.");
-  }
-};
-
-// Update the ChatPhotoUpload usage
-<ChatPhotoUpload
-  homeId={propertyId}
-  onPhotoReady={handlePhotoAnalysis}  // Now uses enforcement gate
-  disabled={loading}
-/>
-```
-
----
-
-## Part 7: Data Wiring
-
-### DashboardV3.tsx
-
-Pass `refetchSystems` to MiddleColumn:
-
-```typescript
-const handleSystemUpdated = useCallback(() => {
-  refetchSystems();
-  // Chat mode will recompute via useChatMode dependency
-}, [refetchSystems]);
-
-<MiddleColumn
-  // ... existing props
-  onSystemUpdated={handleSystemUpdated}
-/>
-```
-
-### MiddleColumn.tsx
-
-Add prop and pass to ChatDock:
-
-```typescript
-interface MiddleColumnProps {
-  // ... existing
-  onSystemUpdated?: () => void;
-}
-
-<ChatDock
-  // ... existing props
-  onSystemUpdated={onSystemUpdated}
-/>
-```
-
-### useHomeSystems.ts
-
-Add `field_provenance` to interface:
-
-```typescript
-export interface HomeSystem {
-  // ... existing fields
-  field_provenance?: Record<string, {
-    source: string;
-    confidence: number;
-    updated_at: string;
-  }>;
-  confidence_score?: number;
-  last_updated_at?: string;
-}
-```
-
----
-
-## Corrected Behavior Summary
-
-| Scenario | Behavior | Result |
-|----------|----------|--------|
-| Photo contradicts user-confirmed brand | **Hold** | Ask confirmation, no DB write |
-| User corrects photo result | **Overwrite** | `authority_applied: 'accepted'` |
-| New photo same system | **Merge** | `authority_applied: 'merged'` |
-| Trivial field update (delta < 0.05) | **Write** | Mode recompute NOT triggered |
-| Meaningful update (delta ≥ 0.05) | **Write** | Mode recompute triggered |
+## Implementation Order
+
+1. **Phase 1: Type System** - Update chatMode types, create systemState types with deviation_detected
+2. **Phase 2: Confidence Rules** - Create explicit confidence change rules
+3. **Phase 3: Mode Logic** - Implement corrected priority order with baseline gate
+4. **Phase 4: Governance** - Add interpretive timeout + planning acknowledgment
+5. **Phase 5: Baseline Surface** - Create evidence layer with "Why?" affordance
+6. **Phase 6: ChatDock** - Update visual design + mode behaviors
+7. **Phase 7: Integration** - Wire everything through MiddleColumn
 
 ---
 
 ## QA Verification Checklist
 
-**Critical Fixes**:
-- [x] Single canonical provenance location (`field_provenance` column)
-- [x] Correct read path (`existing?.field_provenance`, not nested in `source`)
-- [x] `wasOverwrite` explicitly defined and tracked in `resolveFieldUpdates`
+**Critical Fixes:**
+- [ ] Baseline Establishment outranks Planning Window in priority
+- [ ] Elevated state requires `deviation_detected === true`, not just time
+- [ ] Elevated mode asks questions (not recommends) when baseline incomplete
+- [ ] Confidence changes only through explicit rules (documented)
 
-**Medium Fixes**:
-- [x] Minimum delta gate (0.05) prevents trivial confidence inflation
-- [x] Architecture supports future held-update staging (optional v2)
+**Subtle Risk Fixes:**
+- [ ] Interpretive mode exits after 1 explanation
+- [ ] Planning window acknowledgment persisted per system
+- [ ] "Why?" affordance triggers Interpretive mode
 
-**Preserved Wins**:
-- [x] AI never sees raw extracted data (only `chat_summary`)
-- [x] Chat speaks only after persistence
-- [x] Authority hierarchy is boring and explicit
-- [x] Same-authority conflicts are held, not guessed
-- [x] Mode transitions are earned, not triggered
+**Preserved Wins:**
+- [ ] Evidence before interpretation (baseline always visible)
+- [ ] Silence is authority (Silent Steward default)
+- [ ] No fear language
+- [ ] No aggressive CTAs
+- [ ] Max 1 auto-initiation per session
+- [ ] Max 3 consecutive agent messages
 
