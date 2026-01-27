@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { MessageCircle, ChevronUp, ChevronDown, Send, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
 } from "@/lib/chatModeCopy";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
+import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
 
 // System display names for context-aware placeholder (legacy fallback)
 const SYSTEM_NAMES: Record<string, string> = {
@@ -49,6 +50,8 @@ interface ChatDockProps {
   chatMode?: ChatMode;
   /** System keys with low confidence (for baseline mode) */
   systemsWithLowConfidence?: string[];
+  /** Callback when system is updated via photo analysis */
+  onSystemUpdated?: () => void;
 }
 
 /**
@@ -80,6 +83,7 @@ export function ChatDock({
   todaysFocus,
   chatMode = 'observational',
   systemsWithLowConfidence = [],
+  onSystemUpdated,
 }: ChatDockProps) {
   const [input, setInput] = useState("");
   const [showPhotoUpload, setShowPhotoUpload] = useState(false);
@@ -165,6 +169,79 @@ export function ChatDock({
       handleSend();
     }
   };
+
+  /**
+   * Handle photo analysis through System Update Contract.
+   * This is the enforcement gate: photo → analyze → persist → chat
+   * 
+   * Key behavior:
+   * 1. Call analyze-device-photo edge function
+   * 2. Pass through applySystemUpdate() for authority + persistence
+   * 3. Only speak AFTER persistence succeeds
+   * 4. Trigger mode recompute only if meaningful delta
+   */
+  const handlePhotoAnalysis = useCallback(async (photoUrl: string) => {
+    try {
+      // 1. Call analyze-device-photo edge function
+      const response = await fetch(
+        `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
+          },
+          body: JSON.stringify({ image_url: photoUrl }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error('Photo analysis failed:', response.status);
+        sendMessage(buildAnalysisFailedSummary());
+        return;
+      }
+
+      const data = await response.json();
+      const analysis = data?.analysis;
+
+      if (!analysis || !analysis.system_type) {
+        sendMessage(buildNoSystemDetectedSummary());
+        return;
+      }
+
+      // 2. Apply system update through enforcement gate
+      const result = await applySystemUpdate({
+        home_id: propertyId,
+        system_key: analysis.system_type,
+        source: 'photo_analysis',
+        extracted_data: {
+          brand: analysis.brand,
+          model: analysis.model,
+          serial: analysis.serial,
+          manufacture_year: analysis.manufacture_year,
+          capacity_rating: analysis.capacity_rating,
+          fuel_type: analysis.fuel_type,
+          system_type: analysis.system_type,
+        },
+        confidence_signal: {
+          visual_certainty: analysis.visual_certainty ?? 0.5,
+          source_reliability: 0.7,
+        },
+        image_url: photoUrl,
+      });
+
+      // 3. Send chat summary (ONLY after persistence)
+      sendMessage(result.chat_summary);
+
+      // 4. Trigger mode recompute ONLY if meaningful (Medium #4)
+      if (result.update_applied && result.should_trigger_mode_recompute) {
+        onSystemUpdated?.();
+      }
+    } catch (err) {
+      console.error('Photo analysis error:', err);
+      sendMessage(buildAnalysisFailedSummary());
+    }
+  }, [propertyId, sendMessage, onSystemUpdated]);
 
   // Context-aware placeholder - prioritize todaysFocus over focusContext
   const placeholder = todaysFocus 
@@ -341,13 +418,10 @@ export function ChatDock({
       {/* Input - always visible */}
       <div className="p-3 border-t shrink-0">
         <div className="flex gap-2">
-          {/* Photo upload button */}
+          {/* Photo upload button - now uses enforcement gate */}
           <ChatPhotoUpload
             homeId={propertyId}
-            onPhotoReady={(photoUrl) => {
-              // Send photo URL as message for AI analysis
-              sendMessage(`[Photo uploaded: ${photoUrl}] Please analyze this photo and help me understand what you can see.`);
-            }}
+            onPhotoReady={handlePhotoAnalysis}
             disabled={loading}
           />
           <Input

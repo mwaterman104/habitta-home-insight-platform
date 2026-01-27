@@ -107,7 +107,7 @@ export default function DashboardV3() {
   });
 
   // Chat State Machine: Fetch home systems and permits for mode derivation
-  const { systems: homeSystems, loading: systemsLoading } = useHomeSystems(userHome?.id);
+  const { systems: homeSystems, loading: systemsLoading, refetch: refetchSystems } = useHomeSystems(userHome?.id);
   const { insights: permitInsights, loading: permitsLoading } = usePermitInsights(userHome?.id);
 
   // Derive chat mode from system/permit data
@@ -116,6 +116,12 @@ export default function DashboardV3() {
     systems: homeSystems,
     permitsFound: permitInsights.length > 0,
   });
+
+  // System Update Contract: Callback for when systems are updated via photo analysis
+  const handleSystemUpdated = useCallback(() => {
+    refetchSystems();
+    // Chat mode will recompute via useChatMode dependency on systems
+  }, [refetchSystems]);
 
   // Risk delta invalidation
   const invalidateRiskDeltas = useInvalidateRiskDeltas();
@@ -434,6 +440,7 @@ export default function DashboardV3() {
             state={userHome?.state ?? null}
             chatMode={chatModeContext.mode}
             systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+            onSystemUpdated={handleSystemUpdated}
           />
         </main>
       </div>
@@ -502,6 +509,7 @@ export default function DashboardV3() {
               state={userHome?.state ?? null}
               chatMode={chatModeContext.mode}
               systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+              onSystemUpdated={handleSystemUpdated}
             />
             </div>
           </ResizablePanel>
@@ -560,6 +568,7 @@ export default function DashboardV3() {
             state={userHome?.state ?? null}
             chatMode={chatModeContext.mode}
             systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+            onSystemUpdated={handleSystemUpdated}
           />
         </div>
       </div>

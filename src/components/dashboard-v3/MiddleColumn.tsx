@@ -86,6 +86,8 @@ interface MiddleColumnProps {
   // Chat State Machine props
   chatMode?: ChatMode;
   systemsWithLowConfidence?: string[];
+  // System Update Contract callback
+  onSystemUpdated?: () => void;
 }
 
 /**
@@ -144,6 +146,7 @@ export function MiddleColumn({
   state,
   chatMode = 'observational',
   systemsWithLowConfidence = [],
+  onSystemUpdated,
 }: MiddleColumnProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const statusHeaderRef = useRef<HTMLDivElement>(null);
@@ -393,7 +396,7 @@ export function MiddleColumn({
 
           {/* 6. CHAT - AMBIENT (sticky, minimal presence) */}
           <div className="sticky bottom-4">
-            <ChatDock
+          <ChatDock
               propertyId={propertyId}
               isExpanded={chatExpanded}
               onExpandChange={onChatExpandChange}
@@ -407,6 +410,7 @@ export function MiddleColumn({
               todaysFocus={todaysFocus}
               chatMode={chatMode}
               systemsWithLowConfidence={systemsWithLowConfidence}
+              onSystemUpdated={onSystemUpdated}
             />
           </div>
         </div>

@@ -1529,16 +1529,19 @@ export type Database = {
         Row: {
           brand: string | null
           capacity_rating: string | null
+          confidence_score: number | null
           confidence_scores: Json | null
           created_at: string | null
           data_sources: string[] | null
           expected_lifespan_years: number | null
+          field_provenance: Json | null
           fuel_type: string | null
           home_id: string
           id: string
           images: Json | null
           install_date: string | null
           last_service_date: string | null
+          last_updated_at: string | null
           location_detail: string | null
           manufacture_date: string | null
           manufacture_year: number | null
@@ -1554,16 +1557,19 @@ export type Database = {
         Insert: {
           brand?: string | null
           capacity_rating?: string | null
+          confidence_score?: number | null
           confidence_scores?: Json | null
           created_at?: string | null
           data_sources?: string[] | null
           expected_lifespan_years?: number | null
+          field_provenance?: Json | null
           fuel_type?: string | null
           home_id: string
           id?: string
           images?: Json | null
           install_date?: string | null
           last_service_date?: string | null
+          last_updated_at?: string | null
           location_detail?: string | null
           manufacture_date?: string | null
           manufacture_year?: number | null
@@ -1579,16 +1585,19 @@ export type Database = {
         Update: {
           brand?: string | null
           capacity_rating?: string | null
+          confidence_score?: number | null
           confidence_scores?: Json | null
           created_at?: string | null
           data_sources?: string[] | null
           expected_lifespan_years?: number | null
+          field_provenance?: Json | null
           fuel_type?: string | null
           home_id?: string
           id?: string
           images?: Json | null
           install_date?: string | null
           last_service_date?: string | null
+          last_updated_at?: string | null
           location_detail?: string | null
           manufacture_date?: string | null
           manufacture_year?: number | null
