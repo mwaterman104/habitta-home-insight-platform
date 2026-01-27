@@ -4,9 +4,9 @@ import { ChatDock } from "./ChatDock";
 import { StateOfHomeReport } from "./StateOfHomeReport";
 import { ContextDrawer } from "./ContextDrawer";
 import { HomeStatusHeader } from "./HomeStatusHeader";
-import { HomePositionOutlook } from "./HomePositionOutlook";
-import { SystemsOverview } from "./SystemsOverview";
-import { SystemTimelineLifecycle } from "./SystemTimelineLifecycle";
+import { HomePositionAnchor } from "./HomePositionAnchor";
+import { EquityContextCard } from "./EquityContextCard";
+import { LifecycleHorizon } from "./LifecycleHorizon";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
@@ -18,14 +18,14 @@ import {
   type NarrativeContext,
 } from "@/lib/narrativePriority";
 import {
-  getSystemStatusLabel,
   getPositionLabel,
   getLifecycleNote,
   getOutlookSummary,
+  getLifecycleNoteForAnchor,
   calculatePositionScore,
   type LifecycleSystem,
-  type RiskLevel,
 } from "@/lib/dashboardRecoveryCopy";
+import { deriveClimateZone } from "@/lib/climateZone";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline, SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -74,23 +74,37 @@ interface MiddleColumnProps {
   onUserReply?: () => void;
   // Maintenance interaction handlers
   onTaskComplete?: (taskId: string) => void;
+  // Selective Intelligence Upgrade props
+  homeValue?: number | null;
+  city?: string;
+  state?: string;
 }
 
 /**
- * MiddleColumn - Primary Canvas with Layered Hierarchy
+ * MiddleColumn - Primary Canvas with Selective Intelligence Layout
  * 
- * Dashboard Recovery Architecture (QA-Approved):
+ * SELECTIVE INTELLIGENCE UPGRADE - Card Grid Architecture:
+ * 
  * 1. Annual State of Home (conditional interrupt)
- * 2. TODAY'S STATUS (HomeStatusHeader)
- * 3. HOME POSITION & OUTLOOK (HomePositionOutlook)
- * 4. SYSTEMS BEING MONITORED (SystemsOverview)
- * 5. SYSTEM LIFECYCLE TIMELINE (SystemTimelineLifecycle)
- * 6. WHY THIS ASSESSMENT (ContextDrawer - collapsed)
- * 7. CHAT (ChatDock - sticky)
+ * 2. TODAY'S STATUS (HomeStatusHeader) - QUIET
+ * 3. HERO GRID (HomePositionAnchor + EquityContextCard) - PRIMARY + SECONDARY
+ * 4. LIFECYCLE HORIZON (LifecycleHorizon) - ANALYTICAL
+ * 5. WHY THIS ASSESSMENT (ContextDrawer) - EXPANDABLE
+ * 6. CHAT (ChatDock) - AMBIENT
  * 
- * Architectural Principle:
- * - Judgment first. Position second. Evidence last.
- * - Timeline informs — never leads.
+ * Visual Weight Tiering (QC #1):
+ * - Status Header = quiet (no card, no border)
+ * - Position Anchor = primary hero (larger padding, prominent)
+ * - Equity Context = secondary hero (smaller text, muted)
+ * - Lifecycle Horizon = analytical (subtle bg, compact rows)
+ * - Context Drawer = expandable (collapsed by default)
+ * - ChatDock = ambient (sticky, minimal presence)
+ * 
+ * Card Cap Enforcement (QC #4):
+ * - Hero cards: 2 (Position + Equity)
+ * - Analytical surfaces: 1 (Lifecycle Horizon)
+ * - Expandable context: 1 (Context Drawer)
+ * - Chat: 1 (ChatDock)
  */
 export function MiddleColumn({
   homeForecast,
@@ -114,6 +128,9 @@ export function MiddleColumn({
   risk = 'LOW',
   onUserReply,
   onTaskComplete,
+  homeValue,
+  city,
+  state,
 }: MiddleColumnProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const statusHeaderRef = useRef<HTMLDivElement>(null);
@@ -131,6 +148,9 @@ export function MiddleColumn({
     dismissAnnual,
     loading: cadenceLoading,
   } = useEngagementCadence(propertyId);
+
+  // Derive climate zone for position anchor
+  const climate = deriveClimateZone(state, city, null);
 
   // Derive if home is in healthy/stewardship mode
   const isHealthyState = homeState === 'healthy';
@@ -200,25 +220,8 @@ export function MiddleColumn({
     [todaysFocus, narrativeContext]
   );
 
-  // Derive HVAC risk for status labels
-  const getHvacRisk = (): RiskLevel => {
-    if (!hvacPrediction) return 'LOW';
-    if (hvacPrediction.status === 'high') return 'HIGH';
-    if (hvacPrediction.status === 'moderate') return 'MODERATE';
-    return 'LOW';
-  };
-
-  // Derive monitored systems for coverage list (QA Fix #6)
-  const monitoredSystems = useMemo(() => {
-    return [
-      { key: 'hvac', label: 'HVAC', status: getSystemStatusLabel(getHvacRisk()) },
-      { key: 'roof', label: 'Roof', status: getSystemStatusLabel('LOW') },
-      { key: 'water_heater', label: 'Water Heater', status: getSystemStatusLabel('LOW') },
-      { key: 'electrical', label: 'Electrical', status: 'Normal' as const },
-      { key: 'plumbing', label: 'Plumbing', status: 'Normal' as const },
-      { key: 'environment', label: 'Environment', status: 'Typical' as const },
-    ];
-  }, [hvacPrediction]);
+  // Note: getHvacRisk and monitoredSystems removed in Selective Intelligence Upgrade
+  // SystemsOverview merged into LifecycleHorizon for cleaner analytical surface
 
   // Helper to derive lifecycle system from capital timeline entry
   const deriveLifecycleSystem = (sys: SystemTimelineEntry): LifecycleSystem => {
@@ -325,7 +328,7 @@ export function MiddleColumn({
             </section>
           )}
 
-          {/* 2. TODAY'S STATUS - Primary Signal */}
+          {/* 2. TODAY'S STATUS - QUIET (no card, no border) */}
           <section ref={statusHeaderRef}>
             <HomeStatusHeader
               message={todaysFocus.message}
@@ -333,33 +336,35 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 3. HOME POSITION & OUTLOOK - Orientation Layer */}
-          <section>
-            <HomePositionOutlook
-              label={position.label}
+          {/* 3. HERO GRID - PRIMARY + SECONDARY */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* PRIMARY HERO: Home Position Anchor */}
+            <HomePositionAnchor
+              position={position.label}
               relativePosition={position.relativePosition}
+              outlookStatement={outlookSummary}
+              climateLabel={climate.label}
               confidence={position.confidence}
-              outlookSummary={outlookSummary}
-              onDetailsClick={() => setContextOpen(true)}
+            />
+            
+            {/* SECONDARY HERO: Equity Context */}
+            <EquityContextCard
+              currentValue={homeValue}
+              areaContext="Similar homes in your area have appreciated moderately over the past 12 months."
             />
           </section>
 
-          {/* 4. SYSTEMS BEING MONITORED - Coverage Proof */}
-          <section>
-            <SystemsOverview systems={monitoredSystems} />
-          </section>
-
-          {/* 5. SYSTEM LIFECYCLE TIMELINE - Progress Table */}
+          {/* 4. LIFECYCLE HORIZON - ANALYTICAL (subtle bg, compact rows) */}
           {lifecycleSystems.length > 0 && (
             <section>
-              <SystemTimelineLifecycle
+              <LifecycleHorizon
                 systems={lifecycleSystems}
                 onSystemClick={handleSystemClick}
               />
             </section>
           )}
 
-          {/* 6. WHY THIS ASSESSMENT - Context Drawer (collapsed) */}
+          {/* 5. WHY THIS ASSESSMENT - EXPANDABLE (collapsed by default) */}
           <section>
             <ContextDrawer
               isOpen={contextOpen}
@@ -369,7 +374,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 7. CHAT - Exploration Layer (sticky) */}
+          {/* 6. CHAT - AMBIENT (sticky, minimal presence) */}
           <div className="sticky bottom-4">
             <ChatDock
               propertyId={propertyId}

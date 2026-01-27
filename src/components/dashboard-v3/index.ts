@@ -1,6 +1,6 @@
 // Dashboard V3 Components
 // Three-column intelligent home platform with single-narrative authority
-// QA-Refined Recovery Architecture
+// QA-Refined Recovery Architecture + Selective Intelligence Upgrade
 
 export { TopHeader } from './TopHeader';
 export { LeftColumn } from './LeftColumn';
@@ -16,6 +16,11 @@ export { HomePositionOutlook } from './HomePositionOutlook';
 export { SystemsOverview } from './SystemsOverview';
 export { SystemTimelineLifecycle } from './SystemTimelineLifecycle';
 export { LocalConditions } from './LocalConditions';
+
+// Selective Intelligence Upgrade Components (Card Grid Layout)
+export { HomePositionAnchor } from './HomePositionAnchor';
+export { EquityContextCard } from './EquityContextCard';
+export { LifecycleHorizon } from './LifecycleHorizon';
 
 // Existing Hierarchy Components
 export { TodaysFocusCard } from './TodaysFocusCard';

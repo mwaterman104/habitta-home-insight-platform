@@ -5,8 +5,12 @@
  * Context must live in ONE place only (ContextDrawer in MiddleColumn).
  * Right column = external/environmental awareness only.
  * 
+ * Selective Intelligence Upgrade:
+ * - PropertyMap now includes intelligence overlays
+ * - Click-to-context support for opening ContextDrawer
+ * 
  * Contains:
- * - PropertyMap (location visualization)
+ * - PropertyMap (location visualization with intelligence overlays)
  * - LocalConditions (climate, stress, comparable homes)
  */
 
@@ -19,6 +23,12 @@ import {
   getEnvironmentalStressLabel 
 } from "@/lib/dashboardRecoveryCopy";
 
+interface IntelligenceOverlay {
+  comparableHomesCount?: number;
+  permitActivity?: 'normal' | 'elevated';
+  environmentalContext?: string;
+}
+
 interface RightColumnProps {
   loading: boolean;
   // Location
@@ -27,8 +37,10 @@ interface RightColumnProps {
   address?: string;
   city?: string;
   state?: string;
-  // REMOVED: focusContext, hvacPrediction, capitalTimeline, homeAge, risk, confidence
-  // QA Fix #5: Context lives in ContextDrawer only
+  // Intelligence overlay data (Selective Intelligence Upgrade)
+  intelligenceOverlay?: IntelligenceOverlay;
+  // Handler for map click - opens context drawer
+  onMapClick?: () => void;
 }
 
 export function RightColumn({
@@ -38,6 +50,8 @@ export function RightColumn({
   address,
   city,
   state,
+  intelligenceOverlay,
+  onMapClick,
 }: RightColumnProps) {
   const climate = deriveClimateZone(state, city, latitude);
   
@@ -50,9 +64,14 @@ export function RightColumn({
     );
   }
 
+  // Derive comparable homes pattern from intelligence overlay
+  const comparablePattern = intelligenceOverlay?.comparableHomesCount 
+    ? `${intelligenceOverlay.comparableHomesCount} comparable homes in area`
+    : "No unusual patterns detected";
+
   return (
     <div className="space-y-6">
-      {/* Property Map - unchanged */}
+      {/* Property Map - with intelligence overlays */}
       <PropertyMap 
         lat={latitude} 
         lng={longitude}
@@ -60,13 +79,15 @@ export function RightColumn({
         city={city}
         state={state}
         className="rounded-xl"
+        intelligenceOverlay={intelligenceOverlay}
+        onMapClick={onMapClick}
       />
 
-      {/* Local Conditions - NEW (replaces FocusContextCard) */}
+      {/* Local Conditions - environmental awareness */}
       <LocalConditions
         climateZone={getClimateZoneLabel(climate.zone)}
         environmentalStress={getEnvironmentalStressLabel(climate.zone)}
-        comparableHomesPattern="No unusual patterns detected"
+        comparableHomesPattern={comparablePattern}
       />
       
       {/* 

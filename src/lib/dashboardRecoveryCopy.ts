@@ -150,9 +150,48 @@ export function getLifecycleNote(
   // OLD: 'Approaching planning considerations'
   // NEW: Non-directive
   if (confidence < 0.5) {
-    return 'Later-stage lifecycle';
+    return 'Later in expected range';  // Avoid "later-stage lifecycle" repetition
   }
   return 'Later in expected range';
+}
+
+// ============================================
+// Lifecycle Horizon Copy (QC #3 - Layer Variation)
+// ============================================
+
+/**
+ * Generate lifecycle note specifically for the LifecycleHorizon component.
+ * Uses DIFFERENT copy than anchor/timeline to avoid repetition (QC #3).
+ * 
+ * Layer-varied copy prevents "later-stage lifecycle" from appearing everywhere.
+ */
+export function getLifecycleNoteForHorizon(positionScore: number): string {
+  if (positionScore < 0.4) return 'Typical for age';
+  if (positionScore < 0.6) return 'Within expected range';
+  if (positionScore < 0.75) return 'Mid-to-late range';
+  return 'Later range';  // NOT "Later-stage lifecycle" - varied for this layer
+}
+
+/**
+ * Generate lifecycle note for the HomePositionAnchor.
+ * Uses DIFFERENT copy than horizon to avoid repetition (QC #3).
+ */
+export function getLifecycleNoteForAnchor(positionScore: number): string {
+  if (positionScore < 0.4) return 'Typical for age';
+  if (positionScore < 0.6) return 'Within expected range';
+  if (positionScore < 0.75) return 'Mid-to-late lifecycle';
+  return 'Later in expected range';  // Varied for this layer
+}
+
+/**
+ * Generate lifecycle note for the ContextDrawer.
+ * Uses the most detailed copy variant (QC #3).
+ */
+export function getLifecycleNoteForContext(positionScore: number): string {
+  if (positionScore < 0.4) return 'Early in typical lifespan';
+  if (positionScore < 0.6) return 'Within expected lifecycle range';
+  if (positionScore < 0.75) return 'Approaching mid-to-late lifecycle';
+  return 'In a later lifecycle stage';  // Most detailed for context drawer
 }
 
 // ============================================
