@@ -1,38 +1,24 @@
-import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState, useMemo } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useRef, useState, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { HomeHealthOutlook, HomeHealthOutlookFallback } from "@/components/HomeHealthOutlook";
-import { MaintenanceRoadmap } from "./MaintenanceRoadmap";
 import { ChatDock } from "./ChatDock";
 import { SystemWatch } from "./SystemWatch";
-import { HabittaThinking } from "./HabittaThinking";
-import { MonthlyConfirmationCard } from "./MonthlyConfirmationCard";
-import { QuarterlyPositionCard } from "./QuarterlyPositionCard";
 import { StateOfHomeReport } from "./StateOfHomeReport";
-import { OptionalAdvantageCard } from "./OptionalAdvantageCard";
+import { TodaysFocusCard } from "./TodaysFocusCard";
+import { PositionStrip } from "./PositionStrip";
+import { ContextDrawer } from "./ContextDrawer";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
+import { 
+  arbitrateTodaysFocus, 
+  resolvePosition, 
+  resolveContextDrawer,
+  type SystemSignal,
+  type NarrativeContext,
+} from "@/lib/narrativePriority";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
-
-interface RoadmapTask {
-  id: string;
-  title: string;
-  metaLine?: string;
-  completed?: boolean;
-  systemKey?: string;
-  dueDate?: string;
-  dueMonth?: string;
-  season?: 'spring' | 'summer' | 'fall' | 'winter';
-  riskImpact?: {
-    type: 'prevents' | 'reduces' | 'extends';
-    systemName: string;
-    description: string;
-  };
-}
 
 // Legacy interface for backwards compatibility
 interface TimelineTask {
@@ -52,13 +38,6 @@ interface MaintenanceData {
   nowTasks: TimelineTask[];
   thisYearTasks: TimelineTask[];
   futureYearsTasks: TimelineTask[];
-}
-
-interface SystemInWindow {
-  key: string;
-  remainingYears: number;
-  replacementCost?: number;
-  confidence?: number;
 }
 
 interface MiddleColumnProps {
@@ -88,21 +67,19 @@ interface MiddleColumnProps {
 }
 
 /**
- * MiddleColumn - Primary Canvas with Sticky ChatDock
+ * MiddleColumn - Primary Canvas with Single-Narrative Authority
  * 
- * V3.2 Architecture (Structural Transformation):
- * 1. SystemWatch (authoritative, boxed) - with stewardship mode
- * 2. Engagement Cadence Cards (monthly/quarterly/annual) - NEW
- * 3. HomeHealthCard (primary instrument)
- * 4. HabittaThinking (chat presence above fold)
- * 5. CapitalTimeline (systems planning)
- * 6. MaintenanceRoadmap (horizontal time model)
- * 7. ChatDock (sticky, connected)
+ * Dashboard Enhancement Architecture:
+ * 1. Annual State of Home (conditional interrupt)
+ * 2. Today's Focus (PRIMARY - one sentence, one truth)
+ * 3. Position Strip (lifecycle orientation, always visible)
+ * 4. System Watch (conditional, sharpened)
+ * 5. Context Drawer (collapsed by default)
+ * 6. ChatDock (sticky, pre-contextualized)
  * 
- * Stewardship Mode:
- * - Healthy homes get validation language, not dismissal
- * - Cadence cards create return rhythm (monthly/quarterly/annual)
- * - Priority ordering: Annual > Quarterly > Monthly
+ * Architectural Principle:
+ * - Judgment first. Position second. Evidence last.
+ * - Chronology never leads. Orientation always does.
  */
 export function MiddleColumn({
   homeForecast,
@@ -127,132 +104,112 @@ export function MiddleColumn({
   onUserReply,
   onTaskComplete,
 }: MiddleColumnProps) {
-  const navigate = useNavigate();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const healthCardRef = useRef<HTMLDivElement>(null);
-  const timelineRef = useRef<HTMLDivElement>(null);
-  const maintenanceRef = useRef<HTMLDivElement>(null);
 
   // Track if chat was engaged this session
   const [chatEngagedThisSession, setChatEngagedThisSession] = useState(false);
+  
+  // Context drawer state (collapsed by default)
+  const [contextOpen, setContextOpen] = useState(false);
 
   // Engagement cadence hook - stewardship mode
   const {
-    monthlyCard,
-    quarterlyCard,
     annualCard,
-    advantageCard,
     homeState,
-    nextScheduledReview,
-    respondToMonthly,
-    dismissQuarterly,
     dismissAnnual,
-    dismissAdvantage,
     loading: cadenceLoading,
   } = useEngagementCadence(propertyId);
 
   // Derive if home is in healthy/stewardship mode
   const isHealthyState = homeState === 'healthy';
 
-  // Derive systems in planning window for HabittaThinking
-  const systemsInWindow = useMemo<SystemInWindow[]>(() => {
-    const systems: SystemInWindow[] = [];
+  // Build system signals for narrative arbitration
+  const systemSignals = useMemo<SystemSignal[]>(() => {
+    const signals: SystemSignal[] = [];
     const currentYear = new Date().getFullYear();
 
+    // Add HVAC from prediction
     if (hvacPrediction?.lifespan?.years_remaining_p50) {
       const years = hvacPrediction.lifespan.years_remaining_p50;
-      if (years <= 7) {
-        systems.push({ 
-          key: 'hvac', 
-          remainingYears: years,
-          // Confidence may not be on lifespan, use a default
-        });
-      }
+      const months = years * 12;
+      signals.push({ 
+        key: 'hvac',
+        displayName: 'HVAC',
+        risk: hvacPrediction.status === 'high' ? 'HIGH' : 
+              hvacPrediction.status === 'moderate' ? 'MODERATE' : 'LOW',
+        confidence: 0.6, // Default confidence
+        monthsToPlanning: months,
+      });
     }
 
+    // Add systems from capital timeline
     capitalTimeline?.systems.forEach(sys => {
-      if (systems.some(s => s.key === sys.systemId)) return;
+      if (signals.some(s => s.key === sys.systemId)) return;
       const years = sys.replacementWindow.likelyYear - currentYear;
-      if (years <= 7 && years > 0) {
-        systems.push({ 
-          key: sys.systemId, 
-          remainingYears: years,
-          // estimatedCost may not exist on SystemTimelineEntry
+      if (years > 0) {
+        signals.push({ 
+          key: sys.systemId,
+          displayName: sys.systemLabel,
+          risk: years <= 3 ? 'HIGH' : years <= 7 ? 'MODERATE' : 'LOW',
+          confidence: 0.5,
+          monthsToPlanning: years * 12,
         });
       }
     });
 
-    return systems.sort((a, b) => a.remainingYears - b.remainingYears);
+    return signals;
   }, [hvacPrediction, capitalTimeline]);
 
-  // Convert legacy bucket tasks to roadmap tasks
-  const roadmapTasks = useMemo<RoadmapTask[]>(() => {
-    const allTasks = [
-      ...maintenanceData.nowTasks.map(t => ({ ...t, season: 'spring' as const })),
-      ...maintenanceData.thisYearTasks.map(t => ({ ...t, season: 'summer' as const })),
-      ...maintenanceData.futureYearsTasks.map(t => ({ ...t })),
-    ];
-    return allTasks;
-  }, [maintenanceData]);
+  // Build narrative context
+  const narrativeContext = useMemo<NarrativeContext>(() => ({
+    overallScore: homeForecast?.currentScore ?? 80,
+    isNewUser: false,
+    systems: systemSignals,
+    hasOverdueMaintenance: maintenanceData.nowTasks.some(t => !t.completed),
+    maintenanceCompletedThisMonth: 0,
+    hasChangedSinceLastVisit: false,
+  }), [homeForecast, systemSignals, maintenanceData]);
 
-  // Phase 2: View tracking for HomeHealthCard
+  // Arbitrate Today's Focus
+  const todaysFocus = useMemo(() => 
+    arbitrateTodaysFocus(narrativeContext), 
+    [narrativeContext]
+  );
+
+  // Resolve Position Strip data
+  const position = useMemo(() => 
+    resolvePosition(narrativeContext), 
+    [narrativeContext]
+  );
+
+  // Resolve Context Drawer data
+  const contextDrawerData = useMemo(() => 
+    resolveContextDrawer(todaysFocus, narrativeContext), 
+    [todaysFocus, narrativeContext]
+  );
+
+  // Determine if System Watch should show (not already focus source)
+  const shouldShowSystemWatch = useMemo(() => {
+    if (todaysFocus.state === 'stable') return false;
+    // Only show if there's a planning system that's NOT the focus source
+    const planningSystem = systemSignals.find(s => 
+      s.monthsToPlanning && s.monthsToPlanning < 84 && s.key !== todaysFocus.sourceSystem
+    );
+    return !!planningSystem;
+  }, [todaysFocus, systemSignals]);
+
+  // Phase 2: View tracking for TodaysFocus (replacing HomeHealthCard tracking)
   useViewTracker(healthCardRef, {
-    eventName: 'home_health_outlook_viewed',
+    eventName: 'todays_focus_viewed',
     properties: {
-      current_score: homeForecast?.currentScore,
-      projected_score: homeForecast?.ifLeftUntracked?.score24mo,
-      systems_visible: capitalTimeline?.systems?.length ?? 0,
+      focus_state: todaysFocus.state,
+      source_system: todaysFocus.sourceSystem,
+      position_label: position.label,
     },
     context: { surface: 'dashboard' },
-    enabled: !!homeForecast || !!capitalTimeline
-  });
-
-  // Phase 2: View tracking for Timeline
-  useViewTracker(timelineRef, {
-    eventName: 'systems_timeline_viewed',
-    properties: {
-      systems_visible: capitalTimeline?.systems.length ?? 0
-    },
-    context: { surface: 'dashboard' },
-    enabled: !!capitalTimeline && capitalTimeline.systems.length >= 2
-  });
-
-  // Phase 2: View tracking for Maintenance
-  useViewTracker(maintenanceRef, {
-    eventName: 'maintenance_roadmap_viewed',
-    properties: {
-      upcoming_items_12mo: roadmapTasks.filter(t => !t.completed).length
-    },
-    context: { surface: 'maintenance' },
     enabled: true
   });
-
-  // Derive scores for legacy fallback
-  const getOverallScore = () => {
-    if (!hvacPrediction) return 82;
-    switch (hvacPrediction.status) {
-      case 'low': return 85;
-      case 'moderate': return 70;
-      case 'high': return 55;
-      default: return 82;
-    }
-  };
-
-  const getSystemsNeedingAttention = () => {
-    if (!hvacPrediction) return 0;
-    return hvacPrediction.status !== 'low' ? 1 : 0;
-  };
-
-  const getWhyBullets = (): string[] => {
-    if (!hvacPrediction?.why?.bullets) {
-      return [
-        "HVAC system age is well within expected lifespan",
-        "No abnormal usage or stress indicators detected",
-        "Local climate conditions are continuously monitored"
-      ];
-    }
-    return hvacPrediction.why.bullets;
-  };
 
   // Handle system click with tracking
   const handleSystemClick = (systemKey: string) => {
@@ -262,13 +219,7 @@ export function MiddleColumn({
     onSystemClick(systemKey);
   };
 
-  // Handle "protect" CTA - opens chat in-place with context
-  const handleProtectClick = () => {
-    setChatEngagedThisSession(true);
-    onChatExpandChange(true);
-  };
-
-  // Handle chat expand (for SystemWatch and MonthlyPriorityCTA)
+  // Handle chat expand
   const handleChatExpand = () => {
     setChatEngagedThisSession(true);
     onChatExpandChange(true);
@@ -290,18 +241,7 @@ export function MiddleColumn({
             </div>
           )}
 
-          {/* 1. SystemWatch - Authoritative planning window alert with stewardship mode */}
-          <section>
-            <SystemWatch
-              hvacPrediction={hvacPrediction}
-              capitalTimeline={capitalTimeline}
-              onSystemClick={handleSystemClick}
-              onChatExpand={handleChatExpand}
-              nextReviewMonth={isHealthyState ? nextScheduledReview : undefined}
-            />
-          </section>
-
-          {/* 2. Engagement Cadence Cards - Priority: Annual > Quarterly > Monthly */}
+          {/* 1. Annual State of Home - interrupt only */}
           {annualCard && (
             <section>
               <StateOfHomeReport 
@@ -311,83 +251,44 @@ export function MiddleColumn({
             </section>
           )}
 
-          {!annualCard && quarterlyCard && (
-            <section>
-              <QuarterlyPositionCard 
-                position={quarterlyCard} 
-                homeId={propertyId} 
-                onDismiss={dismissQuarterly} 
-              />
-            </section>
-          )}
-
-          {!annualCard && !quarterlyCard && monthlyCard && (
-            <section>
-              <MonthlyConfirmationCard 
-                homeId={propertyId} 
-                onResponse={respondToMonthly} 
-                onDismiss={() => respondToMonthly('nothing_changed')} 
-              />
-            </section>
-          )}
-
-          {/* Optional advantage - only when no major cadence cards */}
-          {!annualCard && !quarterlyCard && advantageCard && (
-            <section>
-              <OptionalAdvantageCard 
-                advantage={advantageCard} 
-                homeId={propertyId} 
-                onDismiss={dismissAdvantage} 
-              />
-            </section>
-          )}
-
-          {/* 3. Home Health Outlook - Unified truth surface */}
+          {/* 2. Today's Focus - PRIMARY AUTHORITY (always visible) */}
           <section ref={healthCardRef}>
-            {forecastLoading || timelineLoading ? (
-              <Skeleton className="h-96 rounded-2xl" />
-            ) : homeForecast && capitalTimeline ? (
-              <HomeHealthOutlook
-                forecast={homeForecast}
-                capitalTimeline={capitalTimeline}
-                onSystemClick={handleSystemClick}
-              />
-            ) : homeForecast ? (
-              <HomeHealthOutlook
-                forecast={homeForecast}
-                capitalTimeline={null}
-                onSystemClick={handleSystemClick}
-              />
-            ) : (
-              <HomeHealthOutlookFallback 
-                score={getOverallScore()}
-                isHealthyState={isHealthyState}
-              />
-            )}
-          </section>
-
-          {/* 4. HabittaThinking - Chat presence above fold */}
-          <section>
-            <HabittaThinking
-              systemsInWindow={systemsInWindow}
-              chatEngagedThisSession={chatEngagedThisSession}
-              onTalkClick={(systemKey) => {
-                // Set focus context and expand chat
-                handleSystemClick(systemKey);
-                handleChatExpand();
-              }}
-              onDismiss={() => {
-                // Dismiss handled internally via sessionStorage
-              }}
+            <TodaysFocusCard
+              focus={todaysFocus}
+              onContextExpand={() => setContextOpen(true)}
             />
           </section>
 
-          {/* 5. Maintenance Roadmap - Horizontal time model */}
-          <section ref={maintenanceRef}>
-            <MaintenanceRoadmap
-              tasks={roadmapTasks}
-              onTaskComplete={onTaskComplete}
-              showRiskImpact
+          {/* 3. Position Strip - ALWAYS VISIBLE */}
+          <section>
+            <PositionStrip
+              label={position.label}
+              relativePosition={position.relativePosition}
+              confidence={position.confidence}
+              sourceSystem={position.sourceSystem}
+              onExpand={() => setContextOpen(true)}
+            />
+          </section>
+
+          {/* 4. System Watch - conditional, sharpened (one sentence) */}
+          {shouldShowSystemWatch && (
+            <section>
+              <SystemWatch
+                hvacPrediction={hvacPrediction}
+                capitalTimeline={capitalTimeline}
+                onSystemClick={handleSystemClick}
+                onChatExpand={handleChatExpand}
+              />
+            </section>
+          )}
+
+          {/* 5. Context Drawer - collapsed by default */}
+          <section>
+            <ContextDrawer
+              isOpen={contextOpen}
+              onOpenChange={setContextOpen}
+              context={contextDrawerData}
+              focusState={todaysFocus.state}
             />
           </section>
 
@@ -404,6 +305,7 @@ export function MiddleColumn({
               confidence={confidence}
               risk={risk}
               onUserReply={onUserReply}
+              todaysFocus={todaysFocus}
             />
           </div>
         </div>

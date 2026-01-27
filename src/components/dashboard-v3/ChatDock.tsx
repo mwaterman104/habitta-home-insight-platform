@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
+import type { TodaysFocus } from "@/lib/todaysFocusCopy";
+import { getChatPlaceholder, getChatEmptyStateMessage, formatSystemName } from "@/lib/todaysFocusCopy";
 
-// System display names for context-aware placeholder
+// System display names for context-aware placeholder (legacy fallback)
 const SYSTEM_NAMES: Record<string, string> = {
   hvac: 'HVAC',
   water_heater: 'water heater',
@@ -30,6 +32,7 @@ interface ChatDockProps {
   confidence?: number;
   risk?: RiskLevel;
   onUserReply?: () => void;
+  todaysFocus?: TodaysFocus;  // NEW: For prompt injection
 }
 
 /**
@@ -58,6 +61,7 @@ export function ChatDock({
   confidence = 0.5,
   risk = 'LOW',
   onUserReply,
+  todaysFocus,
 }: ChatDockProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -119,13 +123,12 @@ export function ChatDock({
     }
   };
 
-  // Context-aware placeholder
-  const systemName = focusContext?.systemKey 
-    ? SYSTEM_NAMES[focusContext.systemKey] || focusContext.systemKey
-    : null;
-  const placeholder = systemName
-    ? `Ask about your ${systemName}...`
-    : "Ask about your home...";
+  // Context-aware placeholder - prioritize todaysFocus over focusContext
+  const placeholder = todaysFocus 
+    ? getChatPlaceholder(todaysFocus)
+    : focusContext?.systemKey 
+      ? `Ask about your ${SYSTEM_NAMES[focusContext.systemKey] || focusContext.systemKey}...`
+      : "Ask about your home...";
 
   // Collapsed state - dockable panel, ~80px
   if (!isExpanded) {
@@ -197,7 +200,9 @@ export function ChatDock({
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">I'll let you know when something important changes.</p>
+            <p className="text-sm">
+              {getChatEmptyStateMessage(todaysFocus)}
+            </p>
           </div>
         )}
         
