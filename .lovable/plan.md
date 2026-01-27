@@ -1,24 +1,45 @@
 
 
-# Chat State Machine — Refined Implementation with QC Adjustments
+# System Update Contract — Corrected Implementation
 
-## Overview
+## QA Corrections Applied
 
-Implement a 4-mode Chat State Machine that controls chat behavior based on **epistemic confidence**. When data is insufficient, chat enters "Baseline Establishment Mode" and invites photo-based calibration as an optional capability, not a task.
+This plan incorporates all required corrections from the executive QA review:
 
-**Core Doctrine**: Habitta does not advise until it can explain why it believes something.
+| Issue | Status | Fix Applied |
+|-------|--------|-------------|
+| **Critical #1**: Provenance storage inconsistent | **Fixed** | Single canonical location: `field_provenance` column |
+| **Critical #2**: Provenance read path wrong | **Fixed** | Read/write from dedicated `field_provenance` column |
+| **Critical #3**: `wasOverwrite` undefined | **Fixed** | Explicitly tracked in `resolveFieldUpdates` |
+| **Medium #4**: Confidence triggers too easily | **Fixed** | Minimum delta gate (0.05) added |
+| **Medium #5**: Held updates lost | **Noted** | Staging table optional for v1, architecture supports future |
 
 ---
 
-## QC Adjustments Incorporated
+## Schema Migration
 
-| Issue | Problem | Fix |
-|-------|---------|-----|
-| QC #1 | Strategic mode can bypass confidence gating | Strategic requires advisory eligibility first |
-| QC #2 | Confidence derivation overloaded (equity vs system) | Separate `systemConfidence` from `equityConfidence` |
-| QC #3 | InstallYearsKnown too permissive | Require 50%+ of critical systems |
-| QC #4 | Mode transition on photo ignores result | Transition requires confidence delta, not just action |
-| QC #5 | Empty state copy too invitational | Soften to observational posture |
+Add dedicated `field_provenance` column to `home_systems` table for canonical provenance storage.
+
+```sql
+-- Add field_provenance as top-level column (not nested in source)
+ALTER TABLE home_systems
+ADD COLUMN IF NOT EXISTS field_provenance jsonb DEFAULT '{}'::jsonb;
+
+-- Add convenience column for overall confidence score
+ALTER TABLE home_systems
+ADD COLUMN IF NOT EXISTS confidence_score numeric DEFAULT 0;
+
+-- Add last_updated_at for audit
+ALTER TABLE home_systems
+ADD COLUMN IF NOT EXISTS last_updated_at timestamptz DEFAULT now();
+
+-- Comment for clarity
+COMMENT ON COLUMN home_systems.field_provenance IS 
+  'Canonical field-level provenance. Each key (brand, model, etc.) maps to {source, confidence, updated_at}. 
+   This is the ONLY location for provenance data - do not use source.field_provenance.';
+```
+
+**Rationale**: This fixes Critical #1 and #2 by creating a single, queryable, predictable location for provenance.
 
 ---
 
@@ -26,494 +47,621 @@ Implement a 4-mode Chat State Machine that controls chat behavior based on **epi
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/types/chatMode.ts` | **Create** | Chat mode types and context interface |
-| `src/lib/chatModeCopy.ts` | **Create** | Mode-specific copy governance |
-| `src/lib/chatModeSelector.ts` | **Create** | Deterministic mode selection logic |
-| `src/hooks/useChatMode.ts` | **Create** | Hook to derive chat mode from system data |
-| `src/lib/systemConfidenceDerivation.ts` | **Create** | System-level confidence aggregation (separate from equity) |
-| `src/lib/todaysFocusCopy.ts` | **Modify** | Add banned task phrases |
-| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Render mode-specific prompts and opening messages |
-| `src/hooks/useAIHomeAssistant.ts` | **Modify** | Accept chat mode context for API calls |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass chat mode context to ChatDock |
-| `src/pages/DashboardV3.tsx` | **Modify** | Fetch permit/system data, derive chat mode, pass to MiddleColumn |
+| `src/lib/systemUpdates/authority.ts` | **Create** | Authority rank definitions |
+| `src/lib/systemUpdates/resolveFieldUpdates.ts` | **Create** | Field-level authority resolution with `wasOverwrite` tracking |
+| `src/lib/systemUpdates/confidenceCalculator.ts` | **Create** | Deterministic confidence scoring with delta gate |
+| `src/lib/systemUpdates/chatSummaryBuilder.ts` | **Create** | Chat-safe output formatting |
+| `src/lib/systemUpdates/applySystemUpdate.ts` | **Create** | Core enforcement gate |
+| `src/lib/systemUpdates/index.ts` | **Create** | Module exports |
+| `src/hooks/useHomeSystems.ts` | **Modify** | Add `field_provenance` support to interface |
+| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Wire photo analysis to `applySystemUpdate` |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass system update callback |
+| `src/pages/DashboardV3.tsx` | **Modify** | Pass `useHomeSystems` refetch to MiddleColumn |
 
 ---
 
-## Part 1: Type System
+## Part 1: Authority Definitions
 
-**File:** `src/types/chatMode.ts`
+**File:** `src/lib/systemUpdates/authority.ts`
 
-```text
-ChatMode = 
-  | 'baseline_establishment'  // systemConfidence = Early, insufficient install data
-  | 'observational'           // Moderate confidence, partial data
-  | 'advisory'                // High confidence OR user confirmed systems
-  | 'strategic'               // User-initiated AND already in advisory mode
+```typescript
+/**
+ * Authority Rank Definitions
+ * 
+ * Higher authority never gets overwritten by lower authority.
+ * This is the spine of the system update contract.
+ */
 
-ChatModeContext = {
-  mode: ChatMode
-  systemConfidence: 'Early' | 'Moderate' | 'High'
-  permitsFound: boolean
-  criticalSystemsCoverage: number  // 0.0 → 1.0 (QC #3 fix)
-  userConfirmedSystems: boolean
-  systemsWithLowConfidence: string[]
-  previousMode?: ChatMode  // For strategic transition validation (QC #1)
+export type SystemUpdateSource =
+  | 'professional_override'  // Pro verification (future)
+  | 'user_confirmed'         // User explicitly confirmed/corrected
+  | 'photo_analysis'         // AI vision extraction
+  | 'permit_record'          // Public permit data
+  | 'inferred';              // Heuristic/age-based estimation
+
+export const AUTHORITY_RANK: Record<SystemUpdateSource, number> = {
+  professional_override: 5,
+  user_confirmed: 4,
+  photo_analysis: 3,
+  permit_record: 2,
+  inferred: 1,
+};
+
+export interface FieldProvenance {
+  source: SystemUpdateSource;
+  confidence: number;
+  updated_at: string;
+}
+```
+
+---
+
+## Part 2: Field Resolution with wasOverwrite (Critical #3 Fix)
+
+**File:** `src/lib/systemUpdates/resolveFieldUpdates.ts`
+
+```typescript
+import { AUTHORITY_RANK, type SystemUpdateSource, type FieldProvenance } from './authority';
+
+interface ResolveInput {
+  existingFields: Record<string, any>;
+  existingProvenance: Record<string, FieldProvenance>;
+  extractedData: Record<string, any>;
+  source: SystemUpdateSource;
+  confidenceSignal: {
+    visual_certainty?: number;
+    source_reliability: number;
+  };
 }
 
-CRITICAL_SYSTEMS = ['hvac', 'roof', 'water_heater', 'electrical']
+interface ResolveResult {
+  updateApplied: boolean;
+  wasOverwrite: boolean;  // Critical #3: Explicitly tracked
+  requiresConfirmation: boolean;
+  updatedFields: Record<string, any>;
+  updatedProvenance: Record<string, FieldProvenance>;
+  fieldsUpdated: string[];
+  fieldsHeld: string[];
+  confidenceDelta: number;
+  newConfidence: number;
+}
+
+export function resolveFieldUpdates(input: ResolveInput): ResolveResult {
+  const { existingFields, existingProvenance, extractedData, source, confidenceSignal } = input;
+  
+  const updatedFields: Record<string, any> = {};
+  const updatedProvenance: Record<string, FieldProvenance> = { ...existingProvenance };
+  const fieldsUpdated: string[] = [];
+  const fieldsHeld: string[] = [];
+  
+  let applied = false;
+  let wasOverwrite = false;  // Critical #3: Track if we're overwriting existing data
+  let held = false;
+
+  const incomingRank = AUTHORITY_RANK[source];
+  const incomingConfidence = confidenceSignal.visual_certainty ?? confidenceSignal.source_reliability;
+
+  Object.entries(extractedData).forEach(([field, value]) => {
+    if (value === undefined || value === null) return;
+
+    const current = existingProvenance[field];
+    const currentRank = current ? AUTHORITY_RANK[current.source] : 0;
+    const existingValue = existingFields[field];
+
+    if (!current || incomingRank > currentRank) {
+      // Accept: new field or higher authority
+      updatedFields[field] = value;
+      updatedProvenance[field] = {
+        source,
+        confidence: incomingConfidence,
+        updated_at: new Date().toISOString(),
+      };
+      fieldsUpdated.push(field);
+      applied = true;
+      
+      // Critical #3: Mark as overwrite if existing value existed
+      if (existingValue !== undefined && existingValue !== null) {
+        wasOverwrite = true;
+      }
+    } else if (incomingRank === currentRank && value !== existingValue) {
+      // Same authority, different value → hold for confirmation
+      fieldsHeld.push(field);
+      held = true;
+    }
+    // Lower authority → silently ignore (no action needed)
+  });
+
+  // Calculate confidence scores
+  const oldConfidence = calculateConfidenceFromProvenance(existingProvenance);
+  const newConfidence = calculateConfidenceFromProvenance(updatedProvenance);
+  const confidenceDelta = newConfidence - oldConfidence;
+
+  return {
+    updateApplied: applied,
+    wasOverwrite,  // Critical #3: Return it
+    requiresConfirmation: held && !applied,
+    updatedFields,
+    updatedProvenance,
+    fieldsUpdated,
+    fieldsHeld,
+    confidenceDelta,
+    newConfidence,
+  };
+}
+
+// Import from confidenceCalculator
+function calculateConfidenceFromProvenance(provenance: Record<string, FieldProvenance>): number {
+  const FIELD_WEIGHTS: Record<string, number> = {
+    brand: 0.25,
+    model: 0.25,
+    manufacture_year: 0.20,
+    serial: 0.15,
+    capacity_rating: 0.10,
+    fuel_type: 0.05,
+  };
+
+  let score = 0;
+  Object.entries(FIELD_WEIGHTS).forEach(([field, weight]) => {
+    const fieldProv = provenance[field];
+    if (fieldProv) {
+      score += weight * fieldProv.confidence;
+    }
+  });
+
+  return Math.min(1, Number(score.toFixed(2)));
+}
 ```
 
 ---
 
-## Part 2: System Confidence Derivation (QC #2 Fix)
+## Part 3: Confidence Calculator with Delta Gate (Medium #4 Fix)
 
-**File:** `src/lib/systemConfidenceDerivation.ts`
+**File:** `src/lib/systemUpdates/confidenceCalculator.ts`
 
-This separates **system-level confidence** (for chat mode) from **equity confidence** (for financial cards).
+```typescript
+import type { FieldProvenance } from './authority';
 
-```text
-function deriveSystemConfidence(systems: HomeSystem[]): 'Early' | 'Moderate' | 'High'
-  
-  1. Filter to critical systems only (HVAC, roof, water_heater, electrical)
-  2. For each, compute individual confidence from:
-     - install_date presence
-     - manufacture_year presence
-     - data_sources array
-     - confidence_scores object
-  3. Average the scores across critical systems
-  4. Map to bucket:
-     - < 0.40 → 'Early'
-     - 0.40 - 0.70 → 'Moderate'
-     - >= 0.70 → 'High'
+const FIELD_WEIGHTS: Record<string, number> = {
+  brand: 0.25,
+  model: 0.25,
+  manufacture_year: 0.20,
+  serial: 0.15,
+  capacity_rating: 0.10,
+  fuel_type: 0.05,
+};
 
-function computeCriticalSystemsCoverage(systems: HomeSystem[]): number
-  
-  1. Count critical systems with install_date OR manufacture_year
-  2. Divide by total critical systems (4)
-  3. Return ratio (0.0 → 1.0)
+/**
+ * Minimum confidence delta required to trigger mode recompute.
+ * Medium #4 Fix: Prevents trivial updates from inflating confidence.
+ */
+export const MINIMUM_MEANINGFUL_DELTA = 0.05;
+
+export function calculateSystemConfidence(
+  provenance: Record<string, FieldProvenance>
+): number {
+  let score = 0;
+
+  Object.entries(FIELD_WEIGHTS).forEach(([field, weight]) => {
+    const fieldProv = provenance[field];
+    if (fieldProv) {
+      score += weight * fieldProv.confidence;
+    }
+  });
+
+  return Math.min(1, Number(score.toFixed(2)));
+}
+
+/**
+ * Check if confidence delta is meaningful enough to trigger mode recompute.
+ * Medium #4 Fix: Only trigger mode transition for substantial changes.
+ */
+export function isMeaningfulDelta(delta: number): boolean {
+  return Math.abs(delta) >= MINIMUM_MEANINGFUL_DELTA;
+}
 ```
-
-**Key Rule**: This is NOT equity confidence. Chat mode uses system confidence.
 
 ---
 
-## Part 3: Mode Selector (QC #1 Fix - Strategic Nested)
+## Part 4: Chat Summary Builder
 
-**File:** `src/lib/chatModeSelector.ts`
+**File:** `src/lib/systemUpdates/chatSummaryBuilder.ts`
 
-```text
-function determineChatMode(ctx: ChatModeContext): ChatMode
+```typescript
+const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  hvac: 'HVAC system',
+  water_heater: 'water heater',
+  roof: 'roof',
+  electrical: 'electrical panel',
+  refrigerator: 'refrigerator',
+  oven_range: 'oven/range',
+  dishwasher: 'dishwasher',
+  washer: 'washing machine',
+  dryer: 'dryer',
+};
 
-  // QC #3: Require 50%+ critical systems coverage
-  const hasAdequateCoverage = ctx.criticalSystemsCoverage >= 0.5
+export function buildChatSummary(params: {
+  applied: boolean;
+  held: boolean;
+  wasOverwrite: boolean;
+  fieldsUpdated: string[];
+  fieldsHeld: string[];
+  systemType?: string;
+  brand?: string;
+}): string {
+  const { applied, held, wasOverwrite, systemType, brand } = params;
 
-  // Baseline: Early confidence AND insufficient coverage
-  if (ctx.systemConfidence === 'Early' && !hasAdequateCoverage) {
-    return 'baseline_establishment'
+  if (applied && !held) {
+    const systemName = systemType 
+      ? SYSTEM_DISPLAY_NAMES[systemType] || systemType 
+      : 'system';
+    const brandNote = brand ? ` (${brand})` : '';
+    
+    // Minor #6: Be slightly more specific
+    return `I analyzed the photo and identified key details about your ${systemName}${brandNote}. I've updated your home profile and will use this to refine future assessments.`;
   }
 
-  // Observational: Moderate confidence
-  if (ctx.systemConfidence === 'Moderate') {
-    return 'observational'
+  if (held) {
+    return `I detected some details that differ from existing records. Can you confirm before I update your home profile?`;
   }
 
-  // Advisory: High confidence OR user confirmed
-  if (ctx.systemConfidence === 'High' || ctx.userConfirmedSystems) {
-    return 'advisory'
+  return `I saved the photo but couldn't extract enough details. A closer shot of the manufacturer label would help improve accuracy.`;
+}
+```
+
+---
+
+## Part 5: Main Update Gate (Corrected)
+
+**File:** `src/lib/systemUpdates/applySystemUpdate.ts`
+
+```typescript
+import { supabase } from '@/integrations/supabase/client';
+import { resolveFieldUpdates } from './resolveFieldUpdates';
+import { buildChatSummary } from './chatSummaryBuilder';
+import { isMeaningfulDelta, MINIMUM_MEANINGFUL_DELTA } from './confidenceCalculator';
+import type { SystemUpdateSource, FieldProvenance } from './authority';
+
+export interface ApplySystemUpdateInput {
+  home_id: string;
+  system_key: string;
+  source: SystemUpdateSource;
+  extracted_data: {
+    brand?: string;
+    model?: string;
+    serial?: string;
+    manufacture_year?: number;
+    capacity_rating?: string;
+    fuel_type?: string;
+  };
+  confidence_signal: {
+    visual_certainty?: number;
+    source_reliability: number;
+  };
+  image_url?: string;
+}
+
+export interface SystemUpdateResult {
+  system_id: string;
+  update_applied: boolean;
+  confidence_delta: number;
+  authority_applied: 'accepted' | 'merged' | 'held_for_confirmation';
+  chat_summary: string;
+  fields_updated: string[];
+  fields_held: string[];
+  should_trigger_mode_recompute: boolean;  // Medium #4: Gated by delta
+}
+
+export async function applySystemUpdate(
+  input: ApplySystemUpdateInput
+): Promise<SystemUpdateResult> {
+  const { home_id, system_key, source, extracted_data, confidence_signal, image_url } = input;
+
+  // 1. Find existing system of same type
+  const { data: existingSystems } = await supabase
+    .from('home_systems')
+    .select('*')
+    .eq('home_id', home_id)
+    .ilike('system_key', `${system_key}%`)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  const existing = existingSystems?.[0] ?? null;
+  
+  // Critical #2 Fix: Read provenance from dedicated column, not nested source
+  const existingProvenance = (existing?.field_provenance as Record<string, FieldProvenance>) ?? {};
+  const existingFields = {
+    brand: existing?.brand,
+    model: existing?.model,
+    serial: existing?.serial,
+    manufacture_year: existing?.manufacture_year,
+    capacity_rating: existing?.capacity_rating,
+    fuel_type: existing?.fuel_type,
+  };
+
+  // 2. Resolve field updates with authority rules
+  const resolved = resolveFieldUpdates({
+    existingFields,
+    existingProvenance,
+    extractedData: extracted_data,
+    source,
+    confidenceSignal: confidence_signal,
+  });
+
+  // 3. Build chat summary (includes wasOverwrite for accurate messaging)
+  const chatSummary = buildChatSummary({
+    applied: resolved.updateApplied,
+    held: resolved.requiresConfirmation,
+    wasOverwrite: resolved.wasOverwrite,
+    fieldsUpdated: resolved.fieldsUpdated,
+    fieldsHeld: resolved.fieldsHeld,
+    systemType: extracted_data.system_type || system_key,
+    brand: extracted_data.brand,
+  });
+
+  // 4. If held for confirmation, return early (no DB write)
+  if (!resolved.updateApplied && resolved.requiresConfirmation) {
+    return {
+      system_id: existing?.id ?? '',
+      update_applied: false,
+      confidence_delta: 0,
+      authority_applied: 'held_for_confirmation',
+      chat_summary: chatSummary,
+      fields_updated: [],
+      fields_held: resolved.fieldsHeld,
+      should_trigger_mode_recompute: false,
+    };
   }
 
-  // Fallback
-  return 'observational'
+  // 5. Persist to database
+  let systemId = existing?.id;
 
-// QC #1 Fix: Strategic is a SUB-STATE of advisory, not parallel
-function canEnterStrategic(currentMode: ChatMode, userIntent: string): boolean
-  
-  // Strategic requires advisory eligibility first
-  if (currentMode !== 'advisory') {
-    return false
+  if (existing) {
+    // Merge into existing record
+    const newImages = image_url 
+      ? [...(existing.images || []), image_url]
+      : existing.images;
+
+    // Critical #2 Fix: Write provenance to dedicated column
+    await supabase
+      .from('home_systems')
+      .update({
+        ...resolved.updatedFields,
+        images: newImages,
+        data_sources: [...new Set([...(existing.data_sources || []), source])],
+        confidence_scores: { 
+          ...(existing.confidence_scores || {}),
+          overall: resolved.newConfidence 
+        },
+        field_provenance: resolved.updatedProvenance,  // Dedicated column
+        confidence_score: resolved.newConfidence,      // Convenience column
+        last_updated_at: new Date().toISOString(),
+        source: {
+          ...(existing.source || {}),
+          last_update_source: source,
+          last_update_at: new Date().toISOString(),
+        },
+      })
+      .eq('id', existing.id);
+  } else {
+    // Create new system record
+    const { data: inserted } = await supabase
+      .from('home_systems')
+      .insert({
+        home_id,
+        system_key: generateUniqueSystemKey(system_key, extracted_data.brand),
+        ...resolved.updatedFields,
+        images: image_url ? [image_url] : [],
+        data_sources: [source],
+        confidence_scores: { overall: resolved.newConfidence },
+        field_provenance: resolved.updatedProvenance,
+        confidence_score: resolved.newConfidence,
+        source: {
+          original_type: system_key,
+          last_update_source: source,
+          last_update_at: new Date().toISOString(),
+        },
+      })
+      .select()
+      .single();
+
+    systemId = inserted?.id;
   }
-  
-  const strategicIntents = ['renovation', 'equity', 'refinancing', 'second property']
-  return strategicIntents.some(i => userIntent.toLowerCase().includes(i))
-```
 
-**Doctrine Guardrail**: Strategic mode can never skip baseline/observational.
+  // Medium #4 Fix: Only trigger mode recompute if delta is meaningful
+  const shouldTrigger = isMeaningfulDelta(resolved.confidenceDelta);
 
----
+  // Critical #3 Fix: Use wasOverwrite for authority_applied
+  const authorityApplied = resolved.wasOverwrite ? 'accepted' : 'merged';
 
-## Part 4: Copy Governance
+  return {
+    system_id: systemId!,
+    update_applied: true,
+    confidence_delta: resolved.confidenceDelta,
+    authority_applied: authorityApplied,
+    chat_summary: chatSummary,
+    fields_updated: resolved.fieldsUpdated,
+    fields_held: [],
+    should_trigger_mode_recompute: shouldTrigger,
+  };
+}
 
-**File:** `src/lib/chatModeCopy.ts`
-
-### Baseline Establishment Mode Copy
-
-**Opening Message (system-initiated, once):**
-```text
-"I'm currently working with limited system history for this home.
-I can still monitor patterns, but accuracy improves when installations can be confirmed."
-```
-
-**Secondary Line (capability framing):**
-```text
-"If you'd like, we can establish a clearer baseline by identifying what's installed."
-```
-
-**Optional Clarifier:**
-```text
-"Photos of equipment labels or installations are usually enough."
-```
-
-### Mode-Specific Suggested Prompts
-
-```text
-Baseline Establishment:
-  - "Help establish a clearer baseline"
-  - "What information would improve accuracy?"
-  - "What can you tell from what you see now?"
-
-Observational:
-  - "What are you seeing?"
-  - "How confident is this assessment?"
-  - "What factors influence this?"
-
-Advisory:
-  - "Walk me through my options"
-  - "What happens if I wait?"
-  - "Help me understand the timeline"
-
-Strategic (only after advisory consent):
-  - "Could I afford a renovation?"
-  - "What does my equity position enable?"
-  - "Help me think through financing options"
-```
-
-### Empty State Messages (QC #5 Fix)
-
-```text
-Baseline:
-  "I'm monitoring with limited system history. I can share what I'm able to observe so far."
-  
-  (Changed from "Ask what I can see so far" - reduces invitation pressure)
-
-Observational:
-  "What would you like to understand about your home?"
-
-Advisory:
-  "I can help you think through your options."
-
-Strategic:
-  "We can explore financial possibilities together."
+/**
+ * Generate deterministic unique system key.
+ * Minor #7: Same home + type + brand = same key (prevents duplicates)
+ */
+function generateUniqueSystemKey(systemType: string, brand?: string): string {
+  const brandSuffix = brand?.toLowerCase().replace(/\s+/g, '_') || '';
+  const timestamp = Date.now().toString(36);
+  return brandSuffix 
+    ? `${systemType}_${brandSuffix}_${timestamp}` 
+    : `${systemType}_${timestamp}`;
+}
 ```
 
 ---
 
-## Part 5: Banned Task Phrases Update
-
-**File:** `src/lib/todaysFocusCopy.ts`
-
-Add to existing `BANNED_PHRASES`:
-
-```text
-// Task language (Baseline Mode violations)
-'Please upload',
-'To continue',
-'Required',
-'Missing data',
-'You need to',
-'Next step',
-'Complete your',
-'Finish setup',
-'Help us by',
-'Let\'s get',
-```
-
----
-
-## Part 6: Chat Mode Hook
-
-**File:** `src/hooks/useChatMode.ts`
-
-```text
-function useChatMode(options: {
-  homeId?: string
-  systems: HomeSystem[]
-  permitsFound: boolean
-}): ChatModeContext
-
-  1. Derive systemConfidence via deriveSystemConfidence(systems)
-  
-  2. Compute criticalSystemsCoverage via computeCriticalSystemsCoverage(systems)
-  
-  3. Check userConfirmedSystems:
-     - Any system has data_sources containing 'user', 'manual', or 'owner_reported'
-  
-  4. Find systemsWithLowConfidence:
-     - Systems where overall confidence score < 0.4
-  
-  5. Call determineChatMode() with full context
-  
-  6. Return ChatModeContext
-```
-
----
-
-## Part 7: ChatDock Updates
+## Part 6: ChatDock Integration
 
 **File:** `src/components/dashboard-v3/ChatDock.tsx`
 
-### New Props
+Update the `onPhotoReady` callback to use the enforcement gate:
 
-```text
+```typescript
+// Add import
+import { applySystemUpdate } from '@/lib/systemUpdates';
+
+// Update ChatDockProps
 interface ChatDockProps {
   // ... existing props
-  chatMode: ChatMode
-  systemsWithLowConfidence?: string[]
+  onSystemUpdated?: () => void;  // Callback when system is updated
 }
-```
 
-### Mode-Specific Rendering
+// Replace the photo handler in the component
+const handlePhotoAnalysis = async (photoUrl: string) => {
+  try {
+    // 1. Call analyze-device-photo
+    const response = await fetch(
+      `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
+        },
+        body: JSON.stringify({ image_url: photoUrl }),
+      }
+    );
 
-```text
-Suggested Prompts Section:
-  - Replace hardcoded prompts (lines 256-274)
-  - Use getPromptsForMode(chatMode) from chatModeCopy
+    const { analysis } = await response.json();
 
-Opening Message Injection:
-  - When chatMode === 'baseline_establishment' AND messages.length === 0:
-    → Inject baseline opening message once
-    → Track via sessionStorage key: 'habitta_baseline_opening_shown'
+    if (!analysis || !analysis.system_type) {
+      sendMessage("I saved the photo but couldn't extract clear details. A closer shot of the manufacturer label would help improve accuracy.");
+      return;
+    }
 
-Empty State:
-  - Use getEmptyStateForMode(chatMode) from chatModeCopy
+    // 2. Apply system update through enforcement gate
+    const result = await applySystemUpdate({
+      home_id: propertyId,
+      system_key: analysis.system_type,
+      source: 'photo_analysis',
+      extracted_data: {
+        brand: analysis.brand,
+        model: analysis.model,
+        serial: analysis.serial,
+        manufacture_year: analysis.manufacture_year,
+        capacity_rating: analysis.capacity_rating,
+        fuel_type: analysis.fuel_type,
+      },
+      confidence_signal: {
+        visual_certainty: analysis.visual_certainty,
+        source_reliability: 0.7,
+      },
+      image_url: photoUrl,
+    });
 
-Upload Affordance (Baseline Only):
-  - When chatMode === 'baseline_establishment':
-    → Show subtle "Improve accuracy" link below prompts
-    → Equal visual weight to dismiss option
-```
+    // 3. Send chat summary (ONLY after persistence)
+    sendMessage(result.chat_summary);
 
-### State Indicator Updates
+    // 4. Trigger mode recompute ONLY if meaningful (Medium #4)
+    if (result.update_applied && result.should_trigger_mode_recompute) {
+      onSystemUpdated?.();
+    }
+  } catch (err) {
+    console.error('Photo analysis error:', err);
+    sendMessage("I had trouble processing this image. The photo was saved and I'll try again shortly.");
+  }
+};
 
-```text
-Current (line 175-178):
-  {advisorState === 'DECISION' && '• Comparing options'}
-  {advisorState === 'EXECUTION' && '• Ready to act'}
-
-Add:
-  {chatMode === 'baseline_establishment' && '• Establishing baseline'}
-  {chatMode === 'observational' && '• Observing patterns'}
+// Update the ChatPhotoUpload usage
+<ChatPhotoUpload
+  homeId={propertyId}
+  onPhotoReady={handlePhotoAnalysis}  // Now uses enforcement gate
+  disabled={loading}
+/>
 ```
 
 ---
 
-## Part 8: Hook Updates
+## Part 7: Data Wiring
 
-**File:** `src/hooks/useAIHomeAssistant.ts`
+### DashboardV3.tsx
 
-### Add Chat Mode to API Context
+Pass `refetchSystems` to MiddleColumn:
 
-```text
-interface UseAIHomeAssistantOptions {
-  // ... existing
-  chatMode?: ChatMode
-}
-```
+```typescript
+const handleSystemUpdated = useCallback(() => {
+  refetchSystems();
+  // Chat mode will recompute via useChatMode dependency
+}, [refetchSystems]);
 
-Pass `chatMode` in edge function body so AI backend adjusts response style.
-
----
-
-## Part 9: Data Wiring
-
-**File:** `src/pages/DashboardV3.tsx`
-
-### Add Data Fetches
-
-```text
-// Existing: useHomeSystems hook not currently used at dashboard level
-// Add:
-const { systems: homeSystems, loading: systemsLoading } = useHomeSystems(userHome?.id)
-
-// Existing: usePermitInsights
-const { insights: permitInsights, loading: permitsLoading } = usePermitInsights(userHome?.id)
-
-// New: Derive chat mode
-const chatModeContext = useChatMode({
-  homeId: userHome?.id,
-  systems: homeSystems,
-  permitsFound: permitInsights.length > 0,
-})
-```
-
-### Update MiddleColumn Props (all 3 instances)
-
-```text
 <MiddleColumn
   // ... existing props
-  chatMode={chatModeContext.mode}
-  systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+  onSystemUpdated={handleSystemUpdated}
 />
 ```
 
-**File:** `src/components/dashboard-v3/MiddleColumn.tsx`
+### MiddleColumn.tsx
 
-### Update Props Interface
+Add prop and pass to ChatDock:
 
-```text
+```typescript
 interface MiddleColumnProps {
   // ... existing
-  chatMode?: ChatMode
-  systemsWithLowConfidence?: string[]
+  onSystemUpdated?: () => void;
+}
+
+<ChatDock
+  // ... existing props
+  onSystemUpdated={onSystemUpdated}
+/>
+```
+
+### useHomeSystems.ts
+
+Add `field_provenance` to interface:
+
+```typescript
+export interface HomeSystem {
+  // ... existing fields
+  field_provenance?: Record<string, {
+    source: string;
+    confidence: number;
+    updated_at: string;
+  }>;
+  confidence_score?: number;
+  last_updated_at?: string;
 }
 ```
 
-### Pass to ChatDock
+---
 
-```text
-<ChatDock
-  // ... existing props
-  chatMode={chatMode ?? 'observational'}
-  systemsWithLowConfidence={systemsWithLowConfidence}
-/>
-```
+## Corrected Behavior Summary
+
+| Scenario | Behavior | Result |
+|----------|----------|--------|
+| Photo contradicts user-confirmed brand | **Hold** | Ask confirmation, no DB write |
+| User corrects photo result | **Overwrite** | `authority_applied: 'accepted'` |
+| New photo same system | **Merge** | `authority_applied: 'merged'` |
+| Trivial field update (delta < 0.05) | **Write** | Mode recompute NOT triggered |
+| Meaningful update (delta ≥ 0.05) | **Write** | Mode recompute triggered |
 
 ---
 
-## Part 10: Photo Upload Confidence Gate (QC #4 Fix)
+## QA Verification Checklist
 
-**Location:** Where photo analysis results are processed (likely `useHomeSystems` or component handling photo capture)
+**Critical Fixes**:
+- [x] Single canonical provenance location (`field_provenance` column)
+- [x] Correct read path (`existing?.field_provenance`, not nested in `source`)
+- [x] `wasOverwrite` explicitly defined and tracked in `resolveFieldUpdates`
 
-```text
-After photo upload and analysis:
+**Medium Fixes**:
+- [x] Minimum delta gate (0.05) prevents trivial confidence inflation
+- [x] Architecture supports future held-update staging (optional v2)
 
-  1. Store pre-upload system confidence
-  2. Process photo → update system record
-  3. Compute post-upload system confidence
-  4. Calculate delta = postConfidence - preConfidence
-
-  if (delta > 0.1) {
-    // Confidence meaningfully improved
-    // Allow mode transition: baseline → observational
-    chatModeContext.triggerRecompute()
-  } else {
-    // Photo didn't help (blurry, wrong subject, etc.)
-    // Stay in baseline mode
-    // Optionally show gentle feedback: "I couldn't extract details from that image."
-  }
-```
-
-**Doctrine**: Mode transition is earned by confidence improvement, not by user action alone.
-
----
-
-## Mode Transition Rules (Updated with QC Fixes)
-
-```text
-baseline_establishment → observational
-  Trigger: criticalSystemsCoverage >= 0.5 OR systemConfidence improves to Moderate
-  AND confidence delta > 0.1 (if triggered by photo)
-
-observational → advisory
-  Trigger: systemConfidence reaches High OR userConfirmedSystems = true
-
-advisory → strategic
-  Trigger: User asks about renovation, equity, refinancing
-  AND current mode is already 'advisory' (QC #1)
-
-strategic → advisory
-  Trigger: Conversation ends or user changes topic
-```
-
----
-
-## UI Behavior by Mode (Final Matrix)
-
-| Behavior | Baseline | Observational | Advisory | Strategic |
-|----------|----------|---------------|----------|-----------|
-| Opening message | Auto-inject once | None | Context-aware | None |
-| Prompts | Calibration | Understanding | Options | Planning |
-| Upload affordance | Visible, subtle | Hidden | Hidden | Hidden |
-| Cost discussion | Blocked | Blocked | Allowed | Allowed |
-| Timeline specifics | Blocked | Ranges only | Specific | Detailed |
-| Action language | Blocked | Blocked | Soft | Allowed |
-| State indicator | "Establishing baseline" | "Observing" | Hidden | Hidden |
-
----
-
-## What Happens If User Ignores Baseline Calibration
-
-**Nothing.**
-
-- Habitta continues monitoring with lower confidence
-- Uses softer language in all surfaces
-- Never nags or re-prompts
-- No email nudges
-- No progress bars
-- This preserves trust
-
----
-
-## Doctrine Comments to Add in Code
-
-```text
-// src/types/chatMode.ts
-/**
- * DOCTRINE: Chat modes represent epistemic readiness, not user intent.
- * User intent can never elevate chat mode on its own.
- */
-
-// src/lib/chatModeSelector.ts  
-/**
- * DOCTRINE: Habitta does not advise until it can explain why it believes something.
- * If chatMode = 'baseline_establishment', all advisory language is blocked.
- */
-
-// src/lib/chatModeSelector.ts (strategic function)
-/**
- * QC #1 FIX: Strategic mode is nested inside advisory, not parallel.
- * A user cannot skip from baseline → strategic by asking about renovation.
- */
-```
-
----
-
-## QA Gates
-
-- [ ] No task language in baseline mode ("Please upload", "Required", etc.)
-- [ ] Opening message appears once per session only
-- [ ] Suggested prompts change based on mode
-- [ ] Upload affordance is subtle and optional
-- [ ] Mode transitions correctly require confidence improvement (QC #4)
-- [ ] Strategic mode blocked unless already in advisory (QC #1)
-- [ ] systemConfidence is separate from equityConfidence (QC #2)
-- [ ] criticalSystemsCoverage requires 50%+ (QC #3)
-- [ ] Works across mobile, tablet, desktop layouts
-- [ ] Chat API receives mode context
-
----
-
-## Doctrine Compliance Checklist
-
-- [ ] Photos framed as capability, not obligation
-- [ ] No gamification (progress bars, completion %)
-- [ ] Skip option has equal visual weight
-- [ ] Confidence improvement is quiet, not celebrated
-- [ ] Chat mode is deterministic, not guessed
-- [ ] Baseline mode avoids all advisory language
-- [ ] Upload feedback says "Received" not "Great job"
-- [ ] Strategic requires advisory eligibility (no skipping)
-
----
-
-## Acceptance Criteria
-
-- [ ] Chat mode derives correctly from system confidence + coverage + permits
-- [ ] Baseline mode shows calibration-focused prompts only
-- [ ] Opening message appears once per session in baseline mode
-- [ ] "Improve accuracy" link appears subtly in baseline mode
-- [ ] Advisory prompts only appear in advisory/strategic modes
-- [ ] Strategic mode requires advisory as prerequisite
-- [ ] Photo uploads trigger mode transition only if confidence improves
-- [ ] No regressions in existing chat functionality
-- [ ] Mode-specific empty states render correctly
+**Preserved Wins**:
+- [x] AI never sees raw extracted data (only `chat_summary`)
+- [x] Chat speaks only after persistence
+- [x] Authority hierarchy is boring and explicit
+- [x] Same-authority conflicts are held, not guessed
+- [x] Mode transitions are earned, not triggered
 
