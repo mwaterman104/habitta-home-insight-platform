@@ -81,7 +81,7 @@ export function ChatDock({
   risk = 'LOW',
   onUserReply,
   todaysFocus,
-  chatMode = 'observational',
+  chatMode = 'silent_steward',
   systemsWithLowConfidence = [],
   onSystemUpdated,
 }: ChatDockProps) {
@@ -250,13 +250,13 @@ export function ChatDock({
       ? `Ask about your ${SYSTEM_NAMES[focusContext.systemKey] || focusContext.systemKey}...`
       : "Ask about your home...";
 
-  // Collapsed state - dockable panel, ~80px
+  // Collapsed state - V1 Spec: Pure white surface, rounded corners, inset
   if (!isExpanded) {
     return (
-      <div className="bg-card rounded-xl border shadow-sm transition-all duration-200">
+      <div className="bg-white dark:bg-card rounded-2xl border border-border/50 transition-all duration-200">
         <button
           onClick={() => onExpandChange(true)}
-          className="w-full p-4 flex items-center gap-3 hover:bg-muted/50 transition-colors rounded-xl"
+          className="w-full p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors rounded-2xl"
         >
           {hasAgentMessage ? (
             <>
@@ -271,7 +271,7 @@ export function ChatDock({
             <>
               <Input 
                 placeholder={placeholder}
-                className="flex-1 bg-muted/50 border-0 cursor-pointer pointer-events-none"
+                className="flex-1 bg-muted/30 border-0 cursor-pointer pointer-events-none"
                 readOnly
                 tabIndex={-1}
               />
@@ -283,11 +283,11 @@ export function ChatDock({
     );
   }
 
-  // Expanded state - dockable panel with bounded height
+  // Expanded state - V1 Spec: Pure white, rounded corners, fixed max width
   return (
-    <div className="bg-card rounded-xl border shadow-sm flex flex-col max-h-[min(60vh,420px)] transition-all duration-200">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b shrink-0 rounded-t-xl">
+    <div className="bg-white dark:bg-card rounded-2xl border border-border/50 flex flex-col max-h-[min(60vh,420px)] transition-all duration-200 max-w-2xl mx-auto">
+      {/* Header - V1: No shadows, calm depth */}
+      <div className="flex items-center justify-between p-4 border-b border-border/30 shrink-0 rounded-t-2xl">
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Habitta</span>
@@ -332,6 +332,7 @@ export function ChatDock({
           </div>
         )}
         
+        {/* V1 Spec: Message grammar - no chat bubbles with tails */}
         {messages.map((message) => (
           <div
             key={message.id}
@@ -340,17 +341,13 @@ export function ChatDock({
               message.role === "user" ? "justify-end" : "justify-start"
             )}
           >
-            {message.role === "assistant" && (
-              <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <MessageCircle className="h-3 w-3 text-primary" />
-              </div>
-            )}
+            {/* V1: No avatar needed for Habitta (Habitta IS the space) */}
             <div
               className={cn(
-                "rounded-lg px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap",
+                "rounded-lg px-4 py-2.5 max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap",
                 message.role === "user"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-muted"
+                  : "bg-muted/50 text-foreground"
               )}
             >
               {message.content}
@@ -358,12 +355,10 @@ export function ChatDock({
           </div>
         ))}
         
+        {/* Loading indicator - V1: Simple, no avatar */}
         {loading && (
-          <div className="flex gap-3">
-            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <MessageCircle className="h-3 w-3 text-primary" />
-            </div>
-            <div className="bg-muted rounded-lg px-3 py-2">
+          <div className="flex justify-start">
+            <div className="bg-muted/50 rounded-lg px-4 py-2.5">
               <div className="flex gap-1">
                 <span className="h-2 w-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="h-2 w-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -415,8 +410,8 @@ export function ChatDock({
         </div>
       )}
 
-      {/* Input - always visible */}
-      <div className="p-3 border-t shrink-0">
+      {/* Input - V1: Always visible, clean styling */}
+      <div className="p-4 border-t border-border/30 shrink-0">
         <div className="flex gap-2">
           {/* Photo upload button - now uses enforcement gate */}
           <ChatPhotoUpload
