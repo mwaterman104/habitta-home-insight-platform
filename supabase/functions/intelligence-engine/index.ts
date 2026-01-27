@@ -2575,23 +2575,29 @@ serve(async (req) => {
     // For user-authenticated calls, validate ownership
     if (isUserAuth && propertyId) {
       const token = authHeader!.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
       
-      if (authError || !user) {
+      // Use getClaims() for proper JWT validation instead of getUser()
+      // getClaims validates the token and extracts claims without requiring a round-trip
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      
+      if (claimsError || !claimsData?.claims) {
+        console.error('[intelligence-engine] Token validation failed:', claimsError?.message);
         return new Response(
           JSON.stringify({ error: 'Invalid token' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
+      const userId = claimsData.claims.sub as string;
+      
       // Verify the home belongs to the user
-      console.log(`[intelligence-engine] Verifying ownership: propertyId=${propertyId}, userId=${user.id}`);
+      console.log(`[intelligence-engine] Verifying ownership: propertyId=${propertyId}, userId=${userId}`);
       
       const { data: home, error: homeError } = await supabase
         .from('homes')
         .select('id, user_id')
         .eq('id', propertyId)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
       
       if (homeError || !home) {
@@ -2599,7 +2605,7 @@ serve(async (req) => {
           homeError: homeError?.message,
           homeErrorCode: homeError?.code,
           propertyId,
-          userId: user.id,
+          userId,
           homeFound: !!home
         });
         
