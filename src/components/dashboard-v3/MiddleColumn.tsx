@@ -144,7 +144,7 @@ export function MiddleColumn({
   mortgageSource,
   city,
   state,
-  chatMode = 'observational',
+  chatMode = 'silent_steward',
   systemsWithLowConfidence = [],
   onSystemUpdated,
 }: MiddleColumnProps) {

@@ -164,6 +164,19 @@ export interface LifespanPrediction {
 export interface SystemPrediction {
   systemKey: SystemKey;
   status: 'low' | 'moderate' | 'high';
+  
+  /**
+   * Critical Fix #2: Deviation detection for Elevated state
+   * True only when actual deviation observed, not just aging
+   * A water heater being old is planning. A water heater behaving oddly is elevated.
+   */
+  deviation_detected?: boolean;
+  
+  /**
+   * Specific anomaly flags that triggered deviation
+   * e.g., ['unusual_runtime', 'efficiency_drop', 'unexpected_noise']
+   */
+  anomaly_flags?: string[];
 
   header: {
     name: string;               // "HVAC" | "Roof" | "Water Heater"

@@ -1,5 +1,5 @@
 /**
- * Chat Mode Copy Governance
+ * Chat Mode Copy Governance - V1 Spec Compliant
  * 
  * Mode-specific copy for chat interface.
  * Enforces doctrine: No task language in baseline mode.
@@ -11,6 +11,10 @@
  * - "Missing data"
  * - "You need to"
  * - "Next step"
+ * 
+ * LANGUAGE GOVERNANCE (Strict):
+ * Allowed verbs: watching, monitoring, noting, preparing, confirming
+ * Banned verbs: fix, solve, optimize, upgrade, save you money
  */
 
 import type { ChatMode } from '@/types/chatMode';
@@ -26,14 +30,25 @@ export interface OpeningMessageConfig {
 }
 
 const OPENING_MESSAGES: Record<ChatMode, OpeningMessageConfig | null> = {
+  silent_steward: null, // Never speaks first (silence is authority)
+  
   baseline_establishment: {
-    primary: "I'm currently working with limited system history for this home.\nI can still monitor patterns, but accuracy improves when installations can be confirmed.",
-    secondary: "If you'd like, we can establish a clearer baseline by identifying what's installed.",
-    clarifier: "Photos of equipment labels or installations are usually enough.",
+    primary: "I'm still forming the baseline I'll use to monitor this home.",
+    secondary: "I can share what I'm able to observe so far, or we can establish a clearer baseline together.",
+    clarifier: "Photos of equipment labels are usually enough.",
   },
-  observational: null, // No opening message
-  advisory: null, // Context-aware (handled elsewhere)
-  strategic: null, // No opening message
+  
+  interpretive: null, // Context-dependent, not pre-defined
+  
+  planning_window_advisory: {
+    primary: "Based on what you're seeing above, one of your systems is entering a planning window.",
+    secondary: "Nothing needs to be done yet — this is about being ready.",
+  },
+  
+  elevated_attention: {
+    primary: "I'm seeing something that warrants attention.",
+    secondary: "Let me explain what I'm observing.",
+  },
 };
 
 export function getOpeningMessage(mode: ChatMode): OpeningMessageConfig | null {
@@ -52,46 +67,55 @@ export function formatOpeningMessage(config: OpeningMessageConfig): string {
 // ============================================
 
 const SUGGESTED_PROMPTS: Record<ChatMode, string[]> = {
+  silent_steward: [
+    "What are you monitoring?",
+    "Walk me through my home's status",
+    "Any patterns you're seeing?",
+  ],
+  
   baseline_establishment: [
     "Help establish a clearer baseline",
     "What information would improve accuracy?",
     "What can you tell from what you see now?",
   ],
-  observational: [
-    "What are you seeing?",
-    "How confident is this assessment?",
-    "What factors influence this?",
+  
+  interpretive: [
+    "Tell me more",
+    "What does that mean for me?",
+    "How confident are you?",
   ],
-  advisory: [
+  
+  planning_window_advisory: [
     "Walk me through my options",
     "What happens if I wait?",
     "Help me understand the timeline",
   ],
-  strategic: [
-    "Could I afford a renovation?",
-    "What does my equity position enable?",
-    "Help me think through financing options",
+  
+  elevated_attention: [
+    "What are you seeing?",
+    "How concerned should I be?",
+    "What do you recommend?",
   ],
 };
 
 export function getPromptsForMode(mode: ChatMode): string[] {
-  return SUGGESTED_PROMPTS[mode] || SUGGESTED_PROMPTS.observational;
+  return SUGGESTED_PROMPTS[mode] || SUGGESTED_PROMPTS.silent_steward;
 }
 
 // ============================================
-// Empty State Messages (QC #5 Fix)
+// Empty State Messages
 // ============================================
 
 const EMPTY_STATE_MESSAGES: Record<ChatMode, string> = {
-  // QC #5: Softened to observational posture (removed "Ask what I can see")
+  silent_steward: "All systems stable. What would you like to understand about your home?",
   baseline_establishment: "I'm monitoring with limited system history. I can share what I'm able to observe so far.",
-  observational: "What would you like to understand about your home?",
-  advisory: "I can help you think through your options.",
-  strategic: "We can explore financial possibilities together.",
+  interpretive: "What would you like me to explain?",
+  planning_window_advisory: "I can help you think through your options.",
+  elevated_attention: "I'm seeing something worth discussing. Ask me about it.",
 };
 
 export function getEmptyStateForMode(mode: ChatMode): string {
-  return EMPTY_STATE_MESSAGES[mode] || EMPTY_STATE_MESSAGES.observational;
+  return EMPTY_STATE_MESSAGES[mode] || EMPTY_STATE_MESSAGES.silent_steward;
 }
 
 // ============================================
@@ -138,39 +162,113 @@ export function clearBaselineOpeningShown(): void {
 // ============================================
 
 export interface ModeBehavior {
+  /** Show photo upload affordance */
   showUploadAffordance: boolean;
+  /** Allow cost discussion */
   allowCostDiscussion: boolean;
+  /** Allow specific timelines */
   allowTimelineSpecifics: boolean;
+  /** Allow action language */
   allowActionLanguage: boolean;
+  /** Chat may speak first */
+  canAutoInitiate: boolean;
+  /** Maximum consecutive agent messages */
+  maxConsecutiveMessages: number;
 }
 
 const MODE_BEHAVIORS: Record<ChatMode, ModeBehavior> = {
+  silent_steward: {
+    showUploadAffordance: false,
+    allowCostDiscussion: false,
+    allowTimelineSpecifics: false,
+    allowActionLanguage: false,
+    canAutoInitiate: false, // Never speaks first
+    maxConsecutiveMessages: 3,
+  },
+  
   baseline_establishment: {
     showUploadAffordance: true,
     allowCostDiscussion: false,
     allowTimelineSpecifics: false,
     allowActionLanguage: false,
+    canAutoInitiate: true, // Speaks first to establish baseline
+    maxConsecutiveMessages: 3,
   },
-  observational: {
+  
+  interpretive: {
     showUploadAffordance: false,
     allowCostDiscussion: false,
     allowTimelineSpecifics: false, // Ranges only
     allowActionLanguage: false,
+    canAutoInitiate: false,
+    maxConsecutiveMessages: 1, // Subtle Risk #1: Hard limit
   },
-  advisory: {
+  
+  planning_window_advisory: {
     showUploadAffordance: false,
     allowCostDiscussion: true,
     allowTimelineSpecifics: true,
-    allowActionLanguage: true, // Soft
+    allowActionLanguage: true, // Soft, preparation-focused
+    canAutoInitiate: true, // Once per window entry
+    maxConsecutiveMessages: 3,
   },
-  strategic: {
+  
+  elevated_attention: {
     showUploadAffordance: false,
     allowCostDiscussion: true,
     allowTimelineSpecifics: true,
-    allowActionLanguage: true,
+    allowActionLanguage: true, // More directive
+    canAutoInitiate: true,
+    maxConsecutiveMessages: 3,
   },
 };
 
 export function getModeBehavior(mode: ChatMode): ModeBehavior {
-  return MODE_BEHAVIORS[mode] || MODE_BEHAVIORS.observational;
+  return MODE_BEHAVIORS[mode] || MODE_BEHAVIORS.silent_steward;
+}
+
+// ============================================
+// Elevated Mode Behavior Constraint
+// ============================================
+
+/**
+ * Elevated Mode Behavior - Constrained by Confidence
+ * 
+ * If baseline incomplete:
+ *   - Elevated mode ASKS questions
+ *   - Does NOT give recommendations
+ *   - Tone: "I'm seeing something unusual, can you confirm X?"
+ * 
+ * If baseline complete:
+ *   - Elevated mode is DIRECTIVE
+ *   - Clear next steps allowed
+ *   - Tone: "This is outside normal range. I recommend X."
+ */
+export interface ElevatedModeBehavior {
+  canRecommend: boolean;
+  canGiveTimelines: boolean;
+  canMentionCosts: boolean;
+  toneDirective: 'questioning' | 'advisory';
+}
+
+export function getElevatedBehavior(
+  isBaselineComplete: boolean
+): ElevatedModeBehavior {
+  if (!isBaselineComplete) {
+    // Baseline incomplete: Elevated asks questions only
+    return {
+      canRecommend: false,
+      canGiveTimelines: false,
+      canMentionCosts: false,
+      toneDirective: 'questioning',
+    };
+  }
+  
+  // Baseline complete: Elevated is directive
+  return {
+    canRecommend: true,
+    canGiveTimelines: true,
+    canMentionCosts: true,
+    toneDirective: 'advisory',
+  };
 }

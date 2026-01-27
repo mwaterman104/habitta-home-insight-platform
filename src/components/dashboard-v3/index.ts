@@ -1,6 +1,6 @@
 // Dashboard V3 Components
 // Three-column intelligent home platform with single-narrative authority
-// QA-Refined Recovery Architecture + Selective Intelligence Upgrade
+// V1 Chat Spec: Evidence-first baseline + Chat-driven interpretation
 
 export { TopHeader } from './TopHeader';
 export { LeftColumn } from './LeftColumn';
@@ -21,6 +21,9 @@ export { LocalConditions } from './LocalConditions';
 export { HomePositionAnchor } from './HomePositionAnchor';
 export { EquityPositionCard } from './EquityPositionCard';
 export { LifecycleHorizon } from './LifecycleHorizon';
+
+// V1 Chat Spec: Baseline Surface (Evidence Layer)
+export { BaselineSurface } from './BaselineSurface';
 
 // Existing Hierarchy Components
 export { TodaysFocusCard } from './TodaysFocusCard';
