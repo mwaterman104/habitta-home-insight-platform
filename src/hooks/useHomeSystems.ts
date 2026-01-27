@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export interface SystemCatalog {
   key: string;
@@ -33,6 +34,11 @@ export interface HomeSystem {
   expected_lifespan_years?: number;
   notes?: string;
   source?: Record<string, any>;
+  // System Update Contract fields (Critical #1 & #2)
+  // Using Json for compatibility with Supabase types
+  field_provenance?: Json;
+  confidence_score?: number;
+  last_updated_at?: string;
 }
 
 export function useHomeSystems(homeId?: string) {
