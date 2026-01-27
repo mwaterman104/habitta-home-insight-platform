@@ -1,234 +1,224 @@
 
+# Canonical Architecture Gaps — Implementation with Edge Case Fixes
 
-# Chat Console Authority — Complete Restructure
-
-## The Problem (What the Screenshot Shows)
-
-The current middle column has **7 separate UI sections**:
-1. "TODAY'S STATUS" banner (speaking in sentences outside chat)
-2. HOME POSITION card (standalone hero)
-3. EQUITY POSITION card (standalone hero)
-4. LIFECYCLE HORIZON section (duplicated timeline)
-5. Context Drawer (expandable)
-6. BaselineSurface (added as sibling to chat)
-7. ChatDock (collapsed at bottom)
-
-This violates the core spec:
-> *"Habitta does not have a dashboard with a chat. Habitta is a chat that shows its work."*
+**Habitta does not fill silence.
+It does not show evidence without reason.
+It does not offer help without understanding.
+Every word, chart, and option must earn its place.**
 
 ---
 
-## The Fix (Canonical Structure)
+## Overview
 
-The middle column becomes **one component**: the Chat Console.
+This implementation addresses three architectural gaps plus two edge case fixes identified in review:
+
+| Item | Priority | Action |
+|------|----------|--------|
+| **Gap 1**: Silent Steward shows text | Critical | Remove text block entirely; add protective comment |
+| **Gap 2**: InlineArtifacts missing | Core | Create constrained artifact system with anchoring |
+| **Gap 3**: Service Options not stubbed | Future-proof | Create user-request-gated stubs |
+| **Risk 1**: Artifact re-summoning spam | Edge case | Add `hasShownArtifactForSystem` one-time guard |
+| **Risk 2**: ServiceOptionsPanel visual weight | Edge case | Change `bg-background` to `bg-muted/10` |
+
+---
+
+## Implementation Details
+
+### Gap 1: True Silence in Silent Steward Mode
+
+**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+
+**Action:** Remove lines 262-269 (the conditional render block) and replace with protective comment.
 
 ```text
-┌─────────────────────────────────────────────┐
-│  CHAT CONSOLE (WHITE, ROUNDED, 100% WIDTH)  │
-│                                             │
-│  ┌───────────────────────────────────────┐ │
-│  │  BASELINE SURFACE (PINNED ARTIFACT)   │ │
-│  │  Lifecycle: Mid-Life | Confidence: Mod│ │
-│  │                                       │ │
-│  │  HVAC      ────●────────── Stable     │ │
-│  │  Roof      ────────●────── Planning   │ │
-│  │  Water     ──────────●──── Elevated   │ │
-│  └───────────────────────────────────────┘ │
-│                                             │
-│  [Chat messages appear BELOW baseline]      │
-│                                             │
-│  ────────────────────────────────────────   │
-│  Habitta:                                   │
-│  "Based on what you're seeing above,        │
-│   your water heater is entering a           │
-│   planning window."                         │
-│  ────────────────────────────────────────   │
-│                                             │
-│  [Input field + send button]                │
-└─────────────────────────────────────────────┘
+Before:
+  {isSilentSteward && (
+    <div className="text-center py-4 text-muted-foreground/60">
+      <p className="text-xs">
+        Your home is being watched. Nothing requires attention.
+      </p>
+    </div>
+  )}
+
+After:
+  {/* 
+    * CANONICAL ARCHITECTURE LOCK:
+    * Silent Steward intentionally renders no messages.
+    * Silence is a product feature, not an empty state.
+    * Do not add fallback copy here.
+    */}
 ```
 
----
-
-## What Gets Eliminated from Middle Column
-
-| Component | Action | Reason |
-|-----------|--------|--------|
-| `HomeStatusHeader` | **REMOVE** | Speaking in sentences outside chat |
-| `HomePositionAnchor` | **REMOVE** | Standalone card, not allowed |
-| `EquityPositionCard` | **REMOVE** | Standalone card, not allowed |
-| `LifecycleHorizon` | **REMOVE** | Duplicated by BaselineSurface inside chat |
-| `ContextDrawer` | **REMOVE** | Interpretive mode handles "why" |
-| `StateOfHomeReport` | **KEEP (conditional interrupt)** | Annual review is an exception |
+**Doctrine preserved:** True silence = confidence. No narration of presence.
 
 ---
 
-## Files Changed
+### Gap 2: InlineArtifacts Infrastructure (With Risk 1 Fix)
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/dashboard-v3/ChatDock.tsx` | **Major Rewrite** | Becomes the entire middle column |
-| `src/components/dashboard-v3/ChatConsole.tsx` | **Create** | New unified component (renamed from ChatDock) |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Major Simplify** | Renders only ChatConsole |
-| `src/components/dashboard-v3/BaselineSurface.tsx` | **Keep** | Moved inside ChatConsole as pinned artifact |
+#### File 1: `src/types/chatArtifact.ts` (NEW)
 
----
+Artifact type system with:
+- `anchorMessageId` required (artifacts subordinate to language)
+- No generic "chart" types
+- `isArtifactAllowedInMode()` check for cost_range in planning only
 
-## Technical Implementation
+#### File 2: `src/lib/artifactSummoner.ts` (NEW)
 
-### Part 1: New ChatConsole Component
-
-The new `ChatConsole` component owns the entire middle column:
-
-**Structure:**
-```text
-ChatConsole
-├── BaselineSurface (pinned, always visible at top)
-├── Chat Messages (scrollable, appear below baseline)
-├── Inline Artifacts (charts, tables - future)
-└── Input (anchored bottom)
-```
-
-**Key behaviors:**
-- Chat console is ALWAYS expanded (no collapsed state in middle column)
-- Baseline is the first artifact, renders before any messages
-- Messages scroll independently, baseline stays pinned
-- Chat state machine still controls WHAT is said, not WHETHER chat is visible
-
-### Part 2: Pinned Baseline Behavior
-
-The baseline surface becomes a special chat artifact:
-
-**Rules:**
-- Renders at the very top of the chat content
-- Uses `sticky top-0` to remain visible when scrolling messages
-- Slightly inset with subtle background to distinguish from messages
-- Updates only when underlying data changes
-- Not styled as a message bubble
-
-**Visual treatment:**
-- `bg-muted/10` (subtle tint, calmer than current)
-- `rounded-lg` container
-- Subtle `border` (no shadows)
-- "Why?" affordances trigger Interpretive mode
-
-### Part 3: Simplified MiddleColumn
-
-The entire MiddleColumn becomes:
+Summoning rules with **Risk 1 fix integrated**:
 
 ```typescript
-export function MiddleColumn({ ...props }) {
-  return (
-    <div className="flex flex-col h-full">
-      {/* Annual State of Home - only interrupt allowed */}
-      {annualCard && (
-        <StateOfHomeReport data={annualCard} onDismiss={dismissAnnual} />
-      )}
-      
-      {/* The Chat Console IS the middle column */}
-      <ChatConsole
-        propertyId={propertyId}
-        baselineSystems={baselineSystems}
-        lifecyclePosition={lifecyclePosition}
-        confidenceLevel={confidenceLevel}
-        chatMode={chatMode}
-        onWhyClick={handleWhyClick}
-        onSystemUpdated={onSystemUpdated}
-        // ... other props
-      />
-    </div>
-  );
+interface ArtifactContext {
+  chatMode: ChatMode;
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  messageId: string;
+  systemKey?: string;
+  userAskedForVisualization: boolean;
+  /** Risk 1 fix: Prevent re-summoning spam */
+  hasShownArtifactForSystem?: boolean;
 }
 ```
 
-### Part 4: Silent Steward Visual State
+And the guarded check:
 
-When in `silent_steward` mode:
-- Baseline is visible
-- NO messages below it
-- Input is available and ready
-- This is intentional silence, not emptiness
-
-**Empty state copy (inside chat, not above):**
-```text
-"Your home is being watched. Nothing requires attention."
+```typescript
+// Planning window: show timeline ONCE per system entry
+if (
+  context.chatMode === 'planning_window_advisory' &&
+  context.systemKey &&
+  !context.hasShownArtifactForSystem  // Risk 1: one-time guard
+) {
+  return { type: 'system_timeline', systemKey: context.systemKey };
+}
 ```
 
-Or simply: no message at all (true silence).
+**Additional constraints:**
+- No artifacts on page load
+- No artifacts in Silent Steward mode
+- No artifacts below Moderate confidence (Authority Fallback Rule)
+- Auto-collapse when context changes (Artifact Lifetime Rule)
 
-### Part 5: Message Referencing
+#### File 3: `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` (NEW)
 
-All chat messages now reference the baseline above:
+Collapsible/dismissible artifact container with:
+- `anchorMessageId` prop required
+- Validation of anchor relationship
+- Calm styling: `bg-muted/10`, no shadows
 
-**Planning Window:**
-> "Based on what you're seeing above, your water heater is entering a planning window. Nothing needs to be done yet."
+#### File 4: `src/components/dashboard-v3/artifacts/SystemTimelineArtifact.tsx` (NEW)
 
-**Elevated Attention:**
-> "The deviation you see in the timeline above suggests something has changed. Can you confirm when you last had this serviced?"
+Mini timeline for a single system showing position and projection.
 
-**Baseline Establishment:**
-> "I'm still forming the baseline you see above. Let's start with your HVAC system."
+#### File 5: `src/components/dashboard-v3/artifacts/index.ts` (NEW)
 
----
-
-## Acceptance Criteria (From Spec)
-
-### Structural Authority
-- [ ] Chat console occupies 100% of middle column
-- [ ] No standalone dashboard cards in middle column
-- [ ] No UI copy speaks in sentences outside the chat
-
-### Baseline Surface
-- [ ] Renders INSIDE the chat console
-- [ ] Is the FIRST element in the conversation
-- [ ] Is PINNED (accessible by scrolling up)
-- [ ] Is non-dismissible
-- [ ] Is non-interactive except "Why?" affordances
-
-### Evidence Before Interpretation
-- [ ] Chat console renders first
-- [ ] Baseline surface renders before any messages
-- [ ] Chat state machine evaluates whether to speak AFTER baseline is visible
-
-### Visual Grammar
-- [ ] Pure white background on chat console
-- [ ] Rounded corners on all four sides
-- [ ] No shadows implying elevation
-- [ ] Baseline not styled as message bubble
-- [ ] No chat bubbles with tails anywhere
-
-### Silent Steward
-- [ ] When in silent_steward mode, chat does NOT speak first
-- [ ] Baseline remains visible
-- [ ] Input is available
+Barrel export for artifact components.
 
 ---
 
-## Implementation Order
+### Gap 3: Service Options Stub (With Risk 2 Fix + No Cross-System Rule)
 
-1. **Create ChatConsole component** - New unified chat that includes baseline
-2. **Move BaselineSurface inside ChatConsole** - As pinned artifact
-3. **Simplify MiddleColumn** - Remove all cards, render only ChatConsole
-4. **Update message copy** - Reference "above" instead of standalone claims
-5. **Test silent steward** - Verify true silence (baseline only, no messages)
-6. **Remove dead code** - HomeStatusHeader, HomePositionAnchor, EquityPositionCard from middle column
+#### File 6: `src/types/prosAndLogistics.ts` (NEW)
+
+Service options types with:
+- `userRequested: boolean` required (no auto-surfacing)
+- `isBaselineComplete` required
+- Mode restriction to `planning_window_advisory` or `elevated_attention`
+- **No Cross-System Offers Rule** (comment):
+
+```typescript
+// CANONICAL RULE:
+// Service options may only be offered for the currently discussed system.
+// No cross-system bundling or upsell.
+systemKey: string;
+```
+
+#### File 7: `src/components/dashboard-v3/ServiceOptionsPanel.tsx` (NEW)
+
+Service options UI with **Risk 2 fix**:
+
+```typescript
+// Risk 2 fix: Subordinate visual weight
+<div className="my-3 p-3 rounded-lg border border-border/30 bg-muted/10">
+```
+
+Not `bg-background` — ensures offers feel optional, not primary.
+
+Additional constraints:
+- Max 3 options (`MAX_SERVICE_OPTIONS = 3`)
+- "Not now" always available
+- No logos, no marketing language
+- Not styled as artifacts (offers, not evidence)
+
+#### File 8: `src/hooks/useServiceOptions.ts` (NEW)
+
+Stub hook returning empty array. Future: integrates with partner API.
 
 ---
 
-## What the Right Column Keeps
+### Governance Update
 
-The right column (RightColumn.tsx) remains unchanged:
-- Map
-- Local Conditions
-- Environmental context
+**File:** `src/lib/chatGovernance.ts`
 
-This is NOT the chat, so it can have cards.
+Add Authority Fallback Rule:
+
+```typescript
+/**
+ * Authority Fallback Rule
+ * 
+ * If confidence drops below Moderate, no new artifacts 
+ * or service options may be summoned.
+ * 
+ * This ensures:
+ * - Weak baselines do not get over-explained
+ * - Trust is rebuilt before advice expands
+ */
+export function canExpandAdvice(
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High'
+): boolean {
+  return confidenceLevel === 'Moderate' || confidenceLevel === 'High';
+}
+```
 
 ---
 
-## Final Lock Statement
+## File Summary
 
-> "Habitta's middle column is not a dashboard. It is a conversation that shows its evidence before it speaks."
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/components/dashboard-v3/ChatConsole.tsx` | Modify | Remove Silent Steward text, add protective comment |
+| `src/types/chatArtifact.ts` | Create | Artifact types with anchorMessageId requirement |
+| `src/lib/artifactSummoner.ts` | Create | Summoning rules with one-time guard (Risk 1 fix) |
+| `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` | Create | Artifact container with collapse/dismiss |
+| `src/components/dashboard-v3/artifacts/SystemTimelineArtifact.tsx` | Create | System timeline visualization |
+| `src/components/dashboard-v3/artifacts/index.ts` | Create | Barrel export |
+| `src/types/prosAndLogistics.ts` | Create | Service options types with userRequested gate |
+| `src/components/dashboard-v3/ServiceOptionsPanel.tsx` | Create | Service options UI with subordinate styling (Risk 2 fix) |
+| `src/hooks/useServiceOptions.ts` | Create | Service options hook (stub) |
+| `src/lib/chatGovernance.ts` | Modify | Add canExpandAdvice authority fallback |
 
-The baseline is not a sibling to the chat. The baseline is the first thing the chat says (silently, with evidence).
+---
 
+## Verification Checklist
+
+### Gap 1 - True Silence
+- [ ] No text message appears in silent_steward mode
+- [ ] Protective comment prevents future "fixes"
+- [ ] Baseline visible, input available
+
+### Gap 2 - InlineArtifacts
+- [ ] All artifacts have anchorMessageId (enforced)
+- [ ] Artifacts never appear on page load
+- [ ] Artifacts never appear in Silent Steward mode
+- [ ] **Risk 1**: Artifacts only summon once per system entry
+- [ ] No artifacts below Moderate confidence
+- [ ] Artifacts collapse when context changes
+
+### Gap 3 - Service Options
+- [ ] userRequested is mandatory gate
+- [ ] Options never auto-surface
+- [ ] Max 3 options enforced
+- [ ] "Not now" always available
+- [ ] **Risk 2**: Uses bg-muted/10, not bg-background
+- [ ] No cross-system offers (comment added)
+
+### Governance
+- [ ] canExpandAdvice blocks expansion below Moderate confidence
