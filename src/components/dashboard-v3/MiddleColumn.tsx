@@ -5,7 +5,8 @@ import { StateOfHomeReport } from "./StateOfHomeReport";
 import { ContextDrawer } from "./ContextDrawer";
 import { HomeStatusHeader } from "./HomeStatusHeader";
 import { HomePositionAnchor } from "./HomePositionAnchor";
-import { EquityContextCard } from "./EquityContextCard";
+import { EquityPositionCard } from "./EquityPositionCard";
+import { deriveFinancingPosture, deriveEquityConfidence, type MortgageSource } from "@/lib/equityPosition";
 import { LifecycleHorizon } from "./LifecycleHorizon";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
@@ -74,10 +75,12 @@ interface MiddleColumnProps {
   onUserReply?: () => void;
   // Maintenance interaction handlers
   onTaskComplete?: (taskId: string) => void;
-  // Selective Intelligence Upgrade props
-  homeValue?: number | null;
-  city?: string;
-  state?: string;
+  // Selective Intelligence Upgrade props - Equity Position
+  marketValue?: number | null;
+  mortgageBalance?: number | null;
+  mortgageConfidence?: MortgageSource;
+  city?: string | null;
+  state?: string | null;
 }
 
 /**
@@ -128,7 +131,9 @@ export function MiddleColumn({
   risk = 'LOW',
   onUserReply,
   onTaskComplete,
-  homeValue,
+  marketValue,
+  mortgageBalance,
+  mortgageConfidence,
   city,
   state,
 }: MiddleColumnProps) {
@@ -347,10 +352,13 @@ export function MiddleColumn({
               confidence={position.confidence}
             />
             
-            {/* SECONDARY HERO: Equity Context */}
-            <EquityContextCard
-              currentValue={homeValue}
-              areaContext="Similar homes in your area have appreciated moderately over the past 12 months."
+            {/* SECONDARY HERO: Equity Position */}
+            <EquityPositionCard
+              marketValue={marketValue}
+              financingPosture={deriveFinancingPosture(marketValue ?? null, mortgageBalance ?? null)}
+              confidence={deriveEquityConfidence(!!marketValue, !!mortgageBalance, mortgageConfidence ?? null)}
+              city={city}
+              state={state}
             />
           </section>
 

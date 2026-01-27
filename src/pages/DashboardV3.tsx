@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Home, Plus } from "lucide-react";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
+import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
@@ -91,6 +92,10 @@ export default function DashboardV3() {
 
   // Fetch maintenance tasks
   const { data: maintenanceTasks, loading: tasksLoading, refetch: refetchTasks } = useUpcomingTasks(userHome?.id, 365);
+
+  // Property valuation is fetched once here and passed down.
+  // Do not call useSmartyPropertyData in child components.
+  const { data: propertyData, loading: propertyLoading } = useSmartyPropertyData();
 
   // Fetch capital timeline
   const { timeline: capitalTimeline, loading: timelineLoading } = useCapitalTimeline({ 
@@ -407,6 +412,11 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
+            marketValue={propertyData?.currentValue ?? null}
+            mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
+            mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+            city={userHome?.city ?? null}
+            state={userHome?.state ?? null}
           />
         </main>
       </div>
@@ -465,9 +475,14 @@ export default function DashboardV3() {
                 openingMessage={openingMessage}
                 confidence={confidence}
                 risk={risk}
-                onUserReply={handleUserReply}
-                onTaskComplete={handleTaskComplete}
-              />
+              onUserReply={handleUserReply}
+              onTaskComplete={handleTaskComplete}
+              marketValue={propertyData?.currentValue ?? null}
+              mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
+              mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+              city={userHome?.city ?? null}
+              state={userHome?.state ?? null}
+            />
             </div>
           </ResizablePanel>
           
@@ -517,6 +532,11 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
+            marketValue={propertyData?.currentValue ?? null}
+            mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
+            mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+            city={userHome?.city ?? null}
+            state={userHome?.state ?? null}
           />
         </div>
       </div>
