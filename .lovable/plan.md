@@ -1,15 +1,24 @@
 
-# Fix Equity Position Card Data Pipeline — Doctrine-Compliant Implementation
+
+# Chat State Machine — Refined Implementation with QC Adjustments
 
 ## Overview
 
-Replace the current heuristic-based fallback with a state-based model that never fabricates dollar values. When valuation is unavailable, the card surfaces honest state information instead of invented numbers.
+Implement a 4-mode Chat State Machine that controls chat behavior based on **epistemic confidence**. When data is insufficient, chat enters "Baseline Establishment Mode" and invites photo-based calibration as an optional capability, not a task.
 
-## Core Principle
+**Core Doctrine**: Habitta does not advise until it can explain why it believes something.
 
-**Habitta never fabricates dollar values on the dashboard.**
+---
 
-When valuation confidence is insufficient, Habitta surfaces state, not numbers.
+## QC Adjustments Incorporated
+
+| Issue | Problem | Fix |
+|-------|---------|-----|
+| QC #1 | Strategic mode can bypass confidence gating | Strategic requires advisory eligibility first |
+| QC #2 | Confidence derivation overloaded (equity vs system) | Separate `systemConfidence` from `equityConfidence` |
+| QC #3 | InstallYearsKnown too permissive | Require 50%+ of critical systems |
+| QC #4 | Mode transition on photo ignores result | Transition requires confidence delta, not just action |
+| QC #5 | Empty state copy too invitational | Soften to observational posture |
 
 ---
 
@@ -17,343 +26,494 @@ When valuation confidence is insufficient, Habitta surfaces state, not numbers.
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/equityPosition.ts` | **Modify** | Add `MarketValueState` type, update confidence derivation |
-| `src/lib/equityCopy.ts` | **Modify** | Add copy for unverified/unknown states |
-| `src/hooks/useSmartyPropertyData.ts` | **Modify** | Remove all heuristic math, add state-based output |
-| `src/components/dashboard-v3/EquityPositionCard.tsx` | **Modify** | Handle all 3 valuation states in render |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Update prop types for new data model |
-| `src/pages/DashboardV3.tsx` | **Modify** | Pass `marketValueState` to MiddleColumn |
+| `src/types/chatMode.ts` | **Create** | Chat mode types and context interface |
+| `src/lib/chatModeCopy.ts` | **Create** | Mode-specific copy governance |
+| `src/lib/chatModeSelector.ts` | **Create** | Deterministic mode selection logic |
+| `src/hooks/useChatMode.ts` | **Create** | Hook to derive chat mode from system data |
+| `src/lib/systemConfidenceDerivation.ts` | **Create** | System-level confidence aggregation (separate from equity) |
+| `src/lib/todaysFocusCopy.ts` | **Modify** | Add banned task phrases |
+| `src/components/dashboard-v3/ChatDock.tsx` | **Modify** | Render mode-specific prompts and opening messages |
+| `src/hooks/useAIHomeAssistant.ts` | **Modify** | Accept chat mode context for API calls |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass chat mode context to ChatDock |
+| `src/pages/DashboardV3.tsx` | **Modify** | Fetch permit/system data, derive chat mode, pass to MiddleColumn |
 
 ---
 
-## Part 1: Type System Update
+## Part 1: Type System
 
-**File:** `src/lib/equityPosition.ts`
+**File:** `src/types/chatMode.ts`
 
-### Add New Type
+```text
+ChatMode = 
+  | 'baseline_establishment'  // systemConfidence = Early, insufficient install data
+  | 'observational'           // Moderate confidence, partial data
+  | 'advisory'                // High confidence OR user confirmed systems
+  | 'strategic'               // User-initiated AND already in advisory mode
 
-```typescript
-export type MarketValueState =
-  | 'verified'      // Authoritative API value
-  | 'unverified'    // APIs unavailable, ownership context exists
-  | 'unknown';      // Insufficient data
+ChatModeContext = {
+  mode: ChatMode
+  systemConfidence: 'Early' | 'Moderate' | 'High'
+  permitsFound: boolean
+  criticalSystemsCoverage: number  // 0.0 → 1.0 (QC #3 fix)
+  userConfirmedSystems: boolean
+  systemsWithLowConfidence: string[]
+  previousMode?: ChatMode  // For strategic transition validation (QC #1)
+}
+
+CRITICAL_SYSTEMS = ['hvac', 'roof', 'water_heater', 'electrical']
 ```
 
-### Update Confidence Derivation
+---
 
-Add support for market value state in confidence logic:
+## Part 2: System Confidence Derivation (QC #2 Fix)
 
-```typescript
-export function deriveEquityConfidence(
-  hasMarketValue: boolean,
-  hasMortgageData: boolean,
-  mortgageSource: MortgageSource,
-  marketValueState?: MarketValueState
-): EquityConfidence {
-  // Unverified or unknown always returns Early
-  if (marketValueState === 'unverified' || marketValueState === 'unknown') {
-    return 'Early';
+**File:** `src/lib/systemConfidenceDerivation.ts`
+
+This separates **system-level confidence** (for chat mode) from **equity confidence** (for financial cards).
+
+```text
+function deriveSystemConfidence(systems: HomeSystem[]): 'Early' | 'Moderate' | 'High'
+  
+  1. Filter to critical systems only (HVAC, roof, water_heater, electrical)
+  2. For each, compute individual confidence from:
+     - install_date presence
+     - manufacture_year presence
+     - data_sources array
+     - confidence_scores object
+  3. Average the scores across critical systems
+  4. Map to bucket:
+     - < 0.40 → 'Early'
+     - 0.40 - 0.70 → 'Moderate'
+     - >= 0.70 → 'High'
+
+function computeCriticalSystemsCoverage(systems: HomeSystem[]): number
+  
+  1. Count critical systems with install_date OR manufacture_year
+  2. Divide by total critical systems (4)
+  3. Return ratio (0.0 → 1.0)
+```
+
+**Key Rule**: This is NOT equity confidence. Chat mode uses system confidence.
+
+---
+
+## Part 3: Mode Selector (QC #1 Fix - Strategic Nested)
+
+**File:** `src/lib/chatModeSelector.ts`
+
+```text
+function determineChatMode(ctx: ChatModeContext): ChatMode
+
+  // QC #3: Require 50%+ critical systems coverage
+  const hasAdequateCoverage = ctx.criticalSystemsCoverage >= 0.5
+
+  // Baseline: Early confidence AND insufficient coverage
+  if (ctx.systemConfidence === 'Early' && !hasAdequateCoverage) {
+    return 'baseline_establishment'
   }
-  // ... existing logic for verified values
-}
-```
 
----
-
-## Part 2: Copy Governance Update
-
-**File:** `src/lib/equityCopy.ts`
-
-### Add State-Specific Copy Functions
-
-```typescript
-/**
- * Get market context display based on valuation state.
- */
-export function getMarketContextDisplay(
-  marketValueState: MarketValueState
-): string {
-  switch (marketValueState) {
-    case 'verified':
-      return ''; // Will show actual value
-    case 'unverified':
-      return 'Market value not yet established';
-    case 'unknown':
-      return 'Insufficient data to establish market context';
+  // Observational: Moderate confidence
+  if (ctx.systemConfidence === 'Moderate') {
+    return 'observational'
   }
-}
 
-/**
- * Get enablement line for unverified posture.
- */
-export function getUnverifiedEnablementLine(
-  posture: FinancingPosture | null
-): string {
-  if (!posture) {
-    return 'Additional property data would improve financial insight.';
+  // Advisory: High confidence OR user confirmed
+  if (ctx.systemConfidence === 'High' || ctx.userConfirmedSystems) {
+    return 'advisory'
   }
-  return 'This ownership profile typically supports optional financing, pending market verification.';
-}
+
+  // Fallback
+  return 'observational'
+
+// QC #1 Fix: Strategic is a SUB-STATE of advisory, not parallel
+function canEnterStrategic(currentMode: ChatMode, userIntent: string): boolean
+  
+  // Strategic requires advisory eligibility first
+  if (currentMode !== 'advisory') {
+    return false
+  }
+  
+  const strategicIntents = ['renovation', 'equity', 'refinancing', 'second property']
+  return strategicIntents.some(i => userIntent.toLowerCase().includes(i))
+```
+
+**Doctrine Guardrail**: Strategic mode can never skip baseline/observational.
+
+---
+
+## Part 4: Copy Governance
+
+**File:** `src/lib/chatModeCopy.ts`
+
+### Baseline Establishment Mode Copy
+
+**Opening Message (system-initiated, once):**
+```text
+"I'm currently working with limited system history for this home.
+I can still monitor patterns, but accuracy improves when installations can be confirmed."
+```
+
+**Secondary Line (capability framing):**
+```text
+"If you'd like, we can establish a clearer baseline by identifying what's installed."
+```
+
+**Optional Clarifier:**
+```text
+"Photos of equipment labels or installations are usually enough."
+```
+
+### Mode-Specific Suggested Prompts
+
+```text
+Baseline Establishment:
+  - "Help establish a clearer baseline"
+  - "What information would improve accuracy?"
+  - "What can you tell from what you see now?"
+
+Observational:
+  - "What are you seeing?"
+  - "How confident is this assessment?"
+  - "What factors influence this?"
+
+Advisory:
+  - "Walk me through my options"
+  - "What happens if I wait?"
+  - "Help me understand the timeline"
+
+Strategic (only after advisory consent):
+  - "Could I afford a renovation?"
+  - "What does my equity position enable?"
+  - "Help me think through financing options"
+```
+
+### Empty State Messages (QC #5 Fix)
+
+```text
+Baseline:
+  "I'm monitoring with limited system history. I can share what I'm able to observe so far."
+  
+  (Changed from "Ask what I can see so far" - reduces invitation pressure)
+
+Observational:
+  "What would you like to understand about your home?"
+
+Advisory:
+  "I can help you think through your options."
+
+Strategic:
+  "We can explore financial possibilities together."
 ```
 
 ---
 
-## Part 3: Hook Refactor (Critical)
+## Part 5: Banned Task Phrases Update
 
-**File:** `src/hooks/useSmartyPropertyData.ts`
+**File:** `src/lib/todaysFocusCopy.ts`
 
-### What Gets REMOVED (Doctrine Violation)
-
-```typescript
-// DELETE: Appreciation math
-const appreciationRate = 0.04;
-const currentValue = lastSale * Math.pow(1 + appreciationRate, yearsSinceSale);
-
-// DELETE: Mortgage estimation
-const estimatedMortgageBalance = lastSale * 0.8 * Math.pow(0.97, yearsSinceSale);
-
-// DELETE: Equity calculation
-estimatedEquity: Math.round((currentValue || 0) - (estimatedMortgageBalance || 0)),
-```
-
-### New Output Interface
-
-```typescript
-export interface PropertyEquityOutput {
-  marketValue: number | null;
-  marketValueState: MarketValueState;
-  mortgageBalance: number | null;
-  mortgageSource: MortgageSource;
-  // Preserve non-equity property data
-  yearBuilt: number | null;
-  squareFeet: number | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  lotSize: number | null;
-  propertyType: string | null;
-}
-```
-
-### New Logic Flow
+Add to existing `BANNED_PHRASES`:
 
 ```text
-1. Try: smartyEnrich() or smartyFinancial() for AVM/market value
-   ├─► Success: marketValue = value, marketValueState = 'verified'
-   └─► Fail: continue
-
-2. Check: Do we have ownership context? (yearBuilt, state, etc.)
-   ├─► Yes: marketValue = null, marketValueState = 'unverified'
-   └─► No: marketValue = null, marketValueState = 'unknown'
-```
-
-### Doctrine Guardrail Comment
-
-```typescript
-/**
- * NOTE (Doctrine Guardrail):
- * This hook must NEVER fabricate or estimate market dollar values.
- * When authoritative valuation is unavailable, return state — not numbers.
- * Heuristic estimates may only appear in chat or exploration views.
- */
+// Task language (Baseline Mode violations)
+'Please upload',
+'To continue',
+'Required',
+'Missing data',
+'You need to',
+'Next step',
+'Complete your',
+'Finish setup',
+'Help us by',
+'Let\'s get',
 ```
 
 ---
 
-## Part 4: Component Update
+## Part 6: Chat Mode Hook
 
-**File:** `src/components/dashboard-v3/EquityPositionCard.tsx`
+**File:** `src/hooks/useChatMode.ts`
 
-### Updated Props
-
-```typescript
-interface EquityPositionCardProps {
-  marketValue: number | null;
-  marketValueState: MarketValueState;  // NEW
-  financingPosture: FinancingPosture | null;
-  confidence: EquityConfidence;
-  city?: string | null;
-  state?: string | null;
-  onViewMarketContext?: () => void;
-  className?: string;
-}
-```
-
-### Three Rendering Paths
-
-**Case 1: `marketValueState === 'verified'`**
 ```text
-Market Context
-~$650k
+function useChatMode(options: {
+  homeId?: string
+  systems: HomeSystem[]
+  permitsFound: boolean
+}): ChatModeContext
 
-Financing Posture
-Balanced ownership
-
-What this enables
-This position typically supports optional financing flexibility.
-
-Confidence: Moderate
-```
-
-**Case 2: `marketValueState === 'unverified'`**
-```text
-Market Context
-Market value not yet established
-
-Financing Posture
-Balanced ownership (inferred)
-
-What this enables
-This ownership profile typically supports optional financing,
-pending market verification.
-
-Confidence: Early
-```
-
-**Case 3: `marketValueState === 'unknown'`**
-```text
-Equity Position
-Insufficient data to establish equity context.
-
-What this enables
-Additional property data would improve financial insight.
-
-Confidence: Early
+  1. Derive systemConfidence via deriveSystemConfidence(systems)
+  
+  2. Compute criticalSystemsCoverage via computeCriticalSystemsCoverage(systems)
+  
+  3. Check userConfirmedSystems:
+     - Any system has data_sources containing 'user', 'manual', or 'owner_reported'
+  
+  4. Find systemsWithLowConfidence:
+     - Systems where overall confidence score < 0.4
+  
+  5. Call determineChatMode() with full context
+  
+  6. Return ChatModeContext
 ```
 
 ---
 
-## Part 5: Data Wiring Update
+## Part 7: ChatDock Updates
+
+**File:** `src/components/dashboard-v3/ChatDock.tsx`
+
+### New Props
+
+```text
+interface ChatDockProps {
+  // ... existing props
+  chatMode: ChatMode
+  systemsWithLowConfidence?: string[]
+}
+```
+
+### Mode-Specific Rendering
+
+```text
+Suggested Prompts Section:
+  - Replace hardcoded prompts (lines 256-274)
+  - Use getPromptsForMode(chatMode) from chatModeCopy
+
+Opening Message Injection:
+  - When chatMode === 'baseline_establishment' AND messages.length === 0:
+    → Inject baseline opening message once
+    → Track via sessionStorage key: 'habitta_baseline_opening_shown'
+
+Empty State:
+  - Use getEmptyStateForMode(chatMode) from chatModeCopy
+
+Upload Affordance (Baseline Only):
+  - When chatMode === 'baseline_establishment':
+    → Show subtle "Improve accuracy" link below prompts
+    → Equal visual weight to dismiss option
+```
+
+### State Indicator Updates
+
+```text
+Current (line 175-178):
+  {advisorState === 'DECISION' && '• Comparing options'}
+  {advisorState === 'EXECUTION' && '• Ready to act'}
+
+Add:
+  {chatMode === 'baseline_establishment' && '• Establishing baseline'}
+  {chatMode === 'observational' && '• Observing patterns'}
+```
+
+---
+
+## Part 8: Hook Updates
+
+**File:** `src/hooks/useAIHomeAssistant.ts`
+
+### Add Chat Mode to API Context
+
+```text
+interface UseAIHomeAssistantOptions {
+  // ... existing
+  chatMode?: ChatMode
+}
+```
+
+Pass `chatMode` in edge function body so AI backend adjusts response style.
+
+---
+
+## Part 9: Data Wiring
+
+**File:** `src/pages/DashboardV3.tsx`
+
+### Add Data Fetches
+
+```text
+// Existing: useHomeSystems hook not currently used at dashboard level
+// Add:
+const { systems: homeSystems, loading: systemsLoading } = useHomeSystems(userHome?.id)
+
+// Existing: usePermitInsights
+const { insights: permitInsights, loading: permitsLoading } = usePermitInsights(userHome?.id)
+
+// New: Derive chat mode
+const chatModeContext = useChatMode({
+  homeId: userHome?.id,
+  systems: homeSystems,
+  permitsFound: permitInsights.length > 0,
+})
+```
+
+### Update MiddleColumn Props (all 3 instances)
+
+```text
+<MiddleColumn
+  // ... existing props
+  chatMode={chatModeContext.mode}
+  systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+/>
+```
 
 **File:** `src/components/dashboard-v3/MiddleColumn.tsx`
 
 ### Update Props Interface
 
-```typescript
+```text
 interface MiddleColumnProps {
-  // ... existing props
-  
-  // Replace old props:
-  // marketValue?: number | null;
-  // mortgageBalance?: number | null;
-  // mortgageConfidence?: MortgageSource;
-  
-  // With new contract:
-  marketValue?: number | null;
-  marketValueState?: MarketValueState;
-  mortgageBalance?: number | null;
-  mortgageSource?: MortgageSource;
-  city?: string | null;
-  state?: string | null;
+  // ... existing
+  chatMode?: ChatMode
+  systemsWithLowConfidence?: string[]
 }
 ```
 
-### Update EquityPositionCard Usage
-
-```typescript
-<EquityPositionCard
-  marketValue={marketValue ?? null}
-  marketValueState={marketValueState ?? 'unknown'}
-  financingPosture={deriveFinancingPosture(marketValue ?? null, mortgageBalance ?? null)}
-  confidence={deriveEquityConfidence(
-    !!marketValue, 
-    !!mortgageBalance, 
-    mortgageSource ?? null,
-    marketValueState
-  )}
-  city={city}
-  state={state}
-/>
-```
-
-**File:** `src/pages/DashboardV3.tsx`
-
-### Update MiddleColumn Calls
-
-All three MiddleColumn instances (mobile, xl, lg) updated to pass:
-
-```typescript
-<MiddleColumn
-  ...existing props...
-  marketValue={propertyData?.marketValue ?? null}
-  marketValueState={propertyData?.marketValueState ?? 'unknown'}
-  mortgageBalance={propertyData?.mortgageBalance ?? null}
-  mortgageSource={propertyData?.mortgageSource ?? null}
-  city={userHome?.city ?? null}
-  state={userHome?.state ?? null}
-/>
-```
-
----
-
-## Data Flow After Fix
+### Pass to ChatDock
 
 ```text
-DashboardV3
-    │
-    └─► useSmartyPropertyData()
-            │
-            ├─► Try: smartyFinancial() → FAILS (not found)
-            ├─► Try: smartyEnrich() → FAILS (subscription)
-            │
-            └─► Check: homeContext exists? (yearBuilt: 2012, state: "FL")
-                    │
-                    └─► Yes: Return {
-                            marketValue: null,
-                            marketValueState: 'unverified',
-                            mortgageBalance: null,
-                            mortgageSource: null
-                        }
-            
-    └─► MiddleColumn
-            └─► marketValueState = 'unverified'
-                    └─► Display:
-                            "Market value not yet established"
-                            (No financing posture - requires value)
-                            "Additional property data would improve financial insight."
-                            Confidence: Early
+<ChatDock
+  // ... existing props
+  chatMode={chatMode ?? 'observational'}
+  systemsWithLowConfidence={systemsWithLowConfidence}
+/>
 ```
 
 ---
 
-## What This Fix Does NOT Do
+## Part 10: Photo Upload Confidence Gate (QC #4 Fix)
 
-- Does not estimate PSF
-- Does not assume square footage
-- Does not apply depreciation curves
-- Does not invent values
-- Does not guess ranges on the dashboard
+**Location:** Where photo analysis results are processed (likely `useHomeSystems` or component handling photo capture)
 
-Heuristics are allowed only downstream (chat, exploration views).
+```text
+After photo upload and analysis:
+
+  1. Store pre-upload system confidence
+  2. Process photo → update system record
+  3. Compute post-upload system confidence
+  4. Calculate delta = postConfidence - preConfidence
+
+  if (delta > 0.1) {
+    // Confidence meaningfully improved
+    // Allow mode transition: baseline → observational
+    chatModeContext.triggerRecompute()
+  } else {
+    // Photo didn't help (blurry, wrong subject, etc.)
+    // Stay in baseline mode
+    // Optionally show gentle feedback: "I couldn't extract details from that image."
+  }
+```
+
+**Doctrine**: Mode transition is earned by confidence improvement, not by user action alone.
+
+---
+
+## Mode Transition Rules (Updated with QC Fixes)
+
+```text
+baseline_establishment → observational
+  Trigger: criticalSystemsCoverage >= 0.5 OR systemConfidence improves to Moderate
+  AND confidence delta > 0.1 (if triggered by photo)
+
+observational → advisory
+  Trigger: systemConfidence reaches High OR userConfirmedSystems = true
+
+advisory → strategic
+  Trigger: User asks about renovation, equity, refinancing
+  AND current mode is already 'advisory' (QC #1)
+
+strategic → advisory
+  Trigger: Conversation ends or user changes topic
+```
+
+---
+
+## UI Behavior by Mode (Final Matrix)
+
+| Behavior | Baseline | Observational | Advisory | Strategic |
+|----------|----------|---------------|----------|-----------|
+| Opening message | Auto-inject once | None | Context-aware | None |
+| Prompts | Calibration | Understanding | Options | Planning |
+| Upload affordance | Visible, subtle | Hidden | Hidden | Hidden |
+| Cost discussion | Blocked | Blocked | Allowed | Allowed |
+| Timeline specifics | Blocked | Ranges only | Specific | Detailed |
+| Action language | Blocked | Blocked | Soft | Allowed |
+| State indicator | "Establishing baseline" | "Observing" | Hidden | Hidden |
+
+---
+
+## What Happens If User Ignores Baseline Calibration
+
+**Nothing.**
+
+- Habitta continues monitoring with lower confidence
+- Uses softer language in all surfaces
+- Never nags or re-prompts
+- No email nudges
+- No progress bars
+- This preserves trust
+
+---
+
+## Doctrine Comments to Add in Code
+
+```text
+// src/types/chatMode.ts
+/**
+ * DOCTRINE: Chat modes represent epistemic readiness, not user intent.
+ * User intent can never elevate chat mode on its own.
+ */
+
+// src/lib/chatModeSelector.ts  
+/**
+ * DOCTRINE: Habitta does not advise until it can explain why it believes something.
+ * If chatMode = 'baseline_establishment', all advisory language is blocked.
+ */
+
+// src/lib/chatModeSelector.ts (strategic function)
+/**
+ * QC #1 FIX: Strategic mode is nested inside advisory, not parallel.
+ * A user cannot skip from baseline → strategic by asking about renovation.
+ */
+```
 
 ---
 
 ## QA Gates
 
-- [ ] No heuristic dollar values on dashboard
-- [ ] Market value shown only when `verified`
-- [ ] Financing posture may appear with `(inferred)` label when unverified
-- [ ] Confidence reflects verification state
-- [ ] No subtraction math visible
-- [ ] Works across mobile, xl, lg layouts
-- [ ] Chat can still provide rough ranges when asked
+- [ ] No task language in baseline mode ("Please upload", "Required", etc.)
+- [ ] Opening message appears once per session only
+- [ ] Suggested prompts change based on mode
+- [ ] Upload affordance is subtle and optional
+- [ ] Mode transitions correctly require confidence improvement (QC #4)
+- [ ] Strategic mode blocked unless already in advisory (QC #1)
+- [ ] systemConfidence is separate from equityConfidence (QC #2)
+- [ ] criticalSystemsCoverage requires 50%+ (QC #3)
+- [ ] Works across mobile, tablet, desktop layouts
+- [ ] Chat API receives mode context
 
 ---
 
 ## Doctrine Compliance Checklist
 
-- [ ] Equity information increases understanding, never motivation
-- [ ] No user should feel tempted to "act" after seeing the card
-- [ ] Dollar math belongs only in Chat or explicit planning modes
-- [ ] Value feels secondary to Home Position
-- [ ] 30-day refresh cadence preserved for verified values
+- [ ] Photos framed as capability, not obligation
+- [ ] No gamification (progress bars, completion %)
+- [ ] Skip option has equal visual weight
+- [ ] Confidence improvement is quiet, not celebrated
+- [ ] Chat mode is deterministic, not guessed
+- [ ] Baseline mode avoids all advisory language
+- [ ] Upload feedback says "Received" not "Great job"
+- [ ] Strategic requires advisory eligibility (no skipping)
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Verified state: Shows softened value (~$650k) + posture + enablement
-- [ ] Unverified state: Shows "not yet established" + calm explanation
-- [ ] Unknown state: Shows "insufficient data" + guidance
-- [ ] Confidence always present and accurate
-- [ ] "View market context" link functional
-- [ ] Graceful transitions between states as data becomes available
+- [ ] Chat mode derives correctly from system confidence + coverage + permits
+- [ ] Baseline mode shows calibration-focused prompts only
+- [ ] Opening message appears once per session in baseline mode
+- [ ] "Improve accuracy" link appears subtly in baseline mode
+- [ ] Advisory prompts only appear in advisory/strategic modes
+- [ ] Strategic mode requires advisory as prerequisite
+- [ ] Photo uploads trigger mode transition only if confidence improves
+- [ ] No regressions in existing chat functionality
+- [ ] Mode-specific empty states render correctly
+
