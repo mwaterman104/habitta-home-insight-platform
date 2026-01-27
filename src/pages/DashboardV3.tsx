@@ -412,9 +412,10 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
-            marketValue={propertyData?.currentValue ?? null}
-            mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
-            mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+            marketValue={propertyData?.marketValue ?? null}
+            marketValueState={propertyData?.marketValueState ?? 'unknown'}
+            mortgageBalance={propertyData?.mortgageBalance ?? null}
+            mortgageSource={propertyData?.mortgageSource ?? null}
             city={userHome?.city ?? null}
             state={userHome?.state ?? null}
           />
@@ -477,9 +478,10 @@ export default function DashboardV3() {
                 risk={risk}
               onUserReply={handleUserReply}
               onTaskComplete={handleTaskComplete}
-              marketValue={propertyData?.currentValue ?? null}
-              mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
-              mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+              marketValue={propertyData?.marketValue ?? null}
+              marketValueState={propertyData?.marketValueState ?? 'unknown'}
+              mortgageBalance={propertyData?.mortgageBalance ?? null}
+              mortgageSource={propertyData?.mortgageSource ?? null}
               city={userHome?.city ?? null}
               state={userHome?.state ?? null}
             />
@@ -532,9 +534,10 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
-            marketValue={propertyData?.currentValue ?? null}
-            mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
-            mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+            marketValue={propertyData?.marketValue ?? null}
+            marketValueState={propertyData?.marketValueState ?? 'unknown'}
+            mortgageBalance={propertyData?.mortgageBalance ?? null}
+            mortgageSource={propertyData?.mortgageSource ?? null}
             city={userHome?.city ?? null}
             state={userHome?.state ?? null}
           />

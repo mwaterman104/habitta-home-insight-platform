@@ -87,19 +87,19 @@ export const EquityImpactDashboard: React.FC = () => {
           <CardContent>
             <div className="space-y-2">
               <p className="text-3xl font-bold">
-                {propertyData 
-                  ? formatCurrency(propertyData.currentValue) 
+                {propertyData?.marketValue 
+                  ? formatCurrency(propertyData.marketValue) 
                   : (propertyError ? 'No data' : 'Loading...')}
               </p>
               <div className="flex items-center gap-2">
                 <ArrowUp className="h-4 w-4 text-accent" />
                 <span className="text-sm text-muted-foreground">
-                  +{propertyData?.marketAppreciation || 4}% annually
+                  Regional average appreciation
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
                 {propertyError ? 'Unable to fetch market data' : (
-                  <>Last sold: {propertyData ? formatCurrency(propertyData.lastSalePrice) : 'N/A'}</>
+                  <>Last sold: {propertyData?.lastSalePrice ? formatCurrency(propertyData.lastSalePrice) : 'N/A'}</>
                 )}
               </p>
             </div>
