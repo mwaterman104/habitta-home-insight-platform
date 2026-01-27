@@ -1,31 +1,34 @@
 // Dashboard V3 Components
 // Three-column intelligent home platform with single-narrative authority
-// V1 Chat Spec: Evidence-first baseline + Chat-driven interpretation
+// V1 Chat Spec: Chat Console Authority - Middle column IS the chat
 
 export { TopHeader } from './TopHeader';
 export { LeftColumn } from './LeftColumn';
 export { MiddleColumn } from './MiddleColumn';
 export { RightColumn } from './RightColumn';
+
+// Chat Console Authority - The unified middle column component
+export { ChatConsole } from './ChatConsole';
 export { ChatDock } from './ChatDock';
 export { PropertyMap } from './PropertyMap';
 export { SystemWatch } from './SystemWatch';
 
-// Recovery Architecture Components (QA-Approved)
+// V1 Chat Spec: Baseline Surface (Evidence Layer inside ChatConsole)
+export { BaselineSurface } from './BaselineSurface';
+
+// Context Components
+export { LocalConditions } from './LocalConditions';
 export { HomeStatusHeader } from './HomeStatusHeader';
 export { HomePositionOutlook } from './HomePositionOutlook';
 export { SystemsOverview } from './SystemsOverview';
 export { SystemTimelineLifecycle } from './SystemTimelineLifecycle';
-export { LocalConditions } from './LocalConditions';
 
-// Selective Intelligence Upgrade Components (Card Grid Layout)
+// Card Grid Components (kept for other pages)
 export { HomePositionAnchor } from './HomePositionAnchor';
 export { EquityPositionCard } from './EquityPositionCard';
 export { LifecycleHorizon } from './LifecycleHorizon';
 
-// V1 Chat Spec: Baseline Surface (Evidence Layer)
-export { BaselineSurface } from './BaselineSurface';
-
-// Existing Hierarchy Components
+// Hierarchy Components
 export { TodaysFocusCard } from './TodaysFocusCard';
 export { PositionStrip } from './PositionStrip';
 export { ContextDrawer } from './ContextDrawer';
