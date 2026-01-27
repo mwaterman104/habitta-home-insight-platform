@@ -12,6 +12,12 @@ interface EnvironmentalSignals {
   weatherAlerts: boolean;
 }
 
+interface IntelligenceOverlay {
+  comparableHomesCount?: number;
+  permitActivity?: 'normal' | 'elevated';
+  environmentalContext?: string;
+}
+
 interface PropertyMapProps {
   lat?: number | null;
   lng?: number | null;
@@ -20,6 +26,10 @@ interface PropertyMapProps {
   state?: string;
   className?: string;
   environmentalSignals?: EnvironmentalSignals;
+  /** Intelligence overlay data for map badges */
+  intelligenceOverlay?: IntelligenceOverlay;
+  /** Handler for map click - opens context drawer */
+  onMapClick?: () => void;
 }
 
 /**
@@ -39,6 +49,8 @@ export function PropertyMap({
   state,
   className,
   environmentalSignals,
+  intelligenceOverlay,
+  onMapClick,
 }: PropertyMapProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -110,8 +122,43 @@ export function PropertyMap({
     );
   }
 
+  // Intelligence overlay component
+  const IntelligenceOverlayBadges = () => {
+    if (!intelligenceOverlay) return null;
+    
+    return (
+      <div className="absolute top-2 left-2 z-20 flex flex-col gap-2">
+        {/* Comparable Homes Count */}
+        {intelligenceOverlay.comparableHomesCount && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md border border-black/5">
+            <span className="text-xs font-medium text-foreground">
+              {intelligenceOverlay.comparableHomesCount} comparable homes nearby
+            </span>
+          </div>
+        )}
+        
+        {/* Permit Activity */}
+        {intelligenceOverlay.permitActivity && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md border border-black/5">
+            <span className="text-xs text-muted-foreground">Permit activity:</span>
+            <span className="text-xs font-medium text-foreground capitalize">
+              {intelligenceOverlay.permitActivity}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <Card className={cn("overflow-hidden", className)}>
+    <Card 
+      className={cn(
+        "overflow-hidden",
+        onMapClick && "cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all",
+        className
+      )}
+      onClick={onMapClick}
+    >
       <div className="h-72 relative bg-muted">
         {/* Loading skeleton */}
         {!imageLoaded && !imageError && (
@@ -153,7 +200,10 @@ export function PropertyMap({
           </div>
         )}
 
-        {/* Climate zone overlay badge */}
+        {/* Intelligence overlay badges - top left */}
+        <IntelligenceOverlayBadges />
+
+        {/* Climate zone overlay badge - bottom left */}
         <ClimateBadge />
         
         {/* Environmental signals overlay - stewardship mode */}
