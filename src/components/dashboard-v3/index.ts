@@ -19,7 +19,7 @@ export { LocalConditions } from './LocalConditions';
 
 // Selective Intelligence Upgrade Components (Card Grid Layout)
 export { HomePositionAnchor } from './HomePositionAnchor';
-export { EquityContextCard } from './EquityContextCard';
+export { EquityPositionCard } from './EquityPositionCard';
 export { LifecycleHorizon } from './LifecycleHorizon';
 
 // Existing Hierarchy Components

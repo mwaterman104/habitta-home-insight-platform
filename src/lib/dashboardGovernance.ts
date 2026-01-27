@@ -29,7 +29,7 @@ export const DASHBOARD_COMPONENT_CAP = {
  */
 export const HERO_COMPONENTS = [
   'HomePositionAnchor',   // Primary hero
-  'EquityContextCard',    // Secondary hero
+  'EquityPositionCard',   // Secondary hero (doctrine-compliant equity position)
 ] as const;
 
 export const ANALYTICAL_COMPONENTS = [
