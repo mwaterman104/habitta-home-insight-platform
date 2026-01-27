@@ -15,8 +15,8 @@ interface LeftColumnProps {
  * Bottom nav items are sticky to bottom of the sidebar.
  * 
  * Navigation order:
- * - Home Pulse (dashboard)
- * - Systems Hub (NEW)
+ * - Home (dashboard) — no "Home Pulse" branding per doctrine
+ * - Systems Hub
  * - Home Profile
  */
 export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
@@ -28,7 +28,7 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
     (path === '/systems' && location.pathname.startsWith('/systems'));
 
   const navItems = [
-    { title: "Home Pulse", path: "/dashboard", icon: Home },
+    { title: "Home", path: "/dashboard", icon: Home },
     { title: "Systems Hub", path: "/systems", icon: Cpu },
     { title: "Home Profile", path: "/home-profile", icon: MapPin },
   ];

@@ -134,12 +134,13 @@ export function HabittaThinking({
   };
 
   // Generate contextual message based on remaining years
+  // Doctrine compliance: Lifecycle language, not "end of life" or "planning window"
   const getMessage = () => {
     const years = primarySystem.remainingYears;
     if (years <= 2) {
-      return `Your ${systemName} is approaching end of life.`;
+      return `Your ${systemName} has reached a later lifecycle stage.`;
     }
-    return `Your ${systemName} is entering a planning window.`;
+    return `Your ${systemName} is worth understanding better.`;
   };
 
   return (

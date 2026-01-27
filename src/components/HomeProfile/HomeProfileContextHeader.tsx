@@ -1,28 +1,31 @@
 import React from 'react';
 import { Info } from 'lucide-react';
+import { 
+  normalizeHealthStatus, 
+  type InternalHealthStatus 
+} from '@/lib/statusNormalization';
 
 export type HomeHealthStatus = 'healthy' | 'attention' | 'critical';
 
 interface HomeProfileContextHeaderProps {
   status?: HomeHealthStatus;
+  changedSinceLastVisit?: boolean;
 }
 
 /**
  * HomeProfileContextHeader - Context framing for Home Profile page
  * 
  * Immediately reframes the page from "property info" to "intelligence input."
- * Includes a subtle Home Pulse status indicator.
+ * Includes a subtle status indicator (no "Home Pulse" branding per doctrine).
  */
 export const HomeProfileContextHeader: React.FC<HomeProfileContextHeaderProps> = ({
-  status = 'healthy'
+  status = 'healthy',
+  changedSinceLastVisit = false
 }) => {
-  const statusConfig: Record<HomeHealthStatus, { color: string; label: string }> = {
-    healthy: { color: 'bg-emerald-500', label: 'Healthy' },
-    attention: { color: 'bg-amber-500', label: 'Attention' },
-    critical: { color: 'bg-red-500', label: 'Critical' },
-  };
-
-  const { color, label } = statusConfig[status];
+  const { color, label } = normalizeHealthStatus(
+    status as InternalHealthStatus, 
+    changedSinceLastVisit
+  );
 
   return (
     <div className="space-y-3">
@@ -39,10 +42,10 @@ export const HomeProfileContextHeader: React.FC<HomeProfileContextHeaderProps> =
         </div>
       </div>
 
-      {/* Subtle Home Pulse indicator - small dot, not a banner */}
+      {/* Subtle status indicator - no "Home Pulse" branding per doctrine */}
       <div className="flex items-center gap-2 text-meta text-muted-foreground">
         <span className={`inline-block w-2 h-2 rounded-full ${color}`} />
-        <span>Home Pulse: {label}</span>
+        <span>Status: {label}</span>
       </div>
     </div>
   );

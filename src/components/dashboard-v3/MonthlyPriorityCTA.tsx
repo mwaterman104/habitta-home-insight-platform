@@ -16,24 +16,25 @@ interface MonthlyPriorityCTAProps {
   suggestedSystemSlug?: string;
   chatEngagedThisSession: boolean;
   hasSystemsInWindow: boolean;
+  isStable?: boolean;  // QA #3: Gate behind non-stable states
   onAskClick: () => void;
 }
 
 /**
- * MonthlyPriorityCTA - Chat-first monthly prompt
+ * MonthlyPriorityCTA - Contextual Prompt
  * 
  * Display Rules:
+ * - NEVER shown when isStable === true (QA #3 doctrine compliance)
  * - Shown at most once per session
  * - Suppressed if user already engaged chat this session
- * - Suppressed if no systems are in planning windows
+ * - Suppressed if no systems are in later lifecycle stages
  * - Copy adapts to system context if available
- * 
- * This replaces static CTAs with a conversational action.
  */
 export function MonthlyPriorityCTA({
   suggestedSystemSlug,
   chatEngagedThisSession,
   hasSystemsInWindow,
+  isStable = false,
   onAskClick,
 }: MonthlyPriorityCTAProps) {
   // Session-level dedup
@@ -49,21 +50,24 @@ export function MonthlyPriorityCTA({
   }, [hasShown]);
 
   // Suppression logic
+  // QA #3: Never show in stable state (doctrine compliance)
+  if (isStable) return null;
   if (chatEngagedThisSession) return null;
   if (!hasSystemsInWindow) return null;
 
   // Adaptive copy based on system context
+  // Doctrine compliance: Soften "needs attention" to "worth understanding"
   const systemName = suggestedSystemSlug 
     ? SYSTEM_NAMES[suggestedSystemSlug] || suggestedSystemSlug 
     : null;
 
   const headline = systemName
-    ? `Your ${systemName} needs attention.`
-    : "What should I focus on this month?";
+    ? `Your ${systemName} is worth understanding better.`
+    : "What would you like to explore?";
 
   const subtext = systemName
-    ? "Get personalized guidance for your planning window."
-    : "Let Habitta help you prioritize.";
+    ? "Get context on its current lifecycle stage."
+    : "Let Habitta provide context.";
 
   return (
     <Card className="rounded-xl border bg-muted/20 hover:bg-muted/30 transition-colors">

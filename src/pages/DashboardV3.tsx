@@ -352,7 +352,7 @@ export default function DashboardV3() {
             <div className="mx-auto mb-4 p-3 bg-primary/10 rounded-full w-fit">
               <Home className="w-8 h-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Welcome to Home Pulse</CardTitle>
+            <CardTitle className="text-2xl">Welcome to Habitta</CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p className="text-muted-foreground">

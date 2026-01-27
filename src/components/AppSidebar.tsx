@@ -19,9 +19,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-// Phase 1: Simplified navigation - Home Pulse only
+// Phase 1: Simplified navigation - Home only (no "Home Pulse" branding per doctrine)
 const navigation = [
-  { title: "Home Pulse", url: "/dashboard", icon: Home },
+  { title: "Home", url: "/dashboard", icon: Home },
 ];
 
 export default function AppSidebar() {
