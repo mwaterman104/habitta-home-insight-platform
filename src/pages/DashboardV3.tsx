@@ -12,6 +12,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
 import { useInvalidateRiskDeltas } from "@/hooks/useRiskDeltas";
 import { useQueryClient } from "@tanstack/react-query";
+import { useHomeSystems } from "@/hooks/useHomeSystems";
+import { usePermitInsights } from "@/hooks/usePermitInsights";
+import { useChatMode } from "@/hooks/useChatMode";
 import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
@@ -101,6 +104,17 @@ export default function DashboardV3() {
   const { timeline: capitalTimeline, loading: timelineLoading } = useCapitalTimeline({ 
     homeId: userHome?.id, 
     enabled: !!userHome?.id 
+  });
+
+  // Chat State Machine: Fetch home systems and permits for mode derivation
+  const { systems: homeSystems, loading: systemsLoading } = useHomeSystems(userHome?.id);
+  const { insights: permitInsights, loading: permitsLoading } = usePermitInsights(userHome?.id);
+
+  // Derive chat mode from system/permit data
+  const chatModeContext = useChatMode({
+    homeId: userHome?.id,
+    systems: homeSystems,
+    permitsFound: permitInsights.length > 0,
   });
 
   // Risk delta invalidation
@@ -418,6 +432,8 @@ export default function DashboardV3() {
             mortgageSource={propertyData?.mortgageSource ?? null}
             city={userHome?.city ?? null}
             state={userHome?.state ?? null}
+            chatMode={chatModeContext.mode}
+            systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
           />
         </main>
       </div>
@@ -484,6 +500,8 @@ export default function DashboardV3() {
               mortgageSource={propertyData?.mortgageSource ?? null}
               city={userHome?.city ?? null}
               state={userHome?.state ?? null}
+              chatMode={chatModeContext.mode}
+              systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
             />
             </div>
           </ResizablePanel>
@@ -540,6 +558,8 @@ export default function DashboardV3() {
             mortgageSource={propertyData?.mortgageSource ?? null}
             city={userHome?.city ?? null}
             state={userHome?.state ?? null}
+            chatMode={chatModeContext.mode}
+            systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
           />
         </div>
       </div>
