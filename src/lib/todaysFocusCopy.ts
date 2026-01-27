@@ -74,6 +74,18 @@ export const BANNED_PHRASES = [
   'recommended',
   'expected to fail',
   'forecast',
+  
+  // Task language (Baseline Mode violations)
+  'Please upload',
+  'To continue',
+  'Required',
+  'Missing data',
+  'You need to',
+  'Next step',
+  'Complete your',
+  'Finish setup',
+  'Help us by',
+  'Let\'s get',
 ] as const;
 
 /**

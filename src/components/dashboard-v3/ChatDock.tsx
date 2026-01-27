@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, ChevronUp, ChevronDown, Send } from "lucide-react";
+import { MessageCircle, ChevronUp, ChevronDown, Send, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,18 @@ import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { TodaysFocus } from "@/lib/todaysFocusCopy";
-import { getChatPlaceholder, getChatEmptyStateMessage, formatSystemName } from "@/lib/todaysFocusCopy";
+import type { ChatMode } from "@/types/chatMode";
+import { getChatPlaceholder, formatSystemName } from "@/lib/todaysFocusCopy";
+import { 
+  getPromptsForMode, 
+  getEmptyStateForMode, 
+  getOpeningMessage, 
+  formatOpeningMessage,
+  wasBaselineOpeningShown,
+  markBaselineOpeningShown,
+  getModeBehavior,
+} from "@/lib/chatModeCopy";
+import { getChatModeLabel } from "@/lib/chatModeSelector";
 
 // System display names for context-aware placeholder (legacy fallback)
 const SYSTEM_NAMES: Record<string, string> = {
@@ -32,7 +43,11 @@ interface ChatDockProps {
   confidence?: number;
   risk?: RiskLevel;
   onUserReply?: () => void;
-  todaysFocus?: TodaysFocus;  // NEW: For prompt injection
+  todaysFocus?: TodaysFocus;
+  /** Chat mode for epistemic-aware behavior */
+  chatMode?: ChatMode;
+  /** System keys with low confidence (for baseline mode) */
+  systemsWithLowConfidence?: string[];
 }
 
 /**
@@ -62,18 +77,26 @@ export function ChatDock({
   risk = 'LOW',
   onUserReply,
   todaysFocus,
+  chatMode = 'observational',
+  systemsWithLowConfidence = [],
 }: ChatDockProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasShownOpening, setHasShownOpening] = useState(false);
+  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => wasBaselineOpeningShown());
 
   const { messages, loading, sendMessage, injectMessage } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
     risk,
     focusSystem: focusContext?.systemKey,
+    chatMode,
   });
+
+  // Get mode-specific behavior
+  const modeBehavior = getModeBehavior(chatMode);
+  const modeLabel = getChatModeLabel(chatMode);
 
   // Inject opening message when advisor auto-opens chat
   useEffect(() => {
@@ -83,6 +106,24 @@ export function ChatDock({
       setHasShownOpening(true);
     }
   }, [hasAgentMessage, openingMessage, hasShownOpening, isExpanded, injectMessage]);
+
+  // Inject baseline opening message (once per session) when in baseline mode
+  useEffect(() => {
+    if (
+      chatMode === 'baseline_establishment' && 
+      isExpanded && 
+      messages.length === 0 && 
+      !hasShownBaselineOpening
+    ) {
+      const baselineConfig = getOpeningMessage(chatMode);
+      if (baselineConfig) {
+        const formattedMessage = formatOpeningMessage(baselineConfig);
+        injectMessage(formattedMessage);
+        markBaselineOpeningShown();
+        setHasShownBaselineOpening(true);
+      }
+    }
+  }, [chatMode, isExpanded, messages.length, hasShownBaselineOpening, injectMessage]);
 
   // Reset opening state when focus changes
   useEffect(() => {
@@ -171,11 +212,17 @@ export function ChatDock({
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Habitta</span>
-          {/* Subtle state indicator */}
-          <span className="text-xs text-muted-foreground">
-            {advisorState === 'DECISION' && '• Comparing options'}
-            {advisorState === 'EXECUTION' && '• Ready to act'}
-          </span>
+          {/* Mode-specific state indicator */}
+          {modeLabel && (
+            <span className="text-xs text-muted-foreground">{modeLabel}</span>
+          )}
+          {/* Legacy advisor state indicators */}
+          {!modeLabel && advisorState === 'DECISION' && (
+            <span className="text-xs text-muted-foreground">• Comparing options</span>
+          )}
+          {!modeLabel && advisorState === 'EXECUTION' && (
+            <span className="text-xs text-muted-foreground">• Ready to act</span>
+          )}
         </div>
         <Button 
           variant="ghost" 
@@ -201,7 +248,7 @@ export function ChatDock({
         {messages.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
             <p className="text-sm">
-              {getChatEmptyStateMessage(todaysFocus)}
+              {getEmptyStateForMode(chatMode)}
             </p>
           </div>
         )}
@@ -250,26 +297,41 @@ export function ChatDock({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Contextual suggestions (only in ENGAGED state with low message count) */}
-      {messages.length <= 1 && advisorState === 'ENGAGED' && (
-        <div className="px-4 pb-2 flex flex-wrap gap-2 shrink-0">
-          {[
-            "Walk me through my options",
-            "What happens if I wait?",
-            "Help me understand the timeline"
-          ].map((suggestion) => (
-            <Button
-              key={suggestion}
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                setInput(suggestion);
-              }}
-            >
-              {suggestion}
-            </Button>
-          ))}
+      {/* Mode-specific suggested prompts */}
+      {messages.length <= 1 && (
+        <div className="px-4 pb-2 space-y-2 shrink-0">
+          {/* Prompt suggestions */}
+          <div className="flex flex-wrap gap-2">
+            {getPromptsForMode(chatMode).map((suggestion) => (
+              <Button
+                key={suggestion}
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setInput(suggestion);
+                }}
+              >
+                {suggestion}
+              </Button>
+            ))}
+          </div>
+          
+          {/* Upload affordance - baseline mode only (subtle, equal weight) */}
+          {modeBehavior.showUploadAffordance && (
+            <div className="flex items-center justify-center gap-4 pt-2 text-xs text-muted-foreground">
+              <button 
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+                onClick={() => {
+                  // Navigate to photo capture or trigger modal
+                  // This links to existing photo capture flow
+                }}
+              >
+                <Camera className="h-3 w-3" />
+                <span>Improve accuracy</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

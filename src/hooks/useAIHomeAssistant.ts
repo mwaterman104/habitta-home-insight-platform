@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { AdvisorState, RiskLevel } from '@/types/advisorState';
+import type { ChatMode } from '@/types/chatMode';
 
 interface ChatMessage {
   id: string;
@@ -23,10 +24,12 @@ interface UseAIHomeAssistantOptions {
   confidence?: number;
   risk?: RiskLevel;
   focusSystem?: string;
+  /** Chat mode for epistemic-aware responses */
+  chatMode?: ChatMode;
 }
 
 export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssistantOptions = {}) => {
-  const { advisorState = 'ENGAGED', confidence = 0.5, risk = 'LOW', focusSystem } = options;
+  const { advisorState = 'ENGAGED', confidence = 0.5, risk = 'LOW', focusSystem, chatMode = 'observational' } = options;
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +58,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
         content: msg.content
       }));
 
-      // Get AI response with advisor state context
+      // Get AI response with advisor state context and chat mode
       const { data, error: assistantError } = await supabase.functions.invoke(
         'ai-home-assistant',
         {
@@ -66,7 +69,8 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
             advisorState,
             confidence,
             risk,
-            focusSystem
+            focusSystem,
+            chatMode, // Pass chat mode for epistemic-aware responses
           }
         }
       );

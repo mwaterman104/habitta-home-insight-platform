@@ -30,6 +30,7 @@ import { deriveClimateZone } from "@/lib/climateZone";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline, SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
+import type { ChatMode } from "@/types/chatMode";
 
 // Legacy interface for backwards compatibility
 interface TimelineTask {
@@ -82,6 +83,9 @@ interface MiddleColumnProps {
   mortgageSource?: MortgageSource;
   city?: string | null;
   state?: string | null;
+  // Chat State Machine props
+  chatMode?: ChatMode;
+  systemsWithLowConfidence?: string[];
 }
 
 /**
@@ -138,6 +142,8 @@ export function MiddleColumn({
   mortgageSource,
   city,
   state,
+  chatMode = 'observational',
+  systemsWithLowConfidence = [],
 }: MiddleColumnProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const statusHeaderRef = useRef<HTMLDivElement>(null);
@@ -399,6 +405,8 @@ export function MiddleColumn({
               risk={risk}
               onUserReply={onUserReply}
               todaysFocus={todaysFocus}
+              chatMode={chatMode}
+              systemsWithLowConfidence={systemsWithLowConfidence}
             />
           </div>
         </div>
