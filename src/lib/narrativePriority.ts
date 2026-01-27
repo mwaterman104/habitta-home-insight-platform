@@ -11,6 +11,24 @@
  * Rule: Exactly ONE dominant narrative wins.
  */
 
+import type { 
+  TodaysFocus, 
+  PositionStripData, 
+  ContextDrawerData,
+  FocusState,
+  SourceSystem,
+  PositionLabel,
+  ConfidenceLanguage,
+} from './todaysFocusCopy';
+import { 
+  getTodaysFocusCopy, 
+  getRationale, 
+  getDefaultSignals,
+} from './todaysFocusCopy';
+
+// Re-export types for convenience
+export type { TodaysFocus, PositionStripData, ContextDrawerData };
+
 export type NarrativePriority = 'URGENCY' | 'PLANNING' | 'PROGRESS' | 'STABILITY';
 
 export interface SystemSignal {
@@ -28,6 +46,7 @@ export interface NarrativeContext {
   systems: SystemSignal[];
   hasOverdueMaintenance: boolean;
   maintenanceCompletedThisMonth: number;
+  hasChangedSinceLastVisit?: boolean;
 }
 
 export interface RecommendedAction {
@@ -201,4 +220,132 @@ export function formatSystemDisplayName(key: string): string {
     siding: 'Siding'
   };
   return names[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// ============================================
+// Today's Focus Arbitration
+// ============================================
+
+/**
+ * Arbitrate Today's Focus from system signals
+ * Priority: RISK > PLANNING > ADVISORY > STABLE
+ */
+export function arbitrateTodaysFocus(ctx: NarrativeContext): TodaysFocus {
+  // Priority 1: Risk threshold crossed
+  const highRiskSystem = ctx.systems.find(s => s.risk === 'HIGH');
+  if (highRiskSystem) {
+    const sourceSystem = highRiskSystem.key as SourceSystem;
+    return {
+      state: 'risk',
+      message: getTodaysFocusCopy('risk', sourceSystem),
+      sourceSystem,
+      changedSinceLastVisit: ctx.hasChangedSinceLastVisit ?? false,
+    };
+  }
+  
+  // Priority 2: Planning window (< 36 months)
+  const planningSystem = ctx.systems.find(s => 
+    s.monthsToPlanning !== undefined && s.monthsToPlanning < 36
+  );
+  if (planningSystem) {
+    const sourceSystem = planningSystem.key as SourceSystem;
+    return {
+      state: 'planning',
+      message: getTodaysFocusCopy('planning', sourceSystem),
+      sourceSystem,
+      changedSinceLastVisit: ctx.hasChangedSinceLastVisit ?? false,
+    };
+  }
+  
+  // Priority 3: Market advisory (future implementation)
+  // if (ctx.marketConditions?.favorable) { ... }
+  
+  // Priority 4: Stable
+  return {
+    state: 'stable',
+    message: getTodaysFocusCopy('stable', null),
+    sourceSystem: null,
+    changedSinceLastVisit: false,
+  };
+}
+
+// ============================================
+// Position Strip Resolution
+// ============================================
+
+/**
+ * Get the dominant system by lifecycle urgency
+ */
+function getDominantLifecycleSystem(systems: SystemSignal[]): (SystemSignal & { positionScore: number }) | null {
+  if (systems.length === 0) return null;
+  
+  // Sort by urgency (lowest remaining months = highest position score)
+  const sorted = [...systems].sort((a, b) => {
+    const aMonths = a.monthsToPlanning ?? 120;
+    const bMonths = b.monthsToPlanning ?? 120;
+    return aMonths - bMonths;
+  });
+  
+  const dominant = sorted[0];
+  // Calculate position score (0 = just installed, 1 = end of life)
+  // Normalize: 180 months (15 years) = 0, 0 months = 1
+  const months = dominant.monthsToPlanning ?? 120;
+  const positionScore = Math.max(0, Math.min(1, 1 - (months / 180)));
+  
+  return { ...dominant, positionScore };
+}
+
+/**
+ * Resolve lifecycle position from system signals
+ * Position is derived from dominant system's lifecycle stage
+ */
+export function resolvePosition(ctx: NarrativeContext): PositionStripData {
+  const dominantSystem = getDominantLifecycleSystem(ctx.systems);
+  
+  // Derive position label from lifecycle stage
+  const positionScore = dominantSystem?.positionScore ?? 0.5;
+  const label: PositionLabel = 
+    positionScore < 0.33 ? 'Early' :
+    positionScore < 0.66 ? 'Mid-Life' : 'Late';
+  
+  // Derive confidence from average system confidence
+  const avgConfidence = ctx.systems.length > 0
+    ? ctx.systems.reduce((sum, s) => sum + s.confidence, 0) / ctx.systems.length
+    : 0.5;
+  const confidence: ConfidenceLanguage = 
+    avgConfidence >= 0.7 ? 'high' :
+    avgConfidence >= 0.4 ? 'moderate' : 'early';
+  
+  return {
+    label,
+    relativePosition: positionScore,
+    confidence,
+    sourceSystem: (dominantSystem?.key as SourceSystem) ?? null,
+  };
+}
+
+// ============================================
+// Context Drawer Data Resolution
+// ============================================
+
+/**
+ * Resolve context drawer data from focus state
+ */
+export function resolveContextDrawer(
+  focus: TodaysFocus,
+  ctx: NarrativeContext
+): ContextDrawerData {
+  // Find the dominant system's confidence
+  const dominantSystem = ctx.systems.find(s => s.key === focus.sourceSystem);
+  const systemConfidence = dominantSystem?.confidence ?? 0.5;
+  
+  const confidenceLanguage: ConfidenceLanguage = 
+    systemConfidence >= 0.7 ? 'high' :
+    systemConfidence >= 0.4 ? 'moderate' : 'early';
+  
+  return {
+    rationale: getRationale(focus.state, focus.sourceSystem),
+    signals: getDefaultSignals(focus.state, focus.sourceSystem),
+    confidenceLanguage,
+  };
 }
