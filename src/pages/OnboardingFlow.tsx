@@ -50,12 +50,57 @@ interface OnboardingState {
 // Updated step flow: address → handshake → snapshot → systems → complete
 type Step = 'address' | 'handshake' | 'snapshot' | 'systems' | 'complete';
 
+const ONBOARDING_STORAGE_KEY = 'habitta_onboarding_progress';
+
+interface PersistedOnboarding {
+  step: Step;
+  state: OnboardingState;
+  isFirstHome: boolean;
+  timestamp: number;
+}
+
+function saveOnboardingProgress(step: Step, state: OnboardingState, isFirstHome: boolean) {
+  const data: PersistedOnboarding = {
+    step,
+    state,
+    isFirstHome,
+    timestamp: Date.now(),
+  };
+  localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(data));
+}
+
+function loadOnboardingProgress(): PersistedOnboarding | null {
+  try {
+    const stored = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (!stored) return null;
+    
+    const data: PersistedOnboarding = JSON.parse(stored);
+    
+    // Expire after 24 hours
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    if (Date.now() - data.timestamp > ONE_DAY) {
+      localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+      return null;
+    }
+    
+    return data;
+  } catch {
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    return null;
+  }
+}
+
+function clearOnboardingProgress() {
+  localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+}
+
 export default function OnboardingFlow() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('address');
   const [isLoading, setIsLoading] = useState(false);
-  const [isFirstHome, setIsFirstHome] = useState(true); // Risk 6: Branch headline
+  const [isFirstHome, setIsFirstHome] = useState(true);
+  const [hasRestoredProgress, setHasRestoredProgress] = useState(false);
   const [state, setState] = useState<OnboardingState>({
     home_id: null,
     hvac_system_id: null,
@@ -65,10 +110,54 @@ export default function OnboardingFlow() {
     isEnriching: false,
   });
 
-  // Check for existing homes and set isFirstHome flag
+  // Restore progress from localStorage on mount
+  useEffect(() => {
+    const restoreProgress = async () => {
+      const savedProgress = loadOnboardingProgress();
+      if (savedProgress && savedProgress.state.home_id) {
+        try {
+          // Verify the home still exists before restoring
+          const { data } = await supabase
+            .from('homes')
+            .select('id')
+            .eq('id', savedProgress.state.home_id)
+            .single();
+            
+          if (data) {
+            setStep(savedProgress.step);
+            setState(savedProgress.state);
+            setIsFirstHome(savedProgress.isFirstHome);
+          } else {
+            // Home was deleted, clear progress
+            clearOnboardingProgress();
+          }
+        } catch {
+          clearOnboardingProgress();
+        }
+      }
+      setHasRestoredProgress(true);
+    };
+    
+    restoreProgress();
+  }, []);
+
+  // Save progress whenever step or state changes
+  useEffect(() => {
+    if (hasRestoredProgress && state.home_id) {
+      saveOnboardingProgress(step, state, isFirstHome);
+    }
+  }, [step, state, isFirstHome, hasRestoredProgress]);
+
+  // Check for existing homes ONLY if no saved progress
   useEffect(() => {
     const checkExistingHome = async () => {
-      if (!user) return;
+      if (!user || !hasRestoredProgress) return;
+      
+      // If we restored progress, don't redirect
+      const savedProgress = loadOnboardingProgress();
+      if (savedProgress && savedProgress.state.home_id) {
+        return;
+      }
       
       const { data: homes, count } = await supabase
         .from('homes')
@@ -79,14 +168,14 @@ export default function OnboardingFlow() {
       // Set isFirstHome based on count
       setIsFirstHome((count || 0) === 0);
 
-      // Redirect if already has a home (keep existing behavior)
-      if (homes && homes.length > 0) {
+      // Redirect ONLY if already has a home AND we're not in an active onboarding session
+      if (homes && homes.length > 0 && step === 'address') {
         navigate('/dashboard', { replace: true });
       }
     };
 
     checkExistingHome();
-  }, [user, navigate]);
+  }, [user, navigate, hasRestoredProgress, step]);
 
   // Subscribe to real-time updates for confidence changes during enrichment
   useEffect(() => {
@@ -257,6 +346,7 @@ export default function OnboardingFlow() {
 
   // Handle final navigation to dashboard
   const handleContinueToDashboard = () => {
+    clearOnboardingProgress(); // Clear saved progress on successful completion
     navigate('/dashboard', { replace: true });
   };
 
