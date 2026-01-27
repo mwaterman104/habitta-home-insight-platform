@@ -432,12 +432,6 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
-            marketValue={propertyData?.marketValue ?? null}
-            marketValueState={propertyData?.marketValueState ?? 'unknown'}
-            mortgageBalance={propertyData?.mortgageBalance ?? null}
-            mortgageSource={propertyData?.mortgageSource ?? null}
-            city={userHome?.city ?? null}
-            state={userHome?.state ?? null}
             chatMode={chatModeContext.mode}
             systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
             onSystemUpdated={handleSystemUpdated}
@@ -499,18 +493,12 @@ export default function DashboardV3() {
                 openingMessage={openingMessage}
                 confidence={confidence}
                 risk={risk}
-              onUserReply={handleUserReply}
-              onTaskComplete={handleTaskComplete}
-              marketValue={propertyData?.marketValue ?? null}
-              marketValueState={propertyData?.marketValueState ?? 'unknown'}
-              mortgageBalance={propertyData?.mortgageBalance ?? null}
-              mortgageSource={propertyData?.mortgageSource ?? null}
-              city={userHome?.city ?? null}
-              state={userHome?.state ?? null}
-              chatMode={chatModeContext.mode}
-              systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
-              onSystemUpdated={handleSystemUpdated}
-            />
+                onUserReply={handleUserReply}
+                onTaskComplete={handleTaskComplete}
+                chatMode={chatModeContext.mode}
+                systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+                onSystemUpdated={handleSystemUpdated}
+              />
             </div>
           </ResizablePanel>
           
@@ -560,12 +548,6 @@ export default function DashboardV3() {
             risk={risk}
             onUserReply={handleUserReply}
             onTaskComplete={handleTaskComplete}
-            marketValue={propertyData?.marketValue ?? null}
-            marketValueState={propertyData?.marketValueState ?? 'unknown'}
-            mortgageBalance={propertyData?.mortgageBalance ?? null}
-            mortgageSource={propertyData?.mortgageSource ?? null}
-            city={userHome?.city ?? null}
-            state={userHome?.state ?? null}
             chatMode={chatModeContext.mode}
             systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
             onSystemUpdated={handleSystemUpdated}
