@@ -1,18 +1,9 @@
 
-# Habitta Dashboard Evolution — "Selective Intelligence" Upgrade
-## Final Implementation Plan with QC Refinements
+# Equity Position Card — Implementation Plan
 
----
+## Overview
 
-## Executive Summary
-
-This plan evolves the dashboard into a visually compelling "Home Intelligence" experience with all 5 QC refinements integrated:
-
-1. **Visual Hierarchy Tiering** — Explicit weight levels for hero stack
-2. **Equity Volatility Controls** — Slow refresh cadence, "Current position" label
-3. **Language Layer Variation** — Reduce "later-stage lifecycle" repetition
-4. **Card Cap Enforcement** — Hard limit: 2 hero + 1 analytical + 1 context + chat
-5. **Specificity Cascade Rule** — Lower surfaces cannot exceed upper surface detail
+Upgrade the existing `EquityContextCard` to the doctrine-compliant `EquityPositionCard` with 3-layer structure (Market Context, Financing Posture, What This Enables) and wire up the data pipeline from `DashboardV3.tsx`.
 
 ---
 
@@ -20,408 +11,292 @@ This plan evolves the dashboard into a visually compelling "Home Intelligence" e
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/dashboardGovernance.ts` | **Create** | Centralized layout caps + specificity rules (QC #4, #5) |
-| `src/components/dashboard-v3/HomePositionAnchor.tsx` | **Create** | Primary hero - lifecycle position |
-| `src/components/dashboard-v3/EquityContextCard.tsx` | **Create** | Secondary hero - value context (QC #2 controls) |
-| `src/components/dashboard-v3/LifecycleHorizon.tsx` | **Create** | Analytical surface - replaces SystemTimelineLifecycle |
-| `src/components/dashboard-v3/PropertyMap.tsx` | **Modify** | Add intelligence overlays, click-to-context |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Card grid layout with visual tiering (QC #1) |
-| `src/components/dashboard-v3/RightColumn.tsx` | **Modify** | Enhanced map + intelligence integration |
-| `src/components/dashboard-v3/index.ts` | **Modify** | Export new components |
-| `src/lib/dashboardRecoveryCopy.ts` | **Modify** | Layer-varied copy (QC #3) |
+| `src/lib/equityPosition.ts` | **Create** | Pure derivation logic (LTV → Posture) |
+| `src/lib/equityCopy.ts` | **Create** | Centralized copy governance |
+| `src/components/dashboard-v3/EquityPositionCard.tsx` | **Create** | 3-layer card component (replaces EquityContextCard) |
+| `src/components/dashboard-v3/EquityContextCard.tsx` | **Delete** | Superseded by EquityPositionCard |
+| `src/components/dashboard-v3/index.ts` | **Modify** | Update exports |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Update props + component usage |
+| `src/pages/DashboardV3.tsx` | **Modify** | Wire up property + financial data |
+| `src/lib/dashboardGovernance.ts` | **Modify** | Update HERO_COMPONENTS registry |
 
 ---
 
-## Part 1: Dashboard Governance Module (QC #4, #5)
+## Part 1: Derivation Logic
 
-**File:** `src/lib/dashboardGovernance.ts` (Create)
+**File:** `src/lib/equityPosition.ts`
 
-### Purpose
-Centralized enforcement of layout caps and specificity cascade rules.
+### Types
 
 ```text
-DASHBOARD COMPONENT CAP (QC #4)
-================================
-Maximum components per dashboard:
-- Hero cards: 2
-- Analytical surfaces: 1  
-- Expandable context: 1
-- Chat: 1
+FinancingPosture = 'Majority financed' | 'Balanced ownership' | 'Largely owned'
 
-SPECIFICITY CASCADE RULE (QC #5)
-=================================
-No lower surface may introduce more specificity than the layer above.
+EquityConfidence = 'High' | 'Moderate' | 'Early'
+```
 
-Layer Order (top to bottom):
-1. Status Header (least specific: one sentence)
-2. Hero Cards (position + value context)  
-3. Analytical Surface (system-level detail)
-4. Context Drawer (expanded rationale)
-5. Chat (exploratory)
+### Functions
 
-Prohibited:
-- Analytical surface showing costs (Context Drawer level)
-- Hero cards showing system breakdowns (Analytical level)
+```text
+deriveFinancingPosture(marketValue, mortgageBalance)
+  - Returns null if either input is null
+  - LTV > 0.7 → 'Majority financed'
+  - LTV > 0.4 → 'Balanced ownership'
+  - LTV ≤ 0.4 → 'Largely owned'
+
+deriveEquityConfidence(hasMarketValue, hasMortgageData, mortgageSource)
+  - Returns 'High' if both values from public records
+  - Returns 'Moderate' if market value exists but mortgage inferred
+  - Returns 'Early' if missing data
+```
+
+**Key Rule:** No UI logic here. No copy. No rendering.
+
+---
+
+## Part 2: Copy Governance
+
+**File:** `src/lib/equityCopy.ts`
+
+### Functions
+
+```text
+getEquityEnablementLine(posture)
+  - 'Majority financed' → 'This position typically supports limited financing flexibility.'
+  - 'Balanced ownership' → 'This position typically supports optional financing flexibility.'
+  - 'Largely owned' → 'This position provides strong financial flexibility.'
+  - null → 'This ownership profile is still being established.'
+
+getPostureInferenceNote()
+  - Returns: 'Financing posture inferred from public records'
+
+getMarketContextLabel()
+  - Returns: 'Market Context'
+```
+
+**Key Rule:** No conditionals in JSX. All copy comes from here.
+
+---
+
+## Part 3: EquityPositionCard Component
+
+**File:** `src/components/dashboard-v3/EquityPositionCard.tsx`
+
+### Props (Locked)
+
+```text
+marketValue: number | null
+financingPosture: FinancingPosture | null
+confidence: EquityConfidence
+city?: string | null
+state?: string | null
+onViewMarketContext?: () => void
+```
+
+### Visual Structure
+
+```text
+┌──────────────────────────────────────────────┐
+│  EQUITY POSITION                             │
+│                                              │
+│  Market Context                   (subhead)  │
+│  ~$650,000                     (softened $)  │
+│                                              │
+│  Financing Posture                (subhead)  │
+│  Balanced ownership          (qualitative)   │
+│                                              │
+│  What this enables                (subhead)  │
+│  This position typically supports optional   │
+│  financing beyond routine maintenance.       │
+│                                              │
+│  Confidence: Moderate        (quiet footer)  │
+│  [View market context]        (link, no CTA) │
+└──────────────────────────────────────────────┘
+```
+
+### Rendering Rules (Hard)
+
+- Market value formatted with `~` prefix (softened precision)
+- No raw mortgage balance shown
+- No equity subtraction math visible
+- Posture shown as qualitative label only
+- "What this enables" from copy module
+- Confidence always present, never emphasized
+- "View market context" link only (no action CTAs)
+
+### Empty States
+
+- `marketValue === null` → "Value context unavailable"
+- `financingPosture === null` → "Financing posture unavailable"
+
+### Specificity Level
+
+```text
+SPECIFICITY LEVEL: Hero (2)
+
+ALLOWED: Value number (softened), posture label, enablement statement, confidence text
+PROHIBITED: Raw debt numbers, equity math, percentages, action CTAs, "What If" toggles
 ```
 
 ---
 
-## Part 2: Visual Hierarchy Tiering (QC #1)
+## Part 4: MiddleColumn Update
 
-### Weight Assignments
+**File:** `src/components/dashboard-v3/MiddleColumn.tsx`
 
-| Component | Visual Weight | Tailwind Treatment |
-|-----------|---------------|-------------------|
-| Status Header | **Quiet** | `text-lg font-medium` (no card, no border) |
-| HomePositionAnchor | **Primary Hero** | `py-6 px-6` padding, larger bar, prominent label |
-| EquityContextCard | **Secondary Hero** | `py-4 px-5` padding, smaller text, muted treatment |
-| LifecycleHorizon | **Analytical** | `bg-muted/10` subtle background, compact rows |
-| ContextDrawer | **Expandable** | Collapsed by default, no visual weight until opened |
-| ChatDock | **Ambient** | Sticky, minimal presence until engaged |
-
-### Implementation in MiddleColumn
-
-```text
-Layout Structure:
-================================
-
-┌─────────────────────────────────────────────────────────────┐
-│  TODAY'S STATUS (quiet header - no card)                    │
-│  Nothing requires attention right now.                      │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ space-y-6
-
-┌───────────────────────────────┐  ┌───────────────────────────┐
-│  HOME POSITION                │  │  EQUITY CONTEXT           │
-│  ════════●════════════        │  │  $650,000                 │
-│  Mid-Life                     │  │  Context: +3.8% area YoY  │
-│                               │  │                           │
-│  (PRIMARY HERO - larger)      │  │  (SECONDARY HERO - muted) │
-└───────────────────────────────┘  └───────────────────────────┘
-                              ↓ space-y-4 (tighter)
-
-┌─────────────────────────────────────────────────────────────┐
-│  LIFECYCLE HORIZON (analytical - subtle bg)                 │
-│  HVAC          ═══════●═══════         Mid-Life             │
-│  Water Heater  ═══════════●═══         Later range          │
-│  Roof          ═══●═══════════         Typical for age      │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ space-y-4
-
-┌─────────────────────────────────────────────────────────────┐
-│  WHY THIS ASSESSMENT  [Expand]  (collapsed - no weight)     │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ sticky
-
-┌─────────────────────────────────────────────────────────────┐
-│  💬 What would you like to understand better?  (ambient)    │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Part 3: HomePositionAnchor Component
-
-**File:** `src/components/dashboard-v3/HomePositionAnchor.tsx` (Create)
-
-### Key Design Choices
-
-- **Visual:** Larger bar (h-3), prominent label (text-xl), generous padding
-- **No numbers:** Position marker only, no percentages
-- **One outlook line:** Observational, no action verbs
-- **Climate badge:** Inline with outlook
-- **Confidence:** Text only, muted
-
-### Structure
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  HOME POSITION                                               │
-│                                                              │
-│  Mid-Life                               (text-xl font-medium)│
-│                                                              │
-│  ════════════════●════════════════════                       │
-│   Early        Mid-Life           Late                       │
-│                                                              │
-│  Systems aging within expected ranges                        │
-│                                                              │
-│  Climate: High heat    Confidence: High                      │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Part 4: EquityContextCard Component (QC #2)
-
-**File:** `src/components/dashboard-v3/EquityContextCard.tsx` (Create)
-
-### Volatility Controls (QC #2)
-
-1. **Slow refresh:** Value only updates monthly (cached timestamp check)
-2. **"Current position" label:** Anchors as observation, not ticker
-3. **No delta highlighting:** Area context in plain text, no +/- badges
-4. **Muted visual weight:** Secondary to position anchor
-
-### Structure
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  EQUITY CONTEXT                                              │
-│                                                              │
-│  Current Position                         (muted subheader)  │
-│  $650,000                                 (text-2xl)         │
-│                                                              │
-│  Similar homes in your area have appreciated                 │
-│  moderately over the past 12 months.      (no specific %)    │
-│                                                              │
-│  [View market context]                    (optional link)    │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### What's Explicitly Removed (Doctrine)
-- "What If" toggle
-- "If you complete X, value increases by Y"
-- Percentage badges
-- Refresh-on-every-visit
-
----
-
-## Part 5: LifecycleHorizon Component
-
-**File:** `src/components/dashboard-v3/LifecycleHorizon.tsx` (Create)
-
-### Differences from SystemTimelineLifecycle
-
-| SystemTimelineLifecycle | LifecycleHorizon |
-|-------------------------|------------------|
-| Individual expandable cards | Compact single table |
-| Card border per system | Subtle row separators |
-| "View full details →" link | Click row for context |
-| White background | `bg-muted/10` analytical tone |
-
-### Layer-Varied Copy (QC #3)
-
-| Position | Copy |
-|----------|------|
-| Early | "Typical for age" |
-| Mid-Life | "Within expected range" |
-| Late | "Later range" ← NOT "Later-stage lifecycle" |
-
-### Structure
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  LIFECYCLE HORIZON                         (section header) │
-│  Relative position within expected ranges  (subtext)        │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │ HVAC           ═══════●═══════           Mid-Life       ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │ Water Heater   ═══════════●═══           Later range    ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │ Roof           ═══●═══════════           Typical for age││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Part 6: Layer-Varied Copy Updates (QC #3)
-
-**File:** `src/lib/dashboardRecoveryCopy.ts` (Modify)
-
-### New Copy Variations by Layer
-
-| Layer | Copy Variation | Replaces |
-|-------|----------------|----------|
-| Status Header | "in a later stage" | - |
-| Position Anchor | "Later in expected range" | "Later-stage lifecycle" |
-| Lifecycle Horizon | "Later range" | "Later-stage lifecycle" |
-| Context Drawer | "later lifecycle stage" | - |
-| Advisor Messages | "worth understanding better" | - |
-
-### Function Update: `getLifecycleNoteForHorizon()`
+### Props Update
 
 ```typescript
-export function getLifecycleNoteForHorizon(positionScore: number): string {
-  if (positionScore < 0.4) return 'Typical for age';
-  if (positionScore < 0.6) return 'Within expected range';
-  if (positionScore < 0.75) return 'Mid-to-late range';
-  return 'Later range';  // NOT "Later-stage lifecycle"
-}
+// Remove
+homeValue?: number | null;
+
+// Add
+marketValue?: number | null;
+mortgageBalance?: number | null;
+mortgageConfidence?: 'inferred' | 'public_records' | null;
 ```
 
----
-
-## Part 7: PropertyMap Intelligence Overlays
-
-**File:** `src/components/dashboard-v3/PropertyMap.tsx` (Modify)
-
-### New Features
-
-1. **Comparable Homes Count:** Badge showing nearby similar homes
-2. **Permit Activity Indicator:** "Normal" or "Elevated" text badge
-3. **Click-to-Context:** Clicking map opens ContextDrawer (not pre-filled prompts)
-
-### Overlay Structure
+### Component Swap
 
 ```text
-┌─────────────────────────────────────────────────┐
-│                                                 │
-│              [GOOGLE STATIC MAP]                │
-│                                                 │
-│  ┌─────────────────┐                            │
-│  │ 12 comparable   │                            │
-│  │ homes nearby    │                            │
-│  └─────────────────┘                            │
-│                                                 │
-│  ┌──────────────┐  ┌──────────────────────────┐ │
-│  │ 🌡️ High heat  │  │ Permit activity: Normal  │ │
-│  └──────────────┘  └──────────────────────────┘ │
-└─────────────────────────────────────────────────┘
+// Before
+<EquityContextCard
+  currentValue={homeValue}
+  areaContext="..."
+/>
+
+// After
+<EquityPositionCard
+  marketValue={marketValue}
+  financingPosture={deriveFinancingPosture(marketValue, mortgageBalance)}
+  confidence={deriveEquityConfidence(!!marketValue, !!mortgageBalance, mortgageConfidence)}
+  city={city}
+  state={state}
+/>
 ```
 
-### Click Behavior Change
+---
+
+## Part 5: DashboardV3 Data Wiring
+
+**File:** `src/pages/DashboardV3.tsx`
+
+### Add Imports
 
 ```typescript
-// Before: No click handler
-// After: Click opens context drawer
-interface PropertyMapProps {
-  // ...existing
-  onMapClick?: () => void;  // Opens ContextDrawer
-}
+import { useSmartyPropertyData } from '@/hooks/useSmartyPropertyData';
 ```
 
----
-
-## Part 8: MiddleColumn Grid Refactor
-
-**File:** `src/components/dashboard-v3/MiddleColumn.tsx` (Modify)
-
-### Key Changes
-
-1. **Hero Grid:** Two-column layout for Position + Equity
-2. **Visual Weight Classes:** Applied per QC #1
-3. **Tighter Spacing:** `space-y-4` between analytical surfaces
-4. **Removed:** SystemsOverview (merged into LifecycleHorizon)
-
-### Layout Code Structure
+### Add Hook Call
 
 ```typescript
-{/* Status Header - QUIET */}
-<section className="space-y-2">
-  <HomeStatusHeader ... />
-</section>
-
-{/* Hero Grid - PRIMARY + SECONDARY */}
-<section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <HomePositionAnchor className="py-6 px-6" ... />  {/* PRIMARY */}
-  <EquityContextCard className="py-4 px-5" ... />   {/* SECONDARY */}
-</section>
-
-{/* Analytical Surface - SUBDUED */}
-<section className="bg-muted/10 rounded-xl p-4">
-  <LifecycleHorizon ... />
-</section>
-
-{/* Context Drawer - COLLAPSED */}
-<section>
-  <ContextDrawer ... />
-</section>
-
-{/* Chat - AMBIENT */}
-<div className="sticky bottom-4">
-  <ChatDock ... />
-</div>
+// Property valuation is fetched once here and passed down.
+// Do not call useSmartyPropertyData in child components.
+const { data: propertyData, loading: propertyLoading } = useSmartyPropertyData();
 ```
 
+### Update All 3 MiddleColumn Instances
+
+**Mobile (~line 388):**
+```typescript
+<MiddleColumn
+  ...existing props...
+  marketValue={propertyData?.currentValue ?? null}
+  mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
+  mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+  city={userHome?.city ?? null}
+  state={userHome?.state ?? null}
+/>
+```
+
+**Desktop XL (~line 449):**
+Same prop additions.
+
+**Desktop LG (~line 498):**
+Same prop additions.
+
 ---
 
-## Part 9: RightColumn Enhancement
+## Part 6: Governance Update
 
-**File:** `src/components/dashboard-v3/RightColumn.tsx` (Modify)
+**File:** `src/lib/dashboardGovernance.ts`
 
-### Changes
-
-1. **Map Click Handler:** Pass `onMapClick` prop for context drawer integration
-2. **Enhanced Intelligence Props:** Pass overlay data to PropertyMap
-3. **LocalConditions:** Remains unchanged (already doctrine-compliant)
-
----
-
-## Specificity Cascade Enforcement (QC #5)
-
-### Layer Permissions Matrix
-
-| Layer | Allowed Content | Prohibited |
-|-------|-----------------|------------|
-| Status Header | One sentence, overall state | System names, costs, dates |
-| Hero Cards | Position label, value number | System breakdowns, percentages |
-| Lifecycle Horizon | System names, position bars | Costs, dates, action buttons |
-| Context Drawer | Rationale, confidence, sources | Recommendations, CTAs |
-| Chat | Exploration | Auto-generated actions |
-
-### Enforcement Mechanism
-
-Add comment blocks in each component:
+### Update HERO_COMPONENTS
 
 ```typescript
-/**
- * SPECIFICITY LEVEL: Hero (2)
- * 
- * ALLOWED: Position label, outlook statement, confidence text
- * PROHIBITED: System-level detail, costs, dates, action buttons
- * 
- * Cascade Rule: May not exceed Status Header specificity.
- * Must not show system breakdowns (that's Analytical level).
- */
+export const HERO_COMPONENTS = [
+  'HomePositionAnchor',   // Primary hero
+  'EquityPositionCard',   // Secondary hero (renamed from EquityContextCard)
+] as const;
 ```
 
 ---
 
-## Implementation Order
+## Data Flow Diagram
 
-1. **dashboardGovernance.ts** — Governance rules
-2. **dashboardRecoveryCopy.ts** — Layer-varied copy functions
-3. **HomePositionAnchor.tsx** — Primary hero
-4. **EquityContextCard.tsx** — Secondary hero with volatility controls
-5. **LifecycleHorizon.tsx** — Analytical surface
-6. **PropertyMap.tsx** — Intelligence overlays
-7. **MiddleColumn.tsx** — Grid layout integration
-8. **RightColumn.tsx** — Map click integration
-9. **index.ts** — Export updates
+```text
+DashboardV3
+    │
+    ├─► useSmartyPropertyData()
+    │       ├─► currentValue: 650000
+    │       └─► estimatedMortgageBalance: 320000
+    │
+    └─► MiddleColumn
+            ├─► marketValue={650000}
+            ├─► mortgageBalance={320000}
+            │
+            └─► EquityPositionCard
+                    │
+                    ├─► deriveFinancingPosture(650000, 320000)
+                    │       └─► LTV = 0.49 → 'Balanced ownership'
+                    │
+                    ├─► deriveEquityConfidence(true, true, 'inferred')
+                    │       └─► 'Moderate'
+                    │
+                    └─► Display:
+                            ~$650,000
+                            Balanced ownership
+                            "This position typically supports optional financing flexibility."
+                            Confidence: Moderate
+```
+
+---
+
+## QA Gates (Blockers)
+
+Before merging, verify:
+
+- [ ] No percentages shown on card
+- [ ] No dollar subtraction logic visible (no "Equity: $X")
+- [ ] No raw mortgage balance displayed
+- [ ] No "what if" language
+- [ ] No urgency verbs (do, act, start, now)
+- [ ] No refresh animations
+- [ ] Market value uses `~` prefix
+- [ ] Posture is qualitative only
+- [ ] "What this enables" copy from centralized module
+- [ ] Confidence always present
+- [ ] EquityPositionCard never renders without HomePositionAnchor
+- [ ] Works on mobile, desktop xl, and desktop lg layouts
+
+---
+
+## Doctrine Compliance Checklist
+
+- [ ] Equity information increases understanding, never motivation
+- [ ] No user should feel tempted to "act" after seeing the card
+- [ ] Dollar math belongs only in Chat or explicit planning modes
+- [ ] Value feels secondary to Home Position
+- [ ] 30-day refresh cadence preserved
 
 ---
 
 ## Acceptance Criteria
 
-### Doctrine Compliance
-- [ ] No circular gauges, health meters, or percentage bars
-- [ ] No "If you do X, Y improves" language
-- [ ] No specific dates in timeline
-- [ ] No task framing
-- [ ] No urgency language
-- [ ] All copy passes BANNED_DASHBOARD_PHRASES validation
-
-### QC Refinements
-- [ ] Visual weight explicitly tiered (quiet → primary → secondary → analytical)
-- [ ] Equity context on slow refresh cadence (monthly)
-- [ ] No "later-stage lifecycle" repetition (layer-varied copy)
-- [ ] Dashboard capped at 2 hero + 1 analytical + 1 context + chat
-- [ ] Specificity cascade rule enforced via component comments
-
-### Visual Impact
-- [ ] Card grid layout for hero section
-- [ ] Position indicator prominently displayed
-- [ ] Equity context visible without scrolling
-- [ ] Lifecycle horizon shows all systems at a glance
-- [ ] Map includes intelligence overlays
-
----
-
-## Litmus Test
-
-For every element, ask:
-> "Does this make the homeowner feel calmer or busier?"
-
-If the answer is "busier", it doesn't ship.
+- [ ] Market value displayed with softened precision (~$650,000)
+- [ ] Financing posture shown qualitatively (Balanced ownership)
+- [ ] "What this enables" line appears below posture
+- [ ] Confidence surfaced quietly at bottom
+- [ ] "View market context" link functional
+- [ ] Graceful fallback when data unavailable
+- [ ] Respects 30-day refresh cadence
+- [ ] Equity never appears without Home Position Anchor
