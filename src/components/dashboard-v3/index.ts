@@ -1,5 +1,6 @@
 // Dashboard V3 Components
 // Three-column intelligent home platform with single-narrative authority
+// QA-Refined Recovery Architecture
 
 export { TopHeader } from './TopHeader';
 export { LeftColumn } from './LeftColumn';
@@ -9,7 +10,14 @@ export { ChatDock } from './ChatDock';
 export { PropertyMap } from './PropertyMap';
 export { SystemWatch } from './SystemWatch';
 
-// New Primary Hierarchy Components
+// Recovery Architecture Components (QA-Approved)
+export { HomeStatusHeader } from './HomeStatusHeader';
+export { HomePositionOutlook } from './HomePositionOutlook';
+export { SystemsOverview } from './SystemsOverview';
+export { SystemTimelineLifecycle } from './SystemTimelineLifecycle';
+export { LocalConditions } from './LocalConditions';
+
+// Existing Hierarchy Components
 export { TodaysFocusCard } from './TodaysFocusCard';
 export { PositionStrip } from './PositionStrip';
 export { ContextDrawer } from './ContextDrawer';

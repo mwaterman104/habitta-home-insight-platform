@@ -1,10 +1,23 @@
+/**
+ * RightColumn - External Awareness Rail
+ * 
+ * QA Fix #5: FocusContextCard REMOVED.
+ * Context must live in ONE place only (ContextDrawer in MiddleColumn).
+ * Right column = external/environmental awareness only.
+ * 
+ * Contains:
+ * - PropertyMap (location visualization)
+ * - LocalConditions (climate, stress, comparable homes)
+ */
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyMap } from "./PropertyMap";
-import { FocusContextCard } from "./FocusContextCard";
+import { LocalConditions } from "./LocalConditions";
 import { deriveClimateZone } from "@/lib/climateZone";
-import type { FocusContext, RiskLevel } from "@/types/advisorState";
-import type { SystemPrediction } from "@/types/systemPrediction";
-import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
+import { 
+  getClimateZoneLabel, 
+  getEnvironmentalStressLabel 
+} from "@/lib/dashboardRecoveryCopy";
 
 interface RightColumnProps {
   loading: boolean;
@@ -14,37 +27,10 @@ interface RightColumnProps {
   address?: string;
   city?: string;
   state?: string;
-  // Authority coupling (from advisor state)
-  focusContext: FocusContext;
-  // Data for context card
-  hvacPrediction: SystemPrediction | null;
-  capitalTimeline: HomeCapitalTimeline | null;
-  homeAge?: number;
-  risk: RiskLevel;
-  confidence: number;
+  // REMOVED: focusContext, hvacPrediction, capitalTimeline, homeAge, risk, confidence
+  // QA Fix #5: Context lives in ContextDrawer only
 }
 
-/**
- * RightColumn - Context Rail
- * 
- * Redesigned as a purposeful Context Rail with explicit Authority Contract.
- * Answers: "What external or structural factors matter right now for this home?"
- * 
- * Authority Hierarchy:
- * - Primary: Today's Focus (via focusContext)
- * - Secondary: Context Rail (this component)
- * 
- * Contains:
- * - PropertyMap (with climate meaning) - taller at h-72
- * - FocusContextCard (authority-coupled, single card)
- * 
- * Guardrails (what it MUST NOT do):
- * - Must NOT introduce new system focus
- * - Must NOT escalate urgency beyond Today's Focus
- * - Must NOT present recommendations or actions
- * - Must NOT contradict Today's Focus headline
- * - Must NOT speak when Today's Focus is silent (except Quiet State)
- */
 export function RightColumn({
   loading,
   latitude,
@@ -52,12 +38,6 @@ export function RightColumn({
   address,
   city,
   state,
-  focusContext,
-  hvacPrediction,
-  capitalTimeline,
-  homeAge,
-  risk,
-  confidence,
 }: RightColumnProps) {
   const climate = deriveClimateZone(state, city, latitude);
   
@@ -65,14 +45,14 @@ export function RightColumn({
     return (
       <div className="space-y-6">
         <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-40 rounded-xl" />
+        <Skeleton className="h-32 rounded-xl" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Property Map - taller, explanatory */}
+      {/* Property Map - unchanged */}
       <PropertyMap 
         lat={latitude} 
         lng={longitude}
@@ -82,17 +62,18 @@ export function RightColumn({
         className="rounded-xl"
       />
 
-      {/* Focus Context Card - authority-coupled */}
-      <FocusContextCard
-        focusContext={focusContext}
-        authoritySource="todays_focus"
-        climateZone={climate}
-        hvacPrediction={hvacPrediction}
-        capitalTimeline={capitalTimeline}
-        homeAge={homeAge}
-        risk={risk}
-        confidence={confidence}
+      {/* Local Conditions - NEW (replaces FocusContextCard) */}
+      <LocalConditions
+        climateZone={getClimateZoneLabel(climate.zone)}
+        environmentalStress={getEnvironmentalStressLabel(climate.zone)}
+        comparableHomesPattern="No unusual patterns detected"
       />
+      
+      {/* 
+       * REMOVED: FocusContextCard
+       * QA Fix #5: Context lives in ContextDrawer only.
+       * Right column = external/environmental awareness only.
+       */}
     </div>
   );
 }

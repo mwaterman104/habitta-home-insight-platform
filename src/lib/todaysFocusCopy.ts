@@ -49,6 +49,7 @@ export interface CapitalAdvisory {
 // ============================================
 
 export const BANNED_PHRASES = [
+  // Original list
   '!',                    // No exclamation points
   'You should',
   'We recommend',
@@ -63,6 +64,16 @@ export const BANNED_PHRASES = [
   'urgent',
   'critical',
   'immediately',
+  
+  // QA additions (Fix #3)
+  'planning window',      // Too directive on main dashboard
+  'attention required',
+  'monitor closely',
+  'action',
+  'consider',
+  'recommended',
+  'expected to fail',
+  'forecast',
 ] as const;
 
 /**
@@ -116,7 +127,10 @@ export function getTodaysFocusCopy(
   
   const copyMap: Record<FocusState, string> = {
     stable: 'Nothing requires attention right now.',
-    planning: `Your ${systemName} is entering its planning window.`,
+    // QA Fix #3: Avoid "planning window" on main dashboard
+    // OLD: `Your ${systemName} is entering its planning window.`
+    // NEW: Non-directive lifecycle language
+    planning: `Your ${systemName} is in a later stage of its lifecycle.`,
     advisory: 'Market conditions make this a strong refinance period.',
     risk: `${systemNameCapitalized} wear has crossed our attention threshold.`,
   };

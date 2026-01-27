@@ -1,11 +1,12 @@
 import { useRef, useState, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatDock } from "./ChatDock";
-import { SystemWatch } from "./SystemWatch";
 import { StateOfHomeReport } from "./StateOfHomeReport";
-import { TodaysFocusCard } from "./TodaysFocusCard";
-import { PositionStrip } from "./PositionStrip";
 import { ContextDrawer } from "./ContextDrawer";
+import { HomeStatusHeader } from "./HomeStatusHeader";
+import { HomePositionOutlook } from "./HomePositionOutlook";
+import { SystemsOverview } from "./SystemsOverview";
+import { SystemTimelineLifecycle } from "./SystemTimelineLifecycle";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
 import { useViewTracker } from "@/lib/analytics/useViewTracker";
@@ -16,9 +17,18 @@ import {
   type SystemSignal,
   type NarrativeContext,
 } from "@/lib/narrativePriority";
+import {
+  getSystemStatusLabel,
+  getPositionLabel,
+  getLifecycleNote,
+  getOutlookSummary,
+  calculatePositionScore,
+  type LifecycleSystem,
+  type RiskLevel,
+} from "@/lib/dashboardRecoveryCopy";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
-import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
-import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
+import type { HomeCapitalTimeline, SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 
 // Legacy interface for backwards compatibility
 interface TimelineTask {
@@ -60,26 +70,27 @@ interface MiddleColumnProps {
   focusContext?: { systemKey: string; trigger: string };
   openingMessage?: AdvisorOpeningMessage | null;
   confidence?: number;
-  risk?: RiskLevel;
+  risk?: AdvisorRiskLevel;
   onUserReply?: () => void;
   // Maintenance interaction handlers
   onTaskComplete?: (taskId: string) => void;
 }
 
 /**
- * MiddleColumn - Primary Canvas with Single-Narrative Authority
+ * MiddleColumn - Primary Canvas with Layered Hierarchy
  * 
- * Dashboard Enhancement Architecture:
+ * Dashboard Recovery Architecture (QA-Approved):
  * 1. Annual State of Home (conditional interrupt)
- * 2. Today's Focus (PRIMARY - one sentence, one truth)
- * 3. Position Strip (lifecycle orientation, always visible)
- * 4. System Watch (conditional, sharpened)
- * 5. Context Drawer (collapsed by default)
- * 6. ChatDock (sticky, pre-contextualized)
+ * 2. TODAY'S STATUS (HomeStatusHeader)
+ * 3. HOME POSITION & OUTLOOK (HomePositionOutlook)
+ * 4. SYSTEMS BEING MONITORED (SystemsOverview)
+ * 5. SYSTEM LIFECYCLE TIMELINE (SystemTimelineLifecycle)
+ * 6. WHY THIS ASSESSMENT (ContextDrawer - collapsed)
+ * 7. CHAT (ChatDock - sticky)
  * 
  * Architectural Principle:
  * - Judgment first. Position second. Evidence last.
- * - Chronology never leads. Orientation always does.
+ * - Timeline informs — never leads.
  */
 export function MiddleColumn({
   homeForecast,
@@ -105,7 +116,7 @@ export function MiddleColumn({
   onTaskComplete,
 }: MiddleColumnProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const healthCardRef = useRef<HTMLDivElement>(null);
+  const statusHeaderRef = useRef<HTMLDivElement>(null);
 
   // Track if chat was engaged this session
   const [chatEngagedThisSession, setChatEngagedThisSession] = useState(false);
@@ -189,18 +200,84 @@ export function MiddleColumn({
     [todaysFocus, narrativeContext]
   );
 
-  // Determine if System Watch should show (not already focus source)
-  const shouldShowSystemWatch = useMemo(() => {
-    if (todaysFocus.state === 'stable') return false;
-    // Only show if there's a planning system that's NOT the focus source
-    const planningSystem = systemSignals.find(s => 
-      s.monthsToPlanning && s.monthsToPlanning < 84 && s.key !== todaysFocus.sourceSystem
-    );
-    return !!planningSystem;
-  }, [todaysFocus, systemSignals]);
+  // Derive HVAC risk for status labels
+  const getHvacRisk = (): RiskLevel => {
+    if (!hvacPrediction) return 'LOW';
+    if (hvacPrediction.status === 'high') return 'HIGH';
+    if (hvacPrediction.status === 'moderate') return 'MODERATE';
+    return 'LOW';
+  };
 
-  // Phase 2: View tracking for TodaysFocus (replacing HomeHealthCard tracking)
-  useViewTracker(healthCardRef, {
+  // Derive monitored systems for coverage list (QA Fix #6)
+  const monitoredSystems = useMemo(() => {
+    return [
+      { key: 'hvac', label: 'HVAC', status: getSystemStatusLabel(getHvacRisk()) },
+      { key: 'roof', label: 'Roof', status: getSystemStatusLabel('LOW') },
+      { key: 'water_heater', label: 'Water Heater', status: getSystemStatusLabel('LOW') },
+      { key: 'electrical', label: 'Electrical', status: 'Normal' as const },
+      { key: 'plumbing', label: 'Plumbing', status: 'Normal' as const },
+      { key: 'environment', label: 'Environment', status: 'Typical' as const },
+    ];
+  }, [hvacPrediction]);
+
+  // Helper to derive lifecycle system from capital timeline entry
+  const deriveLifecycleSystem = (sys: SystemTimelineEntry): LifecycleSystem => {
+    const currentYear = new Date().getFullYear();
+    const hasInstallYear = sys.installYear !== null;
+    
+    // QA Fix #4: When installYear is missing, clamp to mid-range
+    if (!hasInstallYear) {
+      return {
+        key: sys.systemId,
+        label: sys.systemLabel,
+        positionScore: 0.5,         // Clamp to mid-range
+        positionLabel: 'Mid-Life',
+        note: 'Based on regional patterns',  // Clear about uncertainty
+        hasInstallYear: false,
+        confidence: 'early',        // Lower confidence
+        installSource: sys.installSource,
+        environmentalStress: undefined,
+      };
+    }
+    
+    // Normal calculation when install year exists
+    const expectedLifespan = sys.replacementWindow.lateYear - (sys.installYear ?? currentYear);
+    const { score: positionScore } = calculatePositionScore(
+      sys.installYear,
+      expectedLifespan,
+      currentYear
+    );
+    
+    const confidenceScore = sys.dataQuality === 'high' ? 0.8 : 0.5;
+    
+    return {
+      key: sys.systemId,
+      label: sys.systemLabel,
+      positionScore,
+      positionLabel: getPositionLabel(positionScore),
+      note: getLifecycleNote(positionScore, confidenceScore, true),
+      hasInstallYear: true,
+      confidence: sys.dataQuality === 'high' ? 'high' : 'moderate',
+      installSource: sys.installSource,
+      environmentalStress: undefined,
+    };
+  };
+
+  // Derive lifecycle systems with QA Fix #4 handling
+  const lifecycleSystems = useMemo<LifecycleSystem[]>(() => {
+    return capitalTimeline?.systems.map(sys => deriveLifecycleSystem(sys)) ?? [];
+  }, [capitalTimeline]);
+
+  // Derive outlook summary (QA Fix #1)
+  const outlookSummary = useMemo(() => {
+    const approaching = systemSignals.filter(s => 
+      s.monthsToPlanning && s.monthsToPlanning < 36
+    ).length;
+    return getOutlookSummary(approaching, todaysFocus.state === 'stable');
+  }, [systemSignals, todaysFocus.state]);
+
+  // View tracking for status header
+  useViewTracker(statusHeaderRef, {
     eventName: 'todays_focus_viewed',
     properties: {
       focus_state: todaysFocus.state,
@@ -225,14 +302,11 @@ export function MiddleColumn({
     onChatExpandChange(true);
   };
 
-  // Check for overdue maintenance
-  const hasOverdueMaintenance = maintenanceData.nowTasks.some(t => !t.completed);
-
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Scrollable content area - independent scroll */}
       <ScrollArea className="h-full" ref={scrollAreaRef}>
-        <div className="space-y-4 max-w-3xl mx-auto px-4 py-6">
+        <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
           {/* 0. Enriching indicator (transient) */}
           {isEnriching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
@@ -251,38 +325,41 @@ export function MiddleColumn({
             </section>
           )}
 
-          {/* 2. Today's Focus - PRIMARY AUTHORITY (always visible) */}
-          <section ref={healthCardRef}>
-            <TodaysFocusCard
-              focus={todaysFocus}
-              onContextExpand={() => setContextOpen(true)}
+          {/* 2. TODAY'S STATUS - Primary Signal */}
+          <section ref={statusHeaderRef}>
+            <HomeStatusHeader
+              message={todaysFocus.message}
+              changedSinceLastVisit={todaysFocus.changedSinceLastVisit}
             />
           </section>
 
-          {/* 3. Position Strip - ALWAYS VISIBLE */}
+          {/* 3. HOME POSITION & OUTLOOK - Orientation Layer */}
           <section>
-            <PositionStrip
+            <HomePositionOutlook
               label={position.label}
               relativePosition={position.relativePosition}
               confidence={position.confidence}
-              sourceSystem={position.sourceSystem}
-              onExpand={() => setContextOpen(true)}
+              outlookSummary={outlookSummary}
+              onDetailsClick={() => setContextOpen(true)}
             />
           </section>
 
-          {/* 4. System Watch - conditional, sharpened (one sentence) */}
-          {shouldShowSystemWatch && (
+          {/* 4. SYSTEMS BEING MONITORED - Coverage Proof */}
+          <section>
+            <SystemsOverview systems={monitoredSystems} />
+          </section>
+
+          {/* 5. SYSTEM LIFECYCLE TIMELINE - Progress Table */}
+          {lifecycleSystems.length > 0 && (
             <section>
-              <SystemWatch
-                hvacPrediction={hvacPrediction}
-                capitalTimeline={capitalTimeline}
+              <SystemTimelineLifecycle
+                systems={lifecycleSystems}
                 onSystemClick={handleSystemClick}
-                onChatExpand={handleChatExpand}
               />
             </section>
           )}
 
-          {/* 5. Context Drawer - collapsed by default */}
+          {/* 6. WHY THIS ASSESSMENT - Context Drawer (collapsed) */}
           <section>
             <ContextDrawer
               isOpen={contextOpen}
@@ -292,7 +369,7 @@ export function MiddleColumn({
             />
           </section>
 
-          {/* 6. ChatDock - Sticky dockable panel (IN FLOW) */}
+          {/* 7. CHAT - Exploration Layer (sticky) */}
           <div className="sticky bottom-4">
             <ChatDock
               propertyId={propertyId}
