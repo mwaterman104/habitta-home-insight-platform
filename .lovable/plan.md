@@ -1,9 +1,15 @@
 
-# Equity Position Card — Implementation Plan
+# Fix Equity Position Card Data Pipeline — Doctrine-Compliant Implementation
 
 ## Overview
 
-Upgrade the existing `EquityContextCard` to the doctrine-compliant `EquityPositionCard` with 3-layer structure (Market Context, Financing Posture, What This Enables) and wire up the data pipeline from `DashboardV3.tsx`.
+Replace the current heuristic-based fallback with a state-based model that never fabricates dollar values. When valuation is unavailable, the card surfaces honest state information instead of invented numbers.
+
+## Core Principle
+
+**Habitta never fabricates dollar values on the dashboard.**
+
+When valuation confidence is insufficient, Habitta surfaces state, not numbers.
 
 ---
 
@@ -11,272 +17,325 @@ Upgrade the existing `EquityContextCard` to the doctrine-compliant `EquityPositi
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/equityPosition.ts` | **Create** | Pure derivation logic (LTV → Posture) |
-| `src/lib/equityCopy.ts` | **Create** | Centralized copy governance |
-| `src/components/dashboard-v3/EquityPositionCard.tsx` | **Create** | 3-layer card component (replaces EquityContextCard) |
-| `src/components/dashboard-v3/EquityContextCard.tsx` | **Delete** | Superseded by EquityPositionCard |
-| `src/components/dashboard-v3/index.ts` | **Modify** | Update exports |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Update props + component usage |
-| `src/pages/DashboardV3.tsx` | **Modify** | Wire up property + financial data |
-| `src/lib/dashboardGovernance.ts` | **Modify** | Update HERO_COMPONENTS registry |
+| `src/lib/equityPosition.ts` | **Modify** | Add `MarketValueState` type, update confidence derivation |
+| `src/lib/equityCopy.ts` | **Modify** | Add copy for unverified/unknown states |
+| `src/hooks/useSmartyPropertyData.ts` | **Modify** | Remove all heuristic math, add state-based output |
+| `src/components/dashboard-v3/EquityPositionCard.tsx` | **Modify** | Handle all 3 valuation states in render |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Update prop types for new data model |
+| `src/pages/DashboardV3.tsx` | **Modify** | Pass `marketValueState` to MiddleColumn |
 
 ---
 
-## Part 1: Derivation Logic
+## Part 1: Type System Update
 
 **File:** `src/lib/equityPosition.ts`
 
-### Types
+### Add New Type
 
-```text
-FinancingPosture = 'Majority financed' | 'Balanced ownership' | 'Largely owned'
-
-EquityConfidence = 'High' | 'Moderate' | 'Early'
+```typescript
+export type MarketValueState =
+  | 'verified'      // Authoritative API value
+  | 'unverified'    // APIs unavailable, ownership context exists
+  | 'unknown';      // Insufficient data
 ```
 
-### Functions
+### Update Confidence Derivation
 
-```text
-deriveFinancingPosture(marketValue, mortgageBalance)
-  - Returns null if either input is null
-  - LTV > 0.7 → 'Majority financed'
-  - LTV > 0.4 → 'Balanced ownership'
-  - LTV ≤ 0.4 → 'Largely owned'
+Add support for market value state in confidence logic:
 
-deriveEquityConfidence(hasMarketValue, hasMortgageData, mortgageSource)
-  - Returns 'High' if both values from public records
-  - Returns 'Moderate' if market value exists but mortgage inferred
-  - Returns 'Early' if missing data
+```typescript
+export function deriveEquityConfidence(
+  hasMarketValue: boolean,
+  hasMortgageData: boolean,
+  mortgageSource: MortgageSource,
+  marketValueState?: MarketValueState
+): EquityConfidence {
+  // Unverified or unknown always returns Early
+  if (marketValueState === 'unverified' || marketValueState === 'unknown') {
+    return 'Early';
+  }
+  // ... existing logic for verified values
+}
 ```
-
-**Key Rule:** No UI logic here. No copy. No rendering.
 
 ---
 
-## Part 2: Copy Governance
+## Part 2: Copy Governance Update
 
 **File:** `src/lib/equityCopy.ts`
 
-### Functions
+### Add State-Specific Copy Functions
 
-```text
-getEquityEnablementLine(posture)
-  - 'Majority financed' → 'This position typically supports limited financing flexibility.'
-  - 'Balanced ownership' → 'This position typically supports optional financing flexibility.'
-  - 'Largely owned' → 'This position provides strong financial flexibility.'
-  - null → 'This ownership profile is still being established.'
+```typescript
+/**
+ * Get market context display based on valuation state.
+ */
+export function getMarketContextDisplay(
+  marketValueState: MarketValueState
+): string {
+  switch (marketValueState) {
+    case 'verified':
+      return ''; // Will show actual value
+    case 'unverified':
+      return 'Market value not yet established';
+    case 'unknown':
+      return 'Insufficient data to establish market context';
+  }
+}
 
-getPostureInferenceNote()
-  - Returns: 'Financing posture inferred from public records'
-
-getMarketContextLabel()
-  - Returns: 'Market Context'
+/**
+ * Get enablement line for unverified posture.
+ */
+export function getUnverifiedEnablementLine(
+  posture: FinancingPosture | null
+): string {
+  if (!posture) {
+    return 'Additional property data would improve financial insight.';
+  }
+  return 'This ownership profile typically supports optional financing, pending market verification.';
+}
 ```
-
-**Key Rule:** No conditionals in JSX. All copy comes from here.
 
 ---
 
-## Part 3: EquityPositionCard Component
+## Part 3: Hook Refactor (Critical)
+
+**File:** `src/hooks/useSmartyPropertyData.ts`
+
+### What Gets REMOVED (Doctrine Violation)
+
+```typescript
+// DELETE: Appreciation math
+const appreciationRate = 0.04;
+const currentValue = lastSale * Math.pow(1 + appreciationRate, yearsSinceSale);
+
+// DELETE: Mortgage estimation
+const estimatedMortgageBalance = lastSale * 0.8 * Math.pow(0.97, yearsSinceSale);
+
+// DELETE: Equity calculation
+estimatedEquity: Math.round((currentValue || 0) - (estimatedMortgageBalance || 0)),
+```
+
+### New Output Interface
+
+```typescript
+export interface PropertyEquityOutput {
+  marketValue: number | null;
+  marketValueState: MarketValueState;
+  mortgageBalance: number | null;
+  mortgageSource: MortgageSource;
+  // Preserve non-equity property data
+  yearBuilt: number | null;
+  squareFeet: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  lotSize: number | null;
+  propertyType: string | null;
+}
+```
+
+### New Logic Flow
+
+```text
+1. Try: smartyEnrich() or smartyFinancial() for AVM/market value
+   ├─► Success: marketValue = value, marketValueState = 'verified'
+   └─► Fail: continue
+
+2. Check: Do we have ownership context? (yearBuilt, state, etc.)
+   ├─► Yes: marketValue = null, marketValueState = 'unverified'
+   └─► No: marketValue = null, marketValueState = 'unknown'
+```
+
+### Doctrine Guardrail Comment
+
+```typescript
+/**
+ * NOTE (Doctrine Guardrail):
+ * This hook must NEVER fabricate or estimate market dollar values.
+ * When authoritative valuation is unavailable, return state — not numbers.
+ * Heuristic estimates may only appear in chat or exploration views.
+ */
+```
+
+---
+
+## Part 4: Component Update
 
 **File:** `src/components/dashboard-v3/EquityPositionCard.tsx`
 
-### Props (Locked)
+### Updated Props
 
-```text
-marketValue: number | null
-financingPosture: FinancingPosture | null
-confidence: EquityConfidence
-city?: string | null
-state?: string | null
-onViewMarketContext?: () => void
+```typescript
+interface EquityPositionCardProps {
+  marketValue: number | null;
+  marketValueState: MarketValueState;  // NEW
+  financingPosture: FinancingPosture | null;
+  confidence: EquityConfidence;
+  city?: string | null;
+  state?: string | null;
+  onViewMarketContext?: () => void;
+  className?: string;
+}
 ```
 
-### Visual Structure
+### Three Rendering Paths
 
+**Case 1: `marketValueState === 'verified'`**
 ```text
-┌──────────────────────────────────────────────┐
-│  EQUITY POSITION                             │
-│                                              │
-│  Market Context                   (subhead)  │
-│  ~$650,000                     (softened $)  │
-│                                              │
-│  Financing Posture                (subhead)  │
-│  Balanced ownership          (qualitative)   │
-│                                              │
-│  What this enables                (subhead)  │
-│  This position typically supports optional   │
-│  financing beyond routine maintenance.       │
-│                                              │
-│  Confidence: Moderate        (quiet footer)  │
-│  [View market context]        (link, no CTA) │
-└──────────────────────────────────────────────┘
+Market Context
+~$650k
+
+Financing Posture
+Balanced ownership
+
+What this enables
+This position typically supports optional financing flexibility.
+
+Confidence: Moderate
 ```
 
-### Rendering Rules (Hard)
-
-- Market value formatted with `~` prefix (softened precision)
-- No raw mortgage balance shown
-- No equity subtraction math visible
-- Posture shown as qualitative label only
-- "What this enables" from copy module
-- Confidence always present, never emphasized
-- "View market context" link only (no action CTAs)
-
-### Empty States
-
-- `marketValue === null` → "Value context unavailable"
-- `financingPosture === null` → "Financing posture unavailable"
-
-### Specificity Level
-
+**Case 2: `marketValueState === 'unverified'`**
 ```text
-SPECIFICITY LEVEL: Hero (2)
+Market Context
+Market value not yet established
 
-ALLOWED: Value number (softened), posture label, enablement statement, confidence text
-PROHIBITED: Raw debt numbers, equity math, percentages, action CTAs, "What If" toggles
+Financing Posture
+Balanced ownership (inferred)
+
+What this enables
+This ownership profile typically supports optional financing,
+pending market verification.
+
+Confidence: Early
+```
+
+**Case 3: `marketValueState === 'unknown'`**
+```text
+Equity Position
+Insufficient data to establish equity context.
+
+What this enables
+Additional property data would improve financial insight.
+
+Confidence: Early
 ```
 
 ---
 
-## Part 4: MiddleColumn Update
+## Part 5: Data Wiring Update
 
 **File:** `src/components/dashboard-v3/MiddleColumn.tsx`
 
-### Props Update
+### Update Props Interface
 
 ```typescript
-// Remove
-homeValue?: number | null;
-
-// Add
-marketValue?: number | null;
-mortgageBalance?: number | null;
-mortgageConfidence?: 'inferred' | 'public_records' | null;
+interface MiddleColumnProps {
+  // ... existing props
+  
+  // Replace old props:
+  // marketValue?: number | null;
+  // mortgageBalance?: number | null;
+  // mortgageConfidence?: MortgageSource;
+  
+  // With new contract:
+  marketValue?: number | null;
+  marketValueState?: MarketValueState;
+  mortgageBalance?: number | null;
+  mortgageSource?: MortgageSource;
+  city?: string | null;
+  state?: string | null;
+}
 ```
 
-### Component Swap
+### Update EquityPositionCard Usage
 
-```text
-// Before
-<EquityContextCard
-  currentValue={homeValue}
-  areaContext="..."
-/>
-
-// After
+```typescript
 <EquityPositionCard
-  marketValue={marketValue}
-  financingPosture={deriveFinancingPosture(marketValue, mortgageBalance)}
-  confidence={deriveEquityConfidence(!!marketValue, !!mortgageBalance, mortgageConfidence)}
+  marketValue={marketValue ?? null}
+  marketValueState={marketValueState ?? 'unknown'}
+  financingPosture={deriveFinancingPosture(marketValue ?? null, mortgageBalance ?? null)}
+  confidence={deriveEquityConfidence(
+    !!marketValue, 
+    !!mortgageBalance, 
+    mortgageSource ?? null,
+    marketValueState
+  )}
   city={city}
   state={state}
 />
 ```
 
----
-
-## Part 5: DashboardV3 Data Wiring
-
 **File:** `src/pages/DashboardV3.tsx`
 
-### Add Imports
+### Update MiddleColumn Calls
 
-```typescript
-import { useSmartyPropertyData } from '@/hooks/useSmartyPropertyData';
-```
+All three MiddleColumn instances (mobile, xl, lg) updated to pass:
 
-### Add Hook Call
-
-```typescript
-// Property valuation is fetched once here and passed down.
-// Do not call useSmartyPropertyData in child components.
-const { data: propertyData, loading: propertyLoading } = useSmartyPropertyData();
-```
-
-### Update All 3 MiddleColumn Instances
-
-**Mobile (~line 388):**
 ```typescript
 <MiddleColumn
   ...existing props...
-  marketValue={propertyData?.currentValue ?? null}
-  mortgageBalance={propertyData?.estimatedMortgageBalance ?? null}
-  mortgageConfidence={propertyData?.estimatedMortgageBalance ? 'inferred' : null}
+  marketValue={propertyData?.marketValue ?? null}
+  marketValueState={propertyData?.marketValueState ?? 'unknown'}
+  mortgageBalance={propertyData?.mortgageBalance ?? null}
+  mortgageSource={propertyData?.mortgageSource ?? null}
   city={userHome?.city ?? null}
   state={userHome?.state ?? null}
 />
 ```
 
-**Desktop XL (~line 449):**
-Same prop additions.
-
-**Desktop LG (~line 498):**
-Same prop additions.
-
 ---
 
-## Part 6: Governance Update
-
-**File:** `src/lib/dashboardGovernance.ts`
-
-### Update HERO_COMPONENTS
-
-```typescript
-export const HERO_COMPONENTS = [
-  'HomePositionAnchor',   // Primary hero
-  'EquityPositionCard',   // Secondary hero (renamed from EquityContextCard)
-] as const;
-```
-
----
-
-## Data Flow Diagram
+## Data Flow After Fix
 
 ```text
 DashboardV3
     │
-    ├─► useSmartyPropertyData()
-    │       ├─► currentValue: 650000
-    │       └─► estimatedMortgageBalance: 320000
-    │
-    └─► MiddleColumn
-            ├─► marketValue={650000}
-            ├─► mortgageBalance={320000}
+    └─► useSmartyPropertyData()
             │
-            └─► EquityPositionCard
+            ├─► Try: smartyFinancial() → FAILS (not found)
+            ├─► Try: smartyEnrich() → FAILS (subscription)
+            │
+            └─► Check: homeContext exists? (yearBuilt: 2012, state: "FL")
                     │
-                    ├─► deriveFinancingPosture(650000, 320000)
-                    │       └─► LTV = 0.49 → 'Balanced ownership'
-                    │
-                    ├─► deriveEquityConfidence(true, true, 'inferred')
-                    │       └─► 'Moderate'
-                    │
+                    └─► Yes: Return {
+                            marketValue: null,
+                            marketValueState: 'unverified',
+                            mortgageBalance: null,
+                            mortgageSource: null
+                        }
+            
+    └─► MiddleColumn
+            └─► marketValueState = 'unverified'
                     └─► Display:
-                            ~$650,000
-                            Balanced ownership
-                            "This position typically supports optional financing flexibility."
-                            Confidence: Moderate
+                            "Market value not yet established"
+                            (No financing posture - requires value)
+                            "Additional property data would improve financial insight."
+                            Confidence: Early
 ```
 
 ---
 
-## QA Gates (Blockers)
+## What This Fix Does NOT Do
 
-Before merging, verify:
+- Does not estimate PSF
+- Does not assume square footage
+- Does not apply depreciation curves
+- Does not invent values
+- Does not guess ranges on the dashboard
 
-- [ ] No percentages shown on card
-- [ ] No dollar subtraction logic visible (no "Equity: $X")
-- [ ] No raw mortgage balance displayed
-- [ ] No "what if" language
-- [ ] No urgency verbs (do, act, start, now)
-- [ ] No refresh animations
-- [ ] Market value uses `~` prefix
-- [ ] Posture is qualitative only
-- [ ] "What this enables" copy from centralized module
-- [ ] Confidence always present
-- [ ] EquityPositionCard never renders without HomePositionAnchor
-- [ ] Works on mobile, desktop xl, and desktop lg layouts
+Heuristics are allowed only downstream (chat, exploration views).
+
+---
+
+## QA Gates
+
+- [ ] No heuristic dollar values on dashboard
+- [ ] Market value shown only when `verified`
+- [ ] Financing posture may appear with `(inferred)` label when unverified
+- [ ] Confidence reflects verification state
+- [ ] No subtraction math visible
+- [ ] Works across mobile, xl, lg layouts
+- [ ] Chat can still provide rough ranges when asked
 
 ---
 
@@ -286,17 +345,15 @@ Before merging, verify:
 - [ ] No user should feel tempted to "act" after seeing the card
 - [ ] Dollar math belongs only in Chat or explicit planning modes
 - [ ] Value feels secondary to Home Position
-- [ ] 30-day refresh cadence preserved
+- [ ] 30-day refresh cadence preserved for verified values
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Market value displayed with softened precision (~$650,000)
-- [ ] Financing posture shown qualitatively (Balanced ownership)
-- [ ] "What this enables" line appears below posture
-- [ ] Confidence surfaced quietly at bottom
+- [ ] Verified state: Shows softened value (~$650k) + posture + enablement
+- [ ] Unverified state: Shows "not yet established" + calm explanation
+- [ ] Unknown state: Shows "insufficient data" + guidance
+- [ ] Confidence always present and accurate
 - [ ] "View market context" link functional
-- [ ] Graceful fallback when data unavailable
-- [ ] Respects 30-day refresh cadence
-- [ ] Equity never appears without Home Position Anchor
+- [ ] Graceful transitions between states as data becomes available
