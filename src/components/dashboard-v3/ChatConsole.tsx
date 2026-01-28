@@ -259,14 +259,12 @@ export function ChatConsole({
 
           {/* Chat messages appear BELOW baseline */}
           <div className="space-y-4 pt-2">
-            {/* Silent Steward: Intentional silence (no empty state message) */}
-            {isSilentSteward && (
-              <div className="text-center py-4 text-muted-foreground/60">
-                <p className="text-xs">
-                  Your home is being watched. Nothing requires attention.
-                </p>
-              </div>
-            )}
+            {/* 
+              * CANONICAL ARCHITECTURE LOCK:
+              * Silent Steward intentionally renders no messages.
+              * Silence is a product feature, not an empty state.
+              * Do not add fallback copy here.
+              */}
 
             {/* Mode-specific empty state (non-silent modes) */}
             {!isSilentSteward && messages.length === 0 && (
