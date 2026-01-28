@@ -214,37 +214,75 @@ export function getEvidenceAnchoredMessage(
 }
 
 // ============================================
-// "Why?" Response Rules
+// "Why?" Response Rules (Complete Understanding)
 // ============================================
 
 /**
- * "Why?" Response Pattern Rules
+ * "Why?" Response Pattern Rules (Complete Understanding)
  * 
- * Structure: Observation → Factors → Clarifier
+ * Structure: Belief → Reasons → Implication → [Optional CTA]
  * 
- * CRITICAL RULE:
- * "Why?" responses may NOT introduce new recommendations or CTAs.
- * They explain why the current state exists, not what to do next.
- * Optional follow-up CTAs must live OUTSIDE the "Why?" explanation.
+ * CRITICAL RULES:
+ * - "Why?" should NEVER generate a question back to the user
+ * - "Why?" delivers closure, not opens a thread
+ * - Maximum one optional CTA, always invitational
  */
 export const WHY_RESPONSE_RULES = {
-  structure: ['observation', 'factors', 'clarifier'] as const,
+  structure: ['belief', 'reasons', 'implication', 'optional_cta'] as const,
   
   /** What "Why?" responses MUST include */
   required: [
-    'Reference visible baseline state',
-    'Include at least one concrete factor',
-    'End with clarifier about confidence level',
+    'Belief: What Habitta believes about this system',
+    'Reasons: Why it believes this (bullet list)',
+    'Implication: What this means for the homeowner',
   ] as const,
   
   /** What "Why?" responses may NOT include */
   banned: [
-    'Recommendations',
-    'CTAs or calls to action',
-    'Next steps',
-    'Suggestions to take action',
+    'Questions back to the user',
+    'Open-ended threads',
+    'Multiple CTAs',
+    'Recommendations that require immediate action',
   ] as const,
+  
+  /** Optional: One invitational CTA max */
+  optionalCta: 'If you want to improve accuracy, you can [invitational action].',
 };
+
+/**
+ * Get state-specific implication copy for "Why?" responses
+ * Delivers closure, not opens threads
+ */
+export type WhySystemState = 'stable' | 'planning_window' | 'elevated' | 'data_gap';
+
+export function getStateImplication(state: WhySystemState): string {
+  switch (state) {
+    case 'stable':
+      return "This means you don't need to take action right now. Routine monitoring is sufficient.";
+    case 'planning_window':
+      return "This is a good time to begin researching options. No immediate action is required.";
+    case 'elevated':
+      return "This warrants attention. Consider having it inspected before making decisions.";
+    case 'data_gap':
+      return "I don't have enough information to assess this system accurately.";
+  }
+}
+
+/**
+ * Get state label for "Why?" message injection
+ */
+export function getWhyStateLabel(state: WhySystemState): string {
+  switch (state) {
+    case 'stable':
+      return 'stable';
+    case 'planning_window':
+      return 'approaching typical limits';
+    case 'elevated':
+      return 'elevated';
+    case 'data_gap':
+      return 'having limited data';
+  }
+}
 
 // ============================================
 // Session Storage Keys
