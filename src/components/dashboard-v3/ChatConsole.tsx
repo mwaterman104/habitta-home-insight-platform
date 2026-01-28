@@ -29,10 +29,11 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Camera } from "lucide-react";
+import { Send, Camera, ChevronDown, ChevronUp, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
@@ -120,7 +121,10 @@ export function ChatConsole({
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasShownOpening, setHasShownOpening] = useState(false);
   const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => wasBaselineOpeningShown());
-
+  
+  // Artifact controls
+  const [isBaselineCollapsed, setIsBaselineCollapsed] = useState(false);
+  const [isBaselineExpanded, setIsBaselineExpanded] = useState(false);
   // Map baselineSystems to VisibleBaselineSystem format for AI context
   const visibleBaseline = baselineSystems.map(s => ({
     key: s.key,
@@ -291,15 +295,45 @@ export function ChatConsole({
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
-          {/* BASELINE SURFACE - Pinned first artifact */}
+          {/* BASELINE SURFACE - Chat-surfaced artifact style */}
           {baselineSystems.length > 0 && (
-            <div className="sticky top-0 z-10 bg-white dark:bg-card pb-2">
-              <BaselineSurface
-                yearBuilt={yearBuilt}
-                confidenceLevel={confidenceLevel}
-                systems={baselineSystems}
-                onWhyClick={handleWhyClick}
-              />
+            <div className={cn(
+              "ml-6 rounded-lg border border-border/30 bg-muted/10 overflow-hidden",
+              "transition-all duration-200"
+            )}>
+              {/* Artifact Header with Controls */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border/20 bg-muted/5">
+                <button 
+                  onClick={() => setIsBaselineCollapsed(!isBaselineCollapsed)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isBaselineCollapsed ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  )}
+                  <span>System Outlook — {baselineSystems.length} systems</span>
+                </button>
+                <button 
+                  onClick={() => setIsBaselineExpanded(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                  title="Expand"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              
+              {/* Collapsible Content */}
+              {!isBaselineCollapsed && (
+                <div className="p-3">
+                  <BaselineSurface
+                    yearBuilt={yearBuilt}
+                    confidenceLevel={confidenceLevel}
+                    systems={baselineSystems}
+                    onWhyClick={handleWhyClick}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -444,6 +478,24 @@ export function ChatConsole({
           </div>
         )}
       </div>
+      
+      {/* Expanded Modal */}
+      <Dialog open={isBaselineExpanded} onOpenChange={setIsBaselineExpanded}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-medium">
+              System Aging Profile
+            </DialogTitle>
+          </DialogHeader>
+          <BaselineSurface
+            yearBuilt={yearBuilt}
+            confidenceLevel={confidenceLevel}
+            systems={baselineSystems}
+            onWhyClick={handleWhyClick}
+            isExpanded={true}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
