@@ -156,22 +156,39 @@ export function ChatConsole({
     }
   }, [hasAgentMessage, openingMessage, hasShownOpening, injectMessage]);
 
-  // Inject baseline opening message using provenance-aware copy
-  // This ensures we never say "blank slate" when baseline is visible
+  // Inject opening message explaining the System Outlook artifact
+  // This ensures the chat always explains what the artifact is showing
   useEffect(() => {
     if (
-      chatMode === 'baseline_establishment' && 
       messages.length === 0 && 
       !hasShownBaselineOpening &&
       baselineSystems.length > 0 // Only show if we have visible baseline
     ) {
-      // Use provenance-aware message instead of generic baseline message
-      const formattedMessage = formatProvenanceOpeningMessage(baselineSource);
-      injectMessage(formattedMessage);
+      // Build a contextual message based on systems and confidence
+      const systemCount = baselineSystems.length;
+      const planningCount = baselineSystems.filter(s => s.state === 'planning_window' || s.state === 'elevated').length;
+      
+      let message = `I've put together a snapshot of your home's major systems based on what I know so far.`;
+      
+      if (confidenceLevel === 'Early' || confidenceLevel === 'Unknown') {
+        message += ` Some of this is estimated from your home's age and regional patterns — if you have specifics, I can refine the picture.`;
+      } else if (confidenceLevel === 'Moderate') {
+        message += ` This reflects a mix of confirmed details and reasonable estimates.`;
+      } else {
+        message += ` This is based on the information you've provided.`;
+      }
+      
+      if (planningCount > 0) {
+        message += `\n\nI'm keeping an eye on ${planningCount === 1 ? 'one system that may need' : `${planningCount} systems that may need`} attention in the coming years.`;
+      } else {
+        message += `\n\nEverything looks to be within typical ranges for now.`;
+      }
+      
+      injectMessage(message);
       markBaselineOpeningShown();
       setHasShownBaselineOpening(true);
     }
-  }, [chatMode, messages.length, hasShownBaselineOpening, injectMessage, baselineSource, baselineSystems.length]);
+  }, [messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel]);
 
   // Reset opening state when focus changes
   useEffect(() => {
