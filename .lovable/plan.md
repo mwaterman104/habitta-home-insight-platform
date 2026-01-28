@@ -1,310 +1,344 @@
 
 
-# Semantic Tightening — QA-Approved Final Implementation
+# House Context vs System State — Semantic Separation Fix
 
-**Status: Approved with 5 Required Adjustments**
+## The Core Problem
 
-This plan incorporates all corrections from executive QA review.
+The current dashboard conflates two distinct concepts:
+
+| Concept | What It Describes | How Users Think About It |
+|---------|-------------------|--------------------------|
+| **House Context** | Static property facts (year built, location, climate) | "What kind of home do I have?" |
+| **System State** | Where each system sits on its lifespan curve | "What condition are my systems in?" |
+
+Currently, both are expressed through a single ambiguous label: `"Lifecycle: Mid-Life"`
+
+This creates semantic confusion:
+- Is the *house* "mid-life"?
+- Is the *HVAC* "mid-life"?
+- What does "mid-life" even mean?
 
 ---
 
-## Summary of Required Adjustments
+## Canonical Rule (Lock In)
 
-| # | Issue | Original Proposal | QA Correction |
-|---|-------|-------------------|---------------|
-| 1 | Timeline axis labels | "New / Mid-life / End of typical lifespan" | **"Within range / Approaching limit / Beyond range"** |
-| 2 | Dashboard state label | "Later Stage" | **"Approaching typical limit"** |
-| 3 | Confidence explainer | "Based on typical patterns" | **"Based on home age and regional patterns"** |
-| 4 | Evidence-anchored copy | Generic ("is in good shape") | **Must include one concrete basis** |
-| 5 | Empty chat state | "Ask me about any of them" | **Remove prompting language entirely** |
+> **Houses do not have lifecycles. Systems do.**
+> **The house provides context; systems carry risk.**
 
 ---
 
-## File Changes
+## Fix 1: Separate House Context from System Timeline
 
-### 1. BaselineSurface.tsx — Timeline Labels & State Label
-
-**File:** `src/components/dashboard-v3/BaselineSurface.tsx`
-
-#### Change 1a: Timeline Axis Labels (lines 69-73)
-
-```typescript
-// BEFORE (ambiguous lifecycle stages)
-<span>Early</span>
-<span>Mid</span>
-<span>Late</span>
-
-// AFTER (condition-based language)
-<span className="text-[10px]">Within range</span>
-<span className="text-[10px]">Approaching limit</span>
-<span className="text-[10px]">Beyond range</span>
+### Current Structure in BaselineSurface
+```
+┌─────────────────────────────────────────┐
+│ Lifecycle: Mid-Life    Confidence: Mod  │  ← Ambiguous "lifecycle"
+├─────────────────────────────────────────┤
+│ HVAC    [────●────]    Stable           │
+│ Roof    [─●───────]    Stable           │
+│ Water   [────────●]    Planning Window  │
+├─────────────────────────────────────────┤
+│ Within range | Approaching | Beyond     │
+└─────────────────────────────────────────┘
 ```
 
-#### Change 1b: State Label for Planning Window (line 219)
+### New Structure (Semantic Separation)
+```
+┌─────────────────────────────────────────┐
+│ Home context                            │
+│ Typical age profile for homes           │
+│ built around 1995                       │  ← Static, descriptive
+│                   Confidence: Moderate  │
+│                   Based on home age     │
+│                   and regional patterns │
+└─────────────────────────────────────────┘
 
-```typescript
-// BEFORE (banned term)
-case 'planning_window':
-  return 'Planning Window';
-
-// AFTER (neutral, descriptive)
-case 'planning_window':
-  return 'Approaching typical limit';
+┌─────────────────────────────────────────┐
+│ SYSTEM CONDITION OUTLOOK                │  ← NEW header
+├─────────────────────────────────────────┤
+│ HVAC    [────●────]    Within range     │
+│ Roof    [─●───────]    Within range     │
+│ Water   [────────●]    Planning window  │
+├─────────────────────────────────────────┤
+│ New      |    Typical    |    Aging     │  ← NEW axis labels
+└─────────────────────────────────────────┘
 ```
 
-#### Change 1c: Add Confidence Explainer (lines 52-55)
+### Changes to BaselineSurface.tsx
 
-Add helper function:
-```typescript
-function getConfidenceExplainer(level: 'Unknown' | 'Early' | 'Moderate' | 'High'): string {
-  switch (level) {
-    case 'High': return 'Verified by records';
-    case 'Moderate': return 'Based on home age and regional patterns';  // QA-corrected
-    case 'Early': return 'Limited data';
-    default: return 'Still learning';
-  }
-}
+**A. Replace "Lifecycle" header with "Home context"**
+
+Current (line 52-53):
+```tsx
+<span>Lifecycle: <span className="text-foreground font-medium">{lifecyclePosition}</span></span>
 ```
 
-Modify render:
-```typescript
-// BEFORE
-<span>Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span></span>
-
-// AFTER
-<div className="flex flex-col items-end">
-  <span className="text-sm">
-    Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span>
-  </span>
-  <span className="text-[10px] text-muted-foreground/70">
-    {getConfidenceExplainer(confidenceLevel)}
+New:
+```tsx
+<div className="flex flex-col gap-0.5">
+  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Home context</span>
+  <span className="text-sm text-foreground">
+    Typical age profile for homes built around {getHomeYearContext(yearBuilt)}
   </span>
 </div>
 ```
 
+This makes it clear we're describing the *house context*, not a "lifecycle stage."
+
+**B. Add "System condition outlook" section header**
+
+Before the system rows, add:
+```tsx
+<div className="pt-2 pb-1">
+  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+    System condition outlook
+  </span>
+</div>
+```
+
+**C. Update axis labels from condition-based to age-based**
+
+Current (lines 76-80):
+```tsx
+<span>Within range</span>
+<span>Approaching limit</span>
+<span>Beyond range</span>
+```
+
+New:
+```tsx
+<span className="text-[10px] text-muted-foreground/60">New</span>
+<span className="text-[10px] text-muted-foreground/60">Typical</span>
+<span className="text-[10px] text-muted-foreground/60">Aging</span>
+```
+
+This aligns with how homeowners actually think: "Is this system new, typical, or aging?"
+
+**D. Remove lifecyclePosition prop**
+
+Since we're no longer showing "Mid-Life" as a global label, remove:
+- `lifecyclePosition` prop from `BaselineSurface`
+- Add `yearBuilt?: number` prop instead (for home context)
+
+**E. Update MiddleColumn to pass yearBuilt**
+
+In `MiddleColumn.tsx`, pass the year built from property data:
+```tsx
+<BaselineSurface
+  yearBuilt={homeForecast?.yearBuilt}
+  confidenceLevel={confidenceLevel}
+  systems={baselineSystems}
+  onWhyClick={handleWhyClick}
+/>
+```
+
 ---
 
-### 2. chatModeCopy.ts — Empty State & Evidence Anchoring
+## Fix 2: Complete "Why?" Response Pattern
 
-**File:** `src/lib/chatModeCopy.ts`
+### Current Problem
 
-#### Change 2a: Empty State Message (line 164)
+When user clicks "Why?", the current flow:
+1. Fires `track()` event
+2. Calls `onSystemClick(systemKey)` — which navigates away
+3. AI has `"WHY?" RESPONSE CONSTRAINT` but it only explains, doesn't close the loop
 
-```typescript
-// BEFORE (prompting language)
-baseline_establishment: "I'm monitoring with limited system history. I can share what I'm able to observe so far.",
+This violates the principle: **"Why?" should deliver full understanding in one response.**
 
-// AFTER (stewardship, no prompting)
-baseline_establishment: "I'm monitoring the systems shown above.",
+### New Pattern: "Why?" Generates Complete Understanding
+
+**A. Change onWhyClick behavior**
+
+Instead of navigating, inject a contextual message into the chat that asks "Why is [System] [State]?"
+
+```tsx
+// In ChatConsole.tsx or MiddleColumn.tsx
+const handleWhyClick = useCallback((systemKey: string) => {
+  const system = baselineSystems.find(s => s.key === systemKey);
+  if (!system) return;
+  
+  track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
+  
+  // Inject "Why?" question on user's behalf
+  sendMessage(`Why is my ${system.displayName.toLowerCase()} considered "${getStateLabel(system.state)}"?`);
+}, [baselineSystems, sendMessage]);
 ```
 
-#### Change 2b: Add Evidence-Anchored Message Helper (new function)
+**B. Update AI prompt for complete "Why?" responses**
+
+Current in edge function:
+```
+"WHY?" RESPONSE CONSTRAINT:
+If the user asks "Why?" about a system state:
+1. EXPLAIN the observation
+2. LIST factors
+3. CLARIFY confidence level
+```
+
+New (complete understanding pattern):
+```
+"WHY?" RESPONSE PATTERN (COMPLETE UNDERSTANDING):
+When the user asks "Why?" about a system state, deliver a complete unit of understanding:
+
+1. BELIEF: What Habitta believes about this system
+   "Based on what you're seeing above, your [system] is [state]."
+
+2. REASONS: Why it believes this (bullet list)
+   • Its estimated age falls within the typical operating range for systems in this region
+   • No unusual environmental stress patterns are present
+   • [Additional factor based on data]
+
+3. IMPLICATION: What this means for the homeowner
+   "This means you don't need to take action right now. Routine monitoring is sufficient."
+
+4. OPTIONAL CTA (one max, invitational):
+   "If you'd like to improve accuracy, you can confirm the installation year or upload a photo of the unit label."
+
+CRITICAL RULES:
+- "Why?" should NEVER generate a question back to the user
+- "Why?" delivers closure, not opens a thread
+- Maximum one optional CTA, always invitational
+- The structure is: Belief → Reasons → Implication → [Optional CTA]
+```
+
+**C. Add state-specific implication copy**
+
+Create helper in `chatModeCopy.ts`:
 
 ```typescript
-/**
- * Generate evidence-anchored chat message
- * 
- * RULE: Every evidence-anchored message must include one concrete basis
- * (age, region, usage, absence of deviation, etc.)
- */
-export function getEvidenceAnchoredMessage(
-  systemKey: string,
-  state: 'stable' | 'planning_window' | 'elevated',
-  displayName: string,
-  basis: 'age' | 'region' | 'usage' | 'records' = 'age'
-): string {
-  const basisPhrase = getBasisPhrase(basis);
-  
+export function getStateImplication(state: SystemState): string {
   switch (state) {
     case 'stable':
-      return `Based on what you're seeing above, your ${displayName.toLowerCase()} is within the expected range ${basisPhrase}.`;
+      return "This means you don't need to take action right now. Routine monitoring is sufficient.";
     case 'planning_window':
-      return `The baseline shows your ${displayName.toLowerCase()} approaching typical limits ${basisPhrase}.`;
+      return "This is a good time to begin researching options. No immediate action is required.";
     case 'elevated':
-      return `I'm seeing something with your ${displayName.toLowerCase()} that warrants discussion ${basisPhrase}.`;
-  }
-}
-
-function getBasisPhrase(basis: 'age' | 'region' | 'usage' | 'records'): string {
-  switch (basis) {
-    case 'age': return 'for homes of this age';
-    case 'region': return 'for this region';
-    case 'usage': return 'given typical usage patterns';
-    case 'records': return 'based on available records';
+      return "This warrants attention. Consider having it inspected before making decisions.";
+    case 'data_gap':
+      return "I don't have enough information to assess this system accurately.";
   }
 }
 ```
 
-#### Change 2c: Add "Why?" Response Rules (new constant)
+---
 
+## Files to Modify
+
+| File | Change | Purpose |
+|------|--------|---------|
+| `src/components/dashboard-v3/BaselineSurface.tsx` | Major refactor | Separate house context from system timeline |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | Update props | Pass yearBuilt instead of lifecyclePosition |
+| `src/components/dashboard-v3/ChatConsole.tsx` | Update handleWhyClick | Inject "Why?" message instead of navigation |
+| `src/lib/chatModeCopy.ts` | Add getStateImplication() | State-specific implications for "Why?" responses |
+| `supabase/functions/ai-home-assistant/index.ts` | Update "Why?" prompt | Complete understanding pattern |
+
+---
+
+## Detailed Implementation
+
+### BaselineSurface.tsx (Major Refactor)
+
+1. **Update props interface**:
 ```typescript
-/**
- * "Why?" Response Pattern Rules
- * 
- * Structure: Observation → Factors → Clarifier
- * 
- * CRITICAL RULE:
- * "Why?" responses may NOT introduce new recommendations or CTAs.
- * They explain why the current state exists, not what to do next.
- * Optional follow-up CTAs must live OUTSIDE the "Why?" explanation.
- */
-export const WHY_RESPONSE_RULES = {
-  structure: ['observation', 'factors', 'clarifier'],
+interface BaselineSurfaceProps {
+  yearBuilt?: number;  // NEW: For home context
+  // REMOVED: lifecyclePosition
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  systems: BaselineSystem[];
+  onWhyClick: (systemKey: string) => void;
+}
+```
+
+2. **Add home context section** (replaces lifecycle label):
+```tsx
+<div className="flex justify-between text-sm text-muted-foreground mb-3">
+  <div className="flex flex-col gap-0.5">
+    <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+      Home context
+    </span>
+    <span className="text-sm text-foreground">
+      {yearBuilt 
+        ? `Typical age profile for homes built around ${yearBuilt}`
+        : 'Home age profile based on regional patterns'}
+    </span>
+  </div>
+  <div className="flex flex-col items-end">
+    <span className="text-sm">
+      Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span>
+    </span>
+    <span className="text-[10px] text-muted-foreground/70">
+      {getConfidenceExplainer(confidenceLevel)}
+    </span>
+  </div>
+</div>
+```
+
+3. **Add system condition header**:
+```tsx
+<div className="pt-2 pb-1">
+  <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+    System condition outlook
+  </span>
+</div>
+```
+
+4. **Update axis labels**:
+```tsx
+<div className="flex justify-between text-[10px] text-muted-foreground/60 pt-2">
+  <span>New</span>
+  <span>Typical</span>
+  <span>Aging</span>
+</div>
+```
+
+### MiddleColumn.tsx
+
+1. Remove `lifecyclePosition` computation
+2. Add `yearBuilt` extraction from homeForecast or capitalTimeline
+3. Pass `yearBuilt` to BaselineSurface
+
+### ChatConsole.tsx
+
+1. Receive `sendMessage` in `handleWhyClick` context
+2. Change behavior from navigation to message injection:
+```typescript
+const handleWhyClick = (systemKey: string) => {
+  const system = baselineSystems.find(s => s.key === systemKey);
+  if (!system) return;
   
-  /** What "Why?" responses MUST include */
-  required: [
-    'Reference visible baseline state',
-    'Include at least one concrete factor',
-    'End with clarifier about confidence level',
-  ],
+  track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
   
-  /** What "Why?" responses may NOT include */
-  banned: [
-    'Recommendations',
-    'CTAs or calls to action',
-    'Next steps',
-    'Suggestions to take action',
-  ],
+  // Generate a "Why?" question on user's behalf
+  const stateLabel = getStateLabel(system.state);
+  sendMessage(`Why is my ${system.displayName.toLowerCase()} showing as "${stateLabel}"?`);
 };
 ```
 
----
+### AI Edge Function
 
-### 3. lifespanFormatters.ts — Tense-Aware Formatting
-
-**File:** `src/utils/lifespanFormatters.ts`
-
-#### Change 3a: Update formatReplacementWindow (lines 14-23)
-
-```typescript
-/**
- * Format replacement window from p10/p90 dates
- * Now includes tense awareness for past-lifespan systems
- * 
- * @example "2036–2042" (future)
- * @example "Past typical lifespan (2020–2024)" (past)
- */
-export function formatReplacementWindow(
-  p10: string, 
-  p90: string,
-  options?: { includeTenseAwareness?: boolean }
-): string {
-  const y10 = new Date(p10).getFullYear();
-  const y90 = new Date(p90).getFullYear();
-  const currentYear = new Date().getFullYear();
-  
-  // Tense awareness: if current year is past the typical lifespan
-  if (options?.includeTenseAwareness && currentYear > y90) {
-    return `Past typical lifespan (${y10}–${y90})`;
-  }
-  
-  if (y10 === y90) {
-    return `~${y10}`;
-  }
-  
-  return `${y10}–${y90}`;
-}
-```
-
----
-
-### 4. ai-home-assistant Edge Function — Evidence Anchoring Rule
-
-**File:** `supabase/functions/ai-home-assistant/index.ts`
-
-#### Change 4a: Add Evidence Anchoring Rule to System Prompt (after line 473)
-
-```typescript
-prompt += `
-EVIDENCE ANCHORING RULE (MANDATORY):
-When discussing any system, you MUST:
-1. Reference "what you're seeing above" or "the baseline shows"
-2. Include at least one concrete basis (age, region, usage, records)
-
-CORRECT EXAMPLES:
-- "Based on what you're seeing above, your water heater is approaching typical limits for homes of this age."
-- "The baseline shows your HVAC operating within expected range for this region."
-- "Looking at the timeline above, your roof has significant service life remaining given typical usage patterns."
-
-INCORRECT (too generic):
-- "Your HVAC is in good shape." (no basis)
-- "I can see that your water heater needs attention." (implies you see something user doesn't)
-- "The system shows..." (which system?)
-
-NEVER SAY:
-- "I can see that..." (implies hidden knowledge)
-- "According to my data..." (impersonal, removes agency)
-- "The system shows..." (ambiguous reference)
-`;
-```
-
-#### Change 4b: Add "Why?" Response Constraint (new section)
-
-```typescript
-prompt += `
-"WHY?" RESPONSE CONSTRAINT:
-If the user asks "Why?" about a system state:
-1. EXPLAIN the observation (what the baseline shows)
-2. LIST factors (age, region, patterns, records)
-3. CLARIFY confidence level
-
-DO NOT include in "Why?" responses:
-- Recommendations
-- CTAs or action items
-- Suggestions for next steps
-
-Guidance belongs in follow-up messages, not explanations.
-`;
-```
-
----
-
-## Complete File Summary
-
-| File | Lines Changed | Changes |
-|------|---------------|---------|
-| `src/components/dashboard-v3/BaselineSurface.tsx` | 52-55, 69-73, 214-224 | Confidence explainer, axis labels, state label |
-| `src/lib/chatModeCopy.ts` | 164, new functions | Empty state, evidence anchoring, "Why?" rules |
-| `src/utils/lifespanFormatters.ts` | 14-23 | Tense-aware window formatting |
-| `supabase/functions/ai-home-assistant/index.ts` | After 473 | Evidence anchoring rule, "Why?" constraint |
+Update the `"WHY?" RESPONSE CONSTRAINT` section with the complete understanding pattern.
 
 ---
 
 ## Verification Checklist
 
-### Axis Labels (Adjustment 1)
-- [ ] Timeline shows "Within range / Approaching limit / Beyond range"
-- [ ] No lifecycle stage language (New/Mid-life/Late)
+### House Context Separation
+- [ ] No "Lifecycle: Mid-Life" label anywhere
+- [ ] "Home context" section shows year-based description
+- [ ] System timeline has its own "System condition outlook" header
+- [ ] Axis labels are "New / Typical / Aging"
 
-### State Label (Adjustment 2)
-- [ ] Dashboard shows "Approaching typical limit" instead of "Planning Window"
-- [ ] Consistent with axis label language
-
-### Confidence Explainer (Adjustment 3)
-- [ ] Shows "Based on home age and regional patterns" for Moderate
-- [ ] Grounds confidence in specific evidence
-
-### Evidence-Anchored Copy (Adjustment 4)
-- [ ] Every chat message includes concrete basis
-- [ ] AI prompt enforces basis requirement
-- [ ] No generic statements like "is in good shape"
-
-### Empty State (Adjustment 5)
-- [ ] Says "I'm monitoring the systems shown above."
-- [ ] No prompting language
-- [ ] No "Ask me" or questions
-
-### "Why?" Responses
-- [ ] Follow Observation → Factors → Clarifier pattern
-- [ ] Never include recommendations or CTAs
-- [ ] Explanation only — guidance is separate
+### "Why?" Complete Understanding
+- [ ] Clicking "Why?" injects a message (doesn't navigate)
+- [ ] AI response follows Belief → Reasons → Implication → [CTA] pattern
+- [ ] Response gives closure (no questions back to user)
+- [ ] Maximum one optional CTA, invitational tone
 
 ---
 
 ## Semantic Lock Statement
 
-> "Every visible element explains itself.
-> The chat references what the user sees with concrete basis.
-> The user is never asked to interpret.
-> 'Why?' explains — it does not advise."
+> **Houses provide context. Systems carry risk.**
+> **"Why?" delivers understanding, not opens a thread.**
+> **Every response gives closure. The user never interprets.**
 
