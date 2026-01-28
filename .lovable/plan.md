@@ -1,224 +1,264 @@
 
-# Canonical Architecture Gaps — Implementation with Edge Case Fixes
+# Epistemic Coherence — Inferred vs Confirmed Baseline Fix
 
-**Habitta does not fill silence.
-It does not show evidence without reason.
-It does not offer help without understanding.
-Every word, chart, and option must earn its place.**
+## The Problem
 
----
+The screenshot shows a critical architectural violation:
 
-## Overview
+**Baseline Surface shows:**
+- Lifecycle: Mid-Life
+- Confidence: Moderate  
+- HVAC: Stable
+- Roof: Stable
+- Water Heater: Planning Window
 
-This implementation addresses three architectural gaps plus two edge case fixes identified in review:
+**Chat says:**
+> "Right now, my view of your home is a blank slate. I don't have any systems, appliances, or maintenance history registered in your profile yet."
 
-| Item | Priority | Action |
-|------|----------|--------|
-| **Gap 1**: Silent Steward shows text | Critical | Remove text block entirely; add protective comment |
-| **Gap 2**: InlineArtifacts missing | Core | Create constrained artifact system with anchoring |
-| **Gap 3**: Service Options not stubbed | Future-proof | Create user-request-gated stubs |
-| **Risk 1**: Artifact re-summoning spam | Edge case | Add `hasShownArtifactForSystem` one-time guard |
-| **Risk 2**: ServiceOptionsPanel visual weight | Edge case | Change `bg-background` to `bg-muted/10` |
+These statements cannot coexist. The chat is denying evidence that is visibly rendered above it.
 
 ---
 
-## Implementation Details
+## Root Cause
 
-### Gap 1: True Silence in Silent Steward Mode
+The architecture has **two parallel epistemic layers** that are not aligned:
 
-**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+| Layer | Source | What It Shows | Used By |
+|-------|--------|---------------|---------|
+| **Inferred Baseline** | `capital-timeline` edge function | Systems derived from property age, region, typical lifespans | `MiddleColumn` → `BaselineSurface` |
+| **Confirmed Baseline** | `homeSystems` hook (DB query) | Only user-confirmed or permit-verified systems | `useChatMode` → Chat Mode → AI Prompt |
 
-**Action:** Remove lines 262-269 (the conditional render block) and replace with protective comment.
-
-```text
-Before:
-  {isSilentSteward && (
-    <div className="text-center py-4 text-muted-foreground/60">
-      <p className="text-xs">
-        Your home is being watched. Nothing requires attention.
-      </p>
-    </div>
-  )}
-
-After:
-  {/* 
-    * CANONICAL ARCHITECTURE LOCK:
-    * Silent Steward intentionally renders no messages.
-    * Silence is a product feature, not an empty state.
-    * Do not add fallback copy here.
-    */}
-```
-
-**Doctrine preserved:** True silence = confidence. No narration of presence.
+The AI assistant is told "No systems registered" because `system_lifecycles` table is empty — but the visual baseline is populated from heuristic inference.
 
 ---
 
-### Gap 2: InlineArtifacts Infrastructure (With Risk 1 Fix)
+## Canonical Rule Being Violated
 
-#### File 1: `src/types/chatArtifact.ts` (NEW)
+> "Habitta may infer, but it must label inference as inference.
+> It may not deny its own visible evidence."
 
-Artifact type system with:
-- `anchorMessageId` required (artifacts subordinate to language)
-- No generic "chart" types
-- `isArtifactAllowedInMode()` check for cost_range in planning only
+The chat must acknowledge the inferred baseline, not deny it.
 
-#### File 2: `src/lib/artifactSummoner.ts` (NEW)
+---
 
-Summoning rules with **Risk 1 fix integrated**:
+## Solution Architecture
+
+### 1. Add Baseline Provenance State
+
+Create a new concept: **Baseline Source**
 
 ```typescript
-interface ArtifactContext {
-  chatMode: ChatMode;
-  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
-  messageId: string;
-  systemKey?: string;
-  userAskedForVisualization: boolean;
-  /** Risk 1 fix: Prevent re-summoning spam */
-  hasShownArtifactForSystem?: boolean;
+// src/types/chatMode.ts (addition)
+export type BaselineSource = 'inferred' | 'partial' | 'confirmed';
+
+export interface ChatModeContext {
+  // ... existing fields
+  
+  /** Source of the baseline data */
+  baselineSource: BaselineSource;
+  
+  /** Systems visible in the baseline (for chat reference) */
+  visibleBaselineSystems: Array<{
+    key: string;
+    displayName: string;
+    state: SystemState;
+  }>;
 }
 ```
 
-And the guarded check:
+**Rules:**
+- `'inferred'` → Confidence max = Moderate, chat must acknowledge inference
+- `'partial'` → Some confirmed, some inferred
+- `'confirmed'` → User-verified, confidence can reach High
+
+### 2. Pass Inferred Baseline to Chat Mode
+
+Update `useChatMode` to accept the visual baseline as context:
 
 ```typescript
-// Planning window: show timeline ONCE per system entry
-if (
-  context.chatMode === 'planning_window_advisory' &&
-  context.systemKey &&
-  !context.hasShownArtifactForSystem  // Risk 1: one-time guard
-) {
-  return { type: 'system_timeline', systemKey: context.systemKey };
+// src/hooks/useChatMode.ts
+interface UseChatModeOptions {
+  homeId?: string;
+  systems: HomeSystem[];           // Confirmed systems
+  permitsFound: boolean;
+  inferredSystems?: BaselineSystem[];  // NEW: From capital timeline
 }
 ```
 
-**Additional constraints:**
-- No artifacts on page load
-- No artifacts in Silent Steward mode
-- No artifacts below Moderate confidence (Authority Fallback Rule)
-- Auto-collapse when context changes (Artifact Lifetime Rule)
+This allows the chat mode selector to know what's visible.
 
-#### File 3: `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` (NEW)
+### 3. Compute Baseline Source
 
-Collapsible/dismissible artifact container with:
-- `anchorMessageId` prop required
-- Validation of anchor relationship
-- Calm styling: `bg-muted/10`, no shadows
-
-#### File 4: `src/components/dashboard-v3/artifacts/SystemTimelineArtifact.tsx` (NEW)
-
-Mini timeline for a single system showing position and projection.
-
-#### File 5: `src/components/dashboard-v3/artifacts/index.ts` (NEW)
-
-Barrel export for artifact components.
-
----
-
-### Gap 3: Service Options Stub (With Risk 2 Fix + No Cross-System Rule)
-
-#### File 6: `src/types/prosAndLogistics.ts` (NEW)
-
-Service options types with:
-- `userRequested: boolean` required (no auto-surfacing)
-- `isBaselineComplete` required
-- Mode restriction to `planning_window_advisory` or `elevated_attention`
-- **No Cross-System Offers Rule** (comment):
+Add logic to determine baseline source:
 
 ```typescript
-// CANONICAL RULE:
-// Service options may only be offered for the currently discussed system.
-// No cross-system bundling or upsell.
-systemKey: string;
+// src/lib/baselineProvenance.ts (NEW)
+
+export function computeBaselineSource(
+  confirmedSystems: HomeSystem[],
+  inferredSystems: BaselineSystem[]
+): BaselineSource {
+  const confirmedCount = confirmedSystems.filter(s => 
+    s.data_sources?.some(d => 
+      d.includes('permit') || d.includes('owner') || d.includes('user')
+    )
+  ).length;
+  
+  if (confirmedCount === 0 && inferredSystems.length > 0) {
+    return 'inferred';
+  }
+  if (confirmedCount > 0 && confirmedCount < inferredSystems.length) {
+    return 'partial';
+  }
+  if (confirmedCount >= inferredSystems.length) {
+    return 'confirmed';
+  }
+  return 'inferred';
+}
 ```
 
-#### File 7: `src/components/dashboard-v3/ServiceOptionsPanel.tsx` (NEW)
+### 4. Update Opening Message Copy
 
-Service options UI with **Risk 2 fix**:
+Add provenance-aware copy to `chatModeCopy.ts`:
 
 ```typescript
-// Risk 2 fix: Subordinate visual weight
-<div className="my-3 p-3 rounded-lg border border-border/30 bg-muted/10">
+// src/lib/chatModeCopy.ts
+
+const BASELINE_OPENING_MESSAGES: Record<BaselineSource, OpeningMessageConfig> = {
+  inferred: {
+    primary: "What you're seeing above is an inferred baseline.",
+    secondary: "It's based on the age of the home, location, and typical system lifespans in this region.",
+    clarifier: "I haven't yet confirmed the specific details of your systems — but it's enough to begin monitoring and identify planning windows.",
+  },
+  partial: {
+    primary: "I have confirmed details for some of your systems.",
+    secondary: "The remaining systems are estimated based on typical patterns.",
+    clarifier: "We can improve accuracy for any system with a photo or quick confirmation.",
+  },
+  confirmed: {
+    primary: "Your baseline is well-established.",
+    secondary: "I can provide specific guidance based on confirmed system data.",
+  },
+};
 ```
 
-Not `bg-background` — ensures offers feel optional, not primary.
+### 5. Add Governance Guardrail
 
-Additional constraints:
-- Max 3 options (`MAX_SERVICE_OPTIONS = 3`)
-- "Not now" always available
-- No logos, no marketing language
-- Not styled as artifacts (offers, not evidence)
-
-#### File 8: `src/hooks/useServiceOptions.ts` (NEW)
-
-Stub hook returning empty array. Future: integrates with partner API.
-
----
-
-### Governance Update
-
-**File:** `src/lib/chatGovernance.ts`
-
-Add Authority Fallback Rule:
+Add hard rule to `chatGovernance.ts`:
 
 ```typescript
+// src/lib/chatGovernance.ts
+
 /**
- * Authority Fallback Rule
- * 
- * If confidence drops below Moderate, no new artifacts 
- * or service options may be summoned.
- * 
- * This ensures:
- * - Weak baselines do not get over-explained
- * - Trust is rebuilt before advice expands
+ * Chat responses may not contradict visible baseline artifacts.
+ * If baseline exists, chat must reference it — even if only to qualify it.
  */
-export function canExpandAdvice(
-  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High'
-): boolean {
-  return confidenceLevel === 'Moderate' || confidenceLevel === 'High';
-}
+export const BASELINE_COHERENCE_RULES = {
+  /** Never say these phrases when baseline is visible */
+  bannedWhenBaselineVisible: [
+    'blank slate',
+    'no systems',
+    'no information',
+    "don't have any",
+    "can't tell anything",
+  ],
+  
+  /** Required references when inferred baseline is visible */
+  requiredReferencesForInferred: [
+    'inferred',
+    'estimated',
+    'based on what I can observe',
+    'typical for this region',
+  ],
+};
+```
+
+### 6. Pass Baseline Context to AI Prompt
+
+Update the edge function to receive baseline provenance:
+
+```typescript
+// supabase/functions/ai-home-assistant/index.ts
+
+// In the request body, add:
+const {
+  // ... existing fields
+  baselineSource,          // 'inferred' | 'partial' | 'confirmed'
+  visibleBaseline,         // Array of systems shown in UI
+  chatMode,               // Already exists
+} = await req.json();
+
+// In createSystemPrompt(), add baseline context:
+let prompt = `...
+
+BASELINE CONTEXT:
+${baselineSource === 'inferred' 
+  ? 'The user sees an INFERRED baseline above. Do NOT say you have no information. Acknowledge what is visible.' 
+  : baselineSource === 'partial'
+  ? 'The user sees a PARTIALLY confirmed baseline. Some systems are inferred, some confirmed.'
+  : 'The baseline is CONFIRMED. You can be specific about timelines and recommendations.'}
+
+VISIBLE SYSTEMS (user can see these):
+${visibleBaseline?.map(s => `- ${s.displayName}: ${s.state}`).join('\n') || 'None'}
+
+HARD RULE: Never contradict what is visible. If systems appear above, acknowledge them.
+`;
 ```
 
 ---
 
-## File Summary
+## Files to Change
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/components/dashboard-v3/ChatConsole.tsx` | Modify | Remove Silent Steward text, add protective comment |
-| `src/types/chatArtifact.ts` | Create | Artifact types with anchorMessageId requirement |
-| `src/lib/artifactSummoner.ts` | Create | Summoning rules with one-time guard (Risk 1 fix) |
-| `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` | Create | Artifact container with collapse/dismiss |
-| `src/components/dashboard-v3/artifacts/SystemTimelineArtifact.tsx` | Create | System timeline visualization |
-| `src/components/dashboard-v3/artifacts/index.ts` | Create | Barrel export |
-| `src/types/prosAndLogistics.ts` | Create | Service options types with userRequested gate |
-| `src/components/dashboard-v3/ServiceOptionsPanel.tsx` | Create | Service options UI with subordinate styling (Risk 2 fix) |
-| `src/hooks/useServiceOptions.ts` | Create | Service options hook (stub) |
-| `src/lib/chatGovernance.ts` | Modify | Add canExpandAdvice authority fallback |
+| `src/types/chatMode.ts` | **Modify** | Add `BaselineSource` type and context fields |
+| `src/lib/baselineProvenance.ts` | **Create** | Baseline source computation logic |
+| `src/hooks/useChatMode.ts` | **Modify** | Accept inferred baseline, compute source |
+| `src/lib/chatModeCopy.ts` | **Modify** | Add provenance-aware opening messages |
+| `src/lib/chatGovernance.ts` | **Modify** | Add coherence guardrails |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass inferred baseline to chat mode |
+| `src/components/dashboard-v3/ChatConsole.tsx` | **Modify** | Use provenance-aware opening |
+| `supabase/functions/ai-home-assistant/index.ts` | **Modify** | Accept and use baseline context in prompt |
+
+---
+
+## Implementation Order
+
+1. **Add types** — `BaselineSource` to `chatMode.ts`
+2. **Create provenance logic** — `baselineProvenance.ts`
+3. **Update useChatMode** — Accept inferred systems, compute source
+4. **Update MiddleColumn** — Pass inferred baseline to chat mode hook
+5. **Update chatModeCopy** — Add provenance-aware messages
+6. **Update ChatConsole** — Use correct opening based on source
+7. **Update edge function** — Add baseline context to AI prompt
+8. **Add governance guardrails** — Prevent future contradictions
+
+---
+
+## Correct Chat Behavior After Fix
+
+**When baselineSource = 'inferred':**
+> "What you're seeing above is an inferred baseline based on the age of the home, its location, and typical system lifespans in this region.
+> 
+> I haven't yet confirmed the specific details of your systems, which limits how precise I can be — but it's enough to begin monitoring and identifying planning windows."
+
+**When user asks "What can you tell from what you see now?":**
+> "Based on what's visible above, your water heater is entering a planning window. This is an estimate based on typical lifespans — if you'd like, we can confirm the details to improve accuracy."
 
 ---
 
 ## Verification Checklist
 
-### Gap 1 - True Silence
-- [ ] No text message appears in silent_steward mode
-- [ ] Protective comment prevents future "fixes"
-- [ ] Baseline visible, input available
+- [ ] Chat never says "blank slate" when baseline is visible
+- [ ] Chat acknowledges "inferred" when baseline source is inferred
+- [ ] Opening message references "what you're seeing above"
+- [ ] AI prompt includes visible baseline context
+- [ ] Chat mode selector knows about inferred systems
+- [ ] Baseline source is computed correctly (inferred/partial/confirmed)
 
-### Gap 2 - InlineArtifacts
-- [ ] All artifacts have anchorMessageId (enforced)
-- [ ] Artifacts never appear on page load
-- [ ] Artifacts never appear in Silent Steward mode
-- [ ] **Risk 1**: Artifacts only summon once per system entry
-- [ ] No artifacts below Moderate confidence
-- [ ] Artifacts collapse when context changes
+---
 
-### Gap 3 - Service Options
-- [ ] userRequested is mandatory gate
-- [ ] Options never auto-surface
-- [ ] Max 3 options enforced
-- [ ] "Not now" always available
-- [ ] **Risk 2**: Uses bg-muted/10, not bg-background
-- [ ] No cross-system offers (comment added)
+## Canonical Lock Statement
 
-### Governance
-- [ ] canExpandAdvice blocks expansion below Moderate confidence
+> "Habitta never denies its own evidence.
+> When knowledge is inferred, it is labeled — not dismissed."
