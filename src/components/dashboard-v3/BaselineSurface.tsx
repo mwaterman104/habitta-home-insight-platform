@@ -51,7 +51,14 @@ export function BaselineSurface({
       {/* Home Baseline Summary */}
       <div className="flex justify-between text-sm text-muted-foreground">
         <span>Lifecycle: <span className="text-foreground font-medium">{lifecyclePosition}</span></span>
-        <span>Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span></span>
+        <div className="flex flex-col items-end">
+          <span>
+            Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span>
+          </span>
+          <span className="text-[10px] text-muted-foreground/70">
+            {getConfidenceExplainer(confidenceLevel)}
+          </span>
+        </div>
       </div>
       
       {/* Systems Timeline */}
@@ -65,11 +72,11 @@ export function BaselineSurface({
         ))}
       </div>
       
-      {/* Timeline labels */}
-      <div className="flex justify-between text-xs text-muted-foreground pt-2">
-        <span>Early</span>
-        <span>Mid</span>
-        <span>Late</span>
+      {/* Timeline labels - condition-based language */}
+      <div className="flex justify-between text-[10px] text-muted-foreground pt-2">
+        <span>Within range</span>
+        <span>Approaching limit</span>
+        <span>Beyond range</span>
       </div>
     </div>
   );
@@ -210,16 +217,29 @@ function getStateTextColor(state: SystemState): string {
 
 /**
  * Get state label
+ * Note: "Planning Window" banned on main dashboard per governance
  */
 function getStateLabel(state: SystemState): string {
   switch (state) {
     case 'stable':
       return 'Stable';
     case 'planning_window':
-      return 'Planning Window';
+      return 'Approaching typical limit';
     case 'elevated':
       return 'Elevated';
     case 'data_gap':
       return 'Data Gap';
+  }
+}
+
+/**
+ * Get confidence explainer - grounds confidence in specific evidence
+ */
+function getConfidenceExplainer(level: 'Unknown' | 'Early' | 'Moderate' | 'High'): string {
+  switch (level) {
+    case 'High': return 'Verified by records';
+    case 'Moderate': return 'Based on home age and regional patterns';
+    case 'Early': return 'Limited data';
+    default: return 'Still learning';
   }
 }

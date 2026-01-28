@@ -9,11 +9,24 @@
 
 /**
  * Format replacement window from p10/p90 dates
- * @example "2036–2042"
+ * Now includes tense awareness for past-lifespan systems
+ * 
+ * @example "2036–2042" (future)
+ * @example "Past typical lifespan (2020–2024)" (past)
  */
-export function formatReplacementWindow(p10: string, p90: string): string {
+export function formatReplacementWindow(
+  p10: string, 
+  p90: string,
+  options?: { includeTenseAwareness?: boolean }
+): string {
   const y10 = new Date(p10).getFullYear();
   const y90 = new Date(p90).getFullYear();
+  const currentYear = new Date().getFullYear();
+  
+  // Tense awareness: if current year is past the typical lifespan
+  if (options?.includeTenseAwareness && currentYear > y90) {
+    return `Past typical lifespan (${y10}–${y90})`;
+  }
   
   if (y10 === y90) {
     return `~${y10}`;
