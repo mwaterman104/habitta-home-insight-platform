@@ -30,7 +30,7 @@ export interface BaselineSystem {
 }
 
 interface BaselineSurfaceProps {
-  lifecyclePosition: 'Early' | 'Mid-Life' | 'Late';
+  yearBuilt?: number;  // For home context (houses don't have lifecycles)
   confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
   systems: BaselineSystem[];
   onWhyClick: (systemKey: string) => void;
@@ -41,24 +41,40 @@ interface BaselineSurfaceProps {
 // ============================================
 
 export function BaselineSurface({
-  lifecyclePosition,
+  yearBuilt,
   confidenceLevel,
   systems,
   onWhyClick,
 }: BaselineSurfaceProps) {
   return (
     <div className="space-y-4 p-4 bg-muted/20 rounded-lg">
-      {/* Home Baseline Summary */}
-      <div className="flex justify-between text-sm text-muted-foreground">
-        <span>Lifecycle: <span className="text-foreground font-medium">{lifecyclePosition}</span></span>
+      {/* Home Context - Static property facts (houses don't have lifecycles) */}
+      <div className="flex justify-between text-sm text-muted-foreground mb-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+            Home context
+          </span>
+          <span className="text-sm text-foreground">
+            {yearBuilt 
+              ? `Typical age profile for homes built around ${yearBuilt}`
+              : 'Home age profile based on regional patterns'}
+          </span>
+        </div>
         <div className="flex flex-col items-end">
-          <span>
+          <span className="text-sm">
             Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span>
           </span>
           <span className="text-[10px] text-muted-foreground/70">
             {getConfidenceExplainer(confidenceLevel)}
           </span>
         </div>
+      </div>
+      
+      {/* System Condition Outlook - Where each system sits on its lifespan curve */}
+      <div className="pt-2 pb-1">
+        <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+          System condition outlook
+        </span>
       </div>
       
       {/* Systems Timeline */}
@@ -72,11 +88,11 @@ export function BaselineSurface({
         ))}
       </div>
       
-      {/* Timeline labels - condition-based language */}
-      <div className="flex justify-between text-[10px] text-muted-foreground pt-2">
-        <span>Within range</span>
-        <span>Approaching limit</span>
-        <span>Beyond range</span>
+      {/* Timeline labels - age-based language (how homeowners think) */}
+      <div className="flex justify-between text-[10px] text-muted-foreground/60 pt-2">
+        <span>New</span>
+        <span>Typical</span>
+        <span>Aging</span>
       </div>
     </div>
   );

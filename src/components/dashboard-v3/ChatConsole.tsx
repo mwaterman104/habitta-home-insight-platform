@@ -25,9 +25,11 @@ import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
 import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
+import { track } from "@/lib/analytics";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { TodaysFocus } from "@/lib/todaysFocusCopy";
 import type { ChatMode, BaselineSource } from "@/types/chatMode";
+import type { SystemState } from "@/types/systemState";
 import { getChatPlaceholder } from "@/lib/todaysFocusCopy";
 import { 
   getPromptsForMode, 
@@ -38,6 +40,7 @@ import {
   markBaselineOpeningShown,
   getModeBehavior,
   formatProvenanceOpeningMessage,
+  getWhyStateLabel,
 } from "@/lib/chatModeCopy";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
@@ -49,8 +52,8 @@ interface ChatConsoleProps {
   propertyId: string;
   /** Baseline systems for evidence layer */
   baselineSystems: BaselineSystem[];
-  /** Overall lifecycle position derived from systems */
-  lifecyclePosition: 'Early' | 'Mid-Life' | 'Late';
+  /** Year the home was built (for home context) */
+  yearBuilt?: number;
   /** Overall confidence level */
   confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
   /** Chat mode for epistemic-aware behavior */
@@ -59,7 +62,7 @@ interface ChatConsoleProps {
   baselineSource?: BaselineSource;
   /** System keys with low confidence (for baseline mode) */
   systemsWithLowConfidence?: string[];
-  /** Callback when "Why?" is clicked on a system */
+  /** Callback when "Why?" is clicked on a system - now injects message into chat */
   onWhyClick: (systemKey: string) => void;
   /** Callback when system is updated via photo analysis */
   onSystemUpdated?: () => void;
@@ -82,7 +85,7 @@ interface ChatConsoleProps {
 export function ChatConsole({
   propertyId,
   baselineSystems,
-  lifecyclePosition,
+  yearBuilt,
   confidenceLevel,
   chatMode = 'silent_steward',
   baselineSource = 'inferred',
@@ -176,6 +179,21 @@ export function ChatConsole({
     await sendMessage(message);
   };
 
+  /**
+   * Handle "Why?" click - inject message into chat instead of navigating away
+   * This delivers complete understanding in one response (closure, not a thread)
+   */
+  const handleWhyClick = useCallback((systemKey: string) => {
+    const system = baselineSystems.find(s => s.key === systemKey);
+    if (!system) return;
+    
+    track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
+    
+    // Generate a "Why?" question on user's behalf with state label
+    const stateLabel = getWhyStateLabel(system.state);
+    sendMessage(`Why is my ${system.displayName.toLowerCase()} showing as "${stateLabel}"?`);
+  }, [baselineSystems, sendMessage]);
+
   // Handle key press
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -263,10 +281,10 @@ export function ChatConsole({
           {baselineSystems.length > 0 && (
             <div className="sticky top-0 z-10 bg-white dark:bg-card pb-2">
               <BaselineSurface
-                lifecyclePosition={lifecyclePosition}
+                yearBuilt={yearBuilt}
                 confidenceLevel={confidenceLevel}
                 systems={baselineSystems}
-                onWhyClick={onWhyClick}
+                onWhyClick={handleWhyClick}
               />
             </div>
           )}

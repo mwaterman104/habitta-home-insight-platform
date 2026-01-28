@@ -171,14 +171,22 @@ export function MiddleColumn({
     }) ?? [];
   }, [capitalTimeline, systemSignals]);
 
-  // Derive lifecycle position
-  const lifecyclePosition = useMemo<'Early' | 'Mid-Life' | 'Late'>(() => {
-    if (baselineSystems.length === 0) return 'Mid-Life';
-    const avgMonths = baselineSystems.reduce((sum, s) => sum + (s.monthsRemaining ?? 120), 0) / baselineSystems.length;
-    if (avgMonths > 180) return 'Early';
-    if (avgMonths > 60) return 'Mid-Life';
-    return 'Late';
-  }, [baselineSystems]);
+  // Extract yearBuilt from capitalTimeline for home context
+  // (Houses provide context; systems carry risk)
+  const yearBuilt = useMemo<number | undefined>(() => {
+    // Try to derive from capitalTimeline property data
+    // For now, use a reasonable fallback based on system ages
+    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
+      const installYears = capitalTimeline.systems
+        .map(s => s.installYear)
+        .filter((y): y is number => y !== undefined && y !== null);
+      if (installYears.length > 0) {
+        // Assume home is older than oldest system install
+        return Math.min(...installYears) - 5;
+      }
+    }
+    return undefined;
+  }, [capitalTimeline]);
 
   // Derive confidence level
   const confidenceLevel = useMemo<'Unknown' | 'Early' | 'Moderate' | 'High'>(() => {
@@ -235,7 +243,7 @@ export function MiddleColumn({
       <ChatConsole
         propertyId={propertyId}
         baselineSystems={baselineSystems}
-        lifecyclePosition={lifecyclePosition}
+        yearBuilt={yearBuilt}
         confidenceLevel={confidenceLevel}
         chatMode={chatMode}
         baselineSource={baselineSystems.length > 0 ? 'inferred' : 'inferred'}
