@@ -1,18 +1,6 @@
+# Chat-Summoned Evidence Artifact — Implementation Complete
 
-
-# Chat-Summoned Evidence Artifact — Final Specification
-
-**Status: QA-Approved with 3 Enforcement Tightenings**
-
----
-
-## QA Corrections Incorporated
-
-| # | Gap Identified | Resolution |
-|---|----------------|------------|
-| 1 | Re-summoning ownership unclear | Added: "Once per system per session unless user explicitly asks again" |
-| 2 | "No page load" ambiguous | Clarified: BaselineSurface may appear per chat state; aging profile artifacts never at load |
-| 3 | "No Why buttons" needs teeth | Added: "No implicit Why affordances (info icons, question marks, hover hints)" |
+**Status: ✅ IMPLEMENTED**
 
 ---
 
@@ -39,245 +27,78 @@
 
 ---
 
-## Files to Create/Modify
+## Files Modified
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/types/chatArtifact.ts` | Modify | Add `system_aging_profile` type |
-| `src/components/dashboard-v3/artifacts/SystemAgingProfileArtifact.tsx` | **Create** | New multi-system artifact with NO interactive affordances |
-| `src/components/dashboard-v3/artifacts/index.ts` | Modify | Export new component |
-| `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` | Modify | Render new type, remove any implicit Why hints |
-| `src/lib/artifactSummoner.ts` | Modify | Add per-system-per-session guard |
-| `src/lib/chatModeCopy.ts` | Modify | Add summoning justification copy |
-| `src/hooks/useAIHomeAssistant.ts` | Modify | Support `attachedArtifact` on messages |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Modify | Render artifacts in stream, preserve BaselineSurface per chat state |
-| `supabase/functions/ai-home-assistant/index.ts` | Modify | Add artifact summoning rules to prompt |
+| `src/types/chatArtifact.ts` | ✅ Modified | Added `system_aging_profile` type |
+| `src/components/dashboard-v3/artifacts/SystemAgingProfileArtifact.tsx` | ✅ Created | New multi-system artifact with NO interactive affordances |
+| `src/components/dashboard-v3/artifacts/index.ts` | ✅ Modified | Export new component |
+| `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` | ✅ Modified | Render new type, supports "inserted document" styling |
+| `src/lib/artifactSummoner.ts` | ✅ Modified | Added per-system-per-session guards |
+| `src/lib/chatModeCopy.ts` | ✅ Modified | Added summoning justification copy |
+| `src/hooks/useAIHomeAssistant.ts` | ✅ Modified | Support `attachedArtifact` on messages |
+| `src/components/dashboard-v3/ChatConsole.tsx` | ✅ Modified | Render artifacts in message stream |
+| `supabase/functions/ai-home-assistant/index.ts` | ✅ Modified | Added artifact summoning rules to prompt |
 
 ---
 
-## Implementation Details
+## Key Implementations
 
-### 1. New Artifact Type
-
-```typescript
-// src/types/chatArtifact.ts
-export type ArtifactType = 
-  | 'system_timeline'         // Single system deep-dive
-  | 'system_aging_profile'    // Multi-system context comparison (NEW)
-  | 'comparison_table'
-  | 'cost_range'
-  | 'confidence_explainer'
-  | 'local_context';
-```
-
-### 2. SystemAgingProfileArtifact Component
-
-**Visual Spec:**
-```
-┌────────────────────────────────────────────────────┐
-│ ▼ Typical system aging profile — homes ~1995      │
-│   Confidence: Moderate · Based on patterns    ✕   │
-├────────────────────────────────────────────────────┤
-│  HVAC System      ●────────────────○               │
-│  Roof             ●────────○                       │
-│  Water Heater     ●──────────────────○             │
-│                                                    │
-│  New                Typical                Aging   │
-└────────────────────────────────────────────────────┘
-```
-
-**Strict Rules:**
-- NO info icons
-- NO question marks
-- NO hover hints
-- NO "Why?" buttons
-- NO clickable rows
-- NO tooltips
-- Only allowed interactions: collapse, dismiss, scroll
-
-**Color Semantics (No Red):**
-- Typical/Stable: `muted-foreground`
-- Approaching limit: `amber-600`
-- Aging/Late: `amber-700`
-
-### 3. Per-System-Per-Session Guard
+### 1. Session Guards (artifactSummoner.ts)
 
 ```typescript
-// src/lib/artifactSummoner.ts
-
 const ARTIFACT_SHOWN_PREFIX = 'habitta_artifact_shown_';
+const AGING_PROFILE_KEY = 'habitta_artifact_shown_aging_profile';
 
-/**
- * SESSION GUARD RULE:
- * An artifact may only be summoned once per system per session
- * unless the user explicitly asks again.
- */
-export function hasShownArtifactForSystemThisSession(systemKey: string): boolean {
-  try {
-    return sessionStorage.getItem(`${ARTIFACT_SHOWN_PREFIX}${systemKey}`) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export function markArtifactShownForSystem(systemKey: string): void {
-  try {
-    sessionStorage.setItem(`${ARTIFACT_SHOWN_PREFIX}${systemKey}`, 'true');
-  } catch {}
-}
-
-// For aging profile (multi-system)
-export function hasShownAgingProfileThisSession(): boolean {
-  try {
-    return sessionStorage.getItem(`${ARTIFACT_SHOWN_PREFIX}aging_profile`) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export function markAgingProfileShown(): void {
-  try {
-    sessionStorage.setItem(`${ARTIFACT_SHOWN_PREFIX}aging_profile`, 'true');
-  } catch {}
-}
+export function hasShownAgingProfileThisSession(): boolean
+export function markAgingProfileShown(): void
+export function hasShownArtifactForSystemThisSession(systemKey: string): boolean
+export function markArtifactShownForSystem(systemKey: string): void
 ```
 
-### 4. ChatConsole Behavior Clarification
+### 2. Message-Artifact Coupling (useAIHomeAssistant.ts)
 
 ```typescript
-// src/components/dashboard-v3/ChatConsole.tsx
-
-/**
- * BASELINE VS ARTIFACT DISTINCTION:
- * 
- * BaselineSurface (the summary strip):
- * - MAY appear based on chat state/mode
- * - Is part of the chat context UI
- * - Is NOT an artifact
- * 
- * Aging Profile Artifact:
- * - NEVER appears at page load
- * - ONLY appears after justification message
- * - Is rendered inline with messages
- * - Is dismissible and ephemeral
- */
-```
-
-The existing BaselineSurface can remain as a context element (depending on chat mode), but the aging profile artifact is a separate, chat-summoned evidence piece.
-
-### 5. Message-Artifact Coupling
-
-```typescript
-// src/hooks/useAIHomeAssistant.ts
-
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  functionCall?: any;
-  suggestions?: string[];
-  // NEW: Attached artifact (only if chat earned it)
-  attachedArtifact?: ChatArtifact;
+  attachedArtifact?: ChatArtifact;  // NEW
 }
 ```
 
-### 6. AI Prompt Enforcement
+### 3. Summoning Justification (chatModeCopy.ts)
 
 ```typescript
-// supabase/functions/ai-home-assistant/index.ts
+export function getSummoningJustification(yearBuilt?: number, source: BaselineSource): string
+export function getArtifactReferenceMessage(systemsContext: Array<{...}>): string
+```
 
-prompt += `
+### 4. AI Prompt Enforcement
+
+```
 ARTIFACT SUMMONING CONTRACT (HARD RULES):
 
 1. CAUSALITY: Nothing visual appears unless the chat earns it first
-   - Justify THEN show, never the reverse
    - Use past tense: "I pulled" not "I'm showing"
 
-2. SESSION GUARD: Artifacts appear once per system per session
-   - Unless user explicitly asks again
-   - No re-triggering on mode change or rerender
-
-3. NO IMPLICIT AFFORDANCES: Artifacts do not invite exploration
-   - No info icons, question marks, hover hints
-   - The artifact proves work happened
-   - The chat explains what it means
-
-4. SUMMONING PATTERN (exact):
+2. SUMMONING PATTERN (exact):
    a) JUSTIFY: "Given the age of your home..."
    b) ANNOUNCE: "I pulled a typical system aging profile..."
-   c) [ARTIFACT RENDERS - system handles this]
+   c) [ARTIFACT RENDERS]
    d) REFERENCE: "Based on what you're seeing above..."
 
-5. FORBIDDEN:
+5. FORBIDDEN PHRASES:
    - "Here is a chart"
    - "See below"
    - "I'm showing you"
-   - Any present-tense announcement of visual evidence
-`;
-```
-
-### 7. Summoning Justification Copy
-
-```typescript
-// src/lib/chatModeCopy.ts
-
-export function getSummoningJustification(
-  yearBuilt?: number,
-  source: BaselineSource = 'inferred'
-): string {
-  const yearRef = yearBuilt ? `around ${yearBuilt}` : 'in this region';
-  
-  if (source === 'inferred') {
-    return `Given the age of your home and what we typically see in this area, I pulled a typical system aging profile for homes built ${yearRef} to compare against what we know so far.`;
-  }
-  
-  if (source === 'partial') {
-    return `I have some confirmed details about your systems. Here's how they compare to typical aging patterns for homes built ${yearRef}.`;
-  }
-  
-  return `Your systems are well-documented. Here's how they're positioned relative to typical aging patterns for homes built ${yearRef}.`;
-}
 ```
 
 ---
 
-## Verification Checklist (Binary, Observable, Automatable)
-
-### Page Load Behavior
-- [ ] Aging profile artifact does NOT appear at page load
-- [ ] BaselineSurface MAY appear based on chat state (this is allowed)
-
-### Summoning Causality
-- [ ] Artifact only appears after justification message
-- [ ] Justification uses past tense ("I pulled")
-- [ ] Follow-up references "what you're seeing above"
-
-### Session Guards
-- [ ] Aging profile shows max once per session (unless re-requested)
-- [ ] Per-system artifacts show max once per system per session
-
-### No Implicit Affordances
-- [ ] No info icons in artifact
-- [ ] No question marks in artifact
-- [ ] No hover hints in artifact
-- [ ] No "Why?" buttons inside artifact
-- [ ] No clickable rows
-- [ ] Only collapse and dismiss are interactive
-
-### Artifact Semantics
-- [ ] Header: "Typical system aging profile — homes ~{year}"
-- [ ] Confidence is INSIDE artifact, not global UI
-- [ ] Axis labels: "New | Typical | Aging"
-- [ ] No section titles like "SYSTEM CONDITION OUTLOOK"
-- [ ] Collapsible and dismissible
-
-### Silent Steward
-- [ ] No artifacts appear in Silent Steward mode
-
----
-
-## Semantic Lock Statement (For Code Comments)
+## Semantic Lock Statement
 
 ```typescript
 /**
@@ -291,4 +112,3 @@ export function getSummoningJustification(
  * Silence is intentional. Evidence is contextual. Authority is earned.
  */
 ```
-

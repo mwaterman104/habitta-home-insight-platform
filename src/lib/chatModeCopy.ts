@@ -324,6 +324,65 @@ export function clearBaselineOpeningShown(): void {
 }
 
 // ============================================
+// Artifact Summoning Justification Copy
+// ============================================
+
+/**
+ * Get the justification message that earns the right to show the aging profile
+ * 
+ * SUMMONING PATTERN (exact):
+ * a) JUSTIFY: "Given the age of your home..."
+ * b) ANNOUNCE: "I pulled a typical system aging profile..."
+ * c) [ARTIFACT RENDERS - system handles this]
+ * d) REFERENCE: "Based on what you're seeing above..."
+ * 
+ * This message combines a) and b) to justify the artifact.
+ */
+export function getSummoningJustification(
+  yearBuilt?: number,
+  source: BaselineSource = 'inferred'
+): string {
+  const yearRef = yearBuilt ? `around ${yearBuilt}` : 'in this region';
+  
+  if (source === 'inferred') {
+    return `Given the age of your home and what we typically see in this area, I pulled a typical system aging profile for homes built ${yearRef} to compare against what we know so far.`;
+  }
+  
+  if (source === 'partial') {
+    return `I have some confirmed details about your systems. I pulled an aging profile to show how they compare to typical patterns for homes built ${yearRef}.`;
+  }
+  
+  // confirmed
+  return `Your systems are well-documented. I pulled an aging profile to show how they're positioned relative to typical patterns for homes built ${yearRef}.`;
+}
+
+/**
+ * Get the follow-up message to reference the artifact
+ * This is step (d) of the summoning pattern.
+ */
+export function getArtifactReferenceMessage(
+  systemsContext: Array<{ displayName: string; state: WhySystemState }>
+): string {
+  if (systemsContext.length === 0) {
+    return "Based on what you're seeing above, your systems are within typical ranges for homes of this age.";
+  }
+  
+  // Find the most notable system (elevated > planning_window > stable)
+  const elevated = systemsContext.find(s => s.state === 'elevated');
+  const planning = systemsContext.find(s => s.state === 'planning_window');
+  
+  if (elevated) {
+    return `Based on what you're seeing above, your ${elevated.displayName.toLowerCase()} warrants attention, while the other systems are within expected ranges.`;
+  }
+  
+  if (planning) {
+    return `Based on what you're seeing above, your ${planning.displayName.toLowerCase()} is nearing the end of its typical lifespan, while the other systems have service life remaining.`;
+  }
+  
+  return "Based on what you're seeing above, all your systems are operating within typical ranges for homes of this age.";
+}
+
+// ============================================
 // Behavior Flags by Mode
 // ============================================
 

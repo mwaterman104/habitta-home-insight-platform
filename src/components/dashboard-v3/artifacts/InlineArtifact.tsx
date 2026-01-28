@@ -1,11 +1,23 @@
 /**
  * Inline Artifact Container
  * 
+ * ARTIFACT BEHAVIORAL CONTRACT:
+ * 1. "This artifact does not explain itself. The chat explains why it exists."
+ * 2. "The artifact proves the chat earned the right to speak."
+ * 3. "It doesn't live anywhere. It was brought here."
+ * 
  * CANONICAL DOCTRINE:
  * - Artifacts are subordinate to language
  * - They must be collapsible
  * - They must be dismissible
  * - They have calm styling (no shadows, no urgency)
+ * 
+ * NO IMPLICIT AFFORDANCES:
+ * - NO info icons
+ * - NO question marks
+ * - NO hover hints
+ * - NO "Why?" buttons inside artifact
+ * - Only collapse and dismiss are interactive
  */
 
 import { useState } from 'react';
@@ -13,6 +25,7 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatArtifact } from '@/types/chatArtifact';
 import { SystemTimelineArtifact } from './SystemTimelineArtifact';
+import { SystemAgingProfileArtifact } from './SystemAgingProfileArtifact';
 
 interface InlineArtifactProps {
   artifact: ChatArtifact;
@@ -43,10 +56,11 @@ export function InlineArtifact({
   
   return (
     <div className={cn(
-      "my-2 rounded-lg border border-border/30 bg-muted/10 overflow-hidden",
+      // Looks like "an inserted document" not a dashboard widget
+      "my-2 ml-6 rounded-lg border border-border/30 bg-muted/10 overflow-hidden",
       "transition-all duration-200"
     )}>
-      {/* Header - always visible */}
+      {/* Header - always visible, minimal interactivity */}
       <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
         <button 
           onClick={handleCollapse}
@@ -77,6 +91,7 @@ export function InlineArtifact({
 function getArtifactLabel(type: string): string {
   switch (type) {
     case 'system_timeline': return 'System Timeline';
+    case 'system_aging_profile': return 'System Aging Profile';
     case 'comparison_table': return 'Options';
     case 'cost_range': return 'Cost Range';
     case 'confidence_explainer': return 'Confidence Detail';
@@ -87,6 +102,8 @@ function getArtifactLabel(type: string): string {
 
 function renderArtifactContent(artifact: ChatArtifact) {
   switch (artifact.type) {
+    case 'system_aging_profile':
+      return <SystemAgingProfileArtifact data={artifact.data as any} />;
     case 'system_timeline':
       return <SystemTimelineArtifact data={artifact.data} />;
     case 'confidence_explainer':
@@ -96,7 +113,7 @@ function renderArtifactContent(artifact: ChatArtifact) {
   }
 }
 
-/** Simple confidence explainer */
+/** Simple confidence explainer - NO interactive affordances */
 function ConfidenceExplainerArtifact({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="text-sm space-y-1">
