@@ -435,6 +435,8 @@ export default function DashboardV3() {
             chatMode={chatModeContext.mode}
             systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
             onSystemUpdated={handleSystemUpdated}
+            homeSystems={homeSystems}
+            yearBuilt={userHome.year_built}
           />
         </main>
       </div>
@@ -498,6 +500,8 @@ export default function DashboardV3() {
                 chatMode={chatModeContext.mode}
                 systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
                 onSystemUpdated={handleSystemUpdated}
+                homeSystems={homeSystems}
+                yearBuilt={userHome.year_built}
               />
             </div>
           </ResizablePanel>

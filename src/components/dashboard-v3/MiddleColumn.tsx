@@ -33,7 +33,9 @@ import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { ChatMode } from "@/types/chatMode";
+import type { HomeSystem } from "@/hooks/useHomeSystems";
 import { arbitrateTodaysFocus, type SystemSignal, type NarrativeContext } from "@/lib/narrativePriority";
+import { SYSTEM_META } from "@/lib/systemMeta";
 
 // Legacy interface for backwards compatibility
 interface TimelineTask {
@@ -79,6 +81,10 @@ interface MiddleColumnProps {
   systemsWithLowConfidence?: string[];
   // System Update Contract callback
   onSystemUpdated?: () => void;
+  // Home systems from database (source of truth)
+  homeSystems?: HomeSystem[];
+  // Year built from home record
+  yearBuilt?: number;
 }
 
 export function MiddleColumn({
@@ -99,16 +105,110 @@ export function MiddleColumn({
   chatMode = 'silent_steward',
   systemsWithLowConfidence = [],
   onSystemUpdated,
+  homeSystems = [],
+  yearBuilt: yearBuiltProp,
 }: MiddleColumnProps) {
   // Engagement cadence hook - only for annual interrupt
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
 
   // ============================================
-  // Derive Baseline Systems for ChatConsole
+  // Derive Baseline Systems from home_systems (SOURCE OF TRUTH)
   // ============================================
+  
+  /**
+   * BASELINE DATA SOURCE PRIORITY:
+   * 1. home_systems table (real user data) - PRIMARY
+   * 2. capitalTimeline (inferred/enriched) - FALLBACK
+   * 
+   * This ensures the artifact displays what the user actually has in their database.
+   */
+  const baselineSystems = useMemo<BaselineSystem[]>(() => {
+    const currentYear = new Date().getFullYear();
+    
+    // PRIMARY: Use home_systems from database if available
+    if (homeSystems && homeSystems.length > 0) {
+      return homeSystems.map(sys => {
+        // Get display name from system meta or format from key
+        const meta = SYSTEM_META[sys.system_key];
+        const displayName = meta?.label || 
+          sys.system_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        
+        // Calculate age and remaining lifespan
+        const installYear = sys.manufacture_year || 
+          (sys.install_date ? new Date(sys.install_date).getFullYear() : null);
+        const expectedLifespan = sys.expected_lifespan_years || meta?.typicalLifespan || 15;
+        
+        let monthsRemaining: number | undefined;
+        let ageYears: number | undefined;
+        
+        if (installYear) {
+          ageYears = currentYear - installYear;
+          const yearsRemaining = Math.max(0, expectedLifespan - ageYears);
+          monthsRemaining = yearsRemaining * 12;
+        }
+        
+        // Determine confidence from system data
+        const confidenceValue = sys.confidence_score ?? 
+          (sys.data_sources && sys.data_sources.length > 0 ? 0.7 : 0.4);
+        
+        // Derive state based on lifespan position
+        let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+        
+        if (confidenceValue < DATA_GAP_CONFIDENCE) {
+          state = 'data_gap';
+        } else if (monthsRemaining !== undefined) {
+          if (monthsRemaining < 12) {
+            state = 'elevated';
+          } else if (monthsRemaining < PLANNING_MONTHS) {
+            state = 'planning_window';
+          }
+        }
+        
+        return {
+          key: sys.system_key,
+          displayName,
+          state,
+          confidence: confidenceValue,
+          monthsRemaining,
+        };
+      });
+    }
+    
+    // FALLBACK: Use capitalTimeline if no home_systems
+    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
+      return capitalTimeline.systems.map(sys => {
+        const expectedEnd = sys.replacementWindow.likelyYear;
+        const yearsRemaining = expectedEnd - currentYear;
+        const monthsRemaining = yearsRemaining * 12;
+        const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
+                                 sys.dataQuality === 'medium' ? 0.5 : 0.3;
+        
+        let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+        
+        if (confidenceValue < DATA_GAP_CONFIDENCE) {
+          state = 'data_gap';
+        } else if (monthsRemaining < 12) {
+          state = 'elevated';
+        } else if (monthsRemaining < PLANNING_MONTHS) {
+          state = 'planning_window';
+        }
+        
+        return {
+          key: sys.systemId,
+          displayName: sys.systemLabel,
+          state,
+          confidence: confidenceValue,
+          monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
+        };
+      });
+    }
+    
+    return [];
+  }, [homeSystems, capitalTimeline]);
+
+  // System signals for narrative priority (uses both sources)
   const systemSignals = useMemo<SystemSignal[]>(() => {
     const signals: SystemSignal[] = [];
-    const currentYear = new Date().getFullYear();
 
     if (hvacPrediction?.lifespan?.years_remaining_p50) {
       const years = hvacPrediction.lifespan.years_remaining_p50;
@@ -123,70 +223,51 @@ export function MiddleColumn({
       });
     }
 
-    capitalTimeline?.systems.forEach(sys => {
-      if (signals.some(s => s.key === sys.systemId)) return;
-      const years = sys.replacementWindow.likelyYear - currentYear;
-      if (years > 0) {
+    // Add signals from baseline systems
+    baselineSystems.forEach(sys => {
+      if (signals.some(s => s.key === sys.key)) return;
+      if (sys.monthsRemaining !== undefined) {
+        const years = sys.monthsRemaining / 12;
         signals.push({ 
-          key: sys.systemId,
-          displayName: sys.systemLabel,
-          risk: years <= 3 ? 'HIGH' : years <= 7 ? 'MODERATE' : 'LOW',
-          confidence: 0.5,
-          monthsToPlanning: years * 12,
+          key: sys.key,
+          displayName: sys.displayName,
+          risk: years <= 1 ? 'HIGH' : years <= 5 ? 'MODERATE' : 'LOW',
+          confidence: sys.confidence,
+          monthsToPlanning: sys.monthsRemaining,
         });
       }
     });
 
     return signals;
-  }, [hvacPrediction, capitalTimeline]);
+  }, [hvacPrediction, baselineSystems]);
 
-  // Derive baseline systems for ChatConsole
-  const baselineSystems = useMemo<BaselineSystem[]>(() => {
-    const currentYear = new Date().getFullYear();
-    
-    return capitalTimeline?.systems.map(sys => {
-      const expectedEnd = sys.replacementWindow.likelyYear;
-      const yearsRemaining = expectedEnd - currentYear;
-      const monthsRemaining = yearsRemaining * 12;
-      const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
-                               sys.dataQuality === 'medium' ? 0.5 : 0.3;
-      
-      let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
-      
-      if (confidenceValue < DATA_GAP_CONFIDENCE) {
-        state = 'data_gap';
-      } else if (monthsRemaining < 12 && systemSignals.some(s => s.key === sys.systemId && s.risk === 'HIGH')) {
-        state = 'elevated';
-      } else if (monthsRemaining < PLANNING_MONTHS) {
-        state = 'planning_window';
-      }
-      
-      return {
-        key: sys.systemId,
-        displayName: sys.systemLabel,
-        state,
-        confidence: confidenceValue,
-        monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
-      };
-    }) ?? [];
-  }, [capitalTimeline, systemSignals]);
-
-  // Extract yearBuilt from capitalTimeline for home context
-  // (Houses provide context; systems carry risk)
+  // Extract yearBuilt - prefer prop, then try to derive from systems
   const yearBuilt = useMemo<number | undefined>(() => {
-    // Try to derive from capitalTimeline property data
-    // For now, use a reasonable fallback based on system ages
-    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
-      const installYears = capitalTimeline.systems
-        .map(s => s.installYear)
-        .filter((y): y is number => y !== undefined && y !== null);
+    if (yearBuiltProp) return yearBuiltProp;
+    
+    // Try to derive from home systems install dates
+    if (homeSystems && homeSystems.length > 0) {
+      const installYears = homeSystems
+        .map(s => s.manufacture_year || (s.install_date ? new Date(s.install_date).getFullYear() : null))
+        .filter((y): y is number => y !== null);
       if (installYears.length > 0) {
         // Assume home is older than oldest system install
         return Math.min(...installYears) - 5;
       }
     }
+    
+    // Fallback to capitalTimeline
+    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
+      const installYears = capitalTimeline.systems
+        .map(s => s.installYear)
+        .filter((y): y is number => y !== undefined && y !== null);
+      if (installYears.length > 0) {
+        return Math.min(...installYears) - 5;
+      }
+    }
+    
     return undefined;
-  }, [capitalTimeline]);
+  }, [yearBuiltProp, homeSystems, capitalTimeline]);
 
   // Derive confidence level
   const confidenceLevel = useMemo<'Unknown' | 'Early' | 'Moderate' | 'High'>(() => {
