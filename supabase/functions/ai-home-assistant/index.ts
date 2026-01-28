@@ -206,10 +206,21 @@ serve(async (req) => {
       advisorState = 'ENGAGED',
       confidence = 0.5,
       risk = 'LOW',
-      focusSystem
+      focusSystem,
+      // Epistemic coherence fields (NEW)
+      baselineSource,         // 'inferred' | 'partial' | 'confirmed'
+      visibleBaseline,        // Array of systems shown in UI
     } = await req.json();
     
-    console.log('[ai-home-assistant] Request:', { message, propertyId, advisorState, confidence, risk });
+    console.log('[ai-home-assistant] Request:', { 
+      message, 
+      propertyId, 
+      advisorState, 
+      confidence, 
+      risk,
+      baselineSource,
+      visibleBaselineCount: visibleBaseline?.length ?? 0,
+    });
 
     // Get property context
     const propertyContext = await getPropertyContext(supabase, propertyId);
@@ -224,7 +235,9 @@ serve(async (req) => {
       propertyContext, 
       conversationHistory,
       copyProfile,
-      focusSystem
+      focusSystem,
+      baselineSource,
+      visibleBaseline
     );
     
     return new Response(JSON.stringify(response), {
@@ -278,9 +291,11 @@ async function generateAIResponse(
   context: any, 
   history: any[] = [],
   copyProfile: CopyStyleProfile | null,
-  focusSystem?: string
+  focusSystem?: string,
+  baselineSource?: string,
+  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>
 ) {
-  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem);
+  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline);
   
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -388,7 +403,13 @@ async function generateAIResponse(
   };
 }
 
-function createSystemPrompt(context: any, copyProfile: CopyStyleProfile | null, focusSystem?: string): string {
+function createSystemPrompt(
+  context: any, 
+  copyProfile: CopyStyleProfile | null, 
+  focusSystem?: string,
+  baselineSource?: string,
+  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>
+): string {
   const systemInfo = context.systems.map((s: any) => 
     `- ${s.system_name}: ${s.current_condition || 'Good'} (installed ${s.installed_year || 'unknown'})`
   ).join('\n');
@@ -415,6 +436,43 @@ PERSONALITY:
 - Situational intelligence, not "ask me anything"
 `;
 
+  // ============================================
+  // EPISTEMIC COHERENCE INJECTION (Critical Fix)
+  // ============================================
+  
+  if (baselineSource && visibleBaseline && visibleBaseline.length > 0) {
+    prompt += `
+BASELINE CONTEXT (CRITICAL - DO NOT VIOLATE):
+`;
+    
+    if (baselineSource === 'inferred') {
+      prompt += `The user sees an INFERRED baseline above the chat. It is derived from property age, location, and typical system lifespans.
+
+HARD RULES:
+- Do NOT say you have "no information" or a "blank slate"
+- Do NOT say you "don't know anything" about the home
+- ACKNOWLEDGE what is visible above
+- Label estimates as estimates, inferred data as inferred
+`;
+    } else if (baselineSource === 'partial') {
+      prompt += `The user sees a PARTIALLY confirmed baseline. Some systems are confirmed by user input or permits, some are inferred.
+Reference both confirmed data (with confidence) and inferred estimates (with appropriate hedging).
+`;
+    } else if (baselineSource === 'confirmed') {
+      prompt += `The baseline is CONFIRMED through user input, permits, or photo analysis.
+You can be specific about timelines and provide confident recommendations.
+`;
+    }
+
+    prompt += `
+VISIBLE SYSTEMS (user can see these above the chat):
+${visibleBaseline.map(s => `- ${s.displayName}: ${formatStateForPrompt(s.state)}`).join('\n')}
+
+NEVER contradict what is visible. If systems appear above, acknowledge them.
+When referring to these systems, say "what you're seeing above" or "the baseline shows".
+`;
+  }
+
   // Apply copy governance if profile exists
   if (copyProfile) {
     prompt += `
@@ -435,6 +493,21 @@ When the user asks "what if" questions, shift to analytical mode and compare tra
 When the user commits to a path, shift to procedural mode and help them execute.`;
 
   return prompt;
+}
+
+function formatStateForPrompt(state: string): string {
+  switch (state) {
+    case 'stable':
+      return 'Stable (within expected range)';
+    case 'planning_window':
+      return 'Planning Window (approaching replacement timeframe)';
+    case 'elevated':
+      return 'Elevated (warrants attention)';
+    case 'data_gap':
+      return 'Data Gap (low confidence)';
+    default:
+      return state;
+  }
 }
 
 async function handleFunctionCall(functionCall: any, context: any): Promise<string> {

@@ -226,3 +226,85 @@ export function canExpandAdvice(
 ): boolean {
   return confidenceLevel === 'Moderate' || confidenceLevel === 'High';
 }
+
+// ============================================
+// Baseline Coherence Rules (Epistemic Coherence)
+// ============================================
+
+/**
+ * CANONICAL RULE:
+ * "Chat responses may not contradict visible baseline artifacts.
+ *  If baseline exists, chat must reference it — even if only to qualify it."
+ * 
+ * These rules prevent the chat from saying things like "blank slate"
+ * when the user can clearly see systems in the baseline above.
+ */
+export const BASELINE_COHERENCE_RULES = {
+  /** 
+   * NEVER say these phrases when baseline is visible.
+   * These contradict visible evidence and destroy trust.
+   */
+  bannedWhenBaselineVisible: [
+    'blank slate',
+    'no systems',
+    'no information',
+    "don't have any",
+    "can't tell anything",
+    "i don't know anything",
+    "no data",
+    "nothing registered",
+    "empty profile",
+  ],
+  
+  /** 
+   * Required references when baseline source is 'inferred'.
+   * The chat must acknowledge inference, not claim certainty or absence.
+   */
+  requiredReferencesForInferred: [
+    'inferred',
+    'estimated',
+    'based on what I can observe',
+    'typical for this region',
+    'based on the age of the home',
+    'what you\'re seeing above',
+  ],
+  
+  /**
+   * When baseline is visible, the chat MUST:
+   * 1. Reference "what you're seeing above" or similar
+   * 2. Label inferred data as inferred
+   * 3. Never deny the existence of visible systems
+   */
+  coherenceRequirements: {
+    mustReferenceVisibleBaseline: true,
+    mustLabelInferenceAsInference: true,
+    mustNeverDenyVisibleEvidence: true,
+  },
+} as const;
+
+/**
+ * Check if a response text violates baseline coherence rules.
+ * Used for validation/logging, not runtime blocking.
+ */
+export function checkBaselineCoherence(
+  responseText: string,
+  hasVisibleBaseline: boolean
+): { isCoherent: boolean; violations: string[] } {
+  if (!hasVisibleBaseline) {
+    return { isCoherent: true, violations: [] };
+  }
+  
+  const violations: string[] = [];
+  const lowerText = responseText.toLowerCase();
+  
+  for (const banned of BASELINE_COHERENCE_RULES.bannedWhenBaselineVisible) {
+    if (lowerText.includes(banned.toLowerCase())) {
+      violations.push(`Contains banned phrase: "${banned}"`);
+    }
+  }
+  
+  return {
+    isCoherent: violations.length === 0,
+    violations,
+  };
+}
