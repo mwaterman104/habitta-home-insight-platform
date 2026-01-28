@@ -238,6 +238,7 @@ export function MiddleColumn({
         lifecyclePosition={lifecyclePosition}
         confidenceLevel={confidenceLevel}
         chatMode={chatMode}
+        baselineSource={baselineSystems.length > 0 ? 'inferred' : 'inferred'}
         systemsWithLowConfidence={systemsWithLowConfidence}
         onWhyClick={handleWhyClick}
         onSystemUpdated={onSystemUpdated}

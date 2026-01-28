@@ -3,11 +3,16 @@
  * 
  * Derives chat mode from system data context.
  * Implements the deterministic chat state machine.
+ * 
+ * EPISTEMIC COHERENCE:
+ * This hook now accepts inferred baseline systems to compute
+ * baseline provenance and ensure chat never contradicts visible evidence.
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import type { ChatMode, ChatModeContext, SystemModeInput, SystemState } from '@/types/chatMode';
+import type { ChatMode, ChatModeContext, SystemModeInput, SystemState, BaselineSource, VisibleBaselineSystem } from '@/types/chatMode';
 import type { HomeSystem } from '@/hooks/useHomeSystems';
+import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
 import { 
   deriveSystemConfidence, 
   computeCriticalSystemsCoverage,
@@ -16,11 +21,18 @@ import {
 } from '@/lib/systemConfidenceDerivation';
 import { determineChatMode, shouldEnterInterpretive, isBaselineComplete } from '@/lib/chatModeSelector';
 import { DATA_GAP_CONFIDENCE, ELEVATED_MONTHS, PLANNING_MONTHS } from '@/types/systemState';
+import { 
+  computeBaselineSource, 
+  mapToVisibleBaseline,
+  clampConfidenceToSource,
+} from '@/lib/baselineProvenance';
 
 interface UseChatModeOptions {
   homeId?: string;
   systems: HomeSystem[];
   permitsFound: boolean;
+  /** NEW: Inferred systems from capital timeline for epistemic coherence */
+  inferredSystems?: BaselineSystem[];
 }
 
 interface UseChatModeReturn extends ChatModeContext {
@@ -41,11 +53,12 @@ interface UseChatModeReturn extends ChatModeContext {
  *   homeId: userHome?.id,
  *   systems: homeSystems,
  *   permitsFound: permitInsights.length > 0,
+ *   inferredSystems: baselineSystems, // From capital timeline
  * });
  * ```
  */
 export function useChatMode(options: UseChatModeOptions): UseChatModeReturn {
-  const { systems, permitsFound } = options;
+  const { systems, permitsFound, inferredSystems = [] } = options;
   
   // Track interpretive mode state (ephemeral)
   const [isInInterpretive, setIsInInterpretive] = useState(false);
@@ -95,17 +108,43 @@ export function useChatMode(options: UseChatModeOptions): UseChatModeReturn {
     // 9. Check if baseline is complete
     const baselineComplete = isBaselineComplete(modeInput);
 
+    // ============================================
+    // Epistemic Coherence: Compute Baseline Provenance
+    // ============================================
+    
+    // 10. Compute baseline source (inferred vs confirmed)
+    const confirmedSystemsForProvenance = systems.map(s => ({
+      system_key: s.system_key,
+      data_sources: s.data_sources,
+      confidence_score: s.confidence_score,
+    }));
+    
+    const baselineSource = computeBaselineSource(
+      confirmedSystemsForProvenance,
+      inferredSystems
+    );
+    
+    // 11. Map inferred systems to visible format for AI context
+    const visibleBaselineSystems: VisibleBaselineSystem[] = mapToVisibleBaseline(inferredSystems);
+    
+    // 12. Clamp confidence to source maximum
+    // (Inferred baseline caps at Moderate)
+    const clampedConfidence = clampConfidenceToSource(systemConfidence, baselineSource);
+
     return {
       mode,
-      systemConfidence,
+      systemConfidence: clampedConfidence,
       permitsFound,
       criticalSystemsCoverage,
       userConfirmedSystems,
       systemsWithLowConfidence,
       previousMode: isInInterpretive ? previousMode : undefined,
       isBaselineComplete: baselineComplete,
+      // Epistemic coherence fields
+      baselineSource,
+      visibleBaselineSystems,
     };
-  }, [systems, permitsFound, isInInterpretive, previousMode]);
+  }, [systems, permitsFound, isInInterpretive, previousMode, inferredSystems]);
 
   // Enter interpretive mode
   const enterInterpretive = useCallback(() => {
@@ -192,5 +231,8 @@ export function getDefaultChatModeContext(): ChatModeContext {
     userConfirmedSystems: false,
     systemsWithLowConfidence: [],
     isBaselineComplete: false,
+    // Epistemic coherence defaults
+    baselineSource: 'inferred',
+    visibleBaselineSystems: [],
   };
 }

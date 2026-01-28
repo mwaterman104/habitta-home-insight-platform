@@ -10,7 +10,38 @@
  * 3. Planning Window Advisory
  * 4. Interpretive (user-triggered, ephemeral)
  * 5. Silent Steward (default)
+ * 
+ * EPISTEMIC COHERENCE RULE:
+ * "Habitta may infer, but it must label inference as inference.
+ *  It may not deny its own visible evidence."
  */
+
+// ============================================
+// Baseline Source (Epistemic Coherence)
+// ============================================
+
+/**
+ * Baseline source determines how the baseline data was obtained.
+ * This is critical for chat coherence - the chat must acknowledge
+ * visible evidence and label inferred data appropriately.
+ * 
+ * - 'inferred': Derived from property age, region, typical lifespans
+ *               (max confidence: Moderate)
+ * - 'partial': Some systems confirmed, some inferred
+ *               (max confidence: Moderate)
+ * - 'confirmed': User-verified or permit-verified data
+ *               (max confidence: High)
+ */
+export type BaselineSource = 'inferred' | 'partial' | 'confirmed';
+
+/**
+ * A system visible in the baseline for chat context
+ */
+export interface VisibleBaselineSystem {
+  key: string;
+  displayName: string;
+  state: SystemState;
+}
 
 /**
  * The five chat modes representing epistemic readiness.
@@ -75,8 +106,10 @@ export type SystemState =
 /**
  * Confidence levels for system data.
  * Used for chat mode determination.
+ * 
+ * Note: 'Unknown' is used when no baseline data exists at all.
  */
-export type SystemConfidence = 'Early' | 'Moderate' | 'High';
+export type SystemConfidence = 'Unknown' | 'Early' | 'Moderate' | 'High';
 
 /**
  * Critical systems that must be tracked for baseline coverage.
@@ -113,6 +146,16 @@ export interface ChatModeContext {
   
   /** Whether baseline is complete (gates advisory modes) */
   isBaselineComplete: boolean;
+  
+  // ============================================
+  // Epistemic Coherence Fields (New)
+  // ============================================
+  
+  /** Source of baseline data (inferred, partial, or confirmed) */
+  baselineSource: BaselineSource;
+  
+  /** Systems visible in the baseline for chat reference */
+  visibleBaselineSystems: VisibleBaselineSystem[];
 }
 
 /**

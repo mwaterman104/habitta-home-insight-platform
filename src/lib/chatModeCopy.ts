@@ -15,9 +15,20 @@
  * LANGUAGE GOVERNANCE (Strict):
  * Allowed verbs: watching, monitoring, noting, preparing, confirming
  * Banned verbs: fix, solve, optimize, upgrade, save you money
+ * 
+ * EPISTEMIC COHERENCE RULE:
+ * "Habitta never denies its own evidence.
+ *  When knowledge is inferred, it is labeled — not dismissed."
+ * 
+ * NEVER say when baseline is visible:
+ * - "blank slate"
+ * - "no systems"
+ * - "no information"
+ * - "don't have any"
+ * - "can't tell anything"
  */
 
-import type { ChatMode } from '@/types/chatMode';
+import type { ChatMode, BaselineSource } from '@/types/chatMode';
 
 // ============================================
 // Opening Messages (system-initiated, once per session)
@@ -32,11 +43,7 @@ export interface OpeningMessageConfig {
 const OPENING_MESSAGES: Record<ChatMode, OpeningMessageConfig | null> = {
   silent_steward: null, // Never speaks first (silence is authority)
   
-  baseline_establishment: {
-    primary: "I'm still forming the baseline I'll use to monitor this home.",
-    secondary: "I can share what I'm able to observe so far, or we can establish a clearer baseline together.",
-    clarifier: "Photos of equipment labels are usually enough.",
-  },
+  baseline_establishment: null, // Now handled by provenance-aware messages below
   
   interpretive: null, // Context-dependent, not pre-defined
   
@@ -50,6 +57,52 @@ const OPENING_MESSAGES: Record<ChatMode, OpeningMessageConfig | null> = {
     secondary: "Let me explain what I'm observing.",
   },
 };
+
+// ============================================
+// Provenance-Aware Opening Messages (Epistemic Coherence)
+// ============================================
+
+/**
+ * Opening messages based on baseline source.
+ * These replace the old baseline_establishment messages to ensure
+ * the chat never contradicts visible baseline evidence.
+ */
+export const BASELINE_PROVENANCE_MESSAGES: Record<BaselineSource, OpeningMessageConfig> = {
+  inferred: {
+    primary: "What you're seeing above is an inferred baseline.",
+    secondary: "It's based on the age of the home, location, and typical system lifespans in this region.",
+    clarifier: "I haven't yet confirmed the specific details of your systems — but it's enough to begin monitoring and identify planning windows.",
+  },
+  
+  partial: {
+    primary: "I have confirmed details for some of your systems.",
+    secondary: "The remaining systems are estimated based on typical patterns.",
+    clarifier: "We can improve accuracy for any system with a photo or quick confirmation.",
+  },
+  
+  confirmed: {
+    primary: "Your baseline is well-established.",
+    secondary: "I can provide specific guidance based on confirmed system data.",
+  },
+};
+
+/**
+ * Get provenance-aware opening message for baseline modes
+ */
+export function getProvenanceOpeningMessage(source: BaselineSource): OpeningMessageConfig {
+  return BASELINE_PROVENANCE_MESSAGES[source];
+}
+
+/**
+ * Format provenance opening message to string
+ */
+export function formatProvenanceOpeningMessage(source: BaselineSource): string {
+  const config = BASELINE_PROVENANCE_MESSAGES[source];
+  const parts = [config.primary];
+  if (config.secondary) parts.push(config.secondary);
+  if (config.clarifier) parts.push(config.clarifier);
+  return parts.join('\n\n');
+}
 
 export function getOpeningMessage(mode: ChatMode): OpeningMessageConfig | null {
   return OPENING_MESSAGES[mode];

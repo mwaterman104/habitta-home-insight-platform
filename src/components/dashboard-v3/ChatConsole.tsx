@@ -27,7 +27,7 @@ import { ChatPhotoUpload } from "./ChatPhotoUpload";
 import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { TodaysFocus } from "@/lib/todaysFocusCopy";
-import type { ChatMode } from "@/types/chatMode";
+import type { ChatMode, BaselineSource } from "@/types/chatMode";
 import { getChatPlaceholder } from "@/lib/todaysFocusCopy";
 import { 
   getPromptsForMode, 
@@ -37,6 +37,7 @@ import {
   wasBaselineOpeningShown,
   markBaselineOpeningShown,
   getModeBehavior,
+  formatProvenanceOpeningMessage,
 } from "@/lib/chatModeCopy";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
@@ -54,6 +55,8 @@ interface ChatConsoleProps {
   confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
   /** Chat mode for epistemic-aware behavior */
   chatMode?: ChatMode;
+  /** Baseline source for provenance-aware messaging */
+  baselineSource?: BaselineSource;
   /** System keys with low confidence (for baseline mode) */
   systemsWithLowConfidence?: string[];
   /** Callback when "Why?" is clicked on a system */
@@ -82,6 +85,7 @@ export function ChatConsole({
   lifecyclePosition,
   confidenceLevel,
   chatMode = 'silent_steward',
+  baselineSource = 'inferred',
   systemsWithLowConfidence = [],
   onWhyClick,
   onSystemUpdated,
@@ -100,12 +104,22 @@ export function ChatConsole({
   const [hasShownOpening, setHasShownOpening] = useState(false);
   const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => wasBaselineOpeningShown());
 
+  // Map baselineSystems to VisibleBaselineSystem format for AI context
+  const visibleBaseline = baselineSystems.map(s => ({
+    key: s.key,
+    displayName: s.displayName,
+    state: s.state,
+  }));
+
   const { messages, loading, sendMessage, injectMessage } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
     risk,
     focusSystem: focusContext?.systemKey,
     chatMode,
+    // Epistemic coherence: pass baseline context to AI
+    baselineSource,
+    visibleBaseline,
   });
 
   // Get mode-specific behavior
@@ -121,22 +135,22 @@ export function ChatConsole({
     }
   }, [hasAgentMessage, openingMessage, hasShownOpening, injectMessage]);
 
-  // Inject baseline opening message (once per session) when in baseline mode
+  // Inject baseline opening message using provenance-aware copy
+  // This ensures we never say "blank slate" when baseline is visible
   useEffect(() => {
     if (
       chatMode === 'baseline_establishment' && 
       messages.length === 0 && 
-      !hasShownBaselineOpening
+      !hasShownBaselineOpening &&
+      baselineSystems.length > 0 // Only show if we have visible baseline
     ) {
-      const baselineConfig = getOpeningMessage(chatMode);
-      if (baselineConfig) {
-        const formattedMessage = formatOpeningMessage(baselineConfig);
-        injectMessage(formattedMessage);
-        markBaselineOpeningShown();
-        setHasShownBaselineOpening(true);
-      }
+      // Use provenance-aware message instead of generic baseline message
+      const formattedMessage = formatProvenanceOpeningMessage(baselineSource);
+      injectMessage(formattedMessage);
+      markBaselineOpeningShown();
+      setHasShownBaselineOpening(true);
     }
-  }, [chatMode, messages.length, hasShownBaselineOpening, injectMessage]);
+  }, [chatMode, messages.length, hasShownBaselineOpening, injectMessage, baselineSource, baselineSystems.length]);
 
   // Reset opening state when focus changes
   useEffect(() => {
