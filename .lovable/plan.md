@@ -1,264 +1,310 @@
 
-# Epistemic Coherence — Inferred vs Confirmed Baseline Fix
 
-## The Problem
+# Semantic Tightening — QA-Approved Final Implementation
 
-The screenshot shows a critical architectural violation:
+**Status: Approved with 5 Required Adjustments**
 
-**Baseline Surface shows:**
-- Lifecycle: Mid-Life
-- Confidence: Moderate  
-- HVAC: Stable
-- Roof: Stable
-- Water Heater: Planning Window
-
-**Chat says:**
-> "Right now, my view of your home is a blank slate. I don't have any systems, appliances, or maintenance history registered in your profile yet."
-
-These statements cannot coexist. The chat is denying evidence that is visibly rendered above it.
+This plan incorporates all corrections from executive QA review.
 
 ---
 
-## Root Cause
+## Summary of Required Adjustments
 
-The architecture has **two parallel epistemic layers** that are not aligned:
-
-| Layer | Source | What It Shows | Used By |
-|-------|--------|---------------|---------|
-| **Inferred Baseline** | `capital-timeline` edge function | Systems derived from property age, region, typical lifespans | `MiddleColumn` → `BaselineSurface` |
-| **Confirmed Baseline** | `homeSystems` hook (DB query) | Only user-confirmed or permit-verified systems | `useChatMode` → Chat Mode → AI Prompt |
-
-The AI assistant is told "No systems registered" because `system_lifecycles` table is empty — but the visual baseline is populated from heuristic inference.
-
----
-
-## Canonical Rule Being Violated
-
-> "Habitta may infer, but it must label inference as inference.
-> It may not deny its own visible evidence."
-
-The chat must acknowledge the inferred baseline, not deny it.
+| # | Issue | Original Proposal | QA Correction |
+|---|-------|-------------------|---------------|
+| 1 | Timeline axis labels | "New / Mid-life / End of typical lifespan" | **"Within range / Approaching limit / Beyond range"** |
+| 2 | Dashboard state label | "Later Stage" | **"Approaching typical limit"** |
+| 3 | Confidence explainer | "Based on typical patterns" | **"Based on home age and regional patterns"** |
+| 4 | Evidence-anchored copy | Generic ("is in good shape") | **Must include one concrete basis** |
+| 5 | Empty chat state | "Ask me about any of them" | **Remove prompting language entirely** |
 
 ---
 
-## Solution Architecture
+## File Changes
 
-### 1. Add Baseline Provenance State
+### 1. BaselineSurface.tsx — Timeline Labels & State Label
 
-Create a new concept: **Baseline Source**
+**File:** `src/components/dashboard-v3/BaselineSurface.tsx`
+
+#### Change 1a: Timeline Axis Labels (lines 69-73)
 
 ```typescript
-// src/types/chatMode.ts (addition)
-export type BaselineSource = 'inferred' | 'partial' | 'confirmed';
+// BEFORE (ambiguous lifecycle stages)
+<span>Early</span>
+<span>Mid</span>
+<span>Late</span>
 
-export interface ChatModeContext {
-  // ... existing fields
-  
-  /** Source of the baseline data */
-  baselineSource: BaselineSource;
-  
-  /** Systems visible in the baseline (for chat reference) */
-  visibleBaselineSystems: Array<{
-    key: string;
-    displayName: string;
-    state: SystemState;
-  }>;
+// AFTER (condition-based language)
+<span className="text-[10px]">Within range</span>
+<span className="text-[10px]">Approaching limit</span>
+<span className="text-[10px]">Beyond range</span>
+```
+
+#### Change 1b: State Label for Planning Window (line 219)
+
+```typescript
+// BEFORE (banned term)
+case 'planning_window':
+  return 'Planning Window';
+
+// AFTER (neutral, descriptive)
+case 'planning_window':
+  return 'Approaching typical limit';
+```
+
+#### Change 1c: Add Confidence Explainer (lines 52-55)
+
+Add helper function:
+```typescript
+function getConfidenceExplainer(level: 'Unknown' | 'Early' | 'Moderate' | 'High'): string {
+  switch (level) {
+    case 'High': return 'Verified by records';
+    case 'Moderate': return 'Based on home age and regional patterns';  // QA-corrected
+    case 'Early': return 'Limited data';
+    default: return 'Still learning';
+  }
 }
 ```
 
-**Rules:**
-- `'inferred'` → Confidence max = Moderate, chat must acknowledge inference
-- `'partial'` → Some confirmed, some inferred
-- `'confirmed'` → User-verified, confidence can reach High
-
-### 2. Pass Inferred Baseline to Chat Mode
-
-Update `useChatMode` to accept the visual baseline as context:
-
+Modify render:
 ```typescript
-// src/hooks/useChatMode.ts
-interface UseChatModeOptions {
-  homeId?: string;
-  systems: HomeSystem[];           // Confirmed systems
-  permitsFound: boolean;
-  inferredSystems?: BaselineSystem[];  // NEW: From capital timeline
-}
+// BEFORE
+<span>Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span></span>
+
+// AFTER
+<div className="flex flex-col items-end">
+  <span className="text-sm">
+    Confidence: <span className="text-foreground font-medium">{confidenceLevel}</span>
+  </span>
+  <span className="text-[10px] text-muted-foreground/70">
+    {getConfidenceExplainer(confidenceLevel)}
+  </span>
+</div>
 ```
 
-This allows the chat mode selector to know what's visible.
+---
 
-### 3. Compute Baseline Source
+### 2. chatModeCopy.ts — Empty State & Evidence Anchoring
 
-Add logic to determine baseline source:
+**File:** `src/lib/chatModeCopy.ts`
+
+#### Change 2a: Empty State Message (line 164)
 
 ```typescript
-// src/lib/baselineProvenance.ts (NEW)
+// BEFORE (prompting language)
+baseline_establishment: "I'm monitoring with limited system history. I can share what I'm able to observe so far.",
 
-export function computeBaselineSource(
-  confirmedSystems: HomeSystem[],
-  inferredSystems: BaselineSystem[]
-): BaselineSource {
-  const confirmedCount = confirmedSystems.filter(s => 
-    s.data_sources?.some(d => 
-      d.includes('permit') || d.includes('owner') || d.includes('user')
-    )
-  ).length;
-  
-  if (confirmedCount === 0 && inferredSystems.length > 0) {
-    return 'inferred';
-  }
-  if (confirmedCount > 0 && confirmedCount < inferredSystems.length) {
-    return 'partial';
-  }
-  if (confirmedCount >= inferredSystems.length) {
-    return 'confirmed';
-  }
-  return 'inferred';
-}
+// AFTER (stewardship, no prompting)
+baseline_establishment: "I'm monitoring the systems shown above.",
 ```
 
-### 4. Update Opening Message Copy
-
-Add provenance-aware copy to `chatModeCopy.ts`:
+#### Change 2b: Add Evidence-Anchored Message Helper (new function)
 
 ```typescript
-// src/lib/chatModeCopy.ts
-
-const BASELINE_OPENING_MESSAGES: Record<BaselineSource, OpeningMessageConfig> = {
-  inferred: {
-    primary: "What you're seeing above is an inferred baseline.",
-    secondary: "It's based on the age of the home, location, and typical system lifespans in this region.",
-    clarifier: "I haven't yet confirmed the specific details of your systems — but it's enough to begin monitoring and identify planning windows.",
-  },
-  partial: {
-    primary: "I have confirmed details for some of your systems.",
-    secondary: "The remaining systems are estimated based on typical patterns.",
-    clarifier: "We can improve accuracy for any system with a photo or quick confirmation.",
-  },
-  confirmed: {
-    primary: "Your baseline is well-established.",
-    secondary: "I can provide specific guidance based on confirmed system data.",
-  },
-};
-```
-
-### 5. Add Governance Guardrail
-
-Add hard rule to `chatGovernance.ts`:
-
-```typescript
-// src/lib/chatGovernance.ts
-
 /**
- * Chat responses may not contradict visible baseline artifacts.
- * If baseline exists, chat must reference it — even if only to qualify it.
+ * Generate evidence-anchored chat message
+ * 
+ * RULE: Every evidence-anchored message must include one concrete basis
+ * (age, region, usage, absence of deviation, etc.)
  */
-export const BASELINE_COHERENCE_RULES = {
-  /** Never say these phrases when baseline is visible */
-  bannedWhenBaselineVisible: [
-    'blank slate',
-    'no systems',
-    'no information',
-    "don't have any",
-    "can't tell anything",
+export function getEvidenceAnchoredMessage(
+  systemKey: string,
+  state: 'stable' | 'planning_window' | 'elevated',
+  displayName: string,
+  basis: 'age' | 'region' | 'usage' | 'records' = 'age'
+): string {
+  const basisPhrase = getBasisPhrase(basis);
+  
+  switch (state) {
+    case 'stable':
+      return `Based on what you're seeing above, your ${displayName.toLowerCase()} is within the expected range ${basisPhrase}.`;
+    case 'planning_window':
+      return `The baseline shows your ${displayName.toLowerCase()} approaching typical limits ${basisPhrase}.`;
+    case 'elevated':
+      return `I'm seeing something with your ${displayName.toLowerCase()} that warrants discussion ${basisPhrase}.`;
+  }
+}
+
+function getBasisPhrase(basis: 'age' | 'region' | 'usage' | 'records'): string {
+  switch (basis) {
+    case 'age': return 'for homes of this age';
+    case 'region': return 'for this region';
+    case 'usage': return 'given typical usage patterns';
+    case 'records': return 'based on available records';
+  }
+}
+```
+
+#### Change 2c: Add "Why?" Response Rules (new constant)
+
+```typescript
+/**
+ * "Why?" Response Pattern Rules
+ * 
+ * Structure: Observation → Factors → Clarifier
+ * 
+ * CRITICAL RULE:
+ * "Why?" responses may NOT introduce new recommendations or CTAs.
+ * They explain why the current state exists, not what to do next.
+ * Optional follow-up CTAs must live OUTSIDE the "Why?" explanation.
+ */
+export const WHY_RESPONSE_RULES = {
+  structure: ['observation', 'factors', 'clarifier'],
+  
+  /** What "Why?" responses MUST include */
+  required: [
+    'Reference visible baseline state',
+    'Include at least one concrete factor',
+    'End with clarifier about confidence level',
   ],
   
-  /** Required references when inferred baseline is visible */
-  requiredReferencesForInferred: [
-    'inferred',
-    'estimated',
-    'based on what I can observe',
-    'typical for this region',
+  /** What "Why?" responses may NOT include */
+  banned: [
+    'Recommendations',
+    'CTAs or calls to action',
+    'Next steps',
+    'Suggestions to take action',
   ],
 };
 ```
 
-### 6. Pass Baseline Context to AI Prompt
+---
 
-Update the edge function to receive baseline provenance:
+### 3. lifespanFormatters.ts — Tense-Aware Formatting
+
+**File:** `src/utils/lifespanFormatters.ts`
+
+#### Change 3a: Update formatReplacementWindow (lines 14-23)
 
 ```typescript
-// supabase/functions/ai-home-assistant/index.ts
+/**
+ * Format replacement window from p10/p90 dates
+ * Now includes tense awareness for past-lifespan systems
+ * 
+ * @example "2036–2042" (future)
+ * @example "Past typical lifespan (2020–2024)" (past)
+ */
+export function formatReplacementWindow(
+  p10: string, 
+  p90: string,
+  options?: { includeTenseAwareness?: boolean }
+): string {
+  const y10 = new Date(p10).getFullYear();
+  const y90 = new Date(p90).getFullYear();
+  const currentYear = new Date().getFullYear();
+  
+  // Tense awareness: if current year is past the typical lifespan
+  if (options?.includeTenseAwareness && currentYear > y90) {
+    return `Past typical lifespan (${y10}–${y90})`;
+  }
+  
+  if (y10 === y90) {
+    return `~${y10}`;
+  }
+  
+  return `${y10}–${y90}`;
+}
+```
 
-// In the request body, add:
-const {
-  // ... existing fields
-  baselineSource,          // 'inferred' | 'partial' | 'confirmed'
-  visibleBaseline,         // Array of systems shown in UI
-  chatMode,               // Already exists
-} = await req.json();
+---
 
-// In createSystemPrompt(), add baseline context:
-let prompt = `...
+### 4. ai-home-assistant Edge Function — Evidence Anchoring Rule
 
-BASELINE CONTEXT:
-${baselineSource === 'inferred' 
-  ? 'The user sees an INFERRED baseline above. Do NOT say you have no information. Acknowledge what is visible.' 
-  : baselineSource === 'partial'
-  ? 'The user sees a PARTIALLY confirmed baseline. Some systems are inferred, some confirmed.'
-  : 'The baseline is CONFIRMED. You can be specific about timelines and recommendations.'}
+**File:** `supabase/functions/ai-home-assistant/index.ts`
 
-VISIBLE SYSTEMS (user can see these):
-${visibleBaseline?.map(s => `- ${s.displayName}: ${s.state}`).join('\n') || 'None'}
+#### Change 4a: Add Evidence Anchoring Rule to System Prompt (after line 473)
 
-HARD RULE: Never contradict what is visible. If systems appear above, acknowledge them.
+```typescript
+prompt += `
+EVIDENCE ANCHORING RULE (MANDATORY):
+When discussing any system, you MUST:
+1. Reference "what you're seeing above" or "the baseline shows"
+2. Include at least one concrete basis (age, region, usage, records)
+
+CORRECT EXAMPLES:
+- "Based on what you're seeing above, your water heater is approaching typical limits for homes of this age."
+- "The baseline shows your HVAC operating within expected range for this region."
+- "Looking at the timeline above, your roof has significant service life remaining given typical usage patterns."
+
+INCORRECT (too generic):
+- "Your HVAC is in good shape." (no basis)
+- "I can see that your water heater needs attention." (implies you see something user doesn't)
+- "The system shows..." (which system?)
+
+NEVER SAY:
+- "I can see that..." (implies hidden knowledge)
+- "According to my data..." (impersonal, removes agency)
+- "The system shows..." (ambiguous reference)
+`;
+```
+
+#### Change 4b: Add "Why?" Response Constraint (new section)
+
+```typescript
+prompt += `
+"WHY?" RESPONSE CONSTRAINT:
+If the user asks "Why?" about a system state:
+1. EXPLAIN the observation (what the baseline shows)
+2. LIST factors (age, region, patterns, records)
+3. CLARIFY confidence level
+
+DO NOT include in "Why?" responses:
+- Recommendations
+- CTAs or action items
+- Suggestions for next steps
+
+Guidance belongs in follow-up messages, not explanations.
 `;
 ```
 
 ---
 
-## Files to Change
+## Complete File Summary
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/types/chatMode.ts` | **Modify** | Add `BaselineSource` type and context fields |
-| `src/lib/baselineProvenance.ts` | **Create** | Baseline source computation logic |
-| `src/hooks/useChatMode.ts` | **Modify** | Accept inferred baseline, compute source |
-| `src/lib/chatModeCopy.ts` | **Modify** | Add provenance-aware opening messages |
-| `src/lib/chatGovernance.ts` | **Modify** | Add coherence guardrails |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | **Modify** | Pass inferred baseline to chat mode |
-| `src/components/dashboard-v3/ChatConsole.tsx` | **Modify** | Use provenance-aware opening |
-| `supabase/functions/ai-home-assistant/index.ts` | **Modify** | Accept and use baseline context in prompt |
-
----
-
-## Implementation Order
-
-1. **Add types** — `BaselineSource` to `chatMode.ts`
-2. **Create provenance logic** — `baselineProvenance.ts`
-3. **Update useChatMode** — Accept inferred systems, compute source
-4. **Update MiddleColumn** — Pass inferred baseline to chat mode hook
-5. **Update chatModeCopy** — Add provenance-aware messages
-6. **Update ChatConsole** — Use correct opening based on source
-7. **Update edge function** — Add baseline context to AI prompt
-8. **Add governance guardrails** — Prevent future contradictions
-
----
-
-## Correct Chat Behavior After Fix
-
-**When baselineSource = 'inferred':**
-> "What you're seeing above is an inferred baseline based on the age of the home, its location, and typical system lifespans in this region.
-> 
-> I haven't yet confirmed the specific details of your systems, which limits how precise I can be — but it's enough to begin monitoring and identifying planning windows."
-
-**When user asks "What can you tell from what you see now?":**
-> "Based on what's visible above, your water heater is entering a planning window. This is an estimate based on typical lifespans — if you'd like, we can confirm the details to improve accuracy."
+| File | Lines Changed | Changes |
+|------|---------------|---------|
+| `src/components/dashboard-v3/BaselineSurface.tsx` | 52-55, 69-73, 214-224 | Confidence explainer, axis labels, state label |
+| `src/lib/chatModeCopy.ts` | 164, new functions | Empty state, evidence anchoring, "Why?" rules |
+| `src/utils/lifespanFormatters.ts` | 14-23 | Tense-aware window formatting |
+| `supabase/functions/ai-home-assistant/index.ts` | After 473 | Evidence anchoring rule, "Why?" constraint |
 
 ---
 
 ## Verification Checklist
 
-- [ ] Chat never says "blank slate" when baseline is visible
-- [ ] Chat acknowledges "inferred" when baseline source is inferred
-- [ ] Opening message references "what you're seeing above"
-- [ ] AI prompt includes visible baseline context
-- [ ] Chat mode selector knows about inferred systems
-- [ ] Baseline source is computed correctly (inferred/partial/confirmed)
+### Axis Labels (Adjustment 1)
+- [ ] Timeline shows "Within range / Approaching limit / Beyond range"
+- [ ] No lifecycle stage language (New/Mid-life/Late)
+
+### State Label (Adjustment 2)
+- [ ] Dashboard shows "Approaching typical limit" instead of "Planning Window"
+- [ ] Consistent with axis label language
+
+### Confidence Explainer (Adjustment 3)
+- [ ] Shows "Based on home age and regional patterns" for Moderate
+- [ ] Grounds confidence in specific evidence
+
+### Evidence-Anchored Copy (Adjustment 4)
+- [ ] Every chat message includes concrete basis
+- [ ] AI prompt enforces basis requirement
+- [ ] No generic statements like "is in good shape"
+
+### Empty State (Adjustment 5)
+- [ ] Says "I'm monitoring the systems shown above."
+- [ ] No prompting language
+- [ ] No "Ask me" or questions
+
+### "Why?" Responses
+- [ ] Follow Observation → Factors → Clarifier pattern
+- [ ] Never include recommendations or CTAs
+- [ ] Explanation only — guidance is separate
 
 ---
 
-## Canonical Lock Statement
+## Semantic Lock Statement
 
-> "Habitta never denies its own evidence.
-> When knowledge is inferred, it is labeled — not dismissed."
+> "Every visible element explains itself.
+> The chat references what the user sees with concrete basis.
+> The user is never asked to interpret.
+> 'Why?' explains — it does not advise."
+
