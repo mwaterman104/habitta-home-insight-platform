@@ -7,6 +7,19 @@
  * - Messages appear BELOW the baseline
  * - No standalone cards, no dashboard narration outside chat
  * 
+ * BASELINE VS ARTIFACT DISTINCTION:
+ * 
+ * BaselineSurface (the summary strip):
+ * - MAY appear based on chat state/mode
+ * - Is part of the chat context UI
+ * - Is NOT an artifact
+ * 
+ * Aging Profile Artifact:
+ * - NEVER appears at page load
+ * - ONLY appears after justification message
+ * - Is rendered inline with messages
+ * - Is dismissible and ephemeral
+ * 
  * Visual Grammar:
  * - Pure white background
  * - Rounded corners on all four sides
@@ -24,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
+import { InlineArtifact } from "./artifacts/InlineArtifact";
 import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
 import { track } from "@/lib/analytics";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -307,25 +321,43 @@ export function ChatConsole({
               </div>
             )}
             
-            {/* Messages - no bubbles with tails */}
+            {/* Messages - no bubbles with tails, with inline artifacts */}
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  "flex gap-3",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
+              <div key={message.id}>
+                {/* Message bubble */}
                 <div
                   className={cn(
-                    "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/40 text-foreground"
+                    "flex gap-3",
+                    message.role === "user" ? "justify-end" : "justify-start"
                   )}
                 >
-                  {message.content}
+                  <div
+                    className={cn(
+                      "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/40 text-foreground"
+                    )}
+                  >
+                    {message.content}
+                  </div>
                 </div>
+                
+                {/* Attached artifact (if chat earned it) */}
+                {message.attachedArtifact && (
+                  <InlineArtifact
+                    artifact={message.attachedArtifact}
+                    anchorMessageId={message.id}
+                    onCollapse={(id) => {
+                      // Track artifact collapse
+                      track('artifact_collapsed', { artifact_id: id }, { surface: 'chat' });
+                    }}
+                    onDismiss={(id) => {
+                      // Track artifact dismiss
+                      track('artifact_dismissed', { artifact_id: id }, { surface: 'chat' });
+                    }}
+                  />
+                )}
               </div>
             ))}
             

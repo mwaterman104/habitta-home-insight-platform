@@ -1,15 +1,26 @@
+/**
+ * AI Home Assistant Hook
+ * 
+ * ARTIFACT BEHAVIORAL CONTRACT:
+ * Messages may have attached artifacts (only if chat earned it).
+ * Artifacts are coupled to specific messages via anchorMessageId.
+ */
+
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { AdvisorState, RiskLevel } from '@/types/advisorState';
 import type { ChatMode, BaselineSource, VisibleBaselineSystem } from '@/types/chatMode';
+import type { ChatArtifact } from '@/types/chatArtifact';
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
   functionCall?: any;
   suggestions?: string[];
+  /** Attached artifact (only if chat earned it) */
+  attachedArtifact?: ChatArtifact;
 }
 
 interface AssistantResponse {
@@ -125,12 +136,13 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
   };
 
   // Inject an assistant message (for opening messages from advisor state)
-  const injectMessage = useCallback((content: string) => {
+  const injectMessage = useCallback((content: string, attachedArtifact?: ChatArtifact) => {
     const message: ChatMessage = {
       id: `assistant-opening-${Date.now()}`,
       role: 'assistant',
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      attachedArtifact,
     };
     setMessages(prev => {
       // Don't inject if already present
@@ -138,6 +150,11 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
       return [...prev, message];
     });
   }, []);
+
+  // Inject a message with an attached artifact
+  const injectMessageWithArtifact = useCallback((content: string, artifact: ChatArtifact) => {
+    injectMessage(content, artifact);
+  }, [injectMessage]);
 
   const clearConversation = () => {
     setMessages([]);
@@ -155,6 +172,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     sendMessage,
     sendSuggestion,
     clearConversation,
-    injectMessage
+    injectMessage,
+    injectMessageWithArtifact,
   };
 };

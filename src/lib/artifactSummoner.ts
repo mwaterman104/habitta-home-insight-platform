@@ -1,6 +1,11 @@
 /**
  * Artifact Summoning Rules
  * 
+ * ARTIFACT BEHAVIORAL CONTRACT:
+ * 1. "This artifact does not explain itself. The chat explains why it exists."
+ * 2. "The artifact proves the chat earned the right to speak."
+ * 3. "It doesn't live anywhere. It was brought here."
+ * 
  * CANONICAL DOCTRINE:
  * Artifacts may only be summoned if:
  * - A chat message is being emitted
@@ -15,10 +20,89 @@
  * ARTIFACT LIFETIME RULE:
  * When the conversation context changes (new system, new mode),
  * prior artifacts should collapse automatically.
+ * 
+ * SESSION GUARD RULE:
+ * An artifact may only be summoned ONCE per system per session
+ * unless the user explicitly asks again.
  */
 
 import type { ChatArtifact, ArtifactType } from '@/types/chatArtifact';
 import type { ChatMode } from '@/types/chatMode';
+import type { SystemAgingProfileData } from '@/components/dashboard-v3/artifacts/SystemAgingProfileArtifact';
+
+// ============================================
+// Session Storage Keys for Guard Rules
+// ============================================
+
+const ARTIFACT_SHOWN_PREFIX = 'habitta_artifact_shown_';
+const AGING_PROFILE_KEY = 'habitta_artifact_shown_aging_profile';
+
+/**
+ * Check if an artifact was already shown for a specific system this session.
+ * Prevents re-summoning spam per Risk 1 fix.
+ */
+export function hasShownArtifactForSystemThisSession(systemKey: string): boolean {
+  try {
+    return sessionStorage.getItem(`${ARTIFACT_SHOWN_PREFIX}${systemKey}`) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark that an artifact was shown for a specific system this session.
+ */
+export function markArtifactShownForSystem(systemKey: string): void {
+  try {
+    sessionStorage.setItem(`${ARTIFACT_SHOWN_PREFIX}${systemKey}`, 'true');
+  } catch {
+    // Silent failure
+  }
+}
+
+/**
+ * Check if the aging profile artifact was already shown this session.
+ * Aging profile is multi-system, so uses a special key.
+ */
+export function hasShownAgingProfileThisSession(): boolean {
+  try {
+    return sessionStorage.getItem(AGING_PROFILE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark that the aging profile artifact was shown this session.
+ */
+export function markAgingProfileShown(): void {
+  try {
+    sessionStorage.setItem(AGING_PROFILE_KEY, 'true');
+  } catch {
+    // Silent failure
+  }
+}
+
+/**
+ * Clear all artifact session guards (for testing/reset).
+ */
+export function clearArtifactSessionGuards(): void {
+  try {
+    // Remove all keys with our prefix
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith(ARTIFACT_SHOWN_PREFIX) || key === AGING_PROFILE_KEY) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Silent failure
+  }
+}
+
+// ============================================
+// Artifact Context & Summoning
+// ============================================
 
 export interface ArtifactContext {
   chatMode: ChatMode;
@@ -109,6 +193,16 @@ export function createArtifact(
     data,
     collapsed: false,
   };
+}
+
+/**
+ * Create a system aging profile artifact
+ */
+export function createAgingProfileArtifact(
+  anchorMessageId: string,
+  data: SystemAgingProfileData
+): ChatArtifact {
+  return createArtifact('system_aging_profile', anchorMessageId, data as unknown as Record<string, unknown>);
 }
 
 /**
