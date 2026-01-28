@@ -161,7 +161,7 @@ export function getPromptsForMode(mode: ChatMode): string[] {
 
 const EMPTY_STATE_MESSAGES: Record<ChatMode, string> = {
   silent_steward: "All systems stable. What would you like to understand about your home?",
-  baseline_establishment: "I'm monitoring with limited system history. I can share what I'm able to observe so far.",
+  baseline_establishment: "I'm monitoring the systems shown above.",
   interpretive: "What would you like me to explain?",
   planning_window_advisory: "I can help you think through your options.",
   elevated_attention: "I'm seeing something worth discussing. Ask me about it.",
@@ -170,6 +170,81 @@ const EMPTY_STATE_MESSAGES: Record<ChatMode, string> = {
 export function getEmptyStateForMode(mode: ChatMode): string {
   return EMPTY_STATE_MESSAGES[mode] || EMPTY_STATE_MESSAGES.silent_steward;
 }
+
+// ============================================
+// Evidence-Anchored Messages
+// ============================================
+
+type EvidenceBasis = 'age' | 'region' | 'usage' | 'records';
+
+/**
+ * Get basis phrase for evidence anchoring
+ */
+function getBasisPhrase(basis: EvidenceBasis): string {
+  switch (basis) {
+    case 'age': return 'for homes of this age';
+    case 'region': return 'for this region';
+    case 'usage': return 'given typical usage patterns';
+    case 'records': return 'based on available records';
+  }
+}
+
+/**
+ * Generate evidence-anchored chat message
+ * 
+ * RULE: Every evidence-anchored message must include one concrete basis
+ * (age, region, usage, absence of deviation, etc.)
+ */
+export function getEvidenceAnchoredMessage(
+  systemKey: string,
+  state: 'stable' | 'planning_window' | 'elevated',
+  displayName: string,
+  basis: EvidenceBasis = 'age'
+): string {
+  const basisPhrase = getBasisPhrase(basis);
+  
+  switch (state) {
+    case 'stable':
+      return `Based on what you're seeing above, your ${displayName.toLowerCase()} is within the expected range ${basisPhrase}.`;
+    case 'planning_window':
+      return `The baseline shows your ${displayName.toLowerCase()} approaching typical limits ${basisPhrase}.`;
+    case 'elevated':
+      return `I'm seeing something with your ${displayName.toLowerCase()} that warrants discussion ${basisPhrase}.`;
+  }
+}
+
+// ============================================
+// "Why?" Response Rules
+// ============================================
+
+/**
+ * "Why?" Response Pattern Rules
+ * 
+ * Structure: Observation → Factors → Clarifier
+ * 
+ * CRITICAL RULE:
+ * "Why?" responses may NOT introduce new recommendations or CTAs.
+ * They explain why the current state exists, not what to do next.
+ * Optional follow-up CTAs must live OUTSIDE the "Why?" explanation.
+ */
+export const WHY_RESPONSE_RULES = {
+  structure: ['observation', 'factors', 'clarifier'] as const,
+  
+  /** What "Why?" responses MUST include */
+  required: [
+    'Reference visible baseline state',
+    'Include at least one concrete factor',
+    'End with clarifier about confidence level',
+  ] as const,
+  
+  /** What "Why?" responses may NOT include */
+  banned: [
+    'Recommendations',
+    'CTAs or calls to action',
+    'Next steps',
+    'Suggestions to take action',
+  ] as const,
+};
 
 // ============================================
 // Session Storage Keys

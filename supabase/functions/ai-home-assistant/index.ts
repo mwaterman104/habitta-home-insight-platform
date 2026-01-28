@@ -470,6 +470,39 @@ ${visibleBaseline.map(s => `- ${s.displayName}: ${formatStateForPrompt(s.state)}
 
 NEVER contradict what is visible. If systems appear above, acknowledge them.
 When referring to these systems, say "what you're seeing above" or "the baseline shows".
+
+EVIDENCE ANCHORING RULE (MANDATORY):
+When discussing any system, you MUST:
+1. Reference "what you're seeing above" or "the baseline shows"
+2. Include at least one concrete basis (age, region, usage, records)
+
+CORRECT EXAMPLES:
+- "Based on what you're seeing above, your water heater is approaching typical limits for homes of this age."
+- "The baseline shows your HVAC operating within expected range for this region."
+- "Looking at the timeline above, your roof has significant service life remaining given typical usage patterns."
+
+INCORRECT (too generic):
+- "Your HVAC is in good shape." (no basis)
+- "I can see that your water heater needs attention." (implies you see something user doesn't)
+- "The system shows..." (which system?)
+
+NEVER SAY:
+- "I can see that..." (implies hidden knowledge)
+- "According to my data..." (impersonal, removes agency)
+- "The system shows..." (ambiguous reference)
+
+"WHY?" RESPONSE CONSTRAINT:
+If the user asks "Why?" about a system state:
+1. EXPLAIN the observation (what the baseline shows)
+2. LIST factors (age, region, patterns, records)
+3. CLARIFY confidence level
+
+DO NOT include in "Why?" responses:
+- Recommendations
+- CTAs or action items
+- Suggestions for next steps
+
+Guidance belongs in follow-up messages, not explanations.
 `;
   }
 
