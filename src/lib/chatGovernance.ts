@@ -206,3 +206,23 @@ export function clearAllPlanningAcknowledgments(): void {
     // Silent failure
   }
 }
+
+// ============================================
+// Authority Fallback Rule
+// ============================================
+
+/**
+ * Authority Fallback Rule
+ * 
+ * If confidence drops below Moderate, no new artifacts 
+ * or service options may be summoned.
+ * 
+ * This ensures:
+ * - Weak baselines do not get over-explained
+ * - Trust is rebuilt before advice expands
+ */
+export function canExpandAdvice(
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High'
+): boolean {
+  return confidenceLevel === 'Moderate' || confidenceLevel === 'High';
+}
