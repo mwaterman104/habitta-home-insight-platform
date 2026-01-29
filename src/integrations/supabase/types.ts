@@ -491,6 +491,80 @@ export type Database = {
           },
         ]
       }
+      decision_events: {
+        Row: {
+          assumptions_json: Json
+          contractor_selected_id: string | null
+          created_at: string | null
+          decision_type: string
+          defer_until: string | null
+          home_id: string | null
+          id: string
+          intervention_id: string | null
+          next_review_at: string | null
+          system_id: string | null
+          user_id: string | null
+          user_notes: string | null
+        }
+        Insert: {
+          assumptions_json: Json
+          contractor_selected_id?: string | null
+          created_at?: string | null
+          decision_type: string
+          defer_until?: string | null
+          home_id?: string | null
+          id?: string
+          intervention_id?: string | null
+          next_review_at?: string | null
+          system_id?: string | null
+          user_id?: string | null
+          user_notes?: string | null
+        }
+        Update: {
+          assumptions_json?: Json
+          contractor_selected_id?: string | null
+          created_at?: string | null
+          decision_type?: string
+          defer_until?: string | null
+          home_id?: string | null
+          id?: string
+          intervention_id?: string | null
+          next_review_at?: string | null
+          system_id?: string | null
+          user_id?: string | null
+          user_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+          {
+            foreignKeyName: "decision_events_intervention_id_fkey"
+            columns: ["intervention_id"]
+            isOneToOne: false
+            referencedRelation: "interventions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_events_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "home_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diagnoses: {
         Row: {
           ai_diagnosis: string | null
@@ -1527,12 +1601,14 @@ export type Database = {
       }
       home_systems: {
         Row: {
+          baseline_strength: number | null
           brand: string | null
           capacity_rating: string | null
           confidence_score: number | null
           confidence_scores: Json | null
           created_at: string | null
           data_sources: string[] | null
+          estimated_impact_cost: Json | null
           expected_lifespan_years: number | null
           field_provenance: Json | null
           fuel_type: string | null
@@ -1540,7 +1616,14 @@ export type Database = {
           id: string
           images: Json | null
           install_date: string | null
+          installation_verified: boolean | null
+          intervention_score: number | null
+          intervention_score_calculated_at: string | null
+          last_decision_at: string | null
+          last_decision_type: string | null
           last_service_date: string | null
+          last_state_change: string | null
+          last_state_change_at: string | null
           last_updated_at: string | null
           location_detail: string | null
           manufacture_date: string | null
@@ -1548,6 +1631,7 @@ export type Database = {
           model: string | null
           notes: string | null
           purchase_date: string | null
+          risk_outlook_12mo: number | null
           serial: string | null
           source: Json | null
           status: string | null
@@ -1555,12 +1639,14 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          baseline_strength?: number | null
           brand?: string | null
           capacity_rating?: string | null
           confidence_score?: number | null
           confidence_scores?: Json | null
           created_at?: string | null
           data_sources?: string[] | null
+          estimated_impact_cost?: Json | null
           expected_lifespan_years?: number | null
           field_provenance?: Json | null
           fuel_type?: string | null
@@ -1568,7 +1654,14 @@ export type Database = {
           id?: string
           images?: Json | null
           install_date?: string | null
+          installation_verified?: boolean | null
+          intervention_score?: number | null
+          intervention_score_calculated_at?: string | null
+          last_decision_at?: string | null
+          last_decision_type?: string | null
           last_service_date?: string | null
+          last_state_change?: string | null
+          last_state_change_at?: string | null
           last_updated_at?: string | null
           location_detail?: string | null
           manufacture_date?: string | null
@@ -1576,6 +1669,7 @@ export type Database = {
           model?: string | null
           notes?: string | null
           purchase_date?: string | null
+          risk_outlook_12mo?: number | null
           serial?: string | null
           source?: Json | null
           status?: string | null
@@ -1583,12 +1677,14 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          baseline_strength?: number | null
           brand?: string | null
           capacity_rating?: string | null
           confidence_score?: number | null
           confidence_scores?: Json | null
           created_at?: string | null
           data_sources?: string[] | null
+          estimated_impact_cost?: Json | null
           expected_lifespan_years?: number | null
           field_provenance?: Json | null
           fuel_type?: string | null
@@ -1596,7 +1692,14 @@ export type Database = {
           id?: string
           images?: Json | null
           install_date?: string | null
+          installation_verified?: boolean | null
+          intervention_score?: number | null
+          intervention_score_calculated_at?: string | null
+          last_decision_at?: string | null
+          last_decision_type?: string | null
           last_service_date?: string | null
+          last_state_change?: string | null
+          last_state_change_at?: string | null
           last_updated_at?: string | null
           location_detail?: string | null
           manufacture_date?: string | null
@@ -1604,6 +1707,7 @@ export type Database = {
           model?: string | null
           notes?: string | null
           purchase_date?: string | null
+          risk_outlook_12mo?: number | null
           serial?: string | null
           source?: Json | null
           status?: string | null
@@ -1641,6 +1745,7 @@ export type Database = {
           geo_source: string | null
           geo_updated_at: string | null
           id: string
+          intervention_threshold: number
           latitude: number | null
           longitude: number | null
           photo_url: string | null
@@ -1669,6 +1774,7 @@ export type Database = {
           geo_source?: string | null
           geo_updated_at?: string | null
           id?: string
+          intervention_threshold?: number
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
@@ -1697,6 +1803,7 @@ export type Database = {
           geo_source?: string | null
           geo_updated_at?: string | null
           id?: string
+          intervention_threshold?: number
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
@@ -1800,6 +1907,103 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      interventions: {
+        Row: {
+          baseline_strength_snapshot: number
+          closed_at: string | null
+          closed_reason: string | null
+          comparable_homes_count: number | null
+          cooldown_until: string | null
+          created_at: string | null
+          data_sources: Json | null
+          home_id: string | null
+          id: string
+          intervention_score: number
+          intervention_threshold_used: number
+          last_viewed_at: string | null
+          message_order: string[]
+          messages: Json
+          opened_at: string
+          risk_outlook_snapshot: number
+          system_id: string | null
+          trigger_reason: string
+          updated_at: string | null
+          urgency_factors_snapshot: Json | null
+          urgency_premium_snapshot: number | null
+          user_id: string | null
+        }
+        Insert: {
+          baseline_strength_snapshot: number
+          closed_at?: string | null
+          closed_reason?: string | null
+          comparable_homes_count?: number | null
+          cooldown_until?: string | null
+          created_at?: string | null
+          data_sources?: Json | null
+          home_id?: string | null
+          id?: string
+          intervention_score: number
+          intervention_threshold_used: number
+          last_viewed_at?: string | null
+          message_order?: string[]
+          messages?: Json
+          opened_at?: string
+          risk_outlook_snapshot: number
+          system_id?: string | null
+          trigger_reason: string
+          updated_at?: string | null
+          urgency_factors_snapshot?: Json | null
+          urgency_premium_snapshot?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          baseline_strength_snapshot?: number
+          closed_at?: string | null
+          closed_reason?: string | null
+          comparable_homes_count?: number | null
+          cooldown_until?: string | null
+          created_at?: string | null
+          data_sources?: Json | null
+          home_id?: string | null
+          id?: string
+          intervention_score?: number
+          intervention_threshold_used?: number
+          last_viewed_at?: string | null
+          message_order?: string[]
+          messages?: Json
+          opened_at?: string
+          risk_outlook_snapshot?: number
+          system_id?: string | null
+          trigger_reason?: string
+          updated_at?: string | null
+          urgency_factors_snapshot?: Json | null
+          urgency_premium_snapshot?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interventions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interventions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+          {
+            foreignKeyName: "interventions_system_id_fkey"
+            columns: ["system_id"]
+            isOneToOne: false
+            referencedRelation: "home_systems"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       labels: {
         Row: {
@@ -3248,6 +3452,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      risk_contexts: {
+        Row: {
+          climate_zone: string
+          created_at: string | null
+          freeze_warning: boolean | null
+          heat_wave: boolean | null
+          hurricane_season: boolean | null
+          id: string
+          peak_season_hvac: boolean | null
+          peak_season_roofing: boolean | null
+          state: string
+          valid_from: string
+          valid_until: string
+        }
+        Insert: {
+          climate_zone: string
+          created_at?: string | null
+          freeze_warning?: boolean | null
+          heat_wave?: boolean | null
+          hurricane_season?: boolean | null
+          id?: string
+          peak_season_hvac?: boolean | null
+          peak_season_roofing?: boolean | null
+          state: string
+          valid_from: string
+          valid_until: string
+        }
+        Update: {
+          climate_zone?: string
+          created_at?: string | null
+          freeze_warning?: boolean | null
+          heat_wave?: boolean | null
+          hurricane_season?: boolean | null
+          id?: string
+          peak_season_hvac?: boolean | null
+          peak_season_roofing?: boolean | null
+          state?: string
+          valid_from?: string
+          valid_until?: string
+        }
+        Relationships: []
       }
       seasonal_experiences: {
         Row: {

@@ -526,14 +526,14 @@ PLANNING SESSION BEHAVIORAL CONTRACT:
 
 ## Verification Checklist
 
-- [ ] All formulas tested with edge cases
-- [ ] Intervention threshold stored per home
-- [ ] Urgency premium derived, not stored
-- [ ] Closed vs no-action semantics enforced
-- [ ] System state resets after replacement
+- [x] Intervention threshold stored per home
+- [x] Urgency premium derived, not stored
+- [x] Closed vs no-action semantics enforced
+- [x] System state resets after replacement
 - [ ] Session persistence tested (leave/return)
 - [ ] 24hr timeout job configured
 - [ ] Rate limiting prevents spam
+- [ ] All formulas tested with edge cases
 - [ ] Transaction rollback prevents lying
 - [ ] Defer path respects user choice
 - [ ] Quiet dashboard shows "Review available" not "Alert"
