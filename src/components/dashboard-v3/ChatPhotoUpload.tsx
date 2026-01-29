@@ -109,13 +109,22 @@ export function ChatPhotoUpload({ homeId, onPhotoReady, disabled }: ChatPhotoUpl
   };
 
   // Handle QR photo received
-  const handleQRPhotoReceived = (photoUrl: string) => {
-    setShowQRModal(false);
+  // CRITICAL FIX: Call callback BEFORE closing modal to prevent unmount race condition
+  const handleQRPhotoReceived = async (photoUrl: string) => {
+    console.log('[ChatPhotoUpload] Photo received via QR, triggering analysis:', photoUrl.substring(0, 50));
+    
+    // Show toast immediately (user feedback)
     toast({
       title: "Photo received",
       description: "Analyzing your photo...",
     });
+    
+    // CRITICAL: Call the callback BEFORE closing modal
+    // This ensures the async chain starts before component unmounts
     onPhotoReady(photoUrl);
+    
+    // Then close modal (after callback initiated)
+    setShowQRModal(false);
   };
 
   // Handle fallback upload (desktop user wants to upload directly)

@@ -350,9 +350,16 @@ export function ChatConsole({
 
   /**
    * Handle photo analysis through System Update Contract
+   * 
+   * CANONICAL CONSISTENCY CONTRACT:
+   * Photo analysis now syncs to both home_systems AND systems tables,
+   * ensuring the AI and capital timeline see the updated data.
    */
   const handlePhotoAnalysis = useCallback(async (photoUrl: string) => {
+    console.log('[ChatConsole] handlePhotoAnalysis called with URL:', photoUrl.substring(0, 50));
+    
     try {
+      console.log('[ChatConsole] Calling analyze-device-photo edge function...');
       const response = await fetch(
         `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
         {
@@ -365,19 +372,25 @@ export function ChatConsole({
         }
       );
 
+      console.log('[ChatConsole] analyze-device-photo response status:', response.status);
+
       if (!response.ok) {
-        console.error('Photo analysis failed:', response.status);
+        console.error('[ChatConsole] Photo analysis failed:', response.status);
         sendMessage(buildAnalysisFailedSummary());
         return;
       }
 
       const data = await response.json();
+      console.log('[ChatConsole] analyze-device-photo response:', JSON.stringify(data).substring(0, 200));
       const analysis = data?.analysis;
 
       if (!analysis || !analysis.system_type) {
+        console.log('[ChatConsole] No system detected in photo');
         sendMessage(buildNoSystemDetectedSummary());
         return;
       }
+
+      console.log('[ChatConsole] Detected system:', analysis.system_type, 'brand:', analysis.brand);
 
       const result = await applySystemUpdate({
         home_id: propertyId,
@@ -399,13 +412,19 @@ export function ChatConsole({
         image_url: photoUrl,
       });
 
+      console.log('[ChatConsole] applySystemUpdate result:', {
+        applied: result.update_applied,
+        shouldRecompute: result.should_trigger_mode_recompute,
+        fieldsUpdated: result.fields_updated,
+      });
+
       sendMessage(result.chat_summary);
 
       if (result.update_applied && result.should_trigger_mode_recompute) {
         onSystemUpdated?.();
       }
     } catch (err) {
-      console.error('Photo analysis error:', err);
+      console.error('[ChatConsole] Photo analysis error:', err);
       sendMessage(buildAnalysisFailedSummary());
     }
   }, [propertyId, sendMessage, onSystemUpdated]);

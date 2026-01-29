@@ -19,6 +19,22 @@
  * 3. photo_analysis
  * 4. permit_record
  * 5. inferred
+ * 
+ * CANONICAL CONSISTENCY CONTRACT (IMMUTABLE):
+ * 
+ * Any data that can influence:
+ * - System state (stable/watch/plan)
+ * - Capital timeline projections
+ * - AI chat responses
+ * - Confidence scoring
+ * 
+ * MUST land in the canonical `systems` table, not just `home_systems`.
+ * 
+ * The `systems` table is the single source of truth for:
+ * - capital-timeline edge function
+ * - intelligence-engine edge function
+ * - AI home assistant context
+ * - Dashboard baseline derivation
  */
 
 export { applySystemUpdate } from './applySystemUpdate';
@@ -29,3 +45,10 @@ export { calculateSystemConfidence, isMeaningfulDelta, MINIMUM_MEANINGFUL_DELTA,
 export { buildChatSummary, buildAnalysisFailedSummary, buildNoSystemDetectedSummary } from './chatSummaryBuilder';
 export { resolveFieldUpdates } from './resolveFieldUpdates';
 export type { ResolveInput, ResolveResult } from './resolveFieldUpdates';
+export { 
+  syncToCanonicalSystems, 
+  isCanonicalSystem, 
+  normalizeSystemKey,
+  CANONICAL_SYSTEMS,
+} from './syncToCanonicalSystems';
+export type { SyncToCanonicalInput, SyncToCanonicalResult } from './syncToCanonicalSystems';
