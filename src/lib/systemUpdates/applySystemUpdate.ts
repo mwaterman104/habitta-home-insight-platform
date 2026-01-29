@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { resolveFieldUpdates } from './resolveFieldUpdates';
 import { buildChatSummary } from './chatSummaryBuilder';
 import { isMeaningfulDelta } from './confidenceCalculator';
+import { syncToCanonicalSystems, isCanonicalSystem, normalizeSystemKey } from './syncToCanonicalSystems';
 import type { SystemUpdateSource, FieldProvenance } from './authority';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -185,6 +186,24 @@ export async function applySystemUpdate(
       .single();
 
     systemId = inserted?.id;
+  }
+
+  // 6. CANONICAL CONSISTENCY CONTRACT: Sync to 'systems' table for core systems
+  // This ensures AI, capital-timeline, and intelligence-engine see the update
+  const normalizedKey = normalizeSystemKey(system_key);
+  if (isCanonicalSystem(system_key)) {
+    console.log('[applySystemUpdate] Syncing to canonical systems table:', normalizedKey);
+    
+    const syncResult = await syncToCanonicalSystems({
+      home_id,
+      kind: normalizedKey as 'hvac' | 'roof' | 'water_heater',
+      manufactureYear: extracted_data.manufacture_year,
+      confidence: resolved.newConfidence,
+      source,
+      photoUrl: image_url,
+    });
+    
+    console.log('[applySystemUpdate] Canonical sync result:', syncResult);
   }
 
   // Medium #4 Fix: Only trigger mode recompute if delta is meaningful
