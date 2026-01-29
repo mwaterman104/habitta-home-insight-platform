@@ -15,14 +15,16 @@
 
 /** Allowed artifact types — each must justify its existence */
 export type ArtifactType = 
-  | 'system_timeline'         // Mini lifecycle visual for one system
-  | 'system_aging_profile'    // Multi-system aging comparison (chat-summoned evidence)
-  | 'comparison_table'        // Side-by-side options
-  | 'cost_range'              // Budget ranges (Planning mode ONLY)
-  | 'confidence_explainer'    // Why we believe what we believe
-  | 'local_context';          // Climate/environmental data
+  | 'system_timeline'              // Mini lifecycle visual for one system
+  | 'system_aging_profile'         // Multi-system aging comparison (chat-summoned evidence)
+  | 'system_validation_evidence'   // Single-system evidence for "Why?" responses (Validation First)
+  | 'comparison_table'             // Side-by-side options
+  | 'cost_range'                   // Budget ranges (Planning mode ONLY)
+  | 'confidence_explainer'         // Why we believe what we believe
+  | 'local_context';               // Climate/environmental data
   // NOTE: No generic "chart" or "dashboard" types allowed
   // NOTE: system_aging_profile is NEVER shown on page load - only when chat earns it
+  // NOTE: system_validation_evidence is ALWAYS injected BEFORE AI response (Validation First Doctrine)
 
 export interface ChatArtifact {
   id: string;

@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import type { ChatArtifact } from '@/types/chatArtifact';
 import { SystemTimelineArtifact } from './SystemTimelineArtifact';
 import { SystemAgingProfileArtifact } from './SystemAgingProfileArtifact';
+import { SystemValidationEvidenceArtifact, type SystemValidationEvidenceData } from './SystemValidationEvidenceArtifact';
 
 interface InlineArtifactProps {
   artifact: ChatArtifact;
@@ -92,6 +93,7 @@ function getArtifactLabel(type: string): string {
   switch (type) {
     case 'system_timeline': return 'System Timeline';
     case 'system_aging_profile': return 'System Aging Profile';
+    case 'system_validation_evidence': return 'System Evidence';
     case 'comparison_table': return 'Options';
     case 'cost_range': return 'Cost Range';
     case 'confidence_explainer': return 'Confidence Detail';
@@ -102,6 +104,8 @@ function getArtifactLabel(type: string): string {
 
 function renderArtifactContent(artifact: ChatArtifact) {
   switch (artifact.type) {
+    case 'system_validation_evidence':
+      return <SystemValidationEvidenceArtifact data={artifact.data as unknown as SystemValidationEvidenceData} />;
     case 'system_aging_profile':
       return <SystemAgingProfileArtifact data={artifact.data as any} />;
     case 'system_timeline':
