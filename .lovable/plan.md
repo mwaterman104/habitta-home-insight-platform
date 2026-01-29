@@ -1,331 +1,326 @@
 
+# Canonical Consistency Contract: Photo Data → Systems Table
 
-# Validation First: System Evidence Before Explanation
+## Problem Summary
 
-## Overview
+When a user uploads a photo of a system label (e.g., water heater), the extracted data:
+1. Is analyzed via `analyze-device-photo` edge function
+2. Is saved to `home_systems` table (rich fields: brand, model, serial)
+3. **Never reaches the canonical `systems` table** (which the AI, capital timeline, and intelligence engine read)
 
-This implementation creates the "Validation First" chat pattern where visual evidence (lifespan timeline, age context, optional cost comparison) appears **before** AI text when a user asks "Why?" about a flagged system.
+Additionally, there's evidence that the photo analysis edge function isn't consistently triggering — the database shows a recent upload with `status: uploaded` but **zero logs** from `analyze-device-photo`.
 
-**Core Principle (Immutable):** Show the gauge before you explain the diagnosis.
+**Current State Evidence:**
+- `photo_transfer_sessions`: Photo uploaded at 11:43 today, `status: uploaded`, photo URL exists
+- `analyze-device-photo` logs: **Empty** — function never fired
+- `home_systems` table: No water heater record (only an LG appliance from January 24)
+- `systems` table: Water heater exists with `install_year: 2012`, `install_source: owner_reported`, `confidence: 0.6`
+
+**Result:** The AI is "forgetful" — user provided evidence, but Habitta didn't absorb it.
 
 ---
 
-## Architecture Summary
+## Root Causes
 
-```text
-User clicks "Why?" on Water Heater (WATCH state)
-        │
-        ▼
-┌───────────────────────────────────────────────────────┐
-│ 1. handleWhyClick detects system_validation intent    │
-│ 2. Creates system_validation_evidence artifact        │
-│ 3. Injects artifact message with empty content        │
-│    → Artifact renders immediately                     │
-│ 4. Sends "Why?" question to AI                        │
-│ 5. AI references "what you're seeing above"           │
-└───────────────────────────────────────────────────────┘
+### Issue 1: Photo Analysis Not Triggering
+
+The `QRPhotoSession` polling detects `status: uploaded` and calls `onPhotoReceived`, but somewhere in the callback chain:
+```
+QRPhotoSession.onPhotoReceived → ChatPhotoUpload.handleQRPhotoReceived → ChatConsole.handlePhotoAnalysis → fetch(analyze-device-photo)
+```
+...the analysis never fires. Likely causes:
+- Modal closes before fetch completes
+- Component unmounts during async operation
+- No error handling/retry for dropped callbacks
+
+### Issue 2: `applySystemUpdate` Only Writes to `home_systems`
+
+Even when photo analysis works, the data never syncs to the canonical `systems` table:
+- `applySystemUpdate` writes exclusively to `home_systems`
+- `capital-timeline`, `intelligence-engine`, and AI context read from `systems`
+- **Two tables, zero sync**
+
+---
+
+## Solution Architecture
+
+### Part 1: Fix Photo Analysis Trigger Reliability
+
+**Problem:** Callback chain drops when modal closes.
+
+**Fix:** Add defensive logging and ensure callback completes before modal state change.
+
+```typescript
+// ChatPhotoUpload.tsx - handleQRPhotoReceived
+const handleQRPhotoReceived = async (photoUrl: string) => {
+  console.log('[ChatPhotoUpload] Photo received via QR, triggering analysis:', photoUrl.substring(0, 50));
+  
+  // Show toast immediately (user feedback)
+  toast({
+    title: "Photo received",
+    description: "Analyzing your photo...",
+  });
+  
+  // CRITICAL: Call the callback BEFORE closing modal
+  // This ensures the async chain starts before unmount
+  onPhotoReady(photoUrl);
+  
+  // Then close modal (after callback initiated)
+  setShowQRModal(false);
+};
 ```
 
----
-
-## Files to Create
-
-### 1. `src/components/dashboard-v3/artifacts/SystemValidationEvidenceArtifact.tsx`
-
-New artifact component that renders:
-- **Header**: System name + state label (e.g., "Water Heater — Approaching planning window")
-- **Lifespan Timeline**: Visual OK | WATCH | PLAN segmented scale with position marker
-- **Age Context**: "Age: ~14 years · Typical lifespan: 10-15 years"
-- **Uncertainty Handling**: Muted styling + "Estimated based on regional norms" label when confidence < 0.6
-- **Optional Cost Block**: Only shown when real cost data exists (no placeholders)
-
-**Data Interface:**
+**Add logging to `ChatConsole.handlePhotoAnalysis`:**
 ```typescript
-export interface SystemValidationEvidenceData {
-  systemKey: string;
-  displayName: string;
-  state: 'stable' | 'planning_window' | 'elevated';
-  position: number;        // 0-100 scale
-  ageYears?: number;       // May be undefined if inferred
-  expectedLifespan?: number;
-  monthsRemaining?: number;
-  confidence: number;      // 0-1 for visual treatment
-  baselineSource: 'inferred' | 'partial' | 'confirmed';
-  // Cost data only included if real numbers exist
-  costData?: {
-    plannedLow: number;
-    plannedHigh: number;
-    emergencyLow: number;
-    emergencyHigh: number;
+const handlePhotoAnalysis = useCallback(async (photoUrl: string) => {
+  console.log('[ChatConsole] handlePhotoAnalysis called with URL:', photoUrl.substring(0, 50));
+  // ... rest of function
+```
+
+### Part 2: Dual-Write to Canonical `systems` Table
+
+**Pattern:** When `applySystemUpdate` writes to `home_systems`, also upsert to `systems` for core system types.
+
+**Authority Hierarchy Mapping:**
+| `SystemUpdateSource` | `systems.install_source` | Confidence |
+|---------------------|-------------------------|------------|
+| `photo_analysis`    | `owner_reported`        | 0.6        |
+| `permit_record`     | `permit_verified`       | 0.85       |
+| `user_confirmed`    | `owner_reported`        | 0.7        |
+| `inferred`          | `heuristic`             | 0.3        |
+
+**New File: `src/lib/systemUpdates/syncToCanonicalSystems.ts`**
+
+```typescript
+interface SyncInput {
+  home_id: string;
+  kind: string;
+  manufactureYear?: number;
+  confidence: number;
+  source: SystemUpdateSource;
+  photoUrl?: string;
+}
+
+/**
+ * Sync photo analysis data to canonical 'systems' table.
+ * 
+ * AUTHORITY RULES:
+ * - permit_verified (0.85) > owner_reported (0.60-0.70) > heuristic (0.30)
+ * - Photo evidence CANNOT overwrite permit-verified data
+ * - Photo evidence CAN upgrade heuristic data
+ */
+export async function syncToCanonicalSystems(input: SyncInput): Promise<void> {
+  // ... implementation
+}
+```
+
+### Part 3: Guard Install Year Inference
+
+**Problem:** `manufacture_year` ≠ `install_year`. Units can sit in inventory for 1-3 years.
+
+**Fix:** Introduce inference rules with explicit uncertainty:
+
+```typescript
+interface InferInstallYearResult {
+  year: number | null;
+  isEstimated: boolean;
+  basis: 'serial_decode' | 'manufacture_year' | 'unknown';
+}
+
+function inferInstallYear(manufactureYear?: number, confidence?: number): InferInstallYearResult {
+  if (!manufactureYear) {
+    return { year: null, isEstimated: true, basis: 'unknown' };
+  }
+  
+  // If high confidence (serial decode worked), trust manufacture year
+  if (confidence && confidence >= 0.7) {
+    return { year: manufactureYear, isEstimated: false, basis: 'serial_decode' };
+  }
+  
+  // Otherwise, add 1 year buffer (median inventory time)
+  return { 
+    year: manufactureYear + 1, 
+    isEstimated: true, 
+    basis: 'manufacture_year' 
   };
 }
 ```
 
-**Visual Treatment by Confidence:**
-| Confidence | Border Style | Opacity | Badge |
-|------------|--------------|---------|-------|
-| ≥ 0.7      | Solid        | 100%    | None  |
-| 0.4-0.7    | Dashed       | 85%     | "Estimated" |
-| < 0.4      | Dotted       | 70%     | "Based on regional norms" |
+### Part 4: Make Dual-Write Idempotent
+
+**Problem:** Same photo processed multiple times could inflate confidence.
+
+**Fix:** Add processing hash guard:
+
+```typescript
+// In applySystemUpdate or syncToCanonicalSystems
+const processHash = btoa(`${image_url}:${system_key}`).substring(0, 20);
+
+// Check if already processed
+const { data: existing } = await supabase
+  .from('systems')
+  .select('raw_data')
+  .eq('home_id', home_id)
+  .ilike('kind', kind);
+
+const previousHashes = existing?.raw_data?.processed_photo_hashes || [];
+if (previousHashes.includes(processHash)) {
+  console.log('[syncToCanonical] Skipping duplicate photo processing');
+  return;
+}
+
+// After update, append hash
+await supabase
+  .from('systems')
+  .update({ 
+    raw_data: { 
+      ...existing.raw_data, 
+      processed_photo_hashes: [...previousHashes, processHash] 
+    } 
+  });
+```
 
 ---
 
 ## Files to Modify
 
-### 2. `src/types/chatArtifact.ts`
-
-**Add new artifact type (renamed per feedback):**
-```typescript
-export type ArtifactType = 
-  | 'system_timeline'
-  | 'system_aging_profile'
-  | 'system_validation_evidence'  // NEW: Single-system evidence for "Why?" responses
-  | 'comparison_table'
-  | 'cost_range'
-  | 'confidence_explainer'
-  | 'local_context';
-```
+| File | Changes | Priority |
+|------|---------|----------|
+| `src/components/dashboard-v3/ChatPhotoUpload.tsx` | Reorder callback before modal close, add logging | P0 (blocking) |
+| `src/components/dashboard-v3/ChatConsole.tsx` | Add logging to `handlePhotoAnalysis` | P0 (blocking) |
+| `src/lib/systemUpdates/syncToCanonicalSystems.ts` | **New file**: Dual-write helper | P0 |
+| `src/lib/systemUpdates/applySystemUpdate.ts` | Call `syncToCanonicalSystems` after `home_systems` write | P0 |
+| `src/lib/systemUpdates/authority.ts` | Add source-to-install_source mapping | P1 |
+| `src/lib/systemUpdates/index.ts` | Export new function | P1 |
 
 ---
 
-### 3. `src/lib/artifactSummoner.ts`
+## Technical Specification
 
-**Add helper function:**
+### syncToCanonicalSystems Interface
+
 ```typescript
-import type { SystemValidationEvidenceData } from '@/components/dashboard-v3/artifacts/SystemValidationEvidenceArtifact';
+interface SyncInput {
+  home_id: string;
+  kind: 'hvac' | 'roof' | 'water_heater';  // Core systems only
+  manufactureYear?: number;
+  confidence: number;
+  source: SystemUpdateSource;
+  photoUrl?: string;
+}
 
-/**
- * Create a system validation evidence artifact for "Why?" responses
- * This artifact MUST be injected BEFORE the AI call, not after.
- */
-export function createSystemValidationEvidenceArtifact(
-  anchorMessageId: string,
-  data: SystemValidationEvidenceData
-): ChatArtifact {
-  return createArtifact(
-    'system_validation_evidence',
-    anchorMessageId,
-    data as unknown as Record<string, unknown>,
-    data.systemKey
-  );
+interface SyncResult {
+  synced: boolean;
+  reason?: 'higher_authority_exists' | 'duplicate_photo' | 'synced' | 'created';
+}
+```
+
+### Authority Comparison Logic
+
+```typescript
+const INSTALL_SOURCE_PRIORITY: Record<string, number> = {
+  permit_verified: 4,
+  inspection: 3,
+  owner_reported: 2,
+  heuristic: 1,
+};
+
+function canOverwrite(existing: string | null, incoming: string): boolean {
+  const existingPriority = existing ? INSTALL_SOURCE_PRIORITY[existing] || 0 : 0;
+  const incomingPriority = INSTALL_SOURCE_PRIORITY[incoming] || 0;
+  return incomingPriority >= existingPriority;
 }
 ```
 
 ---
 
-### 4. `src/components/dashboard-v3/artifacts/InlineArtifact.tsx`
+## Database Impact
 
-**Add rendering case:**
-```typescript
-import { SystemValidationEvidenceArtifact } from './SystemValidationEvidenceArtifact';
+When photo analysis succeeds for a core system:
 
-function getArtifactLabel(type: string): string {
-  switch (type) {
-    case 'system_validation_evidence': return 'System Evidence';
-    // ... existing cases
-  }
-}
+1. **`home_systems`** (existing behavior):
+   - Creates/updates record with brand, model, serial, images
+   - Stores field_provenance with authority tracking
 
-function renderArtifactContent(artifact: ChatArtifact) {
-  switch (artifact.type) {
-    case 'system_validation_evidence':
-      return <SystemValidationEvidenceArtifact data={artifact.data as SystemValidationEvidenceData} />;
-    // ... existing cases
-  }
-}
-```
-
----
-
-### 5. `src/components/dashboard-v3/artifacts/index.ts`
-
-**Add export:**
-```typescript
-export { SystemValidationEvidenceArtifact } from './SystemValidationEvidenceArtifact';
-export type { SystemValidationEvidenceData } from './SystemValidationEvidenceArtifact';
-```
-
----
-
-### 6. `src/components/dashboard-v3/ChatConsole.tsx`
-
-**Critical Change: Update `handleWhyClick` to inject evidence BEFORE AI call**
-
-The key architectural change is that evidence injection is **deterministic** (not model-driven). The artifact appears immediately when the user clicks "Why?", then the AI response references it.
-
-```typescript
-// Import at top
-import { createSystemValidationEvidenceArtifact } from '@/lib/artifactSummoner';
-import type { SystemValidationEvidenceData } from './artifacts/SystemValidationEvidenceArtifact';
-
-// In component, update destructuring to include injectMessageWithArtifact
-const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring } = useAIHomeAssistant(...)
-
-// Updated handleWhyClick
-const handleWhyClick = useCallback((systemKey: string) => {
-  const system = baselineSystems.find(s => s.key === systemKey);
-  if (!system) return;
-  
-  track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
-  
-  // 1. Build evidence artifact with real system data
-  const evidenceData: SystemValidationEvidenceData = {
-    systemKey: system.key,
-    displayName: system.displayName,
-    state: system.state,
-    position: calculateTimelinePosition(system), // Helper to derive 0-100 position
-    ageYears: system.ageYears,
-    expectedLifespan: system.expectedLifespan,
-    monthsRemaining: system.monthsRemaining,
-    confidence: system.confidence,
-    baselineSource: baselineSource,
-    // costData: getCostDataForSystem(systemKey), // Only if real data exists
-  };
-  
-  // 2. Create artifact anchored to a placeholder message ID
-  const evidenceMessageId = `evidence-${systemKey}-${Date.now()}`;
-  const artifact = createSystemValidationEvidenceArtifact(evidenceMessageId, evidenceData);
-  
-  // 3. Inject evidence artifact FIRST (empty content - artifact speaks for itself)
-  //    This creates a message that only contains the artifact
-  injectMessageWithArtifact('', artifact);
-  
-  // 4. Then send the question to AI (which will reference "what you're seeing above")
-  const stateLabel = getWhyStateLabel(system.state);
-  sendMessage(`Why is my ${system.displayName.toLowerCase()} showing as "${stateLabel}"?`);
-}, [baselineSystems, sendMessage, injectMessageWithArtifact, baselineSource]);
-
-// Helper function for timeline position
-function calculateTimelinePosition(system: BaselineSystem): number {
-  // Derive position from monthsRemaining and expectedLifespan
-  if (!system.expectedLifespan || system.expectedLifespan === 0) return 50;
-  const lifespanMonths = system.expectedLifespan * 12;
-  const remaining = system.monthsRemaining ?? lifespanMonths * 0.5;
-  const elapsed = lifespanMonths - remaining;
-  return Math.min(100, Math.max(0, (elapsed / lifespanMonths) * 100));
-}
-```
-
-**Handle empty content messages** (artifact-only messages):
-
-In the message rendering section, add handling for empty-content messages that carry artifacts:
-
-```tsx
-{messages.map((message, index) => (
-  <div key={message.id}>
-    {/* Only render bubble if there's content */}
-    {message.content && (
-      <div className={cn("flex gap-3", message.role === "user" ? "justify-end" : "justify-start")}>
-        {/* ... existing bubble code */}
-      </div>
-    )}
-    
-    {/* Attached artifact (if chat earned it) - renders even without content */}
-    {message.attachedArtifact && (
-      <InlineArtifact ... />
-    )}
-  </div>
-))}
-```
-
----
-
-### 7. `supabase/functions/ai-home-assistant/index.ts`
-
-**Update prompt for "Why?" responses and fix placeholder cost logic**
-
-Add to `createSystemPrompt` in the `VISIBLE SYSTEMS` section:
-
-```typescript
-VALIDATION FIRST RULE (CRITICAL):
-When responding to a "Why?" question where a system_validation_evidence artifact has been shown:
-
-1. DO NOT re-explain what the visual already shows (timeline, age, position)
-2. Reference it: "Based on what you're seeing above..."
-3. Focus on REASONS (why this position) and IMPLICATION (what it means)
-4. Structure: Belief → Reasons → Implication → [Optional CTA]
-
-COST IMPACT HONESTY GATE:
-- If cost comparison was shown in the artifact, reference it
-- If NO cost data exists, do NOT claim you "pulled a cost impact analysis"
-- Do NOT use placeholder math (no "approximately 0%")
-- Either provide real regional data or say: "Cost comparisons require more system details."
-```
-
-**Fix `calculate_cost_impact` function** (lines 668-671):
-
-Replace placeholder logic with honesty gate:
-
-```typescript
-case 'calculate_cost_impact':
-  // HONESTY GATE: No placeholder cost math
-  return `Cost comparisons for ${parsedArgs.repair_type} require specific system and regional data. If you'd like, I can help you research typical costs for your area or connect you with local professionals for estimates.`;
-```
-
----
-
-## New Doctrine Rule
-
-Add to `src/lib/artifactSummoner.ts` docstring:
-
-```typescript
-/**
- * VALIDATION FIRST DOCTRINE (IMMUTABLE):
- * Chat may not summarize a system state unless a validating artifact 
- * has been shown in the same interaction.
- * 
- * This prevents:
- * - Future refactors from reintroducing explanation-first behavior
- * - Prompt drift from bypassing evidence requirements
- * - Trust erosion through unsupported claims
- */
-```
-
----
-
-## Intent Detection Foundation
-
-While the PRD mentions full intent detection, for V1 we implement the core pattern tied to:
-1. **Explicit "Why?" clicks** - Primary trigger (already exists)
-2. **Free-text queries** - Leave for V2 (requires NLU classification)
-
-The `handleWhyClick` function handles the explicit path. Future expansion to free-text requires adding a `ChatIntent` enum and classification logic in the AI response handler.
-
----
-
-## Summary of Changes
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/types/chatArtifact.ts` | Modify | Add `system_validation_evidence` type |
-| `src/components/dashboard-v3/artifacts/SystemValidationEvidenceArtifact.tsx` | Create | Visual evidence component |
-| `src/components/dashboard-v3/artifacts/InlineArtifact.tsx` | Modify | Add rendering case |
-| `src/components/dashboard-v3/artifacts/index.ts` | Modify | Export new component |
-| `src/lib/artifactSummoner.ts` | Modify | Add creation helper + doctrine comment |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Modify | Inject artifact BEFORE AI call |
-| `supabase/functions/ai-home-assistant/index.ts` | Modify | Add validation-first prompt rules + fix cost placeholder |
-
----
-
-## Acceptance Criteria
-
-| Criteria | Verification |
-|----------|--------------|
-| AC-1: Visual First | Click "Why?" → Artifact appears before AI text |
-| AC-2: Evidence Accuracy | Artifact shows correct system name, state, position, age |
-| AC-3: Cost Integrity | No cost block if no data; no "0%" placeholders |
-| AC-4: AI Compliance | AI references "what you're seeing above" |
-| AC-5: Uncertainty Handling | Low-confidence systems show muted styling + disclosure |
-| AC-6: No Placeholder Leakage | Search codebase for "0%" - none in cost contexts |
+2. **`systems`** (new behavior):
+   - Updates `install_year` from inferred year (with buffer)
+   - Updates `install_source` to `owner_reported`
+   - Updates `confidence` (respecting authority hierarchy)
+   - Appends photo hash to `raw_data.processed_photo_hashes`
+   - Preserves `permit_verified` data (never overwrites)
 
 ---
 
 ## Testing Checklist
 
-1. Click "Why?" on WATCH system → evidence artifact renders first
-2. Click "Why?" on PLAN system → position near PLAN zone on scale
-3. System with `confidence < 0.5` → uncertainty label shown
-4. System with no cost data → no cost block, AI doesn't claim analysis
-5. AI response references "what you're seeing above"
-6. Navigate away and back → conversation preserved with artifacts
+### Part 1: Photo Analysis Trigger
 
+| Step | Expected |
+|------|----------|
+| Upload photo via mobile direct upload | `analyze-device-photo` logs show function called |
+| Upload photo via QR transfer (desktop) | `analyze-device-photo` logs show function called |
+| Close QR modal while polling | Analysis still completes (callback fired before close) |
+| Check console logs | `[ChatConsole] handlePhotoAnalysis called with URL:` appears |
+
+### Part 2: Dual-Write Sync
+
+| Step | Expected |
+|------|----------|
+| Upload water heater photo | `systems` table updates with new confidence |
+| Upload photo for permit-verified HVAC | `systems` table NOT overwritten (higher authority) |
+| Upload same photo twice | Second upload skipped (idempotent hash check) |
+| Check AI chat context | AI references updated system data |
+
+### Part 3: Install Year Inference
+
+| Step | Expected |
+|------|----------|
+| Photo with serial decode (high confidence) | `install_year` = `manufacture_year` |
+| Photo without serial (low confidence) | `install_year` = `manufacture_year + 1`, marked estimated |
+| Photo with no manufacture year | No `install_year` update |
+
+---
+
+## Doctrine Addition
+
+Add to `src/lib/systemUpdates/index.ts`:
+
+```typescript
+/**
+ * CANONICAL CONSISTENCY CONTRACT (IMMUTABLE):
+ * 
+ * Any data that can influence:
+ * - System state (stable/watch/plan)
+ * - Capital timeline projections
+ * - AI chat responses
+ * - Confidence scoring
+ * 
+ * MUST land in the canonical `systems` table, not just `home_systems`.
+ * 
+ * The `systems` table is the single source of truth for:
+ * - capital-timeline edge function
+ * - intelligence-engine edge function
+ * - AI home assistant context
+ * - Dashboard baseline derivation
+ */
+```
+
+---
+
+## Summary
+
+This fix implements a **Canonical Consistency Contract** ensuring:
+
+1. **Photo analysis reliably triggers** (defensive logging + callback ordering)
+2. **Photo data syncs to canonical systems table** (dual-write pattern)
+3. **Authority hierarchy is preserved** (permit > photo > heuristic)
+4. **Install year inference is guarded** (manufacture_year ≠ install_year)
+5. **Duplicate processing is prevented** (idempotent hash check)
+
+After this fix, when a user uploads a water heater photo:
+- The AI will immediately see the updated data
+- Capital timeline will reflect the new install year
+- Confidence will increase appropriately
+- The system state may transition from WATCH to OK if data improves
+
+This transforms Habitta from "forgetful assistant" to "reliable steward."
