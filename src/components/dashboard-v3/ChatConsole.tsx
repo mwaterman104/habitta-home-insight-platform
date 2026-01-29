@@ -511,8 +511,9 @@ export function ChatConsole({
         </div>
       </ScrollArea>
 
-      {/* Mode-specific suggested prompts (only when few messages) */}
-      {messages.length <= 1 && !isSilentSteward && (
+      {/* Mode-specific suggested prompts (only when no messages yet - before AI blurb) */}
+      {/* Hide when ConversationStarters would show (after first AI message) */}
+      {messages.length === 0 && !isSilentSteward && (
         <div className="px-4 pb-2 space-y-2 shrink-0 border-t border-border/20 pt-3">
           <div className="flex flex-wrap gap-2">
             {getPromptsForMode(chatMode).map((suggestion) => (
