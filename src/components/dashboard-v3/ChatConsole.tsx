@@ -170,9 +170,15 @@ export function ChatConsole({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasShownOpening, setHasShownOpening] = useState(false);
-  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => {
-    // Check both the explicit flag AND existing messages
-    const flagSet = wasBaselineOpeningShown();
+  // Initialize to false; useEffect will set based on property-specific storage
+  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(false);
+  
+  // Check property-specific storage when propertyId becomes available
+  useEffect(() => {
+    if (!propertyId) return;
+    
+    // Check property-specific flag AND existing messages
+    const flagSet = wasBaselineOpeningShown(propertyId);
     const hasStoredMessages = (() => {
       try {
         const stored = sessionStorage.getItem(`habitta_chat_messages_${propertyId}`);
@@ -181,8 +187,9 @@ export function ChatConsole({
         return false;
       }
     })();
-    return flagSet || hasStoredMessages;
-  });
+    
+    setHasShownBaselineOpening(flagSet || hasStoredMessages);
+  }, [propertyId]);
   const [isFirstUserVisit] = useState(() => isFirstVisit());
   // Artifact controls
   const [isBaselineCollapsed, setIsBaselineCollapsed] = useState(false);
@@ -225,11 +232,10 @@ export function ChatConsole({
     // Don't show opening while still restoring from storage
     if (isRestoring) return;
     
-    if (
-      messages.length === 0 && 
-      !hasShownBaselineOpening &&
-      baselineSystems.length > 0 // Only show if we have visible baseline
-    ) {
+    // Wait for baselineSystems to load (async data) - effect will re-run when they arrive
+    if (baselineSystems.length === 0) return;
+    
+    if (messages.length === 0 && !hasShownBaselineOpening) {
       const planningCount = baselineSystems.filter(
         s => s.state === 'planning_window' || s.state === 'elevated'
       ).length;
@@ -243,7 +249,7 @@ export function ChatConsole({
       });
       
       injectMessage(message);
-      markBaselineOpeningShown();
+      markBaselineOpeningShown(propertyId); // Pass propertyId for property-specific flag
       setHasShownBaselineOpening(true);
       
       // Mark first visit complete after showing onboarding message
@@ -251,7 +257,7 @@ export function ChatConsole({
         markFirstVisitComplete();
       }
     }
-  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit]);
+  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId]);
 
   // Reset opening state when focus changes
   useEffect(() => {
