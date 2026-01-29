@@ -35,7 +35,7 @@ import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage
 import type { ChatMode } from "@/types/chatMode";
 import type { HomeSystem } from "@/hooks/useHomeSystems";
 import { arbitrateTodaysFocus, type SystemSignal, type NarrativeContext } from "@/lib/narrativePriority";
-import { SYSTEM_META } from "@/lib/systemMeta";
+import { SYSTEM_META, SUPPORTED_SYSTEMS } from "@/lib/systemMeta";
 
 // Legacy interface for backwards compatibility
 interface TimelineTask {
@@ -127,54 +127,67 @@ export function MiddleColumn({
     
     // PRIMARY: Use home_systems from database if available
     if (homeSystems && homeSystems.length > 0) {
-      return homeSystems.map(sys => {
-        // Get display name from system meta or format from key
-        const meta = SYSTEM_META[sys.system_key];
-        const displayName = meta?.label || 
-          sys.system_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        
-        // Calculate age and remaining lifespan
-        const installYear = sys.manufacture_year || 
-          (sys.install_date ? new Date(sys.install_date).getFullYear() : null);
-        const expectedLifespan = sys.expected_lifespan_years || meta?.typicalLifespan || 15;
-        
-        let monthsRemaining: number | undefined;
-        let ageYears: number | undefined;
-        
-        if (installYear) {
-          ageYears = currentYear - installYear;
-          const yearsRemaining = Math.max(0, expectedLifespan - ageYears);
-          monthsRemaining = yearsRemaining * 12;
-        }
-        
-        // Determine confidence from system data
-        const confidenceValue = sys.confidence_score ?? 
-          (sys.data_sources && sys.data_sources.length > 0 ? 0.7 : 0.4);
-        
-        // Derive state based on lifespan position
-        let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
-        
-        if (confidenceValue < DATA_GAP_CONFIDENCE) {
-          state = 'data_gap';
-        } else if (monthsRemaining !== undefined) {
-          if (monthsRemaining < 12) {
-            state = 'elevated';
-          } else if (monthsRemaining < PLANNING_MONTHS) {
-            state = 'planning_window';
+      // Filter to only structural systems (not appliances)
+      // SUPPORTED_SYSTEMS = ['hvac', 'roof', 'water_heater']
+      const structuralSystems = homeSystems.filter(sys => 
+        SUPPORTED_SYSTEMS.some(supported => 
+          sys.system_key === supported || 
+          sys.system_key.startsWith(`${supported}_`)
+        )
+      );
+      
+      // If we have structural systems, map them
+      if (structuralSystems.length > 0) {
+        return structuralSystems.map(sys => {
+          // Get display name from system meta or format from key
+          const meta = SYSTEM_META[sys.system_key as keyof typeof SYSTEM_META];
+          const displayName = meta?.label || 
+            sys.system_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          
+          // Calculate age and remaining lifespan
+          const installYear = sys.manufacture_year || 
+            (sys.install_date ? new Date(sys.install_date).getFullYear() : null);
+          const expectedLifespan = sys.expected_lifespan_years || 15;
+          
+          let monthsRemaining: number | undefined;
+          let ageYears: number | undefined;
+          
+          if (installYear) {
+            ageYears = currentYear - installYear;
+            const yearsRemaining = Math.max(0, expectedLifespan - ageYears);
+            monthsRemaining = yearsRemaining * 12;
           }
-        }
-        
-        return {
-          key: sys.system_key,
-          displayName,
-          state,
-          confidence: confidenceValue,
-          monthsRemaining,
-        };
-      });
+          
+          // Determine confidence from system data
+          const confidenceValue = sys.confidence_score ?? 
+            (sys.data_sources && sys.data_sources.length > 0 ? 0.7 : 0.4);
+          
+          // Derive state based on lifespan position
+          let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+          
+          if (confidenceValue < DATA_GAP_CONFIDENCE) {
+            state = 'data_gap';
+          } else if (monthsRemaining !== undefined) {
+            if (monthsRemaining < 12) {
+              state = 'elevated';
+            } else if (monthsRemaining < PLANNING_MONTHS) {
+              state = 'planning_window';
+            }
+          }
+          
+          return {
+            key: sys.system_key,
+            displayName,
+            state,
+            confidence: confidenceValue,
+            monthsRemaining,
+          };
+        });
+      }
+      // If no structural systems found, fall through to capitalTimeline fallback
     }
     
-    // FALLBACK: Use capitalTimeline if no home_systems
+    // FALLBACK: Use capitalTimeline if no home_systems or no structural systems
     if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
       return capitalTimeline.systems.map(sys => {
         const expectedEnd = sys.replacementWindow.likelyYear;
