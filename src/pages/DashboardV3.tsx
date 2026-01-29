@@ -529,7 +529,7 @@ export default function DashboardV3() {
         </ResizablePanelGroup>
         
         {/* Middle Column only (lg screens without right column) */}
-        <div className="flex-1 min-h-0 flex-col p-6 pb-0 hidden lg:flex xl:hidden">
+        <div className="flex-1 min-h-0 flex-col p-6 pb-0 hidden lg:flex xl:!hidden">
           <MiddleColumn
             homeForecast={homeForecast}
             forecastLoading={forecastLoading}
