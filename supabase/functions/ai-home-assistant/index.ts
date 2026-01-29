@@ -557,30 +557,46 @@ NEVER SAY:
 - "According to my data..." (impersonal, removes agency)
 - "The system shows..." (ambiguous reference)
 
-"WHY?" RESPONSE PATTERN (COMPLETE UNDERSTANDING):
-When the user asks "Why?" about a system state, deliver a complete unit of understanding:
+"WHY?" RESPONSE PATTERN (VALIDATION FIRST - CRITICAL):
 
-1. BELIEF: What Habitta believes about this system
-   "Based on what you're seeing above, your [system] is [state]."
+VALIDATION FIRST RULE:
+When responding to a "Why?" question, a system_validation_evidence artifact has ALREADY been shown to the user.
+The visual evidence (lifespan timeline, age context, position marker) is visible BEFORE your response.
 
-2. REASONS: Why it believes this (bullet list)
-   • Its estimated age falls within the typical operating range for systems in this region
-   • No unusual environmental stress patterns are present
-   • [Additional factor based on data]
+YOUR RESPONSE MUST:
+1. DO NOT re-explain what the visual already shows (timeline, age, position)
+2. Reference it: "Based on what you're seeing above..."
+3. Focus on REASONS (why this position) and IMPLICATION (what it means)
+4. Structure: Belief → Reasons → Implication → [Optional CTA]
 
-3. IMPLICATION: What this means for the homeowner (closure statement)
-   - For stable: "This means you don't need to take action right now. Routine monitoring is sufficient."
-   - For planning_window: "This is a good time to begin researching options. No immediate action is required."
-   - For elevated: "This warrants attention. Consider having it inspected before making decisions."
+BELIEF (reference the artifact):
+"Based on what you're seeing above, your [system] is [state]."
 
-4. OPTIONAL CTA (one max, invitational):
-   "If you'd like to improve accuracy, you can confirm the installation year or upload a photo of the unit label."
+REASONS (bullet list - why it believes this):
+• Its estimated age falls within the typical operating range for systems in this region
+• No unusual environmental stress patterns are present
+• [Additional factor based on data]
+
+IMPLICATION (what this means - deliver closure):
+- For stable: "This means you don't need to take action right now. Routine monitoring is sufficient."
+- For planning_window: "This is a good time to begin researching options. No immediate action is required."
+- For elevated: "This warrants attention. Consider having it inspected before making decisions."
+
+OPTIONAL CTA (one max, invitational):
+"If you'd like to improve accuracy, you can confirm the installation year or upload a photo of the unit label."
+
+COST IMPACT HONESTY GATE (NO PLACEHOLDERS):
+- If cost comparison was shown in the artifact, reference it
+- If NO cost data exists, do NOT claim you "pulled a cost impact analysis"
+- Do NOT use placeholder math (no "approximately 0%")
+- Either provide real regional data or say: "Cost comparisons require more system details."
 
 CRITICAL RULES:
 - "Why?" should NEVER generate a question back to the user
 - "Why?" delivers closure, not opens a thread
 - Maximum one optional CTA, always invitational
 - The structure is: Belief → Reasons → Implication → [Optional CTA]
+- The artifact is already visible - DO NOT describe what it looks like
 
 ARTIFACT SUMMONING CONTRACT (HARD RULES):
 
@@ -666,9 +682,8 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       return `For ${parsedArgs.service_type} services, I recommend getting quotes from 3 licensed contractors. Look for ones with good Better Business Bureau ratings and specific experience with Florida homes. Would you like me to help you prepare questions to ask potential contractors?`;
       
     case 'calculate_cost_impact':
-      const delayMonths = parsedArgs.delay_months || 0;
-      const impactMultiplier = 1 + (delayMonths * 0.05);
-      return `Delaying ${parsedArgs.repair_type}${delayMonths > 0 ? ` by ${delayMonths} months` : ''} could increase costs by approximately ${Math.round((impactMultiplier - 1) * 100)}% due to further deterioration and potential emergency repair premiums. Acting sooner typically saves money and prevents more extensive damage.`;
+      // HONESTY GATE: No placeholder cost math - never use "approximately 0%" or fake calculations
+      return `Cost comparisons for ${parsedArgs.repair_type} require specific system and regional data. If you'd like, I can help you research typical costs for your area or connect you with local professionals for estimates.`;
       
     default:
       return 'I can help you with that. What specific information would you like?';

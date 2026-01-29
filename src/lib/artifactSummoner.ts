@@ -24,11 +24,26 @@
  * SESSION GUARD RULE:
  * An artifact may only be summoned ONCE per system per session
  * unless the user explicitly asks again.
+ * 
+ * ============================================
+ * VALIDATION FIRST DOCTRINE (IMMUTABLE):
+ * ============================================
+ * Chat may not summarize a system state unless a validating artifact 
+ * has been shown in the same interaction.
+ * 
+ * This prevents:
+ * - Future refactors from reintroducing explanation-first behavior
+ * - Prompt drift from bypassing evidence requirements
+ * - Trust erosion through unsupported claims
+ * 
+ * For "Why?" queries, the system_validation_evidence artifact MUST be
+ * injected BEFORE the AI call, making evidence display deterministic.
  */
 
 import type { ChatArtifact, ArtifactType } from '@/types/chatArtifact';
 import type { ChatMode } from '@/types/chatMode';
 import type { SystemAgingProfileData } from '@/components/dashboard-v3/artifacts/SystemAgingProfileArtifact';
+import type { SystemValidationEvidenceData } from '@/components/dashboard-v3/artifacts/SystemValidationEvidenceArtifact';
 
 // ============================================
 // Session Storage Keys for Guard Rules
@@ -203,6 +218,25 @@ export function createAgingProfileArtifact(
   data: SystemAgingProfileData
 ): ChatArtifact {
   return createArtifact('system_aging_profile', anchorMessageId, data as unknown as Record<string, unknown>);
+}
+
+/**
+ * Create a system validation evidence artifact for "Why?" responses.
+ * 
+ * VALIDATION FIRST DOCTRINE:
+ * This artifact MUST be injected BEFORE the AI call, not after.
+ * It ensures visual evidence precedes explanation.
+ */
+export function createSystemValidationEvidenceArtifact(
+  anchorMessageId: string,
+  data: SystemValidationEvidenceData
+): ChatArtifact {
+  return createArtifact(
+    'system_validation_evidence',
+    anchorMessageId,
+    data as unknown as Record<string, unknown>,
+    data.systemKey
+  );
 }
 
 /**

@@ -39,6 +39,8 @@ import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
 import { InlineArtifact } from "./artifacts/InlineArtifact";
+import { createSystemValidationEvidenceArtifact } from "@/lib/artifactSummoner";
+import type { SystemValidationEvidenceData } from "./artifacts/SystemValidationEvidenceArtifact";
 import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
 import { track } from "@/lib/analytics";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -201,7 +203,7 @@ export function ChatConsole({
     state: s.state,
   }));
 
-  const { messages, loading, sendMessage, injectMessage, isRestoring } = useAIHomeAssistant(propertyId, {
+  const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
     risk,
@@ -284,8 +286,12 @@ export function ChatConsole({
   };
 
   /**
-   * Handle "Why?" click - inject message into chat instead of navigating away
-   * This delivers complete understanding in one response (closure, not a thread)
+   * Handle "Why?" click - VALIDATION FIRST pattern
+   * 
+   * DOCTRINE: Show the gauge before you explain the diagnosis.
+   * 1. Build system validation evidence artifact with real data
+   * 2. Inject artifact FIRST (deterministic, not model-driven)
+   * 3. Then send question to AI (which will reference "what you're seeing above")
    */
   const handleWhyClick = useCallback((systemKey: string) => {
     const system = baselineSystems.find(s => s.key === systemKey);
@@ -293,10 +299,46 @@ export function ChatConsole({
     
     track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
     
-    // Generate a "Why?" question on user's behalf with state label
+    // 1. Build evidence artifact with real system data
+    // Map 'data_gap' state to 'stable' for display purposes (with low confidence)
+    const displayState = system.state === 'data_gap' ? 'stable' : system.state;
+    
+    const evidenceData: SystemValidationEvidenceData = {
+      systemKey: system.key,
+      displayName: system.displayName,
+      state: displayState as 'stable' | 'planning_window' | 'elevated',
+      position: calculateTimelinePosition(system),
+      ageYears: system.ageYears,
+      expectedLifespan: system.expectedLifespan,
+      monthsRemaining: system.monthsRemaining,
+      // Lower confidence for data_gap systems
+      confidence: system.state === 'data_gap' ? Math.min(system.confidence, 0.3) : system.confidence,
+      baselineSource: baselineSource,
+      // costData: Only include if real cost data exists (no placeholders)
+    };
+    
+    // 2. Create artifact with a message ID
+    const evidenceMessageId = `evidence-${systemKey}-${Date.now()}`;
+    const artifact = createSystemValidationEvidenceArtifact(evidenceMessageId, evidenceData);
+    
+    // 3. Inject evidence artifact FIRST (empty content - artifact speaks for itself)
+    injectMessageWithArtifact('', artifact);
+    
+    // 4. Then send the question to AI (which will reference "what you're seeing above")
     const stateLabel = getWhyStateLabel(system.state);
     sendMessage(`Why is my ${system.displayName.toLowerCase()} showing as "${stateLabel}"?`);
-  }, [baselineSystems, sendMessage]);
+  }, [baselineSystems, sendMessage, injectMessageWithArtifact, baselineSource]);
+
+  /**
+   * Calculate timeline position (0-100 scale based on elapsed lifespan)
+   */
+  function calculateTimelinePosition(system: BaselineSystem): number {
+    if (!system.expectedLifespan || system.expectedLifespan === 0) return 50;
+    const lifespanMonths = system.expectedLifespan * 12;
+    const remaining = system.monthsRemaining ?? lifespanMonths * 0.5;
+    const elapsed = lifespanMonths - remaining;
+    return Math.min(100, Math.max(0, (elapsed / lifespanMonths) * 100));
+  }
 
   // Handle key press
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -444,24 +486,26 @@ export function ChatConsole({
             {/* Messages - no bubbles with tails, with inline artifacts */}
             {messages.map((message, index) => (
               <div key={message.id}>
-                {/* Message bubble */}
-                <div
-                  className={cn(
-                    "flex gap-3",
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
+                {/* Only render message bubble if there's content */}
+                {message.content && (
                   <div
                     className={cn(
-                      "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted/40 text-foreground"
+                      "flex gap-3",
+                      message.role === "user" ? "justify-end" : "justify-start"
                     )}
                   >
-                    {message.content}
+                    <div
+                      className={cn(
+                        "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted/40 text-foreground"
+                      )}
+                    >
+                      {message.content}
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 {/* Conversation Starters - show after first AI message only */}
                 {message.role === "assistant" && index === 0 && messages.length === 1 && (
