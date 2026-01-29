@@ -324,6 +324,91 @@ export function clearBaselineOpeningShown(): void {
 }
 
 // ============================================
+// Personal Blurb Generator
+// ============================================
+
+const FIRST_VISIT_KEY = 'habitta_first_visit_complete';
+
+/**
+ * Check if this is the user's first visit
+ */
+export function isFirstVisit(): boolean {
+  try {
+    return localStorage.getItem(FIRST_VISIT_KEY) !== 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark the first visit as complete
+ */
+export function markFirstVisitComplete(): void {
+  try {
+    localStorage.setItem(FIRST_VISIT_KEY, 'true');
+  } catch {
+    // Silent failure
+  }
+}
+
+/**
+ * Get time-of-day greeting
+ */
+function getTimeOfDayGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * Generate a warm, personal greeting for the chat
+ * Time-aware and context-sensitive
+ * 
+ * DOCTRINE COMPLIANCE:
+ * - Uses observational language, not directive
+ * - Invitational next steps ("If you'd like to...")
+ * - No banned phrases
+ */
+export function generatePersonalBlurb(context: {
+  yearBuilt?: number;
+  systemCount: number;
+  planningCount: number;
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  isFirstVisit?: boolean;
+}): string {
+  const greeting = getTimeOfDayGreeting();
+  
+  // First visit: explain what they're seeing
+  if (context.isFirstVisit) {
+    const systemWord = context.systemCount === 1 ? 'system' : 'systems';
+    return `${greeting}. I've reviewed the information you provided and set up monitoring for ${context.systemCount} key ${systemWord}. I'll keep an eye on their expected lifespans and let you know when planning windows approach.`;
+  }
+  
+  const homeRef = context.yearBuilt 
+    ? `Your ${context.yearBuilt} home` 
+    : 'Your home';
+  
+  const systemWord = context.systemCount === 1 ? 'system' : 'systems';
+  
+  let statusLine = '';
+  if (context.planningCount > 0) {
+    statusLine = context.planningCount === 1
+      ? `I'm keeping an eye on one system that may need attention in the coming years.`
+      : `I'm keeping an eye on ${context.planningCount} systems that may need attention in the coming years.`;
+  } else {
+    statusLine = 'Everything is currently within expected ranges.';
+  }
+  
+  let nextStep = '';
+  if (context.confidenceLevel === 'Early' || context.confidenceLevel === 'Unknown') {
+    nextStep = ` If you'd like to sharpen the picture, adding a photo of any system label helps me dial in the details.`;
+  }
+  
+  return `${greeting}. ${homeRef} has ${context.systemCount} key ${systemWord} I'm tracking. ${statusLine}${nextStep}`;
+}
+
+// ============================================
 // Artifact Summoning Justification Copy
 // ============================================
 
