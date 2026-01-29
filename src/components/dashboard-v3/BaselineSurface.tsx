@@ -9,12 +9,15 @@
  * Visual rules:
  * - Looks like evidence the AI surfaced (not a dashboard widget)
  * - Card-based system rows with segmented OK | WATCH | PLAN scales
- * - No uppercase headers
+ * - Position marker integrated directly on the scale
+ * - Per-system confidence treatment (dashed borders, opacity for low confidence)
+ * - No uppercase headers (except zone labels)
  * - No "Why?" buttons (per doctrine)
  * - Collapsible and expandable
  */
 
 import { cn } from "@/lib/utils";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import type { SystemState } from "@/types/systemState";
 
 // ============================================
@@ -27,6 +30,12 @@ export interface BaselineSystem {
   state: SystemState;
   confidence: number;
   monthsRemaining?: number;
+  /** Per-system data quality (0-100) for visual treatment */
+  baselineStrength?: number;
+  /** System age in years for display */
+  ageYears?: number;
+  /** Expected lifespan for context */
+  expectedLifespan?: number;
 }
 
 interface BaselineSurfaceProps {
@@ -35,71 +44,302 @@ interface BaselineSurfaceProps {
   systems: BaselineSystem[];
   onWhyClick?: (systemKey: string) => void;
   isExpanded?: boolean;
+  lastReviewedAt?: Date;
 }
 
 // ============================================
-// Color Palette (sage, ochre, amber)
+// Color Palette (Tailwind scales - vibrant but calm)
 // ============================================
+
+type Zone = 'ok' | 'watch' | 'plan';
 
 const ZONE_COLORS = {
   ok: {
-    bg: 'bg-[hsl(140,20%,55%)]/20',
-    text: 'text-[hsl(140,20%,35%)]',
-    dot: 'bg-[hsl(140,20%,40%)]',
+    active: {
+      bg: 'bg-emerald-100/70',
+      text: 'text-emerald-700',
+    },
+    inactive: {
+      bg: 'bg-emerald-50/40',
+      text: 'text-emerald-600/50',
+    },
+    dot: 'bg-emerald-500',
   },
   watch: {
-    bg: 'bg-[hsl(45,45%,58%)]/20',
-    text: 'text-[hsl(45,45%,40%)]',
-    dot: 'bg-[hsl(45,45%,45%)]',
+    active: {
+      bg: 'bg-amber-100/70',
+      text: 'text-amber-700',
+    },
+    inactive: {
+      bg: 'bg-amber-50/40',
+      text: 'text-amber-600/50',
+    },
+    dot: 'bg-amber-500',
   },
   plan: {
-    bg: 'bg-[hsl(35,65%,55%)]/20',
-    text: 'text-[hsl(35,65%,40%)]',
-    dot: 'bg-[hsl(35,65%,45%)]',
+    active: {
+      bg: 'bg-orange-100/70',
+      text: 'text-orange-700',
+    },
+    inactive: {
+      bg: 'bg-orange-50/40',
+      text: 'text-orange-600/50',
+    },
+    dot: 'bg-orange-500',
   },
 };
 
+const ZONE_TOOLTIPS: Record<Zone, string> = {
+  ok: '0–60% of typical lifespan',
+  watch: '60–80% of typical lifespan',
+  plan: '80–100%+ of typical lifespan',
+};
+
 // ============================================
-// Component
+// Card Treatment by Confidence
 // ============================================
 
-export function BaselineSurface({
-  yearBuilt,
-  confidenceLevel,
-  systems,
-  onWhyClick,
-  isExpanded = false,
-}: BaselineSurfaceProps) {
-  const yearRef = yearBuilt ? `~${yearBuilt}` : 'this region';
+interface CardTreatment {
+  cardClass: string;
+  badgeText: string | null;
+  badgeClass: string;
+  showInvitation: boolean;
+}
+
+function getCardTreatment(baselineStrength: number = 50): CardTreatment {
+  if (baselineStrength < 40) {
+    return {
+      cardClass: 'opacity-80 border-dashed border-stone-300',
+      badgeText: 'Early data',
+      badgeClass: 'bg-stone-200 text-stone-600',
+      showInvitation: true,
+    };
+  }
+  
+  if (baselineStrength < 70) {
+    return {
+      cardClass: 'opacity-90 border-solid border-stone-200',
+      badgeText: null, // Don't show badge for moderate
+      badgeClass: 'bg-stone-100 text-stone-600',
+      showInvitation: false,
+    };
+  }
+  
+  return {
+    cardClass: 'opacity-100 border-solid border-emerald-200/50',
+    badgeText: null, // High confidence is the default, no badge needed
+    badgeClass: 'bg-emerald-50 text-emerald-700',
+    showInvitation: false,
+  };
+}
+
+// ============================================
+// Helpers
+// ============================================
+
+function formatRelativeTime(date?: Date): string {
+  if (!date) return 'recently';
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffHours < 1) return 'just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Get timeline position (0-100) based on system state and months remaining
+ */
+function getTimelinePosition(system: BaselineSystem): number {
+  const months = system.monthsRemaining;
+  
+  // If no months data, use state-based positioning
+  if (months === undefined) {
+    switch (system.state) {
+      case 'stable': return 25;
+      case 'planning_window': return 70;
+      case 'elevated': return 90;
+      case 'data_gap': return 50;
+    }
+  }
+  
+  // Map months remaining to position
+  // More months = left (OK), fewer months = right (PLAN)
+  const maxMonths = 300; // 25 years
+  const normalized = Math.min(100, Math.max(0, (months / maxMonths) * 100));
+  
+  // Invert: 0 months = 100% (right/PLAN), max months = 0% (left/OK)
+  return 100 - normalized;
+}
+
+/**
+ * Get zone from position (0-100)
+ */
+function getZoneFromPosition(position: number): Zone {
+  if (position < 33.33) return 'ok';
+  if (position < 66.66) return 'watch';
+  return 'plan';
+}
+
+/**
+ * Get state label - natural language
+ */
+function getStateLabel(state: SystemState): string {
+  switch (state) {
+    case 'stable':
+      return 'Within expected range';
+    case 'planning_window':
+      return 'Approaching typical limit';
+    case 'elevated':
+      return 'Beyond typical lifespan';
+    case 'data_gap':
+      return 'Limited data';
+  }
+}
+
+// ============================================
+// Sub-Components
+// ============================================
+
+interface PositionDotProps {
+  positionWithinZone: number;
+  baselineStrength: number;
+  isExpanded?: boolean;
+}
+
+function PositionDot({ positionWithinZone, baselineStrength, isExpanded }: PositionDotProps) {
+  const showRange = baselineStrength < 70;
+  // Wider range for lower confidence
+  const rangeWidth = baselineStrength < 40 ? 35 : 22;
+  
+  return (
+    <>
+      {/* Uncertainty range indicator */}
+      {showRange && (
+        <div 
+          className="absolute top-0 bottom-0 bg-stone-400/15 rounded transition-all duration-1000 ease-out"
+          style={{ 
+            left: `${Math.max(0, positionWithinZone - rangeWidth / 2)}%`, 
+            width: `${rangeWidth}%` 
+          }}
+        />
+      )}
+      {/* Position dot */}
+      <div 
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full ring-2 ring-white/90 shadow-sm z-10 transition-all duration-700 ease-out",
+          showRange ? "w-2 h-2 bg-stone-600" : "w-2.5 h-2.5 bg-stone-800",
+          isExpanded && (showRange ? "w-2.5 h-2.5" : "w-3 h-3")
+        )}
+        style={{ left: `${Math.max(8, Math.min(92, positionWithinZone))}%` }}
+      />
+    </>
+  );
+}
+
+interface ZoneSegmentProps {
+  zone: Zone;
+  label: string;
+  isActive: boolean;
+  positionWithinZone?: number;
+  baselineStrength: number;
+  isExpanded?: boolean;
+  flex?: string;
+}
+
+function ZoneSegment({ 
+  zone, 
+  label, 
+  isActive, 
+  positionWithinZone, 
+  baselineStrength,
+  isExpanded,
+  flex = 'flex-[33]'
+}: ZoneSegmentProps) {
+  const colors = ZONE_COLORS[zone];
+  const activeState = isActive ? colors.active : colors.inactive;
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div 
+          className={cn(
+            "flex items-center justify-center relative cursor-default",
+            flex,
+            activeState.bg,
+            activeState.text,
+            zone === 'watch' && "border-x border-stone-300/20"
+          )}
+        >
+          <span className={cn(
+            "font-semibold",
+            isExpanded ? "text-[11px]" : "text-[10px]"
+          )}>
+            {label}
+          </span>
+          {isActive && positionWithinZone !== undefined && (
+            <PositionDot 
+              positionWithinZone={positionWithinZone} 
+              baselineStrength={baselineStrength}
+              isExpanded={isExpanded}
+            />
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-[10px]">
+        {ZONE_TOOLTIPS[zone]}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface SegmentedScaleProps {
+  position: number;
+  zone: Zone;
+  baselineStrength: number;
+  isExpanded?: boolean;
+}
+
+function SegmentedScale({ position, zone, baselineStrength, isExpanded }: SegmentedScaleProps) {
+  // Calculate position within the active zone (0-100%)
+  const zoneStart = zone === 'ok' ? 0 : zone === 'watch' ? 33.33 : 66.66;
+  const zoneWidth = zone === 'plan' ? 33.34 : 33.33;
+  const positionWithinZone = ((position - zoneStart) / zoneWidth) * 100;
   
   return (
     <div className={cn(
-      "space-y-3",
-      isExpanded && "p-4"
+      "flex rounded-md overflow-hidden",
+      isExpanded ? "h-6" : "h-5"
     )}>
-      {/* Header - Provenance info */}
-      <div className="px-1">
-        <p className="text-sm font-medium text-foreground">
-          Typical system aging profile — homes built {yearRef}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Confidence: {confidenceLevel} · {getConfidenceExplainer(confidenceLevel)}
-        </p>
-      </div>
-      
-      {/* System Cards */}
-      <div className={cn(
-        "space-y-2",
-        isExpanded && "space-y-3"
-      )}>
-        {systems.map(system => (
-          <SystemCard 
-            key={system.key} 
-            system={system}
-            isExpanded={isExpanded}
-          />
-        ))}
-      </div>
+      <ZoneSegment 
+        zone="ok" 
+        label="OK" 
+        isActive={zone === 'ok'} 
+        positionWithinZone={zone === 'ok' ? positionWithinZone : undefined}
+        baselineStrength={baselineStrength}
+        isExpanded={isExpanded}
+      />
+      <ZoneSegment 
+        zone="watch" 
+        label="WATCH" 
+        isActive={zone === 'watch'} 
+        positionWithinZone={zone === 'watch' ? positionWithinZone : undefined}
+        baselineStrength={baselineStrength}
+        isExpanded={isExpanded}
+      />
+      <ZoneSegment 
+        zone="plan" 
+        label="PLAN" 
+        isActive={zone === 'plan'} 
+        positionWithinZone={zone === 'plan' ? positionWithinZone : undefined}
+        baselineStrength={baselineStrength}
+        isExpanded={isExpanded}
+        flex="flex-[34]"
+      />
     </div>
   );
 }
@@ -117,143 +357,103 @@ function SystemCard({ system, isExpanded }: SystemCardProps) {
   const position = getTimelinePosition(system);
   const zone = getZoneFromPosition(position);
   const stateLabel = getStateLabel(system.state);
+  const treatment = getCardTreatment(system.baselineStrength);
   
   return (
     <div className={cn(
-      "rounded-lg border border-border/20 p-3 space-y-2 bg-background/50",
-      isExpanded && "p-4"
+      "rounded-lg border p-2.5 space-y-1.5 bg-white/50 transition-all duration-300",
+      treatment.cardClass,
+      isExpanded && "p-3 space-y-2"
     )}>
-      {/* System Info */}
-      <div>
+      {/* System Info - Inline Layout */}
+      <div className="flex items-center justify-between">
         <p className={cn(
-          "font-medium text-foreground",
-          isExpanded ? "text-base" : "text-sm"
+          "font-medium text-stone-800",
+          isExpanded ? "text-sm" : "text-[13px]"
         )}>
           {system.displayName}
         </p>
-        <p className={cn(
-          "text-muted-foreground",
-          isExpanded ? "text-sm" : "text-xs"
-        )}>
-          {stateLabel}
-        </p>
-      </div>
-      
-      {/* Segmented Scale */}
-      <div className={cn(
-        "flex rounded-full overflow-hidden text-[10px] font-medium",
-        isExpanded ? "h-8 text-xs" : "h-6"
-      )}>
-        <div className={cn(
-          "flex-1 flex items-center justify-center",
-          ZONE_COLORS.ok.bg,
-          ZONE_COLORS.ok.text
-        )}>
-          OK
-        </div>
-        <div className={cn(
-          "flex-1 flex items-center justify-center",
-          ZONE_COLORS.watch.bg,
-          ZONE_COLORS.watch.text
-        )}>
-          WATCH
-        </div>
-        <div className={cn(
-          "flex-1 flex items-center justify-center",
-          ZONE_COLORS.plan.bg,
-          ZONE_COLORS.plan.text
-        )}>
-          PLAN
-        </div>
-      </div>
-      
-      {/* Position Track with Dot */}
-      <div className="relative h-1.5 bg-muted/30 rounded-full">
-        <div 
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 rounded-full shadow-sm",
-            isExpanded ? "w-4 h-4" : "w-3 h-3",
-            getZoneDotColor(zone)
+        <div className="flex items-center gap-2">
+          {treatment.badgeText && (
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded font-medium",
+              treatment.badgeClass
+            )}>
+              {treatment.badgeText}
+            </span>
           )}
-          style={{ 
-            left: `${position}%`, 
-            transform: `translate(-50%, -50%)` 
-          }}
-        />
+          <p className={cn(
+            "text-stone-500",
+            isExpanded ? "text-xs" : "text-[11px]"
+          )}>
+            {stateLabel}
+          </p>
+        </div>
       </div>
+      
+      {/* Segmented Scale with Integrated Position Marker */}
+      <SegmentedScale 
+        position={position} 
+        zone={zone} 
+        baselineStrength={system.baselineStrength ?? 50}
+        isExpanded={isExpanded}
+      />
     </div>
   );
 }
 
 // ============================================
-// Helper Functions
+// Main Component
 // ============================================
 
-/**
- * Get timeline position (0-100) based on system state
- */
-function getTimelinePosition(system: BaselineSystem): number {
-  const months = system.monthsRemaining;
-  
-  // If no months data, use state-based positioning
-  if (months === undefined) {
-    switch (system.state) {
-      case 'stable': return 20;
-      case 'planning_window': return 55;
-      case 'elevated': return 85;
-      case 'data_gap': return 50;
-    }
-  }
-  
-  // Map months remaining to position
-  // More months = left (OK), fewer months = right (PLAN)
-  const maxMonths = 300; // 25 years
-  const normalized = Math.min(100, Math.max(0, (months / maxMonths) * 100));
-  
-  // Invert: 0 months = 100% (right/PLAN), max months = 0% (left/OK)
-  return 100 - normalized;
-}
-
-/**
- * Get zone from position
- */
-function getZoneFromPosition(position: number): 'ok' | 'watch' | 'plan' {
-  if (position < 33) return 'ok';
-  if (position < 66) return 'watch';
-  return 'plan';
-}
-
-/**
- * Get dot color based on zone
- */
-function getZoneDotColor(zone: 'ok' | 'watch' | 'plan'): string {
-  return ZONE_COLORS[zone].dot;
-}
-
-/**
- * Get state label - natural language
- */
-function getStateLabel(state: SystemState): string {
-  switch (state) {
-    case 'stable':
-      return 'Within expected range';
-    case 'planning_window':
-      return 'Approaching typical limit';
-    case 'elevated':
-      return 'Beyond typical lifespan';
-    case 'data_gap':
-      return 'Limited data available';
-  }
-}
-
-/**
- * Get confidence explainer
- */
-function getConfidenceExplainer(level: 'Unknown' | 'Early' | 'Moderate' | 'High'): string {
-  switch (level) {
-    case 'High': return 'Verified by records';
-    case 'Moderate': return 'Based on home age and regional patterns';
-    case 'Early': return 'Limited data';
-    default: return 'Still learning';
-  }
+export function BaselineSurface({
+  yearBuilt,
+  confidenceLevel,
+  systems,
+  onWhyClick,
+  isExpanded = false,
+  lastReviewedAt,
+}: BaselineSurfaceProps) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className={cn(
+        "space-y-2.5",
+        isExpanded && "p-4 space-y-3"
+      )}>
+        {/* Header - User's requested format */}
+        <div className="flex items-center justify-between px-0.5">
+          <div>
+            <p className={cn(
+              "font-medium text-stone-900",
+              isExpanded ? "text-sm" : "text-[13px]"
+            )}>
+              Your Home System Outlook
+            </p>
+            {lastReviewedAt && (
+              <p className="text-[10px] text-stone-400 mt-0.5">
+                Last reviewed {formatRelativeTime(lastReviewedAt)}
+              </p>
+            )}
+          </div>
+          <span className="px-2 py-0.5 bg-stone-100 text-stone-600 text-[11px] font-medium rounded">
+            {confidenceLevel} confidence
+          </span>
+        </div>
+        
+        {/* System Cards */}
+        <div className={cn(
+          "space-y-1.5",
+          isExpanded && "space-y-2"
+        )}>
+          {systems.map(system => (
+            <SystemCard 
+              key={system.key} 
+              system={system}
+              isExpanded={isExpanded}
+            />
+          ))}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
 }
