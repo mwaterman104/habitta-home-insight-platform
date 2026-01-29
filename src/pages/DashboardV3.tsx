@@ -59,6 +59,20 @@ export default function DashboardV3() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   
+  // JavaScript-based xl breakpoint detection for deterministic conditional rendering
+  const [isXlScreen, setIsXlScreen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 1280;
+  });
+  
+  useEffect(() => {
+    const handleResize = () => {
+      setIsXlScreen(window.innerWidth >= 1280);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   const [loading, setLoading] = useState(true);
   const [userHome, setUserHome] = useState<UserHome | null>(null);
   
@@ -461,102 +475,104 @@ export default function DashboardV3() {
           />
         </aside>
         
-        {/* Resizable Middle + Right Columns (xl screens) */}
-        <ResizablePanelGroup 
-          direction="horizontal" 
-          className="flex-1 min-h-0 hidden xl:flex"
-          onLayout={(sizes) => {
-            localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
-          }}
-        >
-          {/* Middle Column - Primary Canvas */}
-          <ResizablePanel 
-            defaultSize={60} 
-            minSize={55}
-            className="!overflow-hidden"
+        {/* Resizable Middle + Right Columns (xl screens) - JavaScript conditional rendering */}
+        {isXlScreen ? (
+          <ResizablePanelGroup 
+            direction="horizontal" 
+            className="flex-1 min-h-0"
+            onLayout={(sizes) => {
+              localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
+            }}
           >
-            <div className="h-full p-6 pb-0">
-              <MiddleColumn
-                homeForecast={homeForecast}
-                forecastLoading={forecastLoading}
-                hvacPrediction={hvacPrediction}
-                hvacLoading={hvacLoading}
-                capitalTimeline={capitalTimeline}
-                timelineLoading={timelineLoading}
-                maintenanceData={maintenanceTimelineData}
-                chatExpanded={shouldChatBeOpen}
-                onChatExpandChange={handleChatExpandChange}
-                hasAgentMessage={hasAgentMessage}
-                propertyId={userHome.id}
-                onSystemClick={handleSystemFocus}
-                isEnriching={isEnriching}
-                advisorState={advisorState}
-                focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
-                openingMessage={openingMessage}
-                confidence={confidence}
-                risk={risk}
-                onUserReply={handleUserReply}
-                onTaskComplete={handleTaskComplete}
-                chatMode={chatModeContext.mode}
-                systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
-                onSystemUpdated={handleSystemUpdated}
-                homeSystems={homeSystems}
-                yearBuilt={userHome.year_built}
-              />
-            </div>
-          </ResizablePanel>
-          
-          {/* Drag Handle */}
-          <ResizableHandle withHandle />
-          
-          {/* Right Column - Context Rail (40% default) */}
-          <ResizablePanel 
-            defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '40')} 
-            minSize={30} 
-            maxSize={45}
-          >
-            <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
-              <RightColumn
-                loading={forecastLoading || hvacLoading || timelineLoading}
-                latitude={userHome.latitude}
-                longitude={userHome.longitude}
-                address={userHome.address}
-                city={userHome.city}
-                state={userHome.state}
-              />
-            </aside>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-        
-        {/* Middle Column only (lg screens without right column) */}
-        <div className="flex-1 min-h-0 flex-col p-6 pb-0 hidden lg:flex xl:!hidden">
-          <MiddleColumn
-            homeForecast={homeForecast}
-            forecastLoading={forecastLoading}
-            hvacPrediction={hvacPrediction}
-            hvacLoading={hvacLoading}
-            capitalTimeline={capitalTimeline}
-            timelineLoading={timelineLoading}
-            maintenanceData={maintenanceTimelineData}
-            chatExpanded={shouldChatBeOpen}
-            onChatExpandChange={handleChatExpandChange}
-            hasAgentMessage={hasAgentMessage}
-            propertyId={userHome.id}
-            onSystemClick={handleSystemFocus}
-            isEnriching={isEnriching}
-            isMobile={true}
-            advisorState={advisorState}
-            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
-            openingMessage={openingMessage}
-            confidence={confidence}
-            risk={risk}
-            onUserReply={handleUserReply}
-            onTaskComplete={handleTaskComplete}
-            chatMode={chatModeContext.mode}
-            systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
-            onSystemUpdated={handleSystemUpdated}
-          />
-        </div>
+            {/* Middle Column - Primary Canvas */}
+            <ResizablePanel 
+              defaultSize={60} 
+              minSize={55}
+              className="!overflow-hidden"
+            >
+              <div className="h-full p-6 pb-0">
+                <MiddleColumn
+                  homeForecast={homeForecast}
+                  forecastLoading={forecastLoading}
+                  hvacPrediction={hvacPrediction}
+                  hvacLoading={hvacLoading}
+                  capitalTimeline={capitalTimeline}
+                  timelineLoading={timelineLoading}
+                  maintenanceData={maintenanceTimelineData}
+                  chatExpanded={shouldChatBeOpen}
+                  onChatExpandChange={handleChatExpandChange}
+                  hasAgentMessage={hasAgentMessage}
+                  propertyId={userHome.id}
+                  onSystemClick={handleSystemFocus}
+                  isEnriching={isEnriching}
+                  advisorState={advisorState}
+                  focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+                  openingMessage={openingMessage}
+                  confidence={confidence}
+                  risk={risk}
+                  onUserReply={handleUserReply}
+                  onTaskComplete={handleTaskComplete}
+                  chatMode={chatModeContext.mode}
+                  systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+                  onSystemUpdated={handleSystemUpdated}
+                  homeSystems={homeSystems}
+                  yearBuilt={userHome.year_built}
+                />
+              </div>
+            </ResizablePanel>
+            
+            {/* Drag Handle */}
+            <ResizableHandle withHandle />
+            
+            {/* Right Column - Context Rail (40% default) */}
+            <ResizablePanel 
+              defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '40')} 
+              minSize={30} 
+              maxSize={45}
+            >
+              <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
+                <RightColumn
+                  loading={forecastLoading || hvacLoading || timelineLoading}
+                  latitude={userHome.latitude}
+                  longitude={userHome.longitude}
+                  address={userHome.address}
+                  city={userHome.city}
+                  state={userHome.state}
+                />
+              </aside>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          /* Middle Column only (lg screens without right column) */
+          <div className="flex-1 min-h-0 flex flex-col p-6 pb-0 hidden lg:flex">
+            <MiddleColumn
+              homeForecast={homeForecast}
+              forecastLoading={forecastLoading}
+              hvacPrediction={hvacPrediction}
+              hvacLoading={hvacLoading}
+              capitalTimeline={capitalTimeline}
+              timelineLoading={timelineLoading}
+              maintenanceData={maintenanceTimelineData}
+              chatExpanded={shouldChatBeOpen}
+              onChatExpandChange={handleChatExpandChange}
+              hasAgentMessage={hasAgentMessage}
+              propertyId={userHome.id}
+              onSystemClick={handleSystemFocus}
+              isEnriching={isEnriching}
+              isMobile={true}
+              advisorState={advisorState}
+              focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+              openingMessage={openingMessage}
+              confidence={confidence}
+              risk={risk}
+              onUserReply={handleUserReply}
+              onTaskComplete={handleTaskComplete}
+              chatMode={chatModeContext.mode}
+              systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+              onSystemUpdated={handleSystemUpdated}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -291,10 +291,16 @@ export function getWhyStateLabel(state: WhySystemState): string {
 export const BASELINE_OPENING_SHOWN_KEY = 'habitta_baseline_opening_shown';
 
 /**
- * Check if baseline opening message was already shown this session.
+ * Check if baseline opening message was already shown for this property.
+ * Property-scoped to prevent cross-property pollution.
  */
-export function wasBaselineOpeningShown(): boolean {
+export function wasBaselineOpeningShown(propertyId?: string): boolean {
   try {
+    if (propertyId) {
+      // Property-specific check first
+      return sessionStorage.getItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`) === 'true';
+    }
+    // Legacy global check for backward compatibility
     return sessionStorage.getItem(BASELINE_OPENING_SHOWN_KEY) === 'true';
   } catch {
     return false;
@@ -302,10 +308,14 @@ export function wasBaselineOpeningShown(): boolean {
 }
 
 /**
- * Mark baseline opening message as shown for this session.
+ * Mark baseline opening message as shown for this property.
  */
-export function markBaselineOpeningShown(): void {
+export function markBaselineOpeningShown(propertyId?: string): void {
   try {
+    if (propertyId) {
+      sessionStorage.setItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`, 'true');
+    }
+    // Also set global flag for legacy compatibility
     sessionStorage.setItem(BASELINE_OPENING_SHOWN_KEY, 'true');
   } catch {
     // Silent failure
@@ -313,10 +323,13 @@ export function markBaselineOpeningShown(): void {
 }
 
 /**
- * Clear baseline opening shown flag (for testing/reset).
+ * Clear baseline opening shown flag for a property (for testing/reset).
  */
-export function clearBaselineOpeningShown(): void {
+export function clearBaselineOpeningShown(propertyId?: string): void {
   try {
+    if (propertyId) {
+      sessionStorage.removeItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`);
+    }
     sessionStorage.removeItem(BASELINE_OPENING_SHOWN_KEY);
   } catch {
     // Silent failure
