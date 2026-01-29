@@ -1,165 +1,168 @@
 
 
-# Revised: Chat History Persistence with QA Fixes
+# Revised Fix: Personal Blurb + Duplicate UI Issues
 
-## Summary of QA Feedback Addressed
+## QA Feedback Integration
 
-| Issue | Status | Solution |
-|-------|--------|----------|
-| #1 Race condition with async propertyId | ✅ Fixed | Use `useEffect` for restoration, not `useState` initializer |
-| #2 Opening message duplicate risk | ✅ Fixed | Add `isRestoring` state, wait before injecting opening |
-| #3 Property switching behavior | ✅ Fixed | Clear messages when propertyId changes |
-| #5 Quota exceeded handling | ✅ Added | Fallback to last 50 messages |
-| #6 Simplify clearConversation | ✅ Fixed | Let useEffect handle storage sync |
-| #8 Initialization guard | ✅ Fixed | Export `isRestoring`, wait in ChatConsole |
+Your thorough review identified critical issues with my previous plan. Here's the corrected approach based on actual code analysis.
 
 ---
 
-## Implementation
+## Root Cause Analysis
 
-### File 1: `src/hooks/useAIHomeAssistant.ts`
+### Issue 1: Personal Blurb Not Appearing
 
-#### Add Storage Key Constant
+**Actual root cause confirmed via code review:**
+
+The `wasBaselineOpeningShown()` function in `src/lib/chatModeCopy.ts` (lines 296-302) uses a **session-global key**:
+
 ```typescript
-const CHAT_MESSAGES_KEY = 'habitta_chat_messages';
+export const BASELINE_OPENING_SHOWN_KEY = 'habitta_baseline_opening_shown';
+
+export function wasBaselineOpeningShown(): boolean {
+  return sessionStorage.getItem(BASELINE_OPENING_SHOWN_KEY) === 'true';
+}
 ```
 
-#### Add New State Variables
-```typescript
-const [messages, setMessages] = useState<ChatMessage[]>([]);
-const [isRestoring, setIsRestoring] = useState(true); // NEW: Track restoration state
-```
+This means:
+- User visits Property A, blurb shows, flag set to `'true'`
+- User visits Property B, flag is still `'true'`, no blurb appears
 
-#### Add Restoration Effect (handles async propertyId)
+**The flag is property-agnostic, causing cross-property pollution.**
+
+Additionally, the `hasShownBaselineOpening` initialization in `ChatConsole.tsx` (lines 173-185) has a timing issue:
+- It checks `sessionStorage.getItem(`habitta_chat_messages_${propertyId}`)` but `propertyId` might be stale during useState initialization
+
+---
+
+### Issue 2: Duplicate UI on LG/XL Boundary
+
+**Actual root cause confirmed:**
+
+Looking at `tailwind.config.ts`, there are **no custom screen breakpoints defined**. This means Tailwind uses defaults:
+- `lg`: 1024px
+- `xl`: 1280px
+
+The layout structure in `DashboardV3.tsx`:
+
+| Line | Component | Class | Expected |
+|------|-----------|-------|----------|
+| 465 | ResizablePanelGroup | `hidden xl:flex` | Hidden below 1280px, flex at 1280px+ |
+| 532 | Fallback div | `hidden lg:flex xl:!hidden` | Flex at 1024-1279px, hidden at 1280px+ |
+
+**The CSS is correct.** The `xl:!hidden` should work. But looking at the screenshot showing THREE columns of content, the issue is likely:
+
+1. Viewport width is exactly at or near 1280px boundary, causing both to render momentarily
+2. OR the ResizablePanelGroup's `xl:flex` is rendering both its internal panels (Middle + Right) while the fallback is also visible
+
+**Key insight:** The fallback MiddleColumn at line 532 has `isMobile={true}` passed to it, which suggests it might be a mobile layout that looks different. The screenshot shows the System Outlook appearing twice, which means TWO MiddleColumn instances are both rendering.
+
+**Real fix needed:** Use JavaScript-based conditional rendering instead of CSS-only, since CSS breakpoints can have race conditions during resize.
+
+---
+
+## Implementation Plan
+
+### File 1: `src/lib/chatModeCopy.ts`
+
+**Change: Make baseline opening flag property-specific**
+
+Update functions to accept `propertyId`:
+
 ```typescript
-// Restore messages from sessionStorage when propertyId becomes available
-useEffect(() => {
-  if (!propertyId) {
-    setIsRestoring(false);
-    return;
-  }
-  
+// Lines 291-323
+export const BASELINE_OPENING_SHOWN_KEY = 'habitta_baseline_opening_shown';
+
+/**
+ * Check if baseline opening message was already shown for this property.
+ * Property-scoped to prevent cross-property pollution.
+ */
+export function wasBaselineOpeningShown(propertyId?: string): boolean {
   try {
-    const stored = sessionStorage.getItem(`${CHAT_MESSAGES_KEY}_${propertyId}`);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setMessages(parsed);
-      }
+    if (propertyId) {
+      // Property-specific check first
+      return sessionStorage.getItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`) === 'true';
     }
-  } catch (e) {
-    console.error('Failed to restore chat history:', e);
-  } finally {
-    setIsRestoring(false);
+    // Legacy global check for backward compatibility
+    return sessionStorage.getItem(BASELINE_OPENING_SHOWN_KEY) === 'true';
+  } catch {
+    return false;
   }
-}, [propertyId]);
-```
+}
 
-#### Add Persistence Effect (with quota handling)
-```typescript
-// Persist messages to sessionStorage
-useEffect(() => {
-  if (!propertyId || isRestoring) return;
-  
+/**
+ * Mark baseline opening message as shown for this property.
+ */
+export function markBaselineOpeningShown(propertyId?: string): void {
   try {
-    if (messages.length > 0) {
-      const serialized = JSON.stringify(messages);
-      
-      // Safety check: ~4MB limit
-      if (serialized.length > 4_000_000) {
-        console.warn('Chat history too large, truncating');
-        sessionStorage.setItem(
-          `${CHAT_MESSAGES_KEY}_${propertyId}`,
-          JSON.stringify(messages.slice(-50))
-        );
-        return;
-      }
-      
-      sessionStorage.setItem(`${CHAT_MESSAGES_KEY}_${propertyId}`, serialized);
-    } else {
-      // Explicitly clear on empty (handles clearConversation)
-      sessionStorage.removeItem(`${CHAT_MESSAGES_KEY}_${propertyId}`);
+    if (propertyId) {
+      sessionStorage.setItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`, 'true');
     }
-  } catch (e) {
-    if (e instanceof Error && e.name === 'QuotaExceededError') {
-      // Fallback: keep only last 50 messages
-      try {
-        sessionStorage.setItem(
-          `${CHAT_MESSAGES_KEY}_${propertyId}`,
-          JSON.stringify(messages.slice(-50))
-        );
-      } catch {
-        // Silent failure
-      }
+    // Also set global flag for legacy compatibility
+    sessionStorage.setItem(BASELINE_OPENING_SHOWN_KEY, 'true');
+  } catch {
+    // Silent failure
+  }
+}
+
+/**
+ * Clear baseline opening shown flag for a property (for testing/reset).
+ */
+export function clearBaselineOpeningShown(propertyId?: string): void {
+  try {
+    if (propertyId) {
+      sessionStorage.removeItem(`${BASELINE_OPENING_SHOWN_KEY}_${propertyId}`);
     }
+    sessionStorage.removeItem(BASELINE_OPENING_SHOWN_KEY);
+  } catch {
+    // Silent failure
   }
-}, [messages, propertyId, isRestoring]);
-```
-
-#### Add Property Change Handler
-```typescript
-// Clear messages when property changes (prevents cross-property pollution)
-const prevPropertyIdRef = useRef(propertyId);
-
-useEffect(() => {
-  if (prevPropertyIdRef.current && propertyId && prevPropertyIdRef.current !== propertyId) {
-    // Property changed mid-session, clear UI
-    setMessages([]);
-  }
-  prevPropertyIdRef.current = propertyId;
-}, [propertyId]);
-```
-
-#### Simplify clearConversation
-```typescript
-const clearConversation = useCallback(() => {
-  setMessages([]); // useEffect will handle storage removal
-  setError(null);
-}, []);
-```
-
-#### Update Return Statement
-```typescript
-return {
-  messages,
-  loading,
-  error,
-  isRestoring, // NEW: ChatConsole should wait for this
-  sendMessage,
-  sendSuggestion,
-  clearConversation,
-  injectMessage,
-  injectMessageWithArtifact,
-};
+}
 ```
 
 ---
 
 ### File 2: `src/components/dashboard-v3/ChatConsole.tsx`
 
-#### Update Hook Destructuring (line ~185)
+**Change 1: Move hasShownBaselineOpening initialization to useEffect**
+
+The useState initializer runs once with potentially stale propertyId. Move the check to a useEffect:
+
 ```typescript
-const { messages, loading, sendMessage, injectMessage, isRestoring } = useAIHomeAssistant(propertyId, {
-  // ... existing options
-});
+// Line 173: Simple initial state
+const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(false);
+
+// New useEffect: Check property-specific storage when propertyId becomes available
+useEffect(() => {
+  if (!propertyId) return;
+  
+  // Check property-specific flag AND existing messages
+  const flagSet = wasBaselineOpeningShown(propertyId);
+  const hasStoredMessages = (() => {
+    try {
+      const stored = sessionStorage.getItem(`habitta_chat_messages_${propertyId}`);
+      return stored !== null && JSON.parse(stored).length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  
+  setHasShownBaselineOpening(flagSet || hasStoredMessages);
+}, [propertyId]);
 ```
 
-#### Update Opening Message Effect (line ~211)
-
-The current effect checks `messages.length === 0`, which is correct. However, we need to also wait for restoration to complete:
+**Change 2: Fix opening message effect with early return for baselineSystems**
 
 ```typescript
-// Inject personal blurb explaining the System Outlook artifact
-// Wait for restoration to complete before deciding to show opening
+// Lines 224-254: Updated effect
 useEffect(() => {
   // Don't show opening while still restoring from storage
   if (isRestoring) return;
   
-  if (
-    messages.length === 0 && 
-    !hasShownBaselineOpening &&
-    baselineSystems.length > 0
-  ) {
+  // Wait for baselineSystems to load (async data)
+  if (baselineSystems.length === 0) return;
+  
+  if (messages.length === 0 && !hasShownBaselineOpening) {
     const planningCount = baselineSystems.filter(
       s => s.state === 'planning_window' || s.state === 'elevated'
     ).length;
@@ -173,121 +176,131 @@ useEffect(() => {
     });
     
     injectMessage(message);
-    markBaselineOpeningShown();
+    markBaselineOpeningShown(propertyId); // Pass propertyId!
     setHasShownBaselineOpening(true);
     
     if (isFirstUserVisit) {
       markFirstVisitComplete();
     }
   }
-}, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit]);
+}, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId]);
 ```
 
-#### Update hasShownBaselineOpening Initialization (line ~173)
+---
 
-Check if storage already has messages for this property:
+### File 3: `src/pages/DashboardV3.tsx`
+
+**Change: Use conditional rendering instead of CSS-only visibility**
+
+CSS-based breakpoint hiding can have timing issues. Use a custom hook for reliable breakpoint detection:
 
 ```typescript
-const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => {
-  // Check both the explicit flag AND existing messages
-  const flagSet = wasBaselineOpeningShown();
-  const hasStoredMessages = (() => {
-    try {
-      const stored = sessionStorage.getItem(`habitta_chat_messages_${propertyId}`);
-      return stored !== null && JSON.parse(stored).length > 0;
-    } catch {
-      return false;
-    }
-  })();
-  return flagSet || hasStoredMessages;
+// Add at component level (around line 50)
+const isXlScreen = useMediaQuery('(min-width: 1280px)');
+
+// If useMediaQuery doesn't exist, create it inline:
+const [isXlScreen, setIsXlScreen] = useState(() => {
+  if (typeof window === 'undefined') return true;
+  return window.innerWidth >= 1280;
 });
+
+useEffect(() => {
+  const handleResize = () => {
+    setIsXlScreen(window.innerWidth >= 1280);
+  };
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 ```
 
----
+Then update the JSX (lines 455-563):
 
-## Sequence Diagram
-
-```text
-┌─────────────┐     ┌──────────────────┐     ┌────────────────┐
-│ User Action │     │ useAIHomeAssistant│     │ sessionStorage │
-└──────┬──────┘     └────────┬─────────┘     └───────┬────────┘
-       │                     │                       │
-       │ Mount component     │                       │
-       │ (propertyId=abc)    │                       │
-       ├────────────────────►│                       │
-       │                     │ isRestoring=true      │
-       │                     │                       │
-       │                     │ Read storage          │
-       │                     ├──────────────────────►│
-       │                     │◄──────────────────────┤
-       │                     │ [messages from prev]  │
-       │                     │                       │
-       │                     │ setMessages(restored) │
-       │                     │ isRestoring=false     │
-       │                     │                       │
-       │ ChatConsole checks  │                       │
-       │ isRestoring=false   │                       │
-       │ messages.length>0   │                       │
-       │ → Skip opening msg  │                       │
-       │                     │                       │
-       │ Navigate to /systems│                       │
-       ├────────────────────►│ Component unmounts    │
-       │                     │ (messages in storage) │
-       │                     │                       │
-       │ Return to /dashboard│                       │
-       ├────────────────────►│                       │
-       │                     │ Mount again           │
-       │                     │ Read storage          │
-       │                     ├──────────────────────►│
-       │                     │◄──────────────────────┤
-       │                     │ Messages restored     │
-       │                     │                       │
-       │ User continues chat │                       │
-       └─────────────────────┴───────────────────────┘
+```tsx
+<div className="flex flex-1 min-h-0 overflow-hidden">
+  {/* Left Column - Navigation + Identity (Fixed 240px) */}
+  <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col">
+    <LeftColumn 
+      address={fullAddress}
+      onAddressClick={handleAddressClick}
+    />
+  </aside>
+  
+  {/* Resizable Middle + Right Columns (xl screens) - conditional render */}
+  {isXlScreen ? (
+    <ResizablePanelGroup 
+      direction="horizontal" 
+      className="flex-1 min-h-0"
+      onLayout={(sizes) => {
+        localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
+      }}
+    >
+      {/* Middle Column - Primary Canvas */}
+      <ResizablePanel 
+        defaultSize={60} 
+        minSize={55}
+        className="!overflow-hidden"
+      >
+        <div className="h-full p-6 pb-0">
+          <MiddleColumn {...middleColumnProps} />
+        </div>
+      </ResizablePanel>
+      
+      <ResizableHandle withHandle />
+      
+      <ResizablePanel 
+        defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '40')} 
+        minSize={30} 
+        maxSize={45}
+      >
+        <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
+          <RightColumn {...rightColumnProps} />
+        </aside>
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  ) : (
+    /* Middle Column only (lg screens without right column) */
+    <div className="flex-1 min-h-0 flex flex-col p-6 pb-0 hidden lg:block">
+      <MiddleColumn {...middleColumnProps} isMobile={true} />
+    </div>
+  )}
+</div>
 ```
 
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/hooks/useAIHomeAssistant.ts` | Add sessionStorage persistence with all QA fixes |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Wait for `isRestoring`, update initialization |
+Note: The `hidden lg:block` on the fallback ensures it only shows on lg screens (the conditional already handles xl+ via JavaScript).
 
 ---
 
-## Edge Cases Handled
+## Summary of Changes
 
-| Scenario | Behavior |
-|----------|----------|
-| `propertyId` undefined on mount | `isRestoring` becomes `false` immediately, no read attempt |
-| `propertyId` becomes available async | Restoration happens via `useEffect`, not initializer |
-| User switches properties | Messages cleared on property change |
-| Storage quota exceeded | Falls back to last 50 messages |
-| Corrupted JSON in storage | Silent failure, starts fresh |
-| User clears conversation | `setMessages([])` triggers storage removal via effect |
-| Very large history (>4MB) | Truncates to last 50 messages |
-| Two tabs same property | Last write wins (acceptable for session storage) |
-| Tab close | History cleared (correct session semantics) |
+| File | Change | Why |
+|------|--------|-----|
+| `src/lib/chatModeCopy.ts` | Make `wasBaselineOpeningShown` and `markBaselineOpeningShown` property-specific | Prevents cross-property pollution |
+| `src/components/dashboard-v3/ChatConsole.tsx` | Move storage check to useEffect; add early return for baselineSystems | Fixes race condition with async propertyId and data loading |
+| `src/pages/DashboardV3.tsx` | Use JavaScript conditional rendering instead of CSS-only | Eliminates CSS breakpoint timing issues |
 
 ---
 
 ## Testing Checklist
 
-After implementation:
-1. Chat with home → Navigate to /systems → Return → Messages preserved
-2. Clear conversation → Navigate away → Return → No messages (correct)
-3. Different property → No cross-pollution
-4. Send many messages → No quota errors
-5. Opening message appears once (not duplicated after restoration)
+| Scenario | Expected Result |
+|----------|-----------------|
+| Fresh session, first property visit | Personal blurb appears with time-of-day greeting |
+| Navigate to /systems and back | Messages preserved, no duplicate blurb |
+| Switch to different property | Blurb shows for new property (separate storage key) |
+| Clear conversation, navigate away, return | No messages, blurb can appear again |
+| Resize browser at exactly 1280px width | No duplicate MiddleColumn UI |
+| lg screen (1024-1279px) | Only fallback MiddleColumn visible |
+| xl+ screen (1280px+) | Only ResizablePanelGroup visible |
 
 ---
 
-## No Rollback Needed
+## Edge Cases Addressed
 
-This is additive functionality with graceful degradation:
-- If storage fails → Chat works normally, just loses persistence
-- If restoration fails → Chat starts fresh (existing behavior)
-- No feature flag needed for MVP
+| Edge Case | How Handled |
+|-----------|-------------|
+| `propertyId` undefined initially | useEffect won't run until propertyId is available |
+| `baselineSystems` loads after component mounts | Early return ensures effect re-runs when data arrives |
+| Global flag already set from previous property | Property-specific keys prevent pollution |
+| CSS breakpoint race conditions | JavaScript-based conditional rendering is deterministic |
+| Clearing conversation | Storage removal handled by useAIHomeAssistant persistence effect |
 
