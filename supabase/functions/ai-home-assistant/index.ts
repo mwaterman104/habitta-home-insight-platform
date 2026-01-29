@@ -207,9 +207,13 @@ serve(async (req) => {
       confidence = 0.5,
       risk = 'LOW',
       focusSystem,
-      // Epistemic coherence fields (NEW)
+      // Epistemic coherence fields
       baselineSource,         // 'inferred' | 'partial' | 'confirmed'
       visibleBaseline,        // Array of systems shown in UI
+      // Planning Session fields (NEW - Institutional Behavior)
+      isPlanningSession = false,
+      interventionId,
+      triggerReason,
     } = await req.json();
     
     console.log('[ai-home-assistant] Request:', { 
@@ -220,6 +224,8 @@ serve(async (req) => {
       risk,
       baselineSource,
       visibleBaselineCount: visibleBaseline?.length ?? 0,
+      isPlanningSession,
+      interventionId,
     });
 
     // Get property context
@@ -237,7 +243,9 @@ serve(async (req) => {
       copyProfile,
       focusSystem,
       baselineSource,
-      visibleBaseline
+      visibleBaseline,
+      isPlanningSession,
+      triggerReason
     );
     
     return new Response(JSON.stringify(response), {
@@ -293,9 +301,11 @@ async function generateAIResponse(
   copyProfile: CopyStyleProfile | null,
   focusSystem?: string,
   baselineSource?: string,
-  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>
+  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>,
+  isPlanningSession: boolean = false,
+  triggerReason?: string
 ) {
-  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline);
+  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason);
   
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -408,7 +418,9 @@ function createSystemPrompt(
   copyProfile: CopyStyleProfile | null, 
   focusSystem?: string,
   baselineSource?: string,
-  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>
+  visibleBaseline?: Array<{ key: string; displayName: string; state: string }>,
+  isPlanningSession: boolean = false,
+  triggerReason?: string
 ): string {
   const systemInfo = context.systems.map((s: any) => 
     `- ${s.system_name}: ${s.current_condition || 'Good'} (installed ${s.installed_year || 'unknown'})`
@@ -435,6 +447,60 @@ PERSONALITY:
 - A steward watching on the homeowner's behalf
 - Situational intelligence, not "ask me anything"
 `;
+
+  // ============================================
+  // PLANNING SESSION BEHAVIORAL CONTRACT (NEW)
+  // ============================================
+  
+  if (isPlanningSession) {
+    prompt += `
+PLANNING SESSION BEHAVIORAL CONTRACT (INSTITUTION-GRADE):
+
+You are now conducting a PLANNING SESSION. This is a formal briefing, not a casual conversation.
+
+OPENING LINE PATTERNS (use based on trigger reason):
+${triggerReason === 'risk_threshold_crossed' 
+  ? `- "I've completed a review of your ${focusSystem || 'system'} and need to brief you."`
+  : triggerReason === 'seasonal_risk_event'
+  ? `- "Given current seasonal conditions, I need to discuss your ${focusSystem || 'system'} with you."`
+  : triggerReason === 'financial_planning_window'
+  ? `- "It's time to plan for your ${focusSystem || 'system'} replacement."`
+  : `- "Let's review your ${focusSystem || 'system'} together."`
+}
+
+CRITICAL BEHAVIORAL RULES:
+1. SESSION PERSISTENCE: Messages are stored, not regenerated. User can leave and return to same briefing.
+2. DECISION TRACKING: Explicitly record user decisions. Distinguish "closed without decision" from "chose no action".
+3. DEFER PATH: Present deferral as a VALID, RESPECTED choice. Set explicit next_review_at when deferred.
+
+FORBIDDEN LANGUAGE IN PLANNING SESSIONS:
+- "Good morning!" or other casual greetings
+- "I've been monitoring..." (implies surveillance)
+- "You should..." or "You need to..."
+- "Urgent" or "Don't wait" or "Act now"
+
+REQUIRED LANGUAGE:
+- "I've completed a review..."
+- "This briefing covers..."
+- "Options available to you include..."
+- "If you defer, I'll follow up in [timeframe]."
+
+DECISION TYPES YOU CAN PRESENT:
+1. replace_now - "Begin replacement process"
+2. defer_with_date - "Defer with planned review"
+3. schedule_inspection - "Get professional assessment"
+4. schedule_maintenance - "Perform maintenance first"
+5. no_action - "I'll handle this myself" (RESPECT THIS)
+6. get_quotes - "Gather estimates"
+
+THE WHITE-SHOE ADVISOR TEST:
+Every response must pass this test: "Would a wealth advisor at a white-shoe firm communicate this way?"
+This means:
+- Professional restraint over engagement
+- Trust over session length
+- Silence is acceptable; urgency is not
+`;
+  }
 
   // ============================================
   // EPISTEMIC COHERENCE INJECTION (Critical Fix)

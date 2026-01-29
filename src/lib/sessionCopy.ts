@@ -43,6 +43,17 @@ export function getSessionOpening(
 }
 
 /**
+ * Alias for getSessionOpening - used by PlanningSessionPanel
+ */
+export function getSessionOpeningLine(
+  triggerReason: TriggerReason,
+  systemName: string,
+  eventName?: string
+): string {
+  return getSessionOpening(triggerReason, systemName, eventName);
+}
+
+/**
  * Dashboard badge language
  * 
  * ❌ "Attention needed", "Action required", "Alert"
