@@ -63,6 +63,53 @@ import {
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
 // ============================================
+// Conversation Starters
+// ============================================
+
+interface ConversationStartersProps {
+  planningCount: number;
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  onStarterClick: (message: string) => void;
+}
+
+function ConversationStarters({ planningCount, confidenceLevel, onStarterClick }: ConversationStartersProps) {
+  const hasPlanningSystems = planningCount > 0;
+  const isLowConfidence = confidenceLevel === 'Early' || confidenceLevel === 'Unknown';
+  
+  // Don't show if neither condition is met
+  if (!hasPlanningSystems && !isLowConfidence) return null;
+  
+  return (
+    <div className="flex flex-wrap gap-2 mt-3 ml-6 animate-fade-in">
+      {hasPlanningSystems && (
+        <>
+          <button 
+            onClick={() => onStarterClick("Show me which system needs attention")}
+            className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
+          >
+            Show me which one
+          </button>
+          <button 
+            onClick={() => onStarterClick("What should I do about the system in the planning window?")}
+            className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
+          >
+            What should I do?
+          </button>
+        </>
+      )}
+      
+      {isLowConfidence && (
+        <button 
+          onClick={() => onStarterClick("How can I improve the accuracy of your monitoring?")}
+          className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
+        >
+          How can I improve accuracy?
+        </button>
+      )}
+    </div>
+  );
+}
+// ============================================
 // Types
 // ============================================
 
@@ -373,7 +420,7 @@ export function ChatConsole({
             )}
             
             {/* Messages - no bubbles with tails, with inline artifacts */}
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <div key={message.id}>
                 {/* Message bubble */}
                 <div
@@ -393,6 +440,18 @@ export function ChatConsole({
                     {message.content}
                   </div>
                 </div>
+                
+                {/* Conversation Starters - show after first AI message only */}
+                {message.role === "assistant" && index === 0 && messages.length === 1 && (
+                  <ConversationStarters
+                    planningCount={baselineSystems.filter(s => s.state === 'planning_window' || s.state === 'elevated').length}
+                    confidenceLevel={confidenceLevel}
+                    onStarterClick={(prompt) => {
+                      setInput(prompt);
+                      inputRef.current?.focus();
+                    }}
+                  />
+                )}
                 
                 {/* Attached artifact (if chat earned it) */}
                 {message.attachedArtifact && (
