@@ -170,7 +170,19 @@ export function ChatConsole({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasShownOpening, setHasShownOpening] = useState(false);
-  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => wasBaselineOpeningShown());
+  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(() => {
+    // Check both the explicit flag AND existing messages
+    const flagSet = wasBaselineOpeningShown();
+    const hasStoredMessages = (() => {
+      try {
+        const stored = sessionStorage.getItem(`habitta_chat_messages_${propertyId}`);
+        return stored !== null && JSON.parse(stored).length > 0;
+      } catch {
+        return false;
+      }
+    })();
+    return flagSet || hasStoredMessages;
+  });
   const [isFirstUserVisit] = useState(() => isFirstVisit());
   // Artifact controls
   const [isBaselineCollapsed, setIsBaselineCollapsed] = useState(false);
@@ -182,7 +194,7 @@ export function ChatConsole({
     state: s.state,
   }));
 
-  const { messages, loading, sendMessage, injectMessage } = useAIHomeAssistant(propertyId, {
+  const { messages, loading, sendMessage, injectMessage, isRestoring } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
     risk,
@@ -208,7 +220,11 @@ export function ChatConsole({
 
   // Inject personal blurb explaining the System Outlook artifact
   // Uses the new generatePersonalBlurb for warm, time-aware greetings
+  // Wait for restoration to complete before deciding to show opening
   useEffect(() => {
+    // Don't show opening while still restoring from storage
+    if (isRestoring) return;
+    
     if (
       messages.length === 0 && 
       !hasShownBaselineOpening &&
@@ -235,7 +251,7 @@ export function ChatConsole({
         markFirstVisitComplete();
       }
     }
-  }, [messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit]);
+  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit]);
 
   // Reset opening state when focus changes
   useEffect(() => {
