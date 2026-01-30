@@ -1,326 +1,138 @@
 
-# Canonical Consistency Contract: Photo Data → Systems Table
+# Enhance System Outlook Card Visibility and Add AI Avatar
 
-## Problem Summary
-
-When a user uploads a photo of a system label (e.g., water heater), the extracted data:
-1. Is analyzed via `analyze-device-photo` edge function
-2. Is saved to `home_systems` table (rich fields: brand, model, serial)
-3. **Never reaches the canonical `systems` table** (which the AI, capital timeline, and intelligence engine read)
-
-Additionally, there's evidence that the photo analysis edge function isn't consistently triggering — the database shows a recent upload with `status: uploaded` but **zero logs** from `analyze-device-photo`.
-
-**Current State Evidence:**
-- `photo_transfer_sessions`: Photo uploaded at 11:43 today, `status: uploaded`, photo URL exists
-- `analyze-device-photo` logs: **Empty** — function never fired
-- `home_systems` table: No water heater record (only an LG appliance from January 24)
-- `systems` table: Water heater exists with `install_year: 2012`, `install_source: owner_reported`, `confidence: 0.6`
-
-**Result:** The AI is "forgetful" — user provided evidence, but Habitta didn't absorb it.
+## Overview
+The System Outlook artifact in the chat needs more visual prominence to stand out as a key evidence surface. Additionally, AI messages should include a chat avatar icon to create visual consistency and identity. This will apply to:
+1. The System Outlook (Baseline Surface) card
+2. All AI assistant messages
 
 ---
 
-## Root Causes
+## Changes
 
-### Issue 1: Photo Analysis Not Triggering
+### 1. Make System Outlook Card "Pop" More
 
-The `QRPhotoSession` polling detects `status: uploaded` and calls `onPhotoReceived`, but somewhere in the callback chain:
+**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+
+The System Outlook card currently uses muted styling (`bg-muted/10`, `border-border/30`). We'll enhance it with:
+- Subtle shadow for depth
+- Slightly stronger border
+- Light background gradient or elevated surface appearance
+- Teal accent on the header to tie to Habitta brand
+
+**Current styling (lines 447-450):**
+```typescript
+"ml-6 rounded-lg border border-border/30 bg-muted/10 overflow-hidden"
 ```
-QRPhotoSession.onPhotoReceived → ChatPhotoUpload.handleQRPhotoReceived → ChatConsole.handlePhotoAnalysis → fetch(analyze-device-photo)
+
+**Updated styling:**
+```typescript
+"ml-6 rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden"
 ```
-...the analysis never fires. Likely causes:
-- Modal closes before fetch completes
-- Component unmounts during async operation
-- No error handling/retry for dropped callbacks
 
-### Issue 2: `applySystemUpdate` Only Writes to `home_systems`
-
-Even when photo analysis works, the data never syncs to the canonical `systems` table:
-- `applySystemUpdate` writes exclusively to `home_systems`
-- `capital-timeline`, `intelligence-engine`, and AI context read from `systems`
-- **Two tables, zero sync**
+**Header styling update (lines 452-453):**
+Add a subtle accent border-left or background tint:
+```typescript
+"flex items-center justify-between px-3 py-2 border-b border-border/20 bg-gradient-to-r from-teal-50/50 to-transparent"
+```
 
 ---
 
-## Solution Architecture
+### 2. Add AI Avatar to Assistant Messages
 
-### Part 1: Fix Photo Analysis Trigger Reliability
+**File:** `src/components/dashboard-v3/ChatConsole.tsx`
 
-**Problem:** Callback chain drops when modal closes.
+Create an inline avatar for AI messages using the Habitta logo. For consistency and performance, we'll use a small rounded version of the logo.
 
-**Fix:** Add defensive logging and ensure callback completes before modal state change.
+**Message rendering update (around lines 506-527):**
 
 ```typescript
-// ChatPhotoUpload.tsx - handleQRPhotoReceived
-const handleQRPhotoReceived = async (photoUrl: string) => {
-  console.log('[ChatPhotoUpload] Photo received via QR, triggering analysis:', photoUrl.substring(0, 50));
+// Import at top
+import Logo from '@/components/Logo';
+
+// In message rendering
+{message.role === "assistant" && (
+  <div className="shrink-0 mt-1">
+    <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
+      <Logo size="sm" className="w-4 h-4" />
+    </div>
+  </div>
+)}
+```
+
+The avatar will appear:
+- To the left of assistant messages (natural chat layout)
+- Above the System Outlook card (treating it as an AI-surfaced artifact)
+
+---
+
+### 3. Add Avatar Above System Outlook Card
+
+Since the System Outlook is an AI-surfaced artifact (per doctrine: "it was brought here"), it should also display the Habitta avatar to reinforce that the AI presented this evidence.
+
+**Implementation:**
+Add the same avatar treatment before the Baseline Surface section:
+
+```typescript
+{/* AI Avatar for Baseline Surface */}
+<div className="flex items-start gap-2">
+  <div className="shrink-0 mt-1">
+    <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
+      <Logo size="sm" className="w-4 h-4" />
+    </div>
+  </div>
   
-  // Show toast immediately (user feedback)
-  toast({
-    title: "Photo received",
-    description: "Analyzing your photo...",
-  });
-  
-  // CRITICAL: Call the callback BEFORE closing modal
-  // This ensures the async chain starts before unmount
-  onPhotoReady(photoUrl);
-  
-  // Then close modal (after callback initiated)
-  setShowQRModal(false);
-};
-```
-
-**Add logging to `ChatConsole.handlePhotoAnalysis`:**
-```typescript
-const handlePhotoAnalysis = useCallback(async (photoUrl: string) => {
-  console.log('[ChatConsole] handlePhotoAnalysis called with URL:', photoUrl.substring(0, 50));
-  // ... rest of function
-```
-
-### Part 2: Dual-Write to Canonical `systems` Table
-
-**Pattern:** When `applySystemUpdate` writes to `home_systems`, also upsert to `systems` for core system types.
-
-**Authority Hierarchy Mapping:**
-| `SystemUpdateSource` | `systems.install_source` | Confidence |
-|---------------------|-------------------------|------------|
-| `photo_analysis`    | `owner_reported`        | 0.6        |
-| `permit_record`     | `permit_verified`       | 0.85       |
-| `user_confirmed`    | `owner_reported`        | 0.7        |
-| `inferred`          | `heuristic`             | 0.3        |
-
-**New File: `src/lib/systemUpdates/syncToCanonicalSystems.ts`**
-
-```typescript
-interface SyncInput {
-  home_id: string;
-  kind: string;
-  manufactureYear?: number;
-  confidence: number;
-  source: SystemUpdateSource;
-  photoUrl?: string;
-}
-
-/**
- * Sync photo analysis data to canonical 'systems' table.
- * 
- * AUTHORITY RULES:
- * - permit_verified (0.85) > owner_reported (0.60-0.70) > heuristic (0.30)
- * - Photo evidence CANNOT overwrite permit-verified data
- * - Photo evidence CAN upgrade heuristic data
- */
-export async function syncToCanonicalSystems(input: SyncInput): Promise<void> {
-  // ... implementation
-}
-```
-
-### Part 3: Guard Install Year Inference
-
-**Problem:** `manufacture_year` ≠ `install_year`. Units can sit in inventory for 1-3 years.
-
-**Fix:** Introduce inference rules with explicit uncertainty:
-
-```typescript
-interface InferInstallYearResult {
-  year: number | null;
-  isEstimated: boolean;
-  basis: 'serial_decode' | 'manufacture_year' | 'unknown';
-}
-
-function inferInstallYear(manufactureYear?: number, confidence?: number): InferInstallYearResult {
-  if (!manufactureYear) {
-    return { year: null, isEstimated: true, basis: 'unknown' };
-  }
-  
-  // If high confidence (serial decode worked), trust manufacture year
-  if (confidence && confidence >= 0.7) {
-    return { year: manufactureYear, isEstimated: false, basis: 'serial_decode' };
-  }
-  
-  // Otherwise, add 1 year buffer (median inventory time)
-  return { 
-    year: manufactureYear + 1, 
-    isEstimated: true, 
-    basis: 'manufacture_year' 
-  };
-}
-```
-
-### Part 4: Make Dual-Write Idempotent
-
-**Problem:** Same photo processed multiple times could inflate confidence.
-
-**Fix:** Add processing hash guard:
-
-```typescript
-// In applySystemUpdate or syncToCanonicalSystems
-const processHash = btoa(`${image_url}:${system_key}`).substring(0, 20);
-
-// Check if already processed
-const { data: existing } = await supabase
-  .from('systems')
-  .select('raw_data')
-  .eq('home_id', home_id)
-  .ilike('kind', kind);
-
-const previousHashes = existing?.raw_data?.processed_photo_hashes || [];
-if (previousHashes.includes(processHash)) {
-  console.log('[syncToCanonical] Skipping duplicate photo processing');
-  return;
-}
-
-// After update, append hash
-await supabase
-  .from('systems')
-  .update({ 
-    raw_data: { 
-      ...existing.raw_data, 
-      processed_photo_hashes: [...previousHashes, processHash] 
-    } 
-  });
+  {/* Existing Baseline Surface card */}
+  <div className="flex-1">
+    {/* ... existing content ... */}
+  </div>
+</div>
 ```
 
 ---
 
-## Files to Modify
+## Visual Summary
 
-| File | Changes | Priority |
-|------|---------|----------|
-| `src/components/dashboard-v3/ChatPhotoUpload.tsx` | Reorder callback before modal close, add logging | P0 (blocking) |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Add logging to `handlePhotoAnalysis` | P0 (blocking) |
-| `src/lib/systemUpdates/syncToCanonicalSystems.ts` | **New file**: Dual-write helper | P0 |
-| `src/lib/systemUpdates/applySystemUpdate.ts` | Call `syncToCanonicalSystems` after `home_systems` write | P0 |
-| `src/lib/systemUpdates/authority.ts` | Add source-to-install_source mapping | P1 |
-| `src/lib/systemUpdates/index.ts` | Export new function | P1 |
+```text
+Before:
+┌─────────────────────────────────┐
+│  System Outlook — 3 systems     │  (flat, muted)
+│  ┌─────────────────────────────┐│
+│  │ HVAC System                 ││
+│  │ [OK|WATCH|PLAN]             ││
+│  └─────────────────────────────┘│
+└─────────────────────────────────┘
 
----
+After:
+  ○  ┌────────────────────────────────┐
+  H  │ ▎ System Outlook — 3 systems   │  (elevated, shadow, teal accent)
+     │  ┌────────────────────────────┐│
+     │  │ HVAC System                ││
+     │  │ [OK|WATCH|PLAN]            ││
+     │  └────────────────────────────┘│
+     └────────────────────────────────┘
 
-## Technical Specification
+  ○  Good afternoon. Your home has 3 key systems...
+  H  
 
-### syncToCanonicalSystems Interface
-
-```typescript
-interface SyncInput {
-  home_id: string;
-  kind: 'hvac' | 'roof' | 'water_heater';  // Core systems only
-  manufactureYear?: number;
-  confidence: number;
-  source: SystemUpdateSource;
-  photoUrl?: string;
-}
-
-interface SyncResult {
-  synced: boolean;
-  reason?: 'higher_authority_exists' | 'duplicate_photo' | 'synced' | 'created';
-}
-```
-
-### Authority Comparison Logic
-
-```typescript
-const INSTALL_SOURCE_PRIORITY: Record<string, number> = {
-  permit_verified: 4,
-  inspection: 3,
-  owner_reported: 2,
-  heuristic: 1,
-};
-
-function canOverwrite(existing: string | null, incoming: string): boolean {
-  const existingPriority = existing ? INSTALL_SOURCE_PRIORITY[existing] || 0 : 0;
-  const incomingPriority = INSTALL_SOURCE_PRIORITY[incoming] || 0;
-  return incomingPriority >= existingPriority;
-}
+       What should I do about the system?  (user message, right-aligned)
 ```
 
 ---
 
-## Database Impact
+## Technical Notes
 
-When photo analysis succeeds for a core system:
+### Files to Modify
+| File | Change |
+|------|--------|
+| `src/components/dashboard-v3/ChatConsole.tsx` | Add Logo import, avatar wrapper for AI messages, enhanced card styling |
 
-1. **`home_systems`** (existing behavior):
-   - Creates/updates record with brand, model, serial, images
-   - Stores field_provenance with authority tracking
+### Avatar Styling Tokens
+- Container: `w-6 h-6 rounded-full bg-teal-50 ring-1 ring-teal-100`
+- Logo: `w-4 h-4` (using existing Logo component with size="sm")
 
-2. **`systems`** (new behavior):
-   - Updates `install_year` from inferred year (with buffer)
-   - Updates `install_source` to `owner_reported`
-   - Updates `confidence` (respecting authority hierarchy)
-   - Appends photo hash to `raw_data.processed_photo_hashes`
-   - Preserves `permit_verified` data (never overwrites)
-
----
-
-## Testing Checklist
-
-### Part 1: Photo Analysis Trigger
-
-| Step | Expected |
-|------|----------|
-| Upload photo via mobile direct upload | `analyze-device-photo` logs show function called |
-| Upload photo via QR transfer (desktop) | `analyze-device-photo` logs show function called |
-| Close QR modal while polling | Analysis still completes (callback fired before close) |
-| Check console logs | `[ChatConsole] handlePhotoAnalysis called with URL:` appears |
-
-### Part 2: Dual-Write Sync
-
-| Step | Expected |
-|------|----------|
-| Upload water heater photo | `systems` table updates with new confidence |
-| Upload photo for permit-verified HVAC | `systems` table NOT overwritten (higher authority) |
-| Upload same photo twice | Second upload skipped (idempotent hash check) |
-| Check AI chat context | AI references updated system data |
-
-### Part 3: Install Year Inference
-
-| Step | Expected |
-|------|----------|
-| Photo with serial decode (high confidence) | `install_year` = `manufacture_year` |
-| Photo without serial (low confidence) | `install_year` = `manufacture_year + 1`, marked estimated |
-| Photo with no manufacture year | No `install_year` update |
-
----
-
-## Doctrine Addition
-
-Add to `src/lib/systemUpdates/index.ts`:
-
-```typescript
-/**
- * CANONICAL CONSISTENCY CONTRACT (IMMUTABLE):
- * 
- * Any data that can influence:
- * - System state (stable/watch/plan)
- * - Capital timeline projections
- * - AI chat responses
- * - Confidence scoring
- * 
- * MUST land in the canonical `systems` table, not just `home_systems`.
- * 
- * The `systems` table is the single source of truth for:
- * - capital-timeline edge function
- * - intelligence-engine edge function
- * - AI home assistant context
- * - Dashboard baseline derivation
- */
-```
-
----
-
-## Summary
-
-This fix implements a **Canonical Consistency Contract** ensuring:
-
-1. **Photo analysis reliably triggers** (defensive logging + callback ordering)
-2. **Photo data syncs to canonical systems table** (dual-write pattern)
-3. **Authority hierarchy is preserved** (permit > photo > heuristic)
-4. **Install year inference is guarded** (manufacture_year ≠ install_year)
-5. **Duplicate processing is prevented** (idempotent hash check)
-
-After this fix, when a user uploads a water heater photo:
-- The AI will immediately see the updated data
-- Capital timeline will reflect the new install year
-- Confidence will increase appropriately
-- The system state may transition from WATCH to OK if data improves
-
-This transforms Habitta from "forgetful assistant" to "reliable steward."
+### Card Enhancement Tokens
+- Border: `border border-stone-200` (from `border-border/30`)
+- Background: `bg-white` (from `bg-muted/10`)
+- Shadow: `shadow-sm`
+- Header accent: `bg-gradient-to-r from-teal-50/50 to-transparent`
