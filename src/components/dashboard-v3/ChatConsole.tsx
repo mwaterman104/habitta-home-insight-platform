@@ -46,7 +46,7 @@ import { track } from "@/lib/analytics";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { TodaysFocus } from "@/lib/todaysFocusCopy";
 import type { ChatMode, BaselineSource } from "@/types/chatMode";
-import Logo from "@/components/Logo";
+import habittaChatIcon from "@/assets/habitta-chat-icon.png";
 import type { SystemState } from "@/types/systemState";
 import { getChatPlaceholder } from "@/lib/todaysFocusCopy";
 import { 
@@ -448,8 +448,8 @@ export function ChatConsole({
             <div className="flex items-start gap-2">
               {/* AI Avatar for Baseline Surface */}
               <div className="shrink-0 mt-1">
-                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
-                  <Logo size="sm" className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100 overflow-hidden">
+                  <img src={habittaChatIcon} alt="Habitta" className="w-6 h-6 object-contain" />
                 </div>
               </div>
               
@@ -526,8 +526,8 @@ export function ChatConsole({
                     {/* AI Avatar for assistant messages */}
                     {message.role === "assistant" && (
                       <div className="shrink-0 mt-1">
-                        <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
-                          <Logo size="sm" className="w-4 h-4" />
+                        <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100 overflow-hidden">
+                          <img src={habittaChatIcon} alt="Habitta" className="w-6 h-6 object-contain" />
                         </div>
                       </div>
                     )}
