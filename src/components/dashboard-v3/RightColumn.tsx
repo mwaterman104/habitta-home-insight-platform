@@ -12,16 +12,26 @@
  * Contains:
  * - PropertyMap (location visualization with intelligence overlays)
  * - LocalConditions (climate, stress, comparable homes)
+ * - MaintenanceCalendarWidget (compact calendar view)
  */
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyMap } from "./PropertyMap";
 import { LocalConditions } from "./LocalConditions";
+import { MaintenanceCalendarWidget } from "./MaintenanceCalendarWidget";
 import { deriveClimateZone } from "@/lib/climateZone";
 import { 
   getClimateZoneLabel, 
   getEnvironmentalStressLabel 
 } from "@/lib/dashboardRecoveryCopy";
+
+interface MaintenanceTask {
+  id: string;
+  title: string;
+  due_date: string;
+  priority: string;
+  status: string;
+}
 
 interface IntelligenceOverlay {
   comparableHomesCount?: number;
@@ -41,6 +51,9 @@ interface RightColumnProps {
   intelligenceOverlay?: IntelligenceOverlay;
   // Handler for map click - opens context drawer
   onMapClick?: () => void;
+  // Maintenance tasks for calendar widget
+  maintenanceTasks?: MaintenanceTask[];
+  maintenanceLoading?: boolean;
 }
 
 export function RightColumn({
@@ -52,6 +65,8 @@ export function RightColumn({
   state,
   intelligenceOverlay,
   onMapClick,
+  maintenanceTasks = [],
+  maintenanceLoading = false,
 }: RightColumnProps) {
   const climate = deriveClimateZone(state, city, latitude);
   
@@ -60,6 +75,7 @@ export function RightColumn({
       <div className="space-y-6">
         <Skeleton className="h-72 rounded-xl" />
         <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
       </div>
     );
   }
@@ -89,12 +105,12 @@ export function RightColumn({
         environmentalStress={getEnvironmentalStressLabel(climate.zone)}
         comparableHomesPattern={comparablePattern}
       />
-      
-      {/* 
-       * REMOVED: FocusContextCard
-       * QA Fix #5: Context lives in ContextDrawer only.
-       * Right column = external/environmental awareness only.
-       */}
+
+      {/* Maintenance Calendar Widget */}
+      <MaintenanceCalendarWidget 
+        tasks={maintenanceTasks}
+        loading={maintenanceLoading}
+      />
     </div>
   );
 }
