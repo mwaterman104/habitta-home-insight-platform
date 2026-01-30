@@ -46,6 +46,7 @@ import { track } from "@/lib/analytics";
 import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
 import type { TodaysFocus } from "@/lib/todaysFocusCopy";
 import type { ChatMode, BaselineSource } from "@/types/chatMode";
+import Logo from "@/components/Logo";
 import type { SystemState } from "@/types/systemState";
 import { getChatPlaceholder } from "@/lib/todaysFocusCopy";
 import { 
@@ -442,45 +443,54 @@ export function ChatConsole({
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
-          {/* BASELINE SURFACE - Chat-surfaced artifact style */}
+          {/* BASELINE SURFACE - Chat-surfaced artifact style with AI avatar */}
           {baselineSystems.length > 0 && (
-            <div className={cn(
-              "ml-6 rounded-lg border border-border/30 bg-muted/10 overflow-hidden",
-              "transition-all duration-200"
-            )}>
-              {/* Artifact Header with Controls */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-border/20 bg-muted/5">
-                <button 
-                  onClick={() => setIsBaselineCollapsed(!isBaselineCollapsed)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {isBaselineCollapsed ? (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  )}
-                  <span>System Outlook — {baselineSystems.length} systems</span>
-                </button>
-                <button 
-                  onClick={() => setIsBaselineExpanded(true)}
-                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                  title="Expand"
-                >
-                  <Maximize2 className="h-3.5 w-3.5" />
-                </button>
+            <div className="flex items-start gap-2">
+              {/* AI Avatar for Baseline Surface */}
+              <div className="shrink-0 mt-1">
+                <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
+                  <Logo size="sm" className="w-4 h-4" />
+                </div>
               </div>
               
-              {/* Collapsible Content */}
-              {!isBaselineCollapsed && (
-                <div className="p-3">
-                  <BaselineSurface
-                    yearBuilt={yearBuilt}
-                    confidenceLevel={confidenceLevel}
-                    systems={baselineSystems}
-                    onWhyClick={handleWhyClick}
-                  />
+              <div className={cn(
+                "flex-1 rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden",
+                "transition-all duration-200"
+              )}>
+                {/* Artifact Header with Controls - teal accent */}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border/20 bg-gradient-to-r from-teal-50/50 to-transparent">
+                  <button 
+                    onClick={() => setIsBaselineCollapsed(!isBaselineCollapsed)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {isBaselineCollapsed ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    )}
+                    <span>System Outlook — {baselineSystems.length} systems</span>
+                  </button>
+                  <button 
+                    onClick={() => setIsBaselineExpanded(true)}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    title="Expand"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              )}
+                
+                {/* Collapsible Content */}
+                {!isBaselineCollapsed && (
+                  <div className="p-3">
+                    <BaselineSurface
+                      yearBuilt={yearBuilt}
+                      confidenceLevel={confidenceLevel}
+                      systems={baselineSystems}
+                      onWhyClick={handleWhyClick}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -510,9 +520,17 @@ export function ChatConsole({
                   <div
                     className={cn(
                       "flex gap-3",
-                      message.role === "user" ? "justify-end" : "justify-start"
+                      message.role === "user" ? "justify-end" : "justify-start items-start"
                     )}
                   >
+                    {/* AI Avatar for assistant messages */}
+                    {message.role === "assistant" && (
+                      <div className="shrink-0 mt-1">
+                        <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
+                          <Logo size="sm" className="w-4 h-4" />
+                        </div>
+                      </div>
+                    )}
                     <div
                       className={cn(
                         "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
