@@ -398,9 +398,8 @@ export function generatePersonalBlurb(context: {
     return `${greeting}. I've reviewed the information you provided and set up monitoring for ${context.systemCount} key ${systemWord}. I'll keep an eye on their expected lifespans and let you know when planning windows approach.`;
   }
   
-  const homeRef = context.yearBuilt 
-    ? `Your ${context.yearBuilt} home` 
-    : 'Your home';
+  // Simplified: always use "Your home" without year to avoid data accuracy issues
+  const homeRef = 'Your home';
   
   const systemWord = context.systemCount === 1 ? 'system' : 'systems';
   
