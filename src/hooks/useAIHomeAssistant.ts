@@ -12,7 +12,7 @@ import type { AdvisorState, RiskLevel } from '@/types/advisorState';
 import type { ChatMode, BaselineSource, VisibleBaselineSystem } from '@/types/chatMode';
 import type { ChatArtifact } from '@/types/chatArtifact';
 
-const CHAT_MESSAGES_KEY = 'habitta_chat_messages';
+const CHAT_MESSAGES_KEY = 'habitta_chat_messages_v2';
 
 export interface ChatMessage {
   id: string;
