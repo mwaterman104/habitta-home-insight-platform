@@ -538,6 +538,14 @@ export default function DashboardV3() {
                   address={userHome.address}
                   city={userHome.city}
                   state={userHome.state}
+                  maintenanceTasks={maintenanceTasks?.map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    due_date: t.due_date,
+                    priority: t.priority || 'medium',
+                    status: t.status || 'pending',
+                  })) || []}
+                  maintenanceLoading={tasksLoading}
                 />
               </aside>
             </ResizablePanel>

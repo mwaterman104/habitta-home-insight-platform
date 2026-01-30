@@ -18,6 +18,7 @@ export { BaselineSurface } from './BaselineSurface';
 
 // Context Components
 export { LocalConditions } from './LocalConditions';
+export { MaintenanceCalendarWidget } from './MaintenanceCalendarWidget';
 export { HomeStatusHeader } from './HomeStatusHeader';
 export { HomePositionOutlook } from './HomePositionOutlook';
 export { SystemsOverview } from './SystemsOverview';
