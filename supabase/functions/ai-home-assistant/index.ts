@@ -1,6 +1,15 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { 
+  calculateSystemLifecycle,
+  getRegionContext,
+  dataQualityFromConfidence,
+  type PropertyContext as LifecyclePropertyContext,
+  type ResolvedInstallInput,
+  type LifecycleOutput,
+  type RegionContext
+} from '../_shared/systemInference.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -275,21 +284,135 @@ serve(async (req) => {
   }
 });
 
+// ============================================================================
+// ENRICHED SYSTEM CONTEXT (Canonical Truth + Runtime Lifecycle Calculation)
+// ============================================================================
+
+interface EnrichedSystemContext {
+  kind: string;
+  systemLabel: string;
+  installYear: number | null;
+  installSource: string;
+  confidence: number;
+  verified: boolean;
+  brand?: string;
+  model?: string;
+  material?: string;
+  // Computed lifecycle fields
+  replacementWindow: {
+    earlyYear: number;
+    likelyYear: number;
+    lateYear: number;
+  };
+  lifecycleStage: 'early' | 'mid' | 'late';
+  dataQuality: 'high' | 'medium' | 'low';
+  disclosureNote: string;
+}
+
+function enrichSystemWithLifecycle(
+  system: any,
+  property: LifecyclePropertyContext,
+  region: RegionContext
+): EnrichedSystemContext | null {
+  const currentYear = new Date().getFullYear();
+  
+  // Only process known system types
+  const validKinds = ['hvac', 'roof', 'water_heater'];
+  if (!validKinds.includes(system.kind)) {
+    console.log(`[enrichSystemWithLifecycle] Skipping unknown kind: ${system.kind}`);
+    return null;
+  }
+  
+  // Build resolved install input for calculator
+  const resolvedInstall: ResolvedInstallInput = {
+    installYear: system.install_year,
+    installSource: (system.install_source as any) || 'heuristic',
+    confidenceScore: system.confidence || 0.3,
+    replacementStatus: (system.replacement_status as any) || 'unknown',
+    rationale: ''
+  };
+  
+  // Calculate lifecycle using pure math
+  const lifecycle = calculateSystemLifecycle(
+    system.kind as 'hvac' | 'roof' | 'water_heater',
+    resolvedInstall,
+    property,
+    region
+  );
+  
+  // Determine lifecycle stage
+  const baseInstall = system.install_year || property.yearBuilt;
+  const age = currentYear - baseInstall;
+  const earlyThreshold = lifecycle.replacementWindow.earlyYear - baseInstall;
+  const likelyThreshold = lifecycle.replacementWindow.likelyYear - baseInstall;
+  
+  const lifecycleStage: 'early' | 'mid' | 'late' = 
+    age < earlyThreshold * 0.5 ? 'early' :
+    age < earlyThreshold ? 'mid' : 'late';
+  
+  // Determine if verified (not heuristic)
+  const verified = system.install_source !== 'heuristic' && 
+                   system.install_source !== null && 
+                   system.install_source !== undefined;
+  
+  return {
+    kind: system.kind,
+    systemLabel: lifecycle.systemLabel,
+    installYear: system.install_year,
+    installSource: system.install_source || 'heuristic',
+    confidence: system.confidence || 0.3,
+    verified,
+    brand: system.brand,
+    model: system.model,
+    material: system.material,
+    replacementWindow: lifecycle.replacementWindow,
+    lifecycleStage,
+    dataQuality: dataQualityFromConfidence(system.confidence || 0.3),
+    disclosureNote: lifecycle.disclosureNote
+  };
+}
+
 async function getPropertyContext(supabase: any, propertyId: string) {
   const [
-    { data: systems },
+    { data: rawSystems },
     { data: recommendations },
     { data: predictions },
     { data: home }
   ] = await Promise.all([
-    supabase.from('system_lifecycles').select('*').eq('property_id', propertyId),
+    // CANONICAL TRUTH: Read from 'systems' table (same as capital-timeline)
+    supabase.from('systems').select('*').eq('home_id', propertyId),
     supabase.from('smart_recommendations').select('*').eq('property_id', propertyId).eq('is_completed', false).limit(5),
     supabase.from('prediction_accuracy').select('*').eq('property_id', propertyId).limit(3),
-    supabase.from('homes').select('latitude, longitude, city, state, zip_code').eq('id', propertyId).single()
+    // Extended home query for lifecycle calculations
+    supabase.from('homes').select('id, latitude, longitude, city, state, zip_code, year_built').eq('id', propertyId).single()
   ]);
 
+  console.log(`[getPropertyContext] Fetched ${rawSystems?.length || 0} systems from canonical 'systems' table for home ${propertyId}`);
+
+  // Build property context for lifecycle calculations
+  const propertyContext: LifecyclePropertyContext = {
+    yearBuilt: home?.year_built || 2000,
+    state: home?.state || 'FL',
+    city: home?.city,
+  };
+  
+  // Get region context for climate adjustments
+  const region = getRegionContext(propertyContext.state, propertyContext.city);
+  
+  // Enrich systems with lifecycle calculations at runtime
+  const enrichedSystems: EnrichedSystemContext[] = (rawSystems || [])
+    .map((s: any) => enrichSystemWithLifecycle(s, propertyContext, region))
+    .filter((s: EnrichedSystemContext | null): s is EnrichedSystemContext => s !== null);
+
+  console.log(`[getPropertyContext] Enriched ${enrichedSystems.length} systems with lifecycle data`);
+  
+  // Log verified vs estimated for debugging
+  const verifiedCount = enrichedSystems.filter(s => s.verified).length;
+  const estimatedCount = enrichedSystems.filter(s => !s.verified).length;
+  console.log(`[getPropertyContext] Verified: ${verifiedCount}, Estimated: ${estimatedCount}`);
+
   return {
-    systems: systems || [],
+    systems: enrichedSystems,
     activeRecommendations: recommendations || [],
     recentPredictions: predictions || [],
     homeLocation: home ? {
@@ -431,13 +554,45 @@ function createSystemPrompt(
   isPlanningSession: boolean = false,
   triggerReason?: string
 ): string {
-  const systemInfo = context.systems.map((s: any) => 
-    `- ${s.system_name}: ${s.current_condition || 'Good'} (installed ${s.installed_year || 'unknown'})`
-  ).join('\n');
+  // Format system info using enriched context from canonical 'systems' table
+  const systemInfo = context.systems.map((s: EnrichedSystemContext) => {
+    const verifiedNote = s.verified ? ' [verified]' : ' [estimated]';
+    const stageNote = s.lifecycleStage === 'late' ? ' — approaching replacement window' : '';
+    const sourceNote = s.verified && s.installSource ? ` (source: ${s.installSource})` : '';
+    return `- ${s.systemLabel}: installed ${s.installYear || 'unknown'}${verifiedNote}${stageNote}${sourceNote}`;
+  }).join('\n');
 
   const recommendations = context.activeRecommendations.map((r: any) => 
     `- ${r.title}: ${r.description} (urgency: ${r.urgency_score}/100)`
   ).join('\n');
+
+  // Build verified language rules for systems with confirmed data
+  const verifiedSystems = context.systems.filter((s: EnrichedSystemContext) => s.verified);
+  let verifiedLanguageRules = '';
+  
+  if (verifiedSystems.length > 0) {
+    verifiedLanguageRules = `
+VERIFIED DATA LANGUAGE RULES (CRITICAL - DO NOT VIOLATE):
+${verifiedSystems.map((s: EnrichedSystemContext) => {
+  const sourceLabel = s.installSource === 'user' || s.installSource === 'owner_reported' 
+    ? 'based on the information you provided'
+    : s.installSource === 'permit_verified' || s.installSource === 'permit'
+    ? 'per your permit records'
+    : s.installSource === 'photo' 
+    ? 'based on the label you uploaded'
+    : 'based on confirmed data';
+  
+  return `- For ${s.systemLabel}: Say "${sourceLabel}, your ${s.systemLabel.toLowerCase()} was installed in ${s.installYear}." NOT "Based on typical lifespans..."`;
+}).join('\n')}
+
+FORBIDDEN when referencing verified systems:
+- "Based on typical lifespans..."
+- "Estimated age..."
+- "Approximately..."
+- "We estimate..."
+- "If we assume..."
+`;
+  }
 
   // Base personality
   let prompt = `You are Habitta AI, an expert home maintenance advisor. You are a calm, knowledgeable steward — not a pushy assistant.
@@ -448,7 +603,7 @@ ${systemInfo || 'No systems registered yet'}
 
 Active Recommendations:
 ${recommendations || 'No active recommendations'}
-
+${verifiedLanguageRules}
 ${focusSystem ? `CURRENT FOCUS: ${focusSystem} system\nThe user has selected this system. Reference it specifically in your response.` : ''}
 
 PERSONALITY:
