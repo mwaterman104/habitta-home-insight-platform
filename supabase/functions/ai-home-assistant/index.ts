@@ -279,17 +279,26 @@ async function getPropertyContext(supabase: any, propertyId: string) {
   const [
     { data: systems },
     { data: recommendations },
-    { data: predictions }
+    { data: predictions },
+    { data: home }
   ] = await Promise.all([
     supabase.from('system_lifecycles').select('*').eq('property_id', propertyId),
     supabase.from('smart_recommendations').select('*').eq('property_id', propertyId).eq('is_completed', false).limit(5),
-    supabase.from('prediction_accuracy').select('*').eq('property_id', propertyId).limit(3)
+    supabase.from('prediction_accuracy').select('*').eq('property_id', propertyId).limit(3),
+    supabase.from('homes').select('latitude, longitude, city, state, zip_code').eq('id', propertyId).single()
   ]);
 
   return {
     systems: systems || [],
     activeRecommendations: recommendations || [],
-    recentPredictions: predictions || []
+    recentPredictions: predictions || [],
+    homeLocation: home ? {
+      lat: home.latitude,
+      lng: home.longitude,
+      city: home.city,
+      state: home.state,
+      zipCode: home.zip_code
+    } : null
   };
 }
 
@@ -664,6 +673,127 @@ function formatStateForPrompt(state: string): string {
   }
 }
 
+// ============================================================================
+// GOOGLE PLACES CONTRACTOR SEARCH
+// ============================================================================
+
+// Contractor recommendations are discovery aids only.
+// No ranking, endorsement, or quality judgment is implied.
+
+interface GooglePlaceResult {
+  name: string;
+  rating: number;
+  userRatingCount: number;
+  formattedAddress: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  types?: string[];
+}
+
+async function searchLocalContractors(
+  serviceType: string,
+  location: { lat: number; lng: number; city: string; state: string }
+): Promise<GooglePlaceResult[]> {
+  const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+  if (!apiKey) {
+    console.error('[searchLocalContractors] GOOGLE_PLACES_API_KEY not configured');
+    return [];
+  }
+
+  // Map service types to search queries
+  const searchQueries: Record<string, string> = {
+    'hvac': 'HVAC contractor',
+    'water_heater': 'plumber water heater',
+    'plumbing': 'licensed plumber',
+    'electrical': 'licensed electrician',
+    'roof': 'roofing contractor',
+    'roofing': 'roofing contractor',
+    'general': 'home repair contractor'
+  };
+
+  const query = searchQueries[serviceType.toLowerCase()] || `${serviceType} contractor`;
+  const fullQuery = `${query} near ${location.city}, ${location.state}`;
+
+  console.log('[searchLocalContractors] Searching:', fullQuery);
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName,places.rating,places.userRatingCount,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.types'
+      },
+      body: JSON.stringify({
+        textQuery: fullQuery,
+        locationBias: {
+          circle: {
+            center: { latitude: location.lat, longitude: location.lng },
+            radius: 40000.0  // 40km radius
+          }
+        },
+        pageSize: 5,
+        rankPreference: 'RELEVANCE',
+        regionCode: 'US',
+        languageCode: 'en'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[searchLocalContractors] API error:', response.status, error);
+      return [];
+    }
+
+    const data = await response.json();
+    console.log('[searchLocalContractors] Found', data.places?.length || 0, 'results');
+    
+    // Filter for 4+ ratings in code (more reliable than API param)
+    return (data.places || [])
+      .filter((place: any) => (place.rating || 0) >= 4.0)
+      .map((place: any) => ({
+        name: place.displayName?.text || 'Unknown',
+        rating: place.rating || 0,
+        userRatingCount: place.userRatingCount || 0,
+        formattedAddress: place.formattedAddress || '',
+        websiteUri: place.websiteUri,
+        nationalPhoneNumber: place.nationalPhoneNumber,
+        types: place.types
+      }));
+  } catch (error) {
+    console.error('[searchLocalContractors] Error:', error);
+    return [];
+  }
+}
+
+function mapToCategory(types: string[] | undefined, fallbackService: string): string {
+  if (!types || types.length === 0) {
+    return fallbackService.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+  
+  // Map Google place types to readable categories (descriptive, not authoritative)
+  const categoryMap: Record<string, string> = {
+    'plumber': 'Plumber',
+    'electrician': 'Electrician',
+    'roofing_contractor': 'Roofing Contractor',
+    'hvac_contractor': 'HVAC Contractor',
+    'general_contractor': 'General Contractor',
+    'home_improvement_store': 'Home Improvement',
+    'air_conditioning_contractor': 'HVAC Contractor',
+    'heating_equipment_supplier': 'Heating Supplier'
+  };
+
+  for (const type of types) {
+    if (categoryMap[type]) return categoryMap[type];
+  }
+  
+  return fallbackService.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// ============================================================================
+// FUNCTION CALL HANDLER
+// ============================================================================
+
 async function handleFunctionCall(functionCall: any, context: any): Promise<string> {
   const { name, arguments: args } = functionCall;
   
@@ -678,8 +808,51 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
     case 'schedule_maintenance':
       return `I'll help you schedule ${parsedArgs.task} for your ${parsedArgs.system}. This is ${parsedArgs.urgency} priority${parsedArgs.estimated_cost ? ` with an estimated cost of $${parsedArgs.estimated_cost}` : ''}. I recommend scheduling this within ${parsedArgs.urgency === 'high' ? '1-2 weeks' : parsedArgs.urgency === 'medium' ? '1-2 months' : '3-6 months'}.`;
       
-    case 'get_contractor_recommendations':
-      return `For ${parsedArgs.service_type} services, I recommend getting quotes from 3 licensed contractors. Look for ones with good Better Business Bureau ratings and specific experience with Florida homes. Would you like me to help you prepare questions to ask potential contractors?`;
+    case 'get_contractor_recommendations': {
+      const location = context?.homeLocation;
+      
+      // Always return structured JSON, even on failure
+      const baseResponse = {
+        type: 'contractor_recommendations',
+        service: parsedArgs.service_type,
+        disclaimer: 'Sourced from Google Places. Habitta does not vet or endorse contractors.',
+        confidence: 'discovery_only'
+      };
+      
+      if (!location?.lat || !location?.lng) {
+        console.log('[get_contractor_recommendations] No home coordinates available');
+        return JSON.stringify({
+          ...baseResponse,
+          contractors: [],
+          message: 'Unable to find contractors — home location not available. Please update your home address.'
+        });
+      }
+
+      const results = await searchLocalContractors(parsedArgs.service_type, location);
+      
+      if (results.length === 0) {
+        return JSON.stringify({
+          ...baseResponse,
+          contractors: [],
+          message: 'No highly-rated local results were found in this area.',
+          suggestion: 'You can try a related service category or broaden your search.'
+        });
+      }
+
+      // Return structured JSON — formatting layer handles presentation
+      return JSON.stringify({
+        ...baseResponse,
+        contractors: results.slice(0, 3).map(r => ({
+          name: r.name,
+          rating: r.rating,
+          reviewCount: r.userRatingCount,
+          category: mapToCategory(r.types, parsedArgs.service_type),
+          location: r.formattedAddress.split(',')[0], // First part only (street)
+          websiteUri: r.websiteUri,
+          phone: r.nationalPhoneNumber
+        }))
+      });
+    }
       
     case 'calculate_cost_impact':
       // HONESTY GATE: No placeholder cost math - never use "approximately 0%" or fake calculations

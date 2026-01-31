@@ -36,7 +36,10 @@ export function ChatMessageContent({ content }: ChatMessageContentProps) {
       {structuredData.contractors && (
         <ContractorRecommendations
           service={structuredData.contractors.service}
+          disclaimer={structuredData.contractors.disclaimer}
           contractors={structuredData.contractors.items}
+          message={structuredData.contractors.message}
+          suggestion={structuredData.contractors.suggestion}
         />
       )}
       

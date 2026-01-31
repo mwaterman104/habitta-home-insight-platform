@@ -21,15 +21,21 @@
 export interface ContractorRecommendation {
   name: string;
   rating: number;
-  specialty: string;
-  notes?: string;
-  licenseVerified?: boolean;
+  reviewCount: number;
+  category: string;
+  location: string;
+  websiteUri?: string;
+  phone?: string;
 }
 
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
+    disclaimer: string;
+    confidence: string;
     items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
   };
 }
 
@@ -47,37 +53,61 @@ export interface NormalizedContent {
  * Looks for JSON blocks with "type": "contractor_recommendations"
  */
 function extractContractorData(content: string): {
-  contractors?: { service?: string; items: ContractorRecommendation[] };
+  contractors?: {
+    service?: string;
+    disclaimer: string;
+    confidence: string;
+    items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
+  };
   cleanedContent: string;
 } {
   // Pattern: JSON object with type field for contractor recommendations
   const jsonPattern = /\{[\s\S]*?"type":\s*"contractor_recommendations"[\s\S]*?\}/g;
   
   let cleanedContent = content;
-  let contractors: { service?: string; items: ContractorRecommendation[] } | undefined;
+  let contractors: {
+    service?: string;
+    disclaimer: string;
+    confidence: string;
+    items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
+  } | undefined;
   
   const matches = content.match(jsonPattern);
   if (matches) {
     for (const match of matches) {
       try {
         const data = JSON.parse(match);
-        if (data.type === 'contractor_recommendations' && Array.isArray(data.contractors)) {
-          // Validate contractor data
-          const validContractors = data.contractors.filter(
+        if (data.type === 'contractor_recommendations') {
+          // Validate contractor data - support both old (specialty) and new (category) formats
+          const validContractors = (data.contractors || []).filter(
             (c: unknown): c is ContractorRecommendation =>
               typeof c === 'object' &&
               c !== null &&
-              typeof (c as ContractorRecommendation).name === 'string' &&
-              typeof (c as ContractorRecommendation).rating === 'number' &&
-              typeof (c as ContractorRecommendation).specialty === 'string'
-          );
+              typeof (c as any).name === 'string' &&
+              typeof (c as any).rating === 'number' &&
+              (typeof (c as any).category === 'string' || typeof (c as any).specialty === 'string')
+          ).map((c: any) => ({
+            name: c.name,
+            rating: c.rating,
+            reviewCount: c.reviewCount || 0,
+            category: c.category || c.specialty || 'Contractor',
+            location: c.location || c.notes || '',
+            websiteUri: c.websiteUri,
+            phone: c.phone
+          }));
           
-          if (validContractors.length > 0) {
-            contractors = {
-              service: data.service,
-              items: validContractors,
-            };
-          }
+          contractors = {
+            service: data.service,
+            disclaimer: data.disclaimer || 'Sourced from Google Places. Habitta does not vet or endorse contractors.',
+            confidence: data.confidence || 'discovery_only',
+            items: validContractors,
+            message: data.message,
+            suggestion: data.suggestion
+          };
         }
         // Remove the JSON block from content
         cleanedContent = cleanedContent.replace(match, '');
