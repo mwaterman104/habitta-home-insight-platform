@@ -1,138 +1,140 @@
 
-# Enhance System Outlook Card Visibility and Add AI Avatar
+# Landing Page Copy Rewrite — Home Intelligence Doctrine
 
 ## Overview
-The System Outlook artifact in the chat needs more visual prominence to stand out as a key evidence surface. Additionally, AI messages should include a chat avatar icon to create visual consistency and identity. This will apply to:
-1. The System Outlook (Baseline Surface) card
-2. All AI assistant messages
+Complete rewrite of `src/pages/LandingPage.tsx` to align with the new mission and copy doctrine. The page shifts from task-management/DIY framing to calm, confident home intelligence positioning.
 
 ---
 
-## Changes
+## Section-by-Section Changes
 
-### 1. Make System Outlook Card "Pop" More
+### 1. Hero Section
 
-**File:** `src/components/dashboard-v3/ChatConsole.tsx`
-
-The System Outlook card currently uses muted styling (`bg-muted/10`, `border-border/30`). We'll enhance it with:
-- Subtle shadow for depth
-- Slightly stronger border
-- Light background gradient or elevated surface appearance
-- Teal accent on the header to tie to Habitta brand
-
-**Current styling (lines 447-450):**
-```typescript
-"ml-6 rounded-lg border border-border/30 bg-muted/10 overflow-hidden"
-```
-
-**Updated styling:**
-```typescript
-"ml-6 rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden"
-```
-
-**Header styling update (lines 452-453):**
-Add a subtle accent border-left or background tint:
-```typescript
-"flex items-center justify-between px-3 py-2 border-b border-border/20 bg-gradient-to-r from-teal-50/50 to-transparent"
-```
+| Element | Current Copy | New Copy |
+|---------|--------------|----------|
+| **Headline** | "Your Home. Smarter." | "Your home, understood." |
+| **Subheadline** | "Habitta helps you understand, maintain, and improve your home — from looking to living." | "Habitta continuously evaluates your home's condition, risk, and future costs — so you can make smart decisions before things break." |
+| **Primary CTA** | "Join the Waitlist" | "Join Early Access" |
+| **Secondary CTA** | "Preview the App" | "Preview the App" (unchanged) |
 
 ---
 
-### 2. Add AI Avatar to Assistant Messages
+### 2. Preview Section ("What Habitta Does")
 
-**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+| Element | Current Copy | New Copy |
+|---------|--------------|----------|
+| **Headline** | "A complete picture of your home's health." | "A complete picture of your home's health." (unchanged) |
+| **Intro** | "Everything you need to care for your home, powered by intelligent insights." | "Habitta builds and maintains a living model of your home — combining system lifespans, regional stress, usage patterns, and financial impact." |
 
-Create an inline avatar for AI messages using the Habitta logo. For consistency and performance, we'll use a small rounded version of the logo.
+**Capability Cards (Rewritten):**
 
-**Message rendering update (around lines 506-527):**
-
-```typescript
-// Import at top
-import Logo from '@/components/Logo';
-
-// In message rendering
-{message.role === "assistant" && (
-  <div className="shrink-0 mt-1">
-    <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
-      <Logo size="sm" className="w-4 h-4" />
-    </div>
-  </div>
-)}
-```
-
-The avatar will appear:
-- To the left of assistant messages (natural chat layout)
-- Above the System Outlook card (treating it as an AI-surfaced artifact)
+| Current | New |
+|---------|-----|
+| **Predictive Insights**: "Know when to repair or replace major systems before they fail." | **Predictive Insight**: "See which systems are approaching risk windows — and what that realistically means for cost and timing." |
+| **Smart Maintenance**: "Get proactive tasks and seasonal recommendations tailored to your home." | **Deliberate Maintenance**: "Maintenance isn't about doing more. It's about doing the right things at the right time." |
+| **DIY + Pros**: "Guided help for every home project — or connect with local professionals." | **Guided Execution**: "When action is needed, Habitta connects insight to clear next steps — DIY or professional." |
+| **Financial Forecasts**: "Plan future costs with confidence using AI-powered predictions." | **Capital Awareness**: "Understand how repairs, upgrades, and timing affect the long-term value of your home." |
 
 ---
 
-### 3. Add Avatar Above System Outlook Card
+### 3. New Philosophy Section (Insert After Preview)
 
-Since the System Outlook is an AI-surfaced artifact (per doctrine: "it was brought here"), it should also display the Habitta avatar to reinforce that the AI presented this evidence.
+This is a **new section** that establishes Habitta's core value proposition.
 
-**Implementation:**
-Add the same avatar treatment before the Baseline Surface section:
+**Headline:** "Not a to-do list. A second brain."
 
-```typescript
-{/* AI Avatar for Baseline Surface */}
-<div className="flex items-start gap-2">
-  <div className="shrink-0 mt-1">
-    <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100">
-      <Logo size="sm" className="w-4 h-4" />
-    </div>
-  </div>
-  
-  {/* Existing Baseline Surface card */}
-  <div className="flex-1">
-    {/* ... existing content ... */}
-  </div>
-</div>
-```
+**Body:**
+> Most homeowners don't want another app to manage.  
+> They want confidence that someone is paying attention.
+>
+> Habitta doesn't ask you to check in daily.  
+> It quietly watches, evaluates, and surfaces what matters — when it matters.
 
 ---
 
-## Visual Summary
+### 4. "Why Habitta" Section → "Who It's For"
+
+| Element | Current Copy | New Copy |
+|---------|--------------|----------|
+| **Headline** | "Built for every homeowner." | "Built for real homeowners." |
+| **Intro** | "From first-time buyers to seasoned owners, Habitta makes home care simple." | "From first-time buyers to seasoned owners, Habitta adapts to where you are — not where a checklist thinks you should be." |
+
+**Feature Cards → Ownership Stage Cards:**
+
+Replace the 4 generic feature cards with 3 ownership-stage cards:
+
+| Card | Title | Description |
+|------|-------|-------------|
+| 1 | **Early Ownership** | "Establish a clear baseline and eliminate unknowns." |
+| 2 | **Mid-Lifecycle** | "Anticipate major systems before surprises hit." |
+| 3 | **Long-Term Ownership** | "Plan upgrades, exits, and capital investments with clarity." |
+
+---
+
+### 5. New Features Section (Insert After "Who It's For")
+
+Reframed features that explain *why* they exist:
+
+| Feature | Title | Description |
+|---------|-------|-------------|
+| 1 | **Prevent Surprises** | "Habitta flags risk before it becomes emergency." |
+| 2 | **Track What Matters** | "Not everything. Only what changes decisions." |
+| 3 | **Plan with Confidence** | "Step-by-step guidance when action is justified — not before." |
+| 4 | **Organized History** | "A clean, reliable record of your home over time." |
+
+---
+
+### 6. Waitlist Section
+
+| Element | Current Copy | New Copy |
+|---------|--------------|----------|
+| **Headline** | "Get early access." | "Early access to home intelligence." |
+| **Body** | "Join the waitlist to be the first to experience the Habitta app." | "We're rolling Habitta out carefully. Join the waitlist to be among the first homeowners with a clear picture of what lies ahead." |
+
+---
+
+## Icon Updates
+
+To align with the new framing, update icons:
+
+| Section | Current Icon | New Icon |
+|---------|--------------|----------|
+| Predictive Insight | Brain | Eye |
+| Deliberate Maintenance | Wrench | Clock |
+| Guided Execution | Hammer | ArrowRight |
+| Capital Awareness | DollarSign | TrendingUp |
+| Early Ownership | - | Home |
+| Mid-Lifecycle | - | Activity |
+| Long-Term Ownership | - | Target |
+
+---
+
+## Structural Changes
+
+The page will have this new flow:
 
 ```text
-Before:
-┌─────────────────────────────────┐
-│  System Outlook — 3 systems     │  (flat, muted)
-│  ┌─────────────────────────────┐│
-│  │ HVAC System                 ││
-│  │ [OK|WATCH|PLAN]             ││
-│  └─────────────────────────────┘│
-└─────────────────────────────────┘
-
-After:
-  ○  ┌────────────────────────────────┐
-  H  │ ▎ System Outlook — 3 systems   │  (elevated, shadow, teal accent)
-     │  ┌────────────────────────────┐│
-     │  │ HVAC System                ││
-     │  │ [OK|WATCH|PLAN]            ││
-     │  └────────────────────────────┘│
-     └────────────────────────────────┘
-
-  ○  Good afternoon. Your home has 3 key systems...
-  H  
-
-       What should I do about the system?  (user message, right-aligned)
+1. Header (unchanged)
+2. Hero (updated copy)
+3. Preview/Capabilities (updated copy + icons)
+4. Philosophy (NEW section)
+5. Who It's For (replaces "Why Habitta", 3 ownership cards)
+6. Features (NEW section, 4 reframed cards)
+7. Waitlist (updated copy)
+8. Footer (unchanged)
 ```
 
 ---
 
-## Technical Notes
+## Technical Summary
 
-### Files to Modify
-| File | Change |
-|------|--------|
-| `src/components/dashboard-v3/ChatConsole.tsx` | Add Logo import, avatar wrapper for AI messages, enhanced card styling |
+| File | Changes |
+|------|---------|
+| `src/pages/LandingPage.tsx` | Complete copy rewrite, add 2 new sections, restructure existing sections, update icon imports |
 
-### Avatar Styling Tokens
-- Container: `w-6 h-6 rounded-full bg-teal-50 ring-1 ring-teal-100`
-- Logo: `w-4 h-4` (using existing Logo component with size="sm")
-
-### Card Enhancement Tokens
-- Border: `border border-stone-200` (from `border-border/30`)
-- Background: `bg-white` (from `bg-muted/10`)
-- Shadow: `shadow-sm`
-- Header accent: `bg-gradient-to-r from-teal-50/50 to-transparent`
+### Copy Governance Rules Applied
+- No "manage your home," "stay on top of," "never forget," "all-in-one"
+- No "AI-powered" without context
+- No exclamation points or emoji
+- Calm, declarative sentences
+- Stewardship language over tool language
