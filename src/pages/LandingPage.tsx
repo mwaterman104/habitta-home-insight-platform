@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { WaitlistForm } from '@/components/WaitlistForm';
 import Logo from '@/components/Logo';
-import appPreview from '@/assets/app-preview.png';
+import chatPreview from '@/assets/habitta-chat-preview.png';
 import { 
   Eye, 
   Clock, 
@@ -175,10 +175,10 @@ export default function LandingPage() {
             </div>
 
             <div className="flex items-center justify-center mt-6 md:mt-0">
-              <div className="w-full max-w-[280px] sm:max-w-sm rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
+              <div className="w-full max-w-[320px] sm:max-w-md rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
                 <img 
-                  src={appPreview} 
-                  alt="Habitta Home Intelligence App Preview" 
+                  src={chatPreview} 
+                  alt="Habitta chat experience showing Home System Outlook and personalized guidance" 
                   className="w-full h-auto object-cover"
                 />
               </div>
