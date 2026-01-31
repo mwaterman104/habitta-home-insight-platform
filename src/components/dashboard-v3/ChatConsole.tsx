@@ -29,6 +29,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import { Send, Camera, ChevronDown, ChevronUp, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -533,13 +534,21 @@ export function ChatConsole({
                     )}
                     <div
                       className={cn(
-                        "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed whitespace-pre-wrap",
+                        "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed",
                         message.role === "user"
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted/40 text-foreground"
                       )}
                     >
-                      {message.content}
+                      {message.role === "assistant" ? (
+                        <div className="prose prose-sm prose-stone dark:prose-invert max-w-none [&>p]:my-2 [&>ul]:my-2 [&>ol]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
+                          <ReactMarkdown>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <span className="whitespace-pre-wrap">{message.content}</span>
+                      )}
                     </div>
                   </div>
                 )}
