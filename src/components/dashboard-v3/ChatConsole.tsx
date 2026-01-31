@@ -40,6 +40,9 @@ function sanitizeAIResponse(content: string): string {
   let cleaned = content.replace(/<system_validation_evidence[^>]*\/>/gi, '');
   // Remove <system_validation_evidence>...</system_validation_evidence> block tags
   cleaned = cleaned.replace(/<system_validation_evidence[^>]*>[\s\S]*?<\/system_validation_evidence>/gi, '');
+  // Remove <cost_impact_analysis ... /> tags
+  cleaned = cleaned.replace(/<cost_impact_analysis[^>]*\/>/gi, '');
+  cleaned = cleaned.replace(/<cost_impact_analysis[^>]*>[\s\S]*?<\/cost_impact_analysis>/gi, '');
   // Remove any other pseudo-XML tags the model might generate
   cleaned = cleaned.replace(/<\/?(?:system_aging_profile|cost_range|comparison_table|confidence_explainer|local_context)[^>]*\/?>/gi, '');
   // Clean up excessive whitespace left behind
