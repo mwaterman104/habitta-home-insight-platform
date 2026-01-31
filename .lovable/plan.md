@@ -1,323 +1,558 @@
 
 
-# Habitta Chat Interface Formatting Normalization Layer - Implementation Plan
+# Google Places Contractor Discovery — Trust-Aligned Implementation Plan
 
 ## Overview
 
-This plan implements a comprehensive formatting normalization layer for the Habitta chat interface. The core problem is that AI responses containing structured data (contractor recommendations, section labels, bullet lists) are displaying as raw text/XML instead of properly formatted UI components.
+This plan replaces hallucinated contractor recommendations with real Google Places data while treating the feature as a **discovery aid, not an endorsement engine**. The implementation incorporates explicit liability guardrails, neutral framing, and honest provenance disclosure.
 
 ---
 
-## Problem Summary
+## Problem Being Solved
 
-From the codebase analysis:
-
-1. **Current Sanitization**: `ChatConsole.tsx` has a `sanitizeAIResponse()` function that strips known pseudo-XML tags, but it only removes them — it doesn't render them as UI components
-2. **Contractor Flow**: The AI assistant edge function has a `get_contractor_recommendations` tool that returns plain text, not structured data
-3. **Missing Components**: No parser exists for structured JSON/XML data, no contractor card component, no section label formatting
-
----
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────┐
-│   AI Response (Raw Text)                    │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│   Normalization Layer                       │
-│   ├── Extract structured data (JSON/XML)   │
-│   ├── Protect code blocks                   │
-│   ├── Normalize section labels              │
-│   ├── Convert bullet characters to lists    │
-│   └── Clean remaining prose                 │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│   Presentation Layer                        │
-│   ├── ContractorCard components            │
-│   ├── Section labels with styling          │
-│   ├── Proper list markup                   │
-│   └── Markdown prose                        │
-└─────────────────────────────────────────────┘
+**Current state (broken)**:
+```typescript
+case 'get_contractor_recommendations':
+  return `For ${parsedArgs.service_type} services, I recommend getting quotes from 3 licensed contractors...`;
 ```
 
+This is a credibility leak — generic advice pretending to be intelligence.
+
+**Target state**:
+Real businesses from Google Places, rendered as structured cards with explicit provenance disclosure.
+
 ---
 
-## Files to Create
+## Trust Doctrine Alignment
 
-| File | Purpose |
-|------|---------|
-| `src/lib/chatFormatting.ts` | Core normalization utilities: detection, extraction, sanitization, parsing |
-| `src/components/chat/ContractorCard.tsx` | Individual contractor recommendation card |
-| `src/components/chat/ContractorRecommendations.tsx` | Container for multiple contractor cards with header |
-| `src/components/chat/SectionLabel.tsx` | Styled section label component |
-| `src/components/chat/BulletList.tsx` | Formatted bullet list component |
-| `src/components/chat/ChatMessageContent.tsx` | Smart renderer that routes content to appropriate components |
-| `src/components/chat/index.ts` | Barrel exports |
+| Risk | Mitigation |
+|------|------------|
+| Implied endorsement | Mandatory disclaimer: "Habitta does not vet or endorse contractors" |
+| Ranking bias | No numbering, no "top/best" language, labeled as "options" |
+| False specialty inference | Renamed `specialty` → `category`, labeled "Listed as" |
+| Authority creep | Confidence field locked to `discovery_only` |
+| Hallucination fallback | Always return structured JSON, even on failure |
+
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard-v3/ChatConsole.tsx` | Replace inline `sanitizeAIResponse()` and `ReactMarkdown` rendering with `ChatMessageContent` component |
+| `supabase/functions/ai-home-assistant/index.ts` | Add Google Places lookup, modify tool handler, add home location to context |
+| `src/lib/chatFormatting.ts` | Update types to match new contract, add disclaimer/message handling |
+| `src/components/chat/ContractorCard.tsx` | Rename `specialty` → `category`, update display labels |
+| `src/components/chat/ContractorRecommendations.tsx` | Add mandatory disclaimer, rename header, handle empty state |
 
 ---
 
 ## Technical Section
 
-### 1. Chat Formatting Utilities (`src/lib/chatFormatting.ts`)
+### 1. Revised Data Contract (JSON)
 
-**Types:**
+```typescript
+// This is the contract the tool will return
+interface ContractorDiscoveryResponse {
+  type: 'contractor_recommendations';
+  service: string;
+  disclaimer: string; // Always present
+  confidence: 'discovery_only'; // Future-proofing
+  contractors: ContractorResult[];
+  message?: string; // For empty state or notes
+}
+
+interface ContractorResult {
+  name: string;
+  rating: number;
+  reviewCount: number;
+  category: string; // Was "specialty" — now descriptive only
+  location: string;
+  websiteUri?: string;
+  phone?: string;
+}
+```
+
+### 2. Edge Function Changes (`ai-home-assistant/index.ts`)
+
+**2.1 Add Home Location to Property Context**
+
+Modify `getPropertyContext()` to fetch coordinates:
+
+```typescript
+async function getPropertyContext(supabase: any, propertyId: string) {
+  const [
+    { data: systems },
+    { data: recommendations },
+    { data: predictions },
+    { data: home }
+  ] = await Promise.all([
+    supabase.from('system_lifecycles').select('*').eq('property_id', propertyId),
+    supabase.from('smart_recommendations').select('*').eq('property_id', propertyId).eq('is_completed', false).limit(5),
+    supabase.from('prediction_accuracy').select('*').eq('property_id', propertyId).limit(3),
+    supabase.from('homes').select('latitude, longitude, city, state, zip_code').eq('id', propertyId).single()
+  ]);
+
+  return {
+    systems: systems || [],
+    activeRecommendations: recommendations || [],
+    recentPredictions: predictions || [],
+    homeLocation: home ? {
+      lat: home.latitude,
+      lng: home.longitude,
+      city: home.city,
+      state: home.state,
+      zipCode: home.zip_code
+    } : null
+  };
+}
+```
+
+**2.2 Add Google Places Search Function**
+
+```typescript
+// Contractor recommendations are discovery aids only.
+// No ranking, endorsement, or quality judgment is implied.
+
+interface GooglePlaceResult {
+  name: string;
+  rating: number;
+  userRatingCount: number;
+  formattedAddress: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  types?: string[];
+}
+
+async function searchLocalContractors(
+  serviceType: string,
+  location: { lat: number; lng: number; city: string; state: string }
+): Promise<GooglePlaceResult[]> {
+  const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+  if (!apiKey) {
+    console.error('[searchLocalContractors] GOOGLE_PLACES_API_KEY not configured');
+    return [];
+  }
+
+  // Map service types to search queries
+  const searchQueries: Record<string, string> = {
+    'hvac': 'HVAC contractor',
+    'water_heater': 'plumber water heater',
+    'plumbing': 'licensed plumber',
+    'electrical': 'licensed electrician',
+    'roof': 'roofing contractor',
+    'roofing': 'roofing contractor',
+    'general': 'home repair contractor'
+  };
+
+  const query = searchQueries[serviceType.toLowerCase()] || `${serviceType} contractor`;
+  const fullQuery = `${query} near ${location.city}, ${location.state}`;
+
+  console.log('[searchLocalContractors] Searching:', fullQuery);
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName,places.rating,places.userRatingCount,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.types'
+      },
+      body: JSON.stringify({
+        textQuery: fullQuery,
+        locationBias: {
+          circle: {
+            center: { latitude: location.lat, longitude: location.lng },
+            radius: 40000.0  // 40km radius
+          }
+        },
+        minRating: 4.0,  // Only 4+ star businesses
+        pageSize: 5,
+        rankPreference: 'RELEVANCE',
+        regionCode: 'US',
+        languageCode: 'en'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[searchLocalContractors] API error:', response.status, error);
+      return [];
+    }
+
+    const data = await response.json();
+    console.log('[searchLocalContractors] Found', data.places?.length || 0, 'results');
+    
+    return (data.places || []).map((place: any) => ({
+      name: place.displayName?.text || 'Unknown',
+      rating: place.rating || 0,
+      userRatingCount: place.userRatingCount || 0,
+      formattedAddress: place.formattedAddress || '',
+      websiteUri: place.websiteUri,
+      nationalPhoneNumber: place.nationalPhoneNumber,
+      types: place.types
+    }));
+  } catch (error) {
+    console.error('[searchLocalContractors] Error:', error);
+    return [];
+  }
+}
+```
+
+**2.3 Category Mapper (Neutral, Not Inferential)**
+
+```typescript
+function mapToCategory(types: string[] | undefined, fallbackService: string): string {
+  if (!types || types.length === 0) {
+    return fallbackService.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+  
+  // Map Google place types to readable categories (descriptive, not authoritative)
+  const categoryMap: Record<string, string> = {
+    'plumber': 'Plumber',
+    'electrician': 'Electrician',
+    'roofing_contractor': 'Roofing Contractor',
+    'hvac_contractor': 'HVAC Contractor',
+    'general_contractor': 'General Contractor',
+    'home_improvement_store': 'Home Improvement',
+    'air_conditioning_contractor': 'HVAC Contractor',
+    'heating_equipment_supplier': 'Heating Supplier'
+  };
+
+  for (const type of types) {
+    if (categoryMap[type]) return categoryMap[type];
+  }
+  
+  return fallbackService.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+```
+
+**2.4 Updated Tool Handler**
+
+```typescript
+case 'get_contractor_recommendations': {
+  const location = context?.homeLocation;
+  
+  // Always return structured JSON, even on failure
+  const baseResponse = {
+    type: 'contractor_recommendations',
+    service: parsedArgs.service_type,
+    disclaimer: 'Sourced from Google Places. Habitta does not vet or endorse contractors.',
+    confidence: 'discovery_only'
+  };
+  
+  if (!location?.lat || !location?.lng) {
+    return JSON.stringify({
+      ...baseResponse,
+      contractors: [],
+      message: 'Unable to find contractors — home location not available. Please update your home address.'
+    });
+  }
+
+  const results = await searchLocalContractors(parsedArgs.service_type, location);
+  
+  if (results.length === 0) {
+    return JSON.stringify({
+      ...baseResponse,
+      contractors: [],
+      message: 'No highly-rated local results were found in this area.',
+      suggestion: 'You can try a related service category or broaden your search.'
+    });
+  }
+
+  // Return structured JSON — formatting layer handles presentation
+  return JSON.stringify({
+    ...baseResponse,
+    contractors: results.slice(0, 3).map(r => ({
+      name: r.name,
+      rating: r.rating,
+      reviewCount: r.userRatingCount,
+      category: mapToCategory(r.types, parsedArgs.service_type),
+      location: r.formattedAddress.split(',')[0], // First part only (street)
+      websiteUri: r.websiteUri,
+      phone: r.nationalPhoneNumber
+    }))
+  });
+}
+```
+
+### 3. Formatting Layer Updates (`src/lib/chatFormatting.ts`)
+
+**3.1 Updated Types**
+
 ```typescript
 export interface ContractorRecommendation {
   name: string;
   rating: number;
-  specialty: string;
-  notes?: string;
-  licenseVerified?: boolean;
+  reviewCount: number;
+  category: string;
+  location: string;
+  websiteUri?: string;
+  phone?: string;
 }
 
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
+    disclaimer: string;
+    confidence: string;
     items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
   };
 }
+```
 
-export interface NormalizedContent {
-  cleanText: string;
-  structuredData: ExtractedStructuredData;
+**3.2 Updated Extraction Logic**
+
+Modify `extractContractorData()` to handle new fields:
+
+```typescript
+function extractContractorData(content: string): {
+  contractors?: { 
+    service?: string; 
+    disclaimer: string;
+    confidence: string;
+    items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
+  };
+  cleanedContent: string;
+} {
+  const jsonPattern = /\{[\s\S]*?"type":\s*"contractor_recommendations"[\s\S]*?\}/g;
+  
+  let cleanedContent = content;
+  let contractors: /* type */ | undefined;
+  
+  const matches = content.match(jsonPattern);
+  if (matches) {
+    for (const match of matches) {
+      try {
+        const data = JSON.parse(match);
+        if (data.type === 'contractor_recommendations') {
+          const validContractors = (data.contractors || []).filter(
+            (c: unknown): c is ContractorRecommendation =>
+              typeof c === 'object' &&
+              c !== null &&
+              typeof (c as ContractorRecommendation).name === 'string' &&
+              typeof (c as ContractorRecommendation).rating === 'number' &&
+              typeof (c as ContractorRecommendation).category === 'string'
+          );
+          
+          contractors = {
+            service: data.service,
+            disclaimer: data.disclaimer || 'Sourced from Google Places. Habitta does not vet or endorse contractors.',
+            confidence: data.confidence || 'discovery_only',
+            items: validContractors,
+            message: data.message,
+            suggestion: data.suggestion
+          };
+        }
+        cleanedContent = cleanedContent.replace(match, '');
+      } catch (e) {
+        console.warn('Failed to parse contractor JSON:', e);
+        cleanedContent = cleanedContent.replace(match, '');
+      }
+    }
+  }
+  
+  return { contractors, cleanedContent };
 }
 ```
 
-**Core Functions:**
+### 4. Component Updates
 
-1. `extractAndSanitize(content: string): NormalizedContent`
-   - Extracts JSON contractor blocks before stripping them
-   - Strips all pseudo-XML artifact tags (existing logic, consolidated)
-   - Returns both clean text and extracted structured data
+**4.1 ContractorCard.tsx**
 
-2. `parseContractorRecommendations(jsonString: string): ContractorRecommendation[] | null`
-   - Parses JSON contractor data with validation
-   - Handles malformed data gracefully (returns null)
-
-3. `normalizeSectionLabels(text: string): string`
-   - Detects "Label:" patterns on their own lines
-   - Returns text with `<span class="section-label">` wrappers
-
-4. `normalizeBulletLists(text: string): string`
-   - Converts `•` character bullets to proper `<ul><li>` markup
-   - Handles consecutive bullet lines as a single list
-
-5. `escapeHtml(text: string): string`
-   - Utility for safe HTML rendering
-
-### 2. ContractorCard Component (`src/components/chat/ContractorCard.tsx`)
-
-Visual structure following the spec:
-```text
-┌─────────────────────────────────────────────┐
-│ 🔧 Evergreen Plumbing Solutions      [✓]   │
-│ ★★★★★ 4.9/5                                │
-│ Specialty: Tankless & High-Efficiency       │
-│                                             │
-│ Known for clean installations and helpful   │
-│ rebate filing.                              │
-└─────────────────────────────────────────────┘
-```
-
-**Props:**
 ```typescript
 interface ContractorCardProps {
   name: string;
   rating: number;
-  specialty: string;
-  notes?: string;
-  licenseVerified?: boolean;
+  reviewCount: number;
+  category: string;
+  location: string;
+  websiteUri?: string;
+  phone?: string;
+  className?: string;
 }
-```
 
-**Styling:**
-- White background with subtle border (`border-stone-200`)
-- Rounded corners (`rounded-lg`)
-- Subtle hover shadow
-- Rating stars in amber (`text-amber-500`)
-- Wrench icon from Lucide (`Wrench`)
-- Optional verified badge (`BadgeCheck`)
-
-### 3. ContractorRecommendations Container (`src/components/chat/ContractorRecommendations.tsx`)
-
-**Props:**
-```typescript
-interface ContractorRecommendationsProps {
-  service?: string;
-  contractors: ContractorRecommendation[];
-}
-```
-
-**Layout:**
-- Section header with clipboard icon
-- Grid layout on larger screens (`grid-cols-2` at `md:` breakpoint)
-- Matches artifact styling (calm, no heavy shadows)
-
-### 4. SectionLabel Component (`src/components/chat/SectionLabel.tsx`)
-
-**Visual:**
-- Left accent bar (3px, blue)
-- Semibold text
-- Proper spacing above/below
-
-**Implementation:**
-- Simple styled span
-- Accepts children (the label text)
-
-### 5. BulletList Component (`src/components/chat/BulletList.tsx`)
-
-**Props:**
-```typescript
-interface BulletListProps {
-  items: string[];
-}
-```
-
-**Styling:**
-- Blue bullet accent color
-- Proper indentation
-- Line height 1.6
-
-### 6. ChatMessageContent Component (`src/components/chat/ChatMessageContent.tsx`)
-
-**The core rendering orchestrator:**
-
-```typescript
-export function ChatMessageContent({ content }: { content: string }) {
-  // 1. Extract structured data and sanitize
-  const { cleanText, structuredData } = extractAndSanitize(content);
-  
-  // 2. Apply text normalization to clean text
-  const normalizedText = normalizeBulletLists(
-    normalizeSectionLabels(cleanText)
-  );
-  
-  // 3. Render structured components FIRST (Validation First pattern)
-  // 4. Render normalized text via ReactMarkdown
+export function ContractorCard({
+  name,
+  rating,
+  reviewCount,
+  category,
+  location,
+  className,
+}: ContractorCardProps) {
+  const fullStars = Math.floor(rating);
   
   return (
-    <div className="space-y-3">
-      {structuredData.contractors && (
-        <ContractorRecommendations 
-          service={structuredData.contractors.service}
-          contractors={structuredData.contractors.items} 
-        />
-      )}
+    <div className={cn(
+      'bg-card border border-border rounded-lg p-4 hover:shadow-sm transition-shadow',
+      className
+    )}>
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Wrench className="h-4 w-4 text-muted-foreground shrink-0" />
+        <h4 className="font-semibold text-foreground text-sm leading-tight truncate">
+          {name}
+        </h4>
+      </div>
       
-      {normalizedText && (
-        <div className="prose prose-sm prose-stone dark:prose-invert max-w-none">
-          <ReactMarkdown>{normalizedText}</ReactMarkdown>
-        </div>
-      )}
+      {/* Rating line: ⭐ 4.9 · 127 Google reviews */}
+      <div className="flex items-center gap-1 mb-2">
+        <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+        <span className="text-sm font-medium text-foreground">{rating}</span>
+        <span className="text-sm text-muted-foreground">
+          · {reviewCount} Google reviews
+        </span>
+      </div>
+      
+      {/* Category line: Listed as: Plumber */}
+      <div className="mb-2 text-sm">
+        <span className="text-muted-foreground">Listed as: </span>
+        <span className="text-foreground">{category}</span>
+      </div>
+      
+      {/* Location line */}
+      <p className="text-sm text-muted-foreground">
+        Near {location}
+      </p>
     </div>
   );
 }
 ```
 
-### 7. ChatConsole Integration
-
-**Before (lines 562-567):**
-```typescript
-<div className="prose prose-sm prose-stone dark:prose-invert max-w-none [&>p]:my-2 ...">
-  <ReactMarkdown>
-    {sanitizeAIResponse(message.content)}
-  </ReactMarkdown>
-</div>
-```
-
-**After:**
-```typescript
-<ChatMessageContent content={message.content} />
-```
-
-**Also:**
-- Remove the inline `sanitizeAIResponse()` function (lines 38-51)
-- Add import: `import { ChatMessageContent } from '@/components/chat';`
-
----
-
-## Pattern Detection Rules
-
-The normalization layer uses pattern detection, NOT semantic inference:
-
-| Pattern | Detection Method | Rendering |
-|---------|------------------|-----------|
-| Structured JSON | `/\{[\s\S]*?"type":\s*"contractor_recommendations"/` | `ContractorRecommendations` component |
-| Section Labels | `/(?:^|\n)([A-Z][^:\n]{2,50}:)\s*(?=\n)/` | `SectionLabel` component |
-| Bullet Lists | `/(?:^|\n)((?:•\s[^\n]+(?:\n|$))+)/` | `BulletList` component |
-| Prose | Everything else after sanitization | ReactMarkdown |
-
----
-
-## Error Handling
-
-All parsing operations include graceful degradation:
+**4.2 ContractorRecommendations.tsx**
 
 ```typescript
-try {
-  return parseContractorRecommendations(content);
-} catch (error) {
-  console.warn('Failed to parse contractor data:', error);
-  return null; // Fallback: strip the tag, show nothing
+interface ContractorRecommendationsProps {
+  service?: string;
+  disclaimer: string;
+  contractors: ContractorRecommendation[];
+  message?: string;
+  suggestion?: string;
+}
+
+export function ContractorRecommendations({
+  service,
+  disclaimer,
+  contractors,
+  message,
+  suggestion,
+}: ContractorRecommendationsProps) {
+  // Empty state
+  if (!contractors || contractors.length === 0) {
+    if (!message) return null;
+    
+    return (
+      <section className="my-3 p-4 bg-muted/50 rounded-lg" aria-label="Contractor Search Results">
+        <p className="text-sm text-muted-foreground">{message}</p>
+        {suggestion && (
+          <p className="text-sm text-muted-foreground mt-1">{suggestion}</p>
+        )}
+      </section>
+    );
+  }
+  
+  return (
+    <section className="my-3" aria-label="Local Contractor Options">
+      {/* Neutral header — no "Recommended" */}
+      <div className="flex items-center gap-2 mb-2">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-semibold text-foreground text-sm">
+          Local contractor options
+        </h3>
+      </div>
+      
+      {/* Mandatory disclaimer — ALWAYS visible */}
+      <p className="text-xs text-muted-foreground mb-3">
+        {disclaimer}
+      </p>
+      
+      {/* Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {contractors.map((contractor, index) => (
+          <ContractorCard
+            key={`${contractor.name}-${index}`}
+            {...contractor}
+          />
+        ))}
+      </div>
+    </section>
+  );
 }
 ```
 
-**Rule:** Never show raw JSON/XML to users. If parsing fails, silently remove the structured content.
+**4.3 ChatMessageContent.tsx Update**
+
+Pass new fields through to component:
+
+```typescript
+{structuredData.contractors && (
+  <ContractorRecommendations
+    service={structuredData.contractors.service}
+    disclaimer={structuredData.contractors.disclaimer}
+    contractors={structuredData.contractors.items}
+    message={structuredData.contractors.message}
+    suggestion={structuredData.contractors.suggestion}
+  />
+)}
+```
 
 ---
 
-## Styling Alignment with Habitta Design System
+## UI Copy Governance
 
-Using existing Tailwind utilities and Habitta's calm aesthetic:
+**What we say:**
+- "Local contractor options"
+- "Listed as"
+- "Google reviews"
+- "Near [location]"
 
-| Element | Tailwind Classes |
-|---------|------------------|
-| Card background | `bg-white dark:bg-card` |
-| Card border | `border border-stone-200 dark:border-border` |
-| Card radius | `rounded-lg` |
-| Card hover | `hover:shadow-sm transition-shadow` |
-| Rating stars | `text-amber-500` |
-| Section label accent | `border-l-3 border-blue-600` |
-| Bullet accent | `text-blue-600` |
+**What we never say:**
+- "Recommended"
+- "Best" / "Top"
+- "Trusted" / "Expert"
+- "Habitta approved"
+- "Specialist"
+
+---
+
+## Edge Cases
+
+| Scenario | Response |
+|----------|----------|
+| No home coordinates | Return structured JSON with message: "Unable to find contractors — home location not available." |
+| Google API error | Log error, return empty contractors with neutral message |
+| No results (rare area) | Return message + suggestion to broaden search |
+| API key not configured | Log error, return empty contractors with generic message |
 
 ---
 
 ## Implementation Order
 
-**Phase 1: Core Utilities (Foundation)**
-1. Create `src/lib/chatFormatting.ts` with extraction, sanitization, and normalization functions
-2. Create `src/components/chat/index.ts` barrel export
-
-**Phase 2: UI Components**
-3. Create `ContractorCard.tsx`
-4. Create `ContractorRecommendations.tsx`
-5. Create `SectionLabel.tsx` and `BulletList.tsx`
-
-**Phase 3: Smart Renderer**
-6. Create `ChatMessageContent.tsx` that orchestrates all components
-
-**Phase 4: Integration**
-7. Modify `ChatConsole.tsx` to use new `ChatMessageContent`
-8. Remove inline `sanitizeAIResponse()` function
+1. Update `getPropertyContext()` to include home location
+2. Add `searchLocalContractors()` function
+3. Add `mapToCategory()` helper
+4. Update `handleFunctionCall()` for `get_contractor_recommendations`
+5. Update types in `chatFormatting.ts`
+6. Update extraction logic in `chatFormatting.ts`
+7. Update `ContractorCard.tsx` with new field names and UI
+8. Update `ContractorRecommendations.tsx` with disclaimer and empty state
+9. Update `ChatMessageContent.tsx` to pass new props
+10. Deploy edge function and test
 
 ---
 
-## Testing Considerations
+## Testing Checklist
 
-After implementation, verify:
-- Contractor JSON blocks render as styled cards
-- Section labels ("What this means for you:") display with accent bar
-- Bullet points render as proper list elements
-- Raw XML/JSON never appears in chat
-- Existing artifact rendering (SystemValidationEvidence) still works
-- Markdown bold, lists, and paragraphs still render correctly
+After implementation:
+- [ ] Contractors are real businesses from Google
+- [ ] Disclaimer is always visible above cards
+- [ ] No "recommended" or "best" language anywhere
+- [ ] Empty state renders gracefully with message
+- [ ] Cards show "Listed as" not "Specialty"
+- [ ] Rating shows "X Google reviews" not "/5"
+- [ ] Location shows "Near [street]" format
+- [ ] Works for properties with and without coordinates
 
