@@ -29,26 +29,6 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-
-/**
- * Strip pseudo-XML artifact tags from AI responses.
- * These tags are rendered separately via InlineArtifact, so we remove them from text.
- */
-function sanitizeAIResponse(content: string): string {
-  // Remove <system_validation_evidence ... /> self-closing tags
-  let cleaned = content.replace(/<system_validation_evidence[^>]*\/>/gi, '');
-  // Remove <system_validation_evidence>...</system_validation_evidence> block tags
-  cleaned = cleaned.replace(/<system_validation_evidence[^>]*>[\s\S]*?<\/system_validation_evidence>/gi, '');
-  // Remove <cost_impact_analysis ... /> tags
-  cleaned = cleaned.replace(/<cost_impact_analysis[^>]*\/>/gi, '');
-  cleaned = cleaned.replace(/<cost_impact_analysis[^>]*>[\s\S]*?<\/cost_impact_analysis>/gi, '');
-  // Remove any other pseudo-XML tags the model might generate
-  cleaned = cleaned.replace(/<\/?(?:system_aging_profile|cost_range|comparison_table|confidence_explainer|local_context)[^>]*\/?>/gi, '');
-  // Clean up excessive whitespace left behind
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-  return cleaned;
-}
 import { Send, Camera, ChevronDown, ChevronUp, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
+import { ChatMessageContent } from "@/components/chat";
 import { InlineArtifact } from "./artifacts/InlineArtifact";
 import { createSystemValidationEvidenceArtifact } from "@/lib/artifactSummoner";
 import type { SystemValidationEvidenceData } from "./artifacts/SystemValidationEvidenceArtifact";
@@ -560,11 +541,7 @@ export function ChatConsole({
                       )}
                     >
                       {message.role === "assistant" ? (
-                        <div className="prose prose-sm prose-stone dark:prose-invert max-w-none [&>p]:my-2 [&>ul]:my-2 [&>ol]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
-                          <ReactMarkdown>
-                            {sanitizeAIResponse(message.content)}
-                          </ReactMarkdown>
-                        </div>
+                        <ChatMessageContent content={message.content} />
                       ) : (
                         <span className="whitespace-pre-wrap">{message.content}</span>
                       )}
