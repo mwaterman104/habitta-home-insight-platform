@@ -129,7 +129,7 @@ function extractContractorData(content: string): {
 function stripArtifactTags(content: string): string {
   let cleaned = content;
   
-  // Known artifact tags to strip (self-closing and block variants)
+  // Known artifact tags to strip (self-closing, block, and bracket variants)
   const tagsToStrip = [
     'system_validation_evidence',
     'cost_impact_analysis',
@@ -143,19 +143,28 @@ function stripArtifactTags(content: string): string {
   ];
   
   for (const tag of tagsToStrip) {
-    // Self-closing: <tag ... />
+    // XML self-closing: <tag ... />
     const selfClosingRegex = new RegExp(`<${tag}[^>]*\\/>`, 'gi');
     cleaned = cleaned.replace(selfClosingRegex, '');
     
-    // Block: <tag>...</tag>
+    // XML block: <tag>...</tag>
     const blockRegex = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, 'gi');
     cleaned = cleaned.replace(blockRegex, '');
+    
+    // Bracket-style function call: [tag(...)]
+    // Handles nested brackets by matching balanced content
+    const bracketFuncRegex = new RegExp(`\\[${tag}\\([^\\]]*(?:\\[[^\\]]*\\][^\\]]*)*\\)\\]`, 'gi');
+    cleaned = cleaned.replace(bracketFuncRegex, '');
   }
   
   // Also strip any remaining pseudo-XML that looks like artifact tags
   // Pattern: <word_with_underscores ... /> or <word_with_underscores>...</word_with_underscores>
   cleaned = cleaned.replace(/<[a-z_]+[^>]*\/>/gi, '');
   cleaned = cleaned.replace(/<([a-z_]+)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  
+  // Strip any remaining bracket-style artifact patterns
+  // Pattern: [word_with_underscores(...)] with possible nested content
+  cleaned = cleaned.replace(/\[[a-z_]+\([^\]]*(?:\[[^\]]*\][^\]]*)*\)\]/gi, '');
   
   return cleaned;
 }
