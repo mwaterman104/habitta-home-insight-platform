@@ -145,6 +145,11 @@ interface ChatConsoleProps {
   confidence?: number;
   risk?: RiskLevel;
   onUserReply?: () => void;
+  // NEW: Verification context for honest chat messaging
+  /** Number of systems verified by permit records */
+  verifiedSystemCount?: number;
+  /** Total number of systems being tracked */
+  totalSystemCount?: number;
 }
 
 // ============================================
@@ -169,6 +174,9 @@ export function ChatConsole({
   confidence = 0.5,
   risk = 'LOW',
   onUserReply,
+  // NEW: Verification context
+  verifiedSystemCount = 0,
+  totalSystemCount,
 }: ChatConsoleProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -250,6 +258,9 @@ export function ChatConsole({
         planningCount,
         confidenceLevel,
         isFirstVisit: isFirstUserVisit,
+        // NEW: Pass verification context for honest baseline reporting
+        verifiedSystemCount,
+        totalSystemCount: totalSystemCount ?? baselineSystems.length,
       });
       
       injectMessage(message);
@@ -261,7 +272,7 @@ export function ChatConsole({
         markFirstVisitComplete();
       }
     }
-  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId]);
+  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId, verifiedSystemCount, totalSystemCount]);
 
   // Reset opening state when focus changes
   useEffect(() => {
