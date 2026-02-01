@@ -20,12 +20,14 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   functionCall?: any;
+  /** Raw function result for UI refresh detection */
+  functionResult?: string;
   suggestions?: string[];
   /** Attached artifact (only if chat earned it) */
   attachedArtifact?: ChatArtifact;
 }
 
-interface AssistantResponse {
+export interface AssistantResponse {
   message: string;
   functionCall?: any;
   functionResult?: string;
@@ -133,8 +135,8 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     }
   }, [messages, propertyId, isRestoring]);
 
-  const sendMessage = async (message: string): Promise<void> => {
-    if (!propertyId || !message.trim()) return;
+  const sendMessage = async (message: string): Promise<AssistantResponse | undefined> => {
+    if (!propertyId || !message.trim()) return undefined;
 
     try {
       setLoading(true);
@@ -187,10 +189,14 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
         content: data.message,
         timestamp: new Date().toISOString(),
         functionCall: data.functionCall,
+        functionResult: data.functionResult, // Include for UI refresh detection
         suggestions: data.suggestions
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Return response for callers that need it
+      return data as AssistantResponse;
 
     } catch (err) {
       console.error('Error sending message to AI assistant:', err);
@@ -205,6 +211,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
       };
 
       setMessages(prev => [...prev, errorMessage]);
+      return undefined;
     } finally {
       setLoading(false);
     }
