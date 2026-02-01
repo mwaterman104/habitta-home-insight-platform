@@ -120,7 +120,20 @@ Deno.serve(async (req) => {
     // Determine if this is an internal service-to-service call
     // Internal calls use service role key and pass userId in the body
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    const isServiceRoleCall = serviceRoleKey && authHeader.includes(serviceRoleKey);
+    
+    // Extract the token from Bearer header for comparison
+    const tokenFromHeader = authHeader.startsWith('Bearer ') 
+      ? authHeader.replace('Bearer ', '').trim() 
+      : authHeader;
+    
+    // Service role check: compare extracted token with service role key
+    const isServiceRoleCall = serviceRoleKey && tokenFromHeader === serviceRoleKey;
+    
+    console.log('[update-system-install] Auth check:', {
+      hasServiceRoleKey: !!serviceRoleKey,
+      isServiceRoleCall,
+      hasBodyUserId: !!bodyUserId,
+    });
     
     let userId: string;
     
