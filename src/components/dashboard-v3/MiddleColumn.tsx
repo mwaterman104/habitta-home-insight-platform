@@ -154,11 +154,21 @@ export function MiddleColumn({
           ? currentYear - sys.installYear 
           : undefined;
         
-        // Only compute expectedLifespan if permit-verified (avoids false precision)
+        // Calculate expected lifespan from replacement window
+        // For permit-verified: use late year (conservative upper bound)
+        // For all others with install year: use likely year (typical midpoint)
         const isPermitVerified = sys.installSource === 'permit';
-        const expectedLifespan = isPermitVerified && sys.installYear
-          ? sys.replacementWindow.lateYear - sys.installYear
-          : undefined;
+        let expectedLifespan: number | undefined;
+        
+        if (sys.installYear) {
+          if (isPermitVerified) {
+            // Permit-verified: conservative upper bound
+            expectedLifespan = sys.replacementWindow.lateYear - sys.installYear;
+          } else {
+            // All other sources: typical midpoint
+            expectedLifespan = sys.replacementWindow.likelyYear - sys.installYear;
+          }
+        }
         
         // Derive confidence from dataQuality field
         const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
