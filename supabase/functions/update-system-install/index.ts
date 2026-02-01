@@ -119,31 +119,58 @@ Deno.serve(async (req) => {
 
     // Determine if this is an internal service-to-service call
     // Internal calls use service role key and pass userId in the body
-    const isServiceRoleCall = authHeader.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '__never_match__');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const isServiceRoleCall = serviceRoleKey && authHeader.includes(serviceRoleKey);
     
     let userId: string;
     
     if (isServiceRoleCall && bodyUserId) {
       // Internal call from another edge function (e.g., ai-home-assistant)
       // Trust the userId passed in the body
-      console.log('[update-system-install] Internal service call, using provided userId');
+      console.log('[update-system-install] Internal service call, using provided userId:', bodyUserId);
       userId = bodyUserId;
     } else {
       // External call - verify user from JWT
+      // CRITICAL FIX: Must extract token and pass explicitly to getUser()
+      if (!authHeader.startsWith('Bearer ')) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authorization header format' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const token = authHeader.replace('Bearer ', '').trim();
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: 'Missing authentication token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
         { global: { headers: { Authorization: authHeader } } }
       );
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
+      // CRITICAL: Pass token explicitly - getUser() without token doesn't work in Edge Functions
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError) {
+        console.error('[update-system-install] Auth error:', authError.message);
         return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
+          JSON.stringify({ error: 'Authentication failed', details: authError.message }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!user) {
+        console.error('[update-system-install] No user found in token');
+        return new Response(
+          JSON.stringify({ error: 'Invalid user session' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       userId = user.id;
+      console.log('[update-system-install] External call, user authenticated:', userId);
     }
 
     // Create service client for database operations
