@@ -39,6 +39,13 @@ export interface BaselineSystem {
   ageYears?: number;
   /** Expected lifespan for context */
   expectedLifespan?: number;
+  // Authority-resolved fields from capital-timeline
+  /** Data source for install year: permit, inferred, or unknown */
+  installSource?: 'permit' | 'inferred' | 'unknown';
+  /** Authoritative install year (from permit, photo, or user claim) */
+  installYear?: number | null;
+  /** Pre-formatted label from edge function - UI renders blindly */
+  installedLine?: string;
 }
 
 interface BaselineSurfaceProps {
@@ -367,11 +374,14 @@ function SystemCard({ system, isExpanded }: SystemCardProps) {
   const zone = getZoneFromPosition(position);
   const stateLabel = getStateLabel(system.state);
   const treatment = getCardTreatment(system.baselineStrength);
+  const isPermitVerified = system.installSource === 'permit';
   
   return (
     <div className={cn(
       "rounded-lg border p-2.5 space-y-1.5 bg-white/50 transition-all duration-300",
       treatment.cardClass,
+      // Permit-verified systems get subtle emerald border
+      isPermitVerified && "border-emerald-200/60",
       isExpanded && "p-3 space-y-2"
     )}>
       {/* System Info - Inline Layout */}
@@ -383,7 +393,14 @@ function SystemCard({ system, isExpanded }: SystemCardProps) {
           {system.displayName}
         </p>
         <div className="flex items-center gap-2">
-          {treatment.badgeText && (
+          {/* Permit-verified badge - takes precedence over Early data badge */}
+          {isPermitVerified && system.installYear && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">
+              {system.installYear} · Permit-verified
+            </span>
+          )}
+          {/* Only show "Early data" badge if NOT permit-verified */}
+          {!isPermitVerified && treatment.badgeText && (
             <span className={cn(
               "text-[10px] px-1.5 py-0.5 rounded font-medium",
               treatment.badgeClass
@@ -450,13 +467,13 @@ function UnknownAgeCard({ system, isExpanded }: UnknownAgeCardProps) {
         )}>
           {system.displayName}
         </p>
-        <span className="text-[11px] text-stone-500">Age unknown</span>
+        <span className="text-[11px] text-stone-500">Establishing baseline</span>
       </div>
       <p className="text-[11px] text-stone-600 mb-1">
-        Adding the installation year would help me track this system
+        A photo of the system label helps me confirm the details
       </p>
       <button className="text-[11px] text-teal-700 underline hover:text-teal-800 transition-colors">
-        Add installation date
+        Upload system label
       </button>
     </div>
   );
@@ -610,8 +627,16 @@ export function BaselineSurface({
           isExpanded && "space-y-2"
         )}>
           {systems.map(system => {
-            // Handle unknown age edge case (baseline_incomplete state)
-            if (system.state === 'baseline_incomplete' && system.ageYears === undefined) {
+            /**
+             * UnknownAgeCard Rendering Logic:
+             * Show ONLY if truly unknown (no install year AND NOT permit-verified)
+             * Permit source is authoritative even if install year is somehow null
+             */
+            const hasVerifiedSource = system.installSource === 'permit';
+            const hasInstallYear = system.installYear != null;
+            
+            // Show UnknownAgeCard ONLY if truly unknown
+            if (system.state === 'baseline_incomplete' && !hasInstallYear && !hasVerifiedSource) {
               return (
                 <UnknownAgeCard 
                   key={system.key} 

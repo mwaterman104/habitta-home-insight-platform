@@ -112,20 +112,89 @@ export function MiddleColumn({
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
 
   // ============================================
-  // Derive Baseline Systems from home_systems (SOURCE OF TRUTH)
+  // Derive Baseline Systems from Authority Sources
   // ============================================
   
   /**
-   * BASELINE DATA SOURCE PRIORITY:
-   * 1. home_systems table (real user data) - PRIMARY
-   * 2. capitalTimeline (inferred/enriched) - FALLBACK
+   * AUTHORITY PRECEDENCE (Non-Negotiable):
    * 
-   * This ensures the artifact displays what the user actually has in their database.
+   * 1. Permit / inspection record (HIGHEST)
+   * 2. Photo-verified label
+   * 3. Invoice / documentation
+   * 4. Explicit user claim (e.g., "Installed 2018")
+   * 5. Inference from home age
+   * 6. User uncertainty ("Not sure") (LOWEST)
+   * 
+   * "Not sure" is NOT a claim. It's an admission of uncertainty.
+   * It should NEVER override levels 1-5.
+   * 
+   * capitalTimeline.systems is the SOURCE OF TRUTH for lifecycle data.
+   * It has already run resolveInstallAuthority() with this precedence.
+   * 
+   * home_systems is EVIDENCE ONLY (photos, labels) - not authority.
    */
   const baselineSystems = useMemo<BaselineSystem[]>(() => {
     const currentYear = new Date().getFullYear();
     
-    // PRIMARY: Use home_systems from database if available
+    // Debug: log when both sources are present
+    if (homeSystems?.length && capitalTimeline?.systems?.length) {
+      console.warn('[MiddleColumn] Both home_systems and capitalTimeline present. Using capitalTimeline as authority.');
+    }
+    
+    // CAPITAL TIMELINE IS AUTHORITY SOURCE
+    // It has already run authority resolution: Permit > User Override > Heuristic
+    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
+      return capitalTimeline.systems.map(sys => {
+        const expectedEnd = sys.replacementWindow.likelyYear;
+        const yearsRemaining = expectedEnd - currentYear;
+        const monthsRemaining = yearsRemaining * 12;
+        
+        // Age from authoritative install year
+        const ageYears = sys.installYear 
+          ? currentYear - sys.installYear 
+          : undefined;
+        
+        // Only compute expectedLifespan if permit-verified (avoids false precision)
+        const isPermitVerified = sys.installSource === 'permit';
+        const expectedLifespan = isPermitVerified && sys.installYear
+          ? sys.replacementWindow.lateYear - sys.installYear
+          : undefined;
+        
+        // Derive confidence from dataQuality field
+        const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
+                                 sys.dataQuality === 'medium' ? 0.5 : 0.3;
+        
+        // Derive state based on confidence and timeline position
+        let state: SystemState = 'stable';
+        
+        // Low confidence with no install year = baseline incomplete
+        if (sys.dataQuality === 'low' && !sys.installYear) {
+          state = 'baseline_incomplete';
+        } else if (monthsRemaining < 12) {
+          state = 'elevated';
+        } else if (monthsRemaining < PLANNING_MONTHS) {
+          state = 'planning_window';
+        }
+        
+        return {
+          key: sys.systemId,
+          displayName: sys.systemLabel,
+          state,
+          confidence: confidenceValue,
+          monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
+          // Pass through authority-resolved fields from edge function
+          installSource: sys.installSource as 'permit' | 'inferred' | 'unknown',
+          installYear: sys.installYear,
+          // installedLine not yet in types - can be added when edge function supports it
+          ageYears,
+          expectedLifespan,
+          baselineStrength: confidenceValue * 100,
+        };
+      });
+    }
+    
+    // FALLBACK: Use home_systems only if capitalTimeline unavailable
+    // This is EVIDENCE ONLY, not authority source
     if (homeSystems && homeSystems.length > 0) {
       // Filter to only structural systems (not appliances)
       // SUPPORTED_SYSTEMS = ['hvac', 'roof', 'water_heater']
@@ -181,43 +250,22 @@ export function MiddleColumn({
             state,
             confidence: confidenceValue,
             monthsRemaining,
+            // home_systems fallback has no authority-resolved fields
+            installSource: 'unknown' as const,
+            installYear: installYear ?? undefined,
           };
         });
       }
-      // If no structural systems found, fall through to capitalTimeline fallback
-    }
-    
-    // FALLBACK: Use capitalTimeline if no home_systems or no structural systems
-    if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
-      return capitalTimeline.systems.map(sys => {
-        const expectedEnd = sys.replacementWindow.likelyYear;
-        const yearsRemaining = expectedEnd - currentYear;
-        const monthsRemaining = yearsRemaining * 12;
-        const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
-                                 sys.dataQuality === 'medium' ? 0.5 : 0.3;
-        
-        let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
-        
-        if (confidenceValue < BASELINE_INCOMPLETE_CONFIDENCE) {
-          state = 'baseline_incomplete';
-        } else if (monthsRemaining < 12) {
-          state = 'elevated';
-        } else if (monthsRemaining < PLANNING_MONTHS) {
-          state = 'planning_window';
-        }
-        
-        return {
-          key: sys.systemId,
-          displayName: sys.systemLabel,
-          state,
-          confidence: confidenceValue,
-          monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
-        };
-      });
     }
     
     return [];
-  }, [homeSystems, capitalTimeline]);
+  }, [capitalTimeline, homeSystems]);
+
+  // Compute verified system count for chat context
+  const verifiedSystemCount = useMemo(() => 
+    baselineSystems.filter(s => s.installSource === 'permit').length,
+    [baselineSystems]
+  );
 
   // System signals for narrative priority (uses both sources)
   const systemSignals = useMemo<SystemSignal[]>(() => {
@@ -352,6 +400,9 @@ export function MiddleColumn({
         confidence={confidence}
         risk={risk}
         onUserReply={onUserReply}
+        // NEW: Pass verification context for honest chat messaging
+        verifiedSystemCount={verifiedSystemCount}
+        totalSystemCount={baselineSystems.length}
       />
     </div>
   );

@@ -389,6 +389,9 @@ export function generatePersonalBlurb(context: {
   planningCount: number;
   confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
   isFirstVisit?: boolean;
+  // NEW: Verification context for honest baseline reporting
+  verifiedSystemCount?: number;
+  totalSystemCount?: number;
 }): string {
   const greeting = getTimeOfDayGreeting();
   
@@ -404,10 +407,27 @@ export function generatePersonalBlurb(context: {
   const systemWord = context.systemCount === 1 ? 'system' : 'systems';
   
   let statusLine = '';
-  if (context.planningCount > 0) {
+  
+  // NEW: Check verification status for honest reporting
+  const verified = context.verifiedSystemCount ?? 0;
+  const total = context.totalSystemCount ?? context.systemCount;
+  const remaining = total - verified;
+  
+  if (verified > 0 && remaining > 0) {
+    // HONEST: Acknowledge verified work AND remaining uncertainty
+    const verifiedWord = verified === 1 ? 'system' : 'systems';
+    statusLine = `I've verified ${verified} ${verifiedWord} from permit records. I'm still establishing the baseline for the remaining ${remaining}.`;
+  } else if (verified === total && verified > 0) {
+    // All verified: can claim stability
+    statusLine = 'All systems are verified. Everything is currently within expected ranges.';
+  } else if (context.planningCount > 0) {
+    // Has planning systems
     statusLine = context.planningCount === 1
       ? `I'm keeping an eye on one system that may need attention in the coming years.`
       : `I'm keeping an eye on ${context.planningCount} systems that may need attention in the coming years.`;
+  } else if (context.confidenceLevel === 'Unknown' || context.confidenceLevel === 'Early') {
+    // HONEST: Don't claim "everything is fine" when we don't know
+    statusLine = `I'm still establishing a complete picture of your systems.`;
   } else {
     statusLine = 'Everything is currently within expected ranges.';
   }
