@@ -1,28 +1,29 @@
 
 
-# Fix Authority Precedence: Permit Overrides "Not Sure"
+# Fix System Outlook Lifecycle Position Calculation
 
 ## Problem Summary
 
-The dashboard currently has **backwards precedence logic**. When a user selected "Not sure" during onboarding AND a permit exists (e.g., HVAC 2023), the UI shows "Age unknown" instead of acknowledging the permit.
+The System Outlook timeline shows a 2-year-old HVAC in the "WATCH" zone, while the System Detail page correctly shows it in the "OK" zone. This is a significant trust failure — the same system appears in different lifecycle states depending on which view the user looks at.
 
-**Root cause (line 128-188 in MiddleColumn.tsx):**
+**Root cause identified in `BaselineSurface.tsx` (lines 173-193):**
+
 ```typescript
-// PRIMARY: Use home_systems from database if available  <-- WRONG
-if (homeSystems && homeSystems.length > 0) { ... }
-
-// FALLBACK: Use capitalTimeline if no home_systems  <-- HAS PERMIT DATA
-if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) { ... }
+function getTimelinePosition(system: BaselineSystem): number {
+  const months = system.monthsRemaining;
+  
+  // Map months remaining to position
+  const maxMonths = 300; // 25 years  <-- PROBLEM: Fixed scale doesn't respect system-specific lifespans
+  const normalized = Math.min(100, Math.max(0, (months / maxMonths) * 100));
+  return 100 - normalized;
+}
 ```
 
-The `capital-timeline` edge function **already runs authority resolution** (Permit > User > Heuristic) and returns:
-- `installSource`: `'permit' | 'inferred' | 'unknown'`
-- `installYear`: Verified install year
-- `installedLine`: Pre-formatted label (e.g., "Installed 2023 (permit-verified)")
-- `confidenceScore`: Numeric confidence
-- `confidenceLevel`: `'low' | 'medium' | 'high'`
+**Result for a 2-year-old HVAC:**
+- **LifespanProgressBar (System Detail):** 2/15 = **13%** → "OK" ✓
+- **BaselineSurface (System Outlook):** 100 - (84/300) = **72%** → "WATCH" ✗
 
-But `MiddleColumn` ignores all of this and prioritizes `home_systems` (user onboarding data).
+The fixed 300-month (25-year) scale treats all systems identically and causes young HVAC systems (which have ~15-year lifespans) to appear artificially advanced.
 
 ---
 
@@ -30,355 +31,172 @@ But `MiddleColumn` ignores all of this and prioritizes `home_systems` (user onbo
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard-v3/BaselineSurface.tsx` | Extend `BaselineSystem` interface with authority fields, add permit-verified badge, fix UnknownAgeCard logic |
-| `src/components/dashboard-v3/MiddleColumn.tsx` | Invert priority: capitalTimeline first, pass through authority fields, compute verifiedSystemCount |
-| `src/lib/chatModeCopy.ts` | Update `generatePersonalBlurb` to accept verification context and be honest about incomplete baselines |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Pass verification context to `generatePersonalBlurb` |
+| `src/components/dashboard-v3/BaselineSurface.tsx` | Replace `getTimelinePosition()` logic, update `getZoneFromPosition()` thresholds |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | Compute `expectedLifespan` for ALL systems with install year (not just permit-verified) |
 
 ---
 
-## Technical Section
+## Technical Changes
 
-### 1. Extend BaselineSystem Interface (BaselineSurface.tsx)
+### 1. Fix `getTimelinePosition()` in BaselineSurface.tsx (lines 173-193)
 
-Add authority-resolved fields from capital-timeline:
-
+**Current (broken):**
 ```typescript
-export interface BaselineSystem {
-  key: string;
-  displayName: string;
-  state: SystemState;
-  confidence: number;
-  monthsRemaining?: number;
-  baselineStrength?: number;
-  ageYears?: number;
-  expectedLifespan?: number;
-  // NEW: Authority-resolved fields from capital-timeline
-  installSource?: 'permit' | 'inferred' | 'unknown';
-  installYear?: number | null;
-  /** Pre-formatted label from edge function - UI renders blindly */
-  installedLine?: string;
-}
-```
-
-### 2. Add Permit-Verified Micro-Badge (BaselineSurface.tsx)
-
-Update `SystemCard` to show the verified source badge:
-
-**Visual treatment:**
-- Background: `bg-emerald-100`
-- Text: `text-emerald-700`
-- Format: `{year} · Permit-verified`
-- Card gets subtle emerald border: `border-emerald-200/60`
-- Only show "Early data" badge if NOT permit-verified
-
-```typescript
-function SystemCard({ system, isExpanded }: SystemCardProps) {
-  const isPermitVerified = system.installSource === 'permit';
-  
-  return (
-    <div className={cn(
-      "rounded-lg border p-2.5 space-y-1.5 bg-white/50",
-      treatment.cardClass,
-      isPermitVerified && "border-emerald-200/60"
-    )}>
-      <div className="flex items-center justify-between">
-        <p className="font-medium text-stone-800">{system.displayName}</p>
-        <div className="flex items-center gap-2">
-          {/* Permit-verified badge */}
-          {isPermitVerified && system.installYear && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">
-              {system.installYear} · Permit-verified
-            </span>
-          )}
-          {/* Only show "Early data" if NOT permit-verified */}
-          {!isPermitVerified && treatment.badgeText && (
-            <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", treatment.badgeClass)}>
-              {treatment.badgeText}
-            </span>
-          )}
-          <p className="text-[11px] text-stone-500">{stateLabel}</p>
-        </div>
-      </div>
-      <SegmentedScale ... />
-    </div>
-  );
-}
-```
-
-### 3. Fix UnknownAgeCard Rendering Logic (BaselineSurface.tsx)
-
-**Current bug (line 614):**
-```typescript
-if (system.state === 'baseline_incomplete' && system.ageYears === undefined) {
-  return <UnknownAgeCard ... />;  // Shows even when permit exists!
-}
-```
-
-**Fix:** Only show UnknownAgeCard if NO install year AND NO permit source:
-```typescript
-{systems.map(system => {
-  const hasVerifiedSource = system.installSource === 'permit';
-  const hasInstallYear = system.installYear != null;
-  
-  // Show UnknownAgeCard ONLY if truly unknown
-  if (system.state === 'baseline_incomplete' && !hasInstallYear && !hasVerifiedSource) {
-    return <UnknownAgeCard key={system.key} system={system} isExpanded={isExpanded} />;
+function getTimelinePosition(system: BaselineSystem): number {
+  const months = system.monthsRemaining;
+  if (months === undefined) {
+    switch (system.state) { ... }
   }
-  
-  return <SystemCard key={system.key} system={system} isExpanded={isExpanded} />;
-})}
+  const maxMonths = 300; // Fixed 25-year scale
+  const normalized = Math.min(100, Math.max(0, (months / maxMonths) * 100));
+  return 100 - normalized;
+}
 ```
 
-Also update UnknownAgeCard copy to be evidence-focused:
-- "Age unknown" → "Establishing baseline"
-- "Add installation date" → "Upload system label"
-
-### 4. Invert Priority in MiddleColumn.tsx
-
-**New logic:** `capitalTimeline` is the authority source (it already runs `resolveInstallAuthority()`).
-
+**New (unified algorithm):**
 ```typescript
 /**
- * AUTHORITY PRECEDENCE (Non-Negotiable):
- * capitalTimeline is the SOURCE OF TRUTH for lifecycle data.
- * It has already run authority resolution:
- * - Permit > User Override > Heuristic
- * - "Not sure" = no data, never overrides permit
+ * CANONICAL LIFECYCLE POSITION ALGORITHM
  * 
- * home_systems is EVIDENCE ONLY (photos, labels) - not authority.
+ * Position = (ageYears / expectedLifespan) * 100
+ * 
+ * This must match LifespanProgressBar (System Detail view).
+ * Authority affects confidence, not positioning.
  */
-const baselineSystems = useMemo<BaselineSystem[]>(() => {
-  const currentYear = new Date().getFullYear();
-  
-  // CAPITAL TIMELINE IS AUTHORITY SOURCE
-  if (capitalTimeline?.systems && capitalTimeline.systems.length > 0) {
-    return capitalTimeline.systems.map(sys => {
-      const expectedEnd = sys.replacementWindow.likelyYear;
-      const yearsRemaining = expectedEnd - currentYear;
-      const monthsRemaining = yearsRemaining * 12;
-      
-      // Age from authoritative install year
-      const ageYears = sys.installYear 
-        ? currentYear - sys.installYear 
-        : undefined;
-      
-      // Only compute expectedLifespan if permit-verified (user's tightening)
-      const isPermitVerified = sys.installSource === 'permit';
-      const expectedLifespan = isPermitVerified && sys.installYear
-        ? sys.replacementWindow.lateYear - sys.installYear
-        : undefined;
-      
-      // Determine state
-      let state: SystemState = 'stable';
-      
-      if (sys.confidenceLevel === 'low' && !sys.installYear) {
-        state = 'baseline_incomplete';
-      } else if (monthsRemaining < 12) {
-        state = 'elevated';
-      } else if (monthsRemaining < PLANNING_MONTHS) {
-        state = 'planning_window';
-      }
-      
-      return {
-        key: sys.systemId,
-        displayName: sys.systemLabel,
-        state,
-        confidence: sys.confidenceScore,
-        monthsRemaining: monthsRemaining > 0 ? monthsRemaining : undefined,
-        // Pass through authority-resolved fields
-        installSource: sys.installSource as 'permit' | 'inferred' | 'unknown',
-        installYear: sys.installYear,
-        installedLine: sys.installedLine,
-        ageYears,
-        expectedLifespan,
-        baselineStrength: sys.confidenceScore * 100,
-      };
-    });
+function getTimelinePosition(system: BaselineSystem): number {
+  // PRIMARY: Use age-based positioning (% of lifespan consumed)
+  if (
+    system.ageYears !== undefined &&
+    system.expectedLifespan !== undefined &&
+    system.expectedLifespan > 0
+  ) {
+    const consumedPercent = (system.ageYears / system.expectedLifespan) * 100;
+    return Math.min(100, Math.max(0, consumedPercent));
   }
   
-  // Fallback to home_systems only if capitalTimeline unavailable
-  if (homeSystems && homeSystems.length > 0) {
-    // ... existing logic (no changes needed, just becomes fallback)
+  // FALLBACK: Use months remaining with system-specific typical lifespans
+  if (system.monthsRemaining !== undefined) {
+    const TYPICAL_LIFESPANS: Record<string, number> = {
+      hvac: 180,           // 15 years
+      roof: 300,           // 25 years
+      water_heater: 144,   // 12 years
+    };
+    
+    // Extract base system type from key (e.g., 'hvac_unit_1' → 'hvac')
+    const baseKey = system.key.split('_')[0];
+    const typicalLifespanMonths = TYPICAL_LIFESPANS[baseKey] ?? 180;
+    
+    const monthsConsumed = typicalLifespanMonths - system.monthsRemaining;
+    const consumedPercent = (monthsConsumed / typicalLifespanMonths) * 100;
+    return Math.min(100, Math.max(0, consumedPercent));
   }
   
-  return [];
-}, [capitalTimeline, homeSystems]);
+  // FINAL FALLBACK: State-based positioning
+  switch (system.state) {
+    case 'stable': return 30;
+    case 'baseline_incomplete': return 50;
+    case 'planning_window': return 75;
+    case 'elevated': return 90;
+  }
+}
 ```
 
-Also compute `verifiedSystemCount` for chat context:
+### 2. Update Zone Thresholds in BaselineSurface.tsx (lines 198-202)
+
+**Current:**
 ```typescript
-const verifiedSystemCount = useMemo(() => 
-  baselineSystems.filter(s => s.installSource === 'permit').length,
-  [baselineSystems]
-);
+function getZoneFromPosition(position: number): Zone {
+  if (position < 33.33) return 'ok';
+  if (position < 66.66) return 'watch';
+  return 'plan';
+}
 ```
 
-### 5. Update generatePersonalBlurb (chatModeCopy.ts)
-
-Add verification context to be honest about incomplete baselines:
-
+**New (60/80 thresholds per doctrine):**
 ```typescript
-export function generatePersonalBlurb(context: {
-  yearBuilt?: number;
-  systemCount: number;
-  planningCount: number;
-  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
-  isFirstVisit?: boolean;
-  // NEW: Verification context
-  verifiedSystemCount?: number;
-  totalSystemCount?: number;
-}): string {
-  const greeting = getTimeOfDayGreeting();
-  
-  // First visit handling (unchanged)
-  if (context.isFirstVisit) { ... }
-  
-  const homeRef = 'Your home';
-  const systemWord = context.systemCount === 1 ? 'system' : 'systems';
-  
-  let statusLine = '';
-  
-  // NEW: Check verification status
-  const verified = context.verifiedSystemCount ?? 0;
-  const total = context.totalSystemCount ?? context.systemCount;
-  const remaining = total - verified;
-  
-  if (verified > 0 && remaining > 0) {
-    // HONEST: Acknowledge verified work AND remaining uncertainty
-    const verifiedWord = verified === 1 ? 'system' : 'systems';
-    statusLine = `I've verified ${verified} ${verifiedWord} from permit records. I'm still establishing the baseline for the remaining ${remaining}.`;
-  } else if (verified === total && verified > 0) {
-    // All verified: can claim stability
-    statusLine = 'All systems are verified. Everything is currently within expected ranges.';
-  } else if (context.planningCount > 0) {
-    // Has planning systems
-    statusLine = context.planningCount === 1
-      ? `I'm keeping an eye on one system that may need attention in the coming years.`
-      : `I'm keeping an eye on ${context.planningCount} systems that may need attention in the coming years.`;
-  } else if (context.confidenceLevel === 'Unknown' || context.confidenceLevel === 'Early') {
-    // HONEST: Don't claim "everything is fine" when we don't know
-    statusLine = `I'm still establishing a complete picture of your systems.`;
+/**
+ * CANONICAL ZONE THRESHOLDS
+ * 
+ * OK:    0–60%  (Early life)
+ * WATCH: 60–80% (Mid-life awareness)
+ * PLAN:  80–100%+ (Late-life planning)
+ */
+const ZONE_THRESHOLDS = {
+  OK_MAX: 60,
+  WATCH_MAX: 80,
+} as const;
+
+function getZoneFromPosition(position: number): Zone {
+  if (position < ZONE_THRESHOLDS.OK_MAX) return 'ok';
+  if (position < ZONE_THRESHOLDS.WATCH_MAX) return 'watch';
+  return 'plan';
+}
+```
+
+### 3. Compute `expectedLifespan` for ALL Systems in MiddleColumn.tsx (lines 157-161)
+
+**Current (only permit-verified):**
+```typescript
+const isPermitVerified = sys.installSource === 'permit';
+const expectedLifespan = isPermitVerified && sys.installYear
+  ? sys.replacementWindow.lateYear - sys.installYear
+  : undefined;
+```
+
+**New (all systems with install year):**
+```typescript
+// Calculate expected lifespan from replacement window
+// For permit-verified: use late year (conservative upper bound)
+// For all others: use likely year (typical midpoint)
+const isPermitVerified = sys.installSource === 'permit';
+let expectedLifespan: number | undefined;
+
+if (sys.installYear) {
+  if (isPermitVerified) {
+    // Permit-verified: conservative upper bound
+    expectedLifespan = sys.replacementWindow.lateYear - sys.installYear;
   } else {
-    statusLine = 'Everything is currently within expected ranges.';
+    // All other sources: typical midpoint
+    expectedLifespan = sys.replacementWindow.likelyYear - sys.installYear;
   }
-  
-  let nextStep = '';
-  if (context.confidenceLevel === 'Early' || context.confidenceLevel === 'Unknown') {
-    nextStep = ` If you'd like to sharpen the picture, adding a photo of any system label helps me dial in the details.`;
-  }
-  
-  return `${greeting}. ${homeRef} has ${context.systemCount} key ${systemWord} I'm tracking. ${statusLine}${nextStep}`;
 }
 ```
 
-### 6. Pass Verification Context to ChatConsole
-
-Update `ChatConsole` props interface and pass verification counts:
-
-**In ChatConsole.tsx:**
-```typescript
-interface ChatConsoleProps {
-  // ... existing props
-  verifiedSystemCount?: number;
-  totalSystemCount?: number;
-}
-```
-
-**In MiddleColumn.tsx:**
-```typescript
-<ChatConsole
-  ...
-  verifiedSystemCount={verifiedSystemCount}
-  totalSystemCount={baselineSystems.length}
-/>
-```
-
-**In ChatConsole's generatePersonalBlurb call:**
-```typescript
-const message = generatePersonalBlurb({
-  yearBuilt,
-  systemCount: baselineSystems.length,
-  planningCount,
-  confidenceLevel,
-  isFirstVisit: isFirstUserVisit,
-  verifiedSystemCount, // NEW
-  totalSystemCount: baselineSystems.length, // NEW
-});
-```
-
 ---
 
-## UI Copy Changes Summary
+## Expected Results
 
-| Current | Replacement |
-|---------|-------------|
-| "Age unknown" | "Establishing baseline" |
-| "Add installation date" | "Upload system label" |
-| "Everything is currently within expected ranges." (when unverified) | "I've verified 1 system from permit records. I'm still establishing the baseline for the remaining 2." |
-| "Early data" badge (when permit exists) | "2023 · Permit-verified" badge |
+| System | Age | Expected Lifespan | Position | Zone |
+|--------|-----|-------------------|----------|------|
+| HVAC (2 years old) | 2 | ~15 years | 13% | **OK** ✓ |
+| HVAC (10 years old) | 10 | ~15 years | 67% | **WATCH** |
+| HVAC (13 years old) | 13 | ~15 years | 87% | **PLAN** |
+| Roof (5 years old) | 5 | ~25 years | 20% | **OK** |
+| Water Heater (8 years old) | 8 | ~12 years | 67% | **WATCH** |
 
----
-
-## Doctrine Comment to Add (MiddleColumn.tsx)
-
-```typescript
-/**
- * AUTHORITY PRECEDENCE (Non-Negotiable):
- * 
- * 1. Permit / inspection record (HIGHEST)
- * 2. Photo-verified label
- * 3. Invoice / documentation
- * 4. Explicit user claim (e.g., "Installed 2018")
- * 5. Inference from home age
- * 6. User uncertainty ("Not sure") (LOWEST)
- * 
- * "Not sure" is NOT a claim. It's an admission of uncertainty.
- * It should NEVER override levels 1-5.
- * 
- * capitalTimeline.systems is the SOURCE OF TRUTH for lifecycle data.
- * It has already run resolveInstallAuthority() with this precedence.
- * 
- * home_systems is EVIDENCE ONLY (photos, labels) - not authority.
- */
-```
-
----
-
-## Visual Result After Fix
-
-**System Outlook Card (HVAC with permit):**
-```
-┌─────────────────────────────────────────────────────┐
-│ HVAC System          [2023 · Permit-verified] Stable│
-│ ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
-│   OK          WATCH          PLAN                   │
-└─────────────────────────────────────────────────────┘
-```
-
-**System Outlook Card (Roof without permit):**
-```
-┌─────────────────────────────────────────────────────┐
-│ Roof                          Establishing baseline │
-│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
-│   A photo of the system label helps me confirm...   │
-│                  Upload system label                │
-└─────────────────────────────────────────────────────┘
-```
-
-**Chat Opening (with verification context):**
-> "Good afternoon. Your home has 3 key systems I'm tracking. I've verified 1 system from permit records. I'm still establishing the baseline for the remaining 2. If you'd like to sharpen the picture, adding a photo of any system label helps me dial in the details."
+The 2-year-old HVAC will now correctly appear in the "OK" zone on both the System Outlook and System Detail pages.
 
 ---
 
 ## Verification Checklist
 
 After implementation:
-- [ ] HVAC with 2023 permit shows "2023 · Permit-verified" badge (not "Age unknown")
-- [ ] Roof/Water Heater without data shows "Establishing baseline"
-- [ ] Chat opening message acknowledges verified vs. unverified systems
-- [ ] UnknownAgeCard never appears for permit-verified systems
-- [ ] CTAs are evidence-focused ("Upload system label")
-- [ ] System Outlook and System Sources table are in sync
-- [ ] Console warning logged when both data sources present (for debugging)
+- [ ] 2-year-old HVAC shows in "OK" zone on System Outlook
+- [ ] System Outlook and System Detail page positions are visually consistent
+- [ ] Zone tooltips still correctly describe thresholds (will need update to "0–60%", "60–80%", "80–100%+")
+- [ ] Systems approaching end-of-life still show in "PLAN" zone correctly
+- [ ] Systems with no age data fall back gracefully to state-based positioning
+- [ ] The `CalculationDisclosure` component already describes the correct formula ("Position = Current Age ÷ Expected Lifespan × 100")
+
+---
+
+## Doctrinal Lock
+
+This establishes a single lifecycle truth. Any future feature that visualizes system age must consume this same model:
+
+```
+Position = (ageYears / expectedLifespanYears) * 100
+```
+
+If two views ever disagree again, it's a bug — not a debate.
 
