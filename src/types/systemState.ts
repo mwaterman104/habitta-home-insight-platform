@@ -13,12 +13,15 @@ import type { SystemPrediction, LifespanPrediction } from './systemPrediction';
 
 /**
  * Explicit system state - each system is in exactly one
+ * 
+ * SEMANTIC NOTE: "baseline_incomplete" is a phase, not a failure.
+ * It means "Establishing baseline" — not "data gap" or "broken".
  */
 export type SystemState = 
-  | 'stable'           // Within expected range
-  | 'planning_window'  // Aging curve intersects threshold (time-based only)
-  | 'elevated'         // Deviation detected (NOT just time)
-  | 'data_gap';        // Confidence below threshold
+  | 'stable'               // Within expected range
+  | 'planning_window'      // Aging curve intersects threshold (time-based only)
+  | 'elevated'             // Deviation detected (NOT just time)
+  | 'baseline_incomplete'; // Confidence below threshold (phase, not failure)
 
 /**
  * System State Model - Complete state for a single system
@@ -65,8 +68,8 @@ export const PLANNING_MONTHS = 36;    // <3 years
 /** Months remaining threshold for Elevated state (requires deviation) */
 export const ELEVATED_MONTHS = 12;    // <1 year AND deviation
 
-/** Confidence threshold for Data Gap state */
-export const DATA_GAP_CONFIDENCE = 0.4;
+/** Confidence threshold for Baseline Incomplete state */
+export const BASELINE_INCOMPLETE_CONFIDENCE = 0.4;
 
 // ============================================
 // State Derivation
@@ -105,11 +108,11 @@ export function deriveSystemState(
     anomaly_flags,
   };
   
-  // Priority 1: Data Gap - Confidence too low
-  if (confidence < DATA_GAP_CONFIDENCE) {
+  // Priority 1: Baseline Incomplete - Confidence too low
+  if (confidence < BASELINE_INCOMPLETE_CONFIDENCE) {
     return { 
       ...baseModel,
-      state: 'data_gap',
+      state: 'baseline_incomplete',
       deviation_detected: false,
       anomaly_flags: [],
     };
@@ -153,8 +156,8 @@ export function getStateLabel(state: SystemState): string {
       return 'Planning Window';
     case 'elevated':
       return 'Elevated';
-    case 'data_gap':
-      return 'Data Gap';
+    case 'baseline_incomplete':
+      return 'Establishing baseline';
   }
 }
 
@@ -181,8 +184,8 @@ export function hasPlanningWindow(systems: SystemStateModel[]): boolean {
 }
 
 /**
- * Check if any system is in data gap
+ * Check if any system has baseline incomplete state
  */
-export function hasDataGap(systems: SystemStateModel[]): boolean {
-  return systems.some(s => s.state === 'data_gap' || s.confidence < DATA_GAP_CONFIDENCE);
+export function hasBaselineIncomplete(systems: SystemStateModel[]): boolean {
+  return systems.some(s => s.state === 'baseline_incomplete' || s.confidence < BASELINE_INCOMPLETE_CONFIDENCE);
 }

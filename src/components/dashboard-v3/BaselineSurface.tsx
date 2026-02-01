@@ -172,7 +172,7 @@ function getTimelinePosition(system: BaselineSystem): number {
       case 'stable': return 25;
       case 'planning_window': return 70;
       case 'elevated': return 90;
-      case 'data_gap': return 50;
+      case 'baseline_incomplete': return 50;
     }
   }
   
@@ -205,8 +205,8 @@ function getStateLabel(state: SystemState): string {
       return 'Approaching typical limit';
     case 'elevated':
       return 'Beyond typical lifespan';
-    case 'data_gap':
-      return 'Limited data';
+    case 'baseline_incomplete':
+      return 'Establishing baseline';
   }
 }
 
@@ -610,8 +610,8 @@ export function BaselineSurface({
           isExpanded && "space-y-2"
         )}>
           {systems.map(system => {
-            // Handle unknown age edge case
-            if (system.state === 'data_gap' && system.ageYears === undefined) {
+            // Handle unknown age edge case (baseline_incomplete state)
+            if (system.state === 'baseline_incomplete' && system.ageYears === undefined) {
               return (
                 <UnknownAgeCard 
                   key={system.key} 

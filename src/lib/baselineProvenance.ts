@@ -29,7 +29,7 @@ export type BaselineSource = 'inferred' | 'partial' | 'confirmed';
 export interface VisibleBaselineSystem {
   key: string;
   displayName: string;
-  state: 'stable' | 'planning_window' | 'elevated' | 'data_gap';
+  state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete';
 }
 
 /**
@@ -209,8 +209,8 @@ function formatStateForAI(state: VisibleBaselineSystem['state']): string {
       return 'Planning Window (approaching replacement timeframe)';
     case 'elevated':
       return 'Elevated (warrants attention)';
-    case 'data_gap':
-      return 'Data Gap (low confidence)';
+    case 'baseline_incomplete':
+      return 'Establishing baseline (low confidence)';
     default:
       return 'Unknown';
   }

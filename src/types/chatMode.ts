@@ -93,15 +93,15 @@ export function mapLegacyMode(legacy: LegacyChatMode): ChatMode {
  * 
  * DOCTRINE:
  * - Elevated requires deviation, not just time
- * - Data Gap requires confidence below threshold
+ * - Baseline Incomplete requires confidence below threshold (phase, not failure)
  * - Planning Window is time-based (no deviation)
  * - Stable is the default healthy state
  */
 export type SystemState = 
-  | 'stable'           // Within expected range
-  | 'planning_window'  // Aging curve intersects threshold (time-based)
-  | 'elevated'         // Deviation detected (NOT just time)
-  | 'data_gap';        // Confidence below threshold
+  | 'stable'               // Within expected range
+  | 'planning_window'      // Aging curve intersects threshold (time-based)
+  | 'elevated'             // Deviation detected (NOT just time)
+  | 'baseline_incomplete'; // Confidence below threshold (phase, not failure)
 
 /**
  * Confidence levels for system data.

@@ -18,10 +18,10 @@ import type { ChatMode, ChatModeInput, SystemModeInput } from '@/types/chatMode'
 import { 
   PLANNING_MONTHS, 
   ELEVATED_MONTHS, 
-  DATA_GAP_CONFIDENCE,
+  BASELINE_INCOMPLETE_CONFIDENCE,
   hasElevatedDeviation,
   hasPlanningWindow,
-  hasDataGap,
+  hasBaselineIncomplete,
   type SystemStateModel,
 } from '@/types/systemState';
 
@@ -66,7 +66,7 @@ export function determineChatMode(ctx: ChatModeInput): ChatMode {
   }
 
   // Priority 2: Baseline Establishment (gates advisory)
-  if (isBaselineIncomplete || hasDataGap(systemModels)) {
+  if (isBaselineIncomplete || hasBaselineIncomplete(systemModels)) {
     return 'baseline_establishment';
   }
 

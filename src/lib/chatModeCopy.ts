@@ -253,7 +253,7 @@ export const WHY_RESPONSE_RULES = {
  * Get state-specific implication copy for "Why?" responses
  * Delivers closure, not opens threads
  */
-export type WhySystemState = 'stable' | 'planning_window' | 'elevated' | 'data_gap';
+export type WhySystemState = 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete';
 
 export function getStateImplication(state: WhySystemState): string {
   switch (state) {
@@ -263,8 +263,8 @@ export function getStateImplication(state: WhySystemState): string {
       return "This is a good time to begin researching options. No immediate action is required.";
     case 'elevated':
       return "This warrants attention. Consider having it inspected before making decisions.";
-    case 'data_gap':
-      return "I don't have enough information to assess this system accurately.";
+    case 'baseline_incomplete':
+      return "I don't have enough information to assess this system accurately yet.";
   }
 }
 
@@ -279,8 +279,8 @@ export function getWhyStateLabel(state: WhySystemState): string {
       return 'approaching typical limits';
     case 'elevated':
       return 'elevated';
-    case 'data_gap':
-      return 'having limited data';
+    case 'baseline_incomplete':
+      return 'establishing baseline';
   }
 }
 

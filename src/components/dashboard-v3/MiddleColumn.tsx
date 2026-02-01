@@ -28,7 +28,7 @@ import { StateOfHomeReport } from "./StateOfHomeReport";
 import { type BaselineSystem } from "./BaselineSurface";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
-import { PLANNING_MONTHS, DATA_GAP_CONFIDENCE } from "@/types/systemState";
+import { PLANNING_MONTHS, BASELINE_INCOMPLETE_CONFIDENCE, type SystemState } from "@/types/systemState";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { AdvisorState, RiskLevel as AdvisorRiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
@@ -163,10 +163,10 @@ export function MiddleColumn({
             (sys.data_sources && sys.data_sources.length > 0 ? 0.7 : 0.4);
           
           // Derive state based on lifespan position
-          let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+          let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
           
-          if (confidenceValue < DATA_GAP_CONFIDENCE) {
-            state = 'data_gap';
+          if (confidenceValue < BASELINE_INCOMPLETE_CONFIDENCE) {
+            state = 'baseline_incomplete';
           } else if (monthsRemaining !== undefined) {
             if (monthsRemaining < 12) {
               state = 'elevated';
@@ -196,10 +196,10 @@ export function MiddleColumn({
         const confidenceValue = sys.dataQuality === 'high' ? 0.8 : 
                                  sys.dataQuality === 'medium' ? 0.5 : 0.3;
         
-        let state: 'stable' | 'planning_window' | 'elevated' | 'data_gap' = 'stable';
+        let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
         
-        if (confidenceValue < DATA_GAP_CONFIDENCE) {
-          state = 'data_gap';
+        if (confidenceValue < BASELINE_INCOMPLETE_CONFIDENCE) {
+          state = 'baseline_incomplete';
         } else if (monthsRemaining < 12) {
           state = 'elevated';
         } else if (monthsRemaining < PLANNING_MONTHS) {
