@@ -29,7 +29,7 @@ export interface SystemAgingProfileData {
   systems: Array<{
     key: string;
     displayName: string;
-    state: 'stable' | 'planning_window' | 'elevated' | 'data_gap';
+    state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete';
     /** Position on 0-100 scale (0 = New, 100 = Aging) */
     position: number;
   }>;

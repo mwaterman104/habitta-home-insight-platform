@@ -302,8 +302,8 @@ export function ChatConsole({
     track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
     
     // 1. Build evidence artifact with real system data
-    // Map 'data_gap' state to 'stable' for display purposes (with low confidence)
-    const displayState = system.state === 'data_gap' ? 'stable' : system.state;
+    // Map 'baseline_incomplete' state to 'stable' for display purposes (with low confidence)
+    const displayState = system.state === 'baseline_incomplete' ? 'stable' : system.state;
     
     const evidenceData: SystemValidationEvidenceData = {
       systemKey: system.key,
@@ -313,8 +313,8 @@ export function ChatConsole({
       ageYears: system.ageYears,
       expectedLifespan: system.expectedLifespan,
       monthsRemaining: system.monthsRemaining,
-      // Lower confidence for data_gap systems
-      confidence: system.state === 'data_gap' ? Math.min(system.confidence, 0.3) : system.confidence,
+      // Lower confidence for baseline_incomplete systems
+      confidence: system.state === 'baseline_incomplete' ? Math.min(system.confidence, 0.3) : system.confidence,
       baselineSource: baselineSource,
       // costData: Only include if real cost data exists (no placeholders)
     };

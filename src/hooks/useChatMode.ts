@@ -20,7 +20,7 @@ import {
   findLowConfidenceSystems,
 } from '@/lib/systemConfidenceDerivation';
 import { determineChatMode, shouldEnterInterpretive, isBaselineComplete } from '@/lib/chatModeSelector';
-import { DATA_GAP_CONFIDENCE, ELEVATED_MONTHS, PLANNING_MONTHS } from '@/types/systemState';
+import { BASELINE_INCOMPLETE_CONFIDENCE, ELEVATED_MONTHS, PLANNING_MONTHS } from '@/types/systemState';
 import { 
   computeBaselineSource, 
   mapToVisibleBaseline,
@@ -198,9 +198,9 @@ function deriveSystemStateFromHome(system: HomeSystem): {
   // For V1, deviation is always false unless explicitly set
   const deviation = false;
 
-  // Priority 1: Data Gap
-  if (confidence < DATA_GAP_CONFIDENCE) {
-    return { state: 'data_gap', months, deviation: false };
+  // Priority 1: Baseline Incomplete
+  if (confidence < BASELINE_INCOMPLETE_CONFIDENCE) {
+    return { state: 'baseline_incomplete', months, deviation: false };
   }
 
   // Priority 2: Elevated (requires deviation - which we don't have yet)
