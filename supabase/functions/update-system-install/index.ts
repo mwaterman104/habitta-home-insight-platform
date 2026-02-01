@@ -173,6 +173,27 @@ Deno.serve(async (req) => {
     const prevInstallSource = existingSystem?.install_source ?? null;
     const prevReplacementStatus = existingSystem?.replacement_status ?? 'unknown';
 
+    // HARDENING FIX #5: Prevent duplicate writes
+    const isIdenticalWrite = 
+      existingSystem &&
+      existingSystem.install_year === installYear &&
+      existingSystem.replacement_status === replacementStatus &&
+      existingSystem.install_source === 'owner_reported';
+
+    if (isIdenticalWrite) {
+      console.log(`[update-system-install] Skipping duplicate write for ${systemKey}`);
+      return new Response(
+        JSON.stringify({
+          alreadyRecorded: true,
+          system: existingSystem,
+          confidenceLevel: scoreInstallConfidence(existingSystem.install_source as InstallSource, !!existingSystem.install_month).level,
+          installedLine: formatInstalledLine(existingSystem.install_year, existingSystem.install_source as InstallSource, existingSystem.replacement_status as ReplacementStatus),
+          message: 'This information is already on record.',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Build update payload based on rules
     let newInstallYear = existingSystem?.install_year;
     let newInstallSource: InstallSource = (existingSystem?.install_source as InstallSource) || 'heuristic';
@@ -188,16 +209,24 @@ Deno.serve(async (req) => {
         user_acknowledged_unknown: true,
       };
     } else if (replacementStatus === 'replaced') {
-      // Rule: User provides year, set source to owner_reported (unless they specify)
+      // HARDENING FIX #2: Clarify behavior when no year provided
+      // Rule: Write replacement_status, only update year if explicitly provided
+      // Do NOT infer a year. Just record the replacement fact.
       if (installYear) {
         newInstallYear = installYear;
         newInstallSource = installSource || 'owner_reported';
         newInstallMonth = installMonth ?? null;
-        newMetadata = {
-          ...newMetadata,
-          ...installMetadata,
-        };
+      } else {
+        // No year provided — mark as replaced but preserve existing year (if any)
+        // This is valid: user confirmed replacement but doesn't recall when.
+        console.log(`[update-system-install] Replaced + no year: recording status only`);
+        newInstallSource = installSource || 'owner_reported';
       }
+      newMetadata = {
+        ...newMetadata,
+        ...installMetadata,
+        replaced_without_year: !installYear, // Explicit audit flag
+      };
     } else if (replacementStatus === 'original') {
       // Rule: Set year to year_built, source to owner_reported (user confirmed)
       newInstallYear = home.year_built ?? installYear;

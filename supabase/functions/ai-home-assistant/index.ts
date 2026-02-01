@@ -412,6 +412,8 @@ async function getPropertyContext(supabase: any, propertyId: string) {
   console.log(`[getPropertyContext] Verified: ${verifiedCount}, Estimated: ${estimatedCount}`);
 
   return {
+    // CRITICAL: Pass homeId for update_system_info tool (HARDENING FIX #3)
+    homeId: propertyId,
     systems: enrichedSystems,
     activeRecommendations: recommendations || [],
     recentPredictions: predictions || [],
@@ -503,6 +505,39 @@ async function generateAIResponse(
                 delay_months: { type: 'number', description: 'Months to delay the work' }
               },
               required: ['repair_type'],
+              additionalProperties: false
+            }
+          }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'update_system_info',
+            description: 'Update system installation information based on what the user tells you. Use this ONLY when the user provides SPECIFIC information about when a system was installed, replaced, or is original to the home. Do NOT use if the user is vague or uncertain.',
+            parameters: {
+              type: 'object',
+              properties: {
+                system_type: { 
+                  type: 'string', 
+                  enum: ['hvac', 'roof', 'water_heater'],
+                  description: 'The type of system being updated' 
+                },
+                install_year: { 
+                  type: 'number', 
+                  description: 'The SPECIFIC year the system was installed (e.g., 2008). Do NOT guess or infer — only provide if user stated explicitly.' 
+                },
+                replacement_status: { 
+                  type: 'string', 
+                  enum: ['original', 'replaced', 'unknown'],
+                  description: 'Whether this is the original system from when the home was built, a replacement, or unknown' 
+                },
+                knowledge_source: {
+                  type: 'string',
+                  enum: ['memory', 'receipt', 'permit', 'inspection'],
+                  description: 'How the user knows this information'
+                }
+              },
+              required: ['system_type', 'replacement_status'],
               additionalProperties: false
             }
           }
@@ -700,6 +735,39 @@ ${visibleBaseline.map(s => `- ${s.displayName}: ${formatStateForPrompt(s.state)}
 
 NEVER contradict what is visible. If systems appear above, acknowledge them.
 When referring to these systems, say "what you're seeing above" or "the baseline shows".
+
+SYSTEM UPDATE RULES (CRITICAL — READ CAREFULLY):
+
+When a user tells you about their home systems (installation dates, replacements, etc.):
+
+1. AMBIGUITY GATE (MANDATORY):
+   - If the user provides a SPECIFIC year (e.g., "2008", "three years ago"), call update_system_info
+   - If the user is VAGUE (e.g., "late 2000s", "maybe around 2010", "I think"), DO NOT call the tool
+   - Instead, ask a clarifying question: "Do you recall the specific year, even approximately?"
+   
+2. TOOL INVOCATION:
+   - ALWAYS use update_system_info to persist specific information
+   - Wait for the tool response before confirming the update
+   - Only say "I've saved..." AFTER the tool confirms success
+   - If the tool fails, acknowledge the failure and ask to try again
+
+3. CONFIRMATION LANGUAGE (MANDATORY):
+   - Say: "I've saved that the [system] was [action] in [year] (owner-reported). You'll see it reflected in your system timeline."
+   - DO NOT say: "I've updated your home profile" (too vague)
+   - Reference provenance: "owner-reported"
+   - Reference visibility: "You'll see it reflected"
+
+NEVER claim to have updated information without actually calling the tool.
+
+EXAMPLES THAT REQUIRE update_system_info:
+- "The roof was added in 2008" → update_system_info(system_type: 'roof', install_year: 2008, replacement_status: 'replaced')
+- "The AC is original to the house" → update_system_info(system_type: 'hvac', replacement_status: 'original')
+- "We replaced the water heater 3 years ago" → Calculate year (2023), then update_system_info(system_type: 'water_heater', install_year: 2023, replacement_status: 'replaced')
+
+EXAMPLES THAT DO NOT CALL THE TOOL (ask clarifying question instead):
+- "I think the roof was replaced sometime in the late 2000s" → Ask for specific year
+- "The AC might be around 10 years old" → Ask for confirmation
+- "I'm not sure when we got the water heater" → Acknowledge uncertainty, do not call tool
 
 EVIDENCE ANCHORING RULE (MANDATORY):
 When discussing any system, you MUST:
@@ -1012,6 +1080,102 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
     case 'calculate_cost_impact':
       // HONESTY GATE: No placeholder cost math - never use "approximately 0%" or fake calculations
       return `Cost comparisons for ${parsedArgs.repair_type} require specific system and regional data. If you'd like, I can help you research typical costs for your area or connect you with local professionals for estimates.`;
+      
+    case 'update_system_info': {
+      // HARDENING FIX #3: Intelligible failure state when homeId missing
+      const homeId = context?.homeId;
+      
+      if (!homeId) {
+        console.error('[update_system_info] No homeId in context');
+        return JSON.stringify({
+          type: 'system_update',
+          success: false,
+          reason: 'no_home_context',
+          message: 'I can\'t save that update because I don\'t have a home selected. Please make sure you\'re viewing a specific property.'
+        });
+      }
+      
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+        
+        if (!supabaseUrl || !supabaseAnonKey) {
+          console.error('[update_system_info] Missing Supabase config');
+          return JSON.stringify({
+            type: 'system_update',
+            success: false,
+            reason: 'config_error',
+            message: 'I encountered a configuration error. Please try again.'
+          });
+        }
+        
+        console.log('[update_system_info] Calling update-system-install for:', {
+          homeId,
+          systemKey: parsedArgs.system_type,
+          replacementStatus: parsedArgs.replacement_status,
+          installYear: parsedArgs.install_year,
+        });
+        
+        const response = await fetch(
+          `${supabaseUrl}/functions/v1/update-system-install`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': supabaseAnonKey,
+              // Use service role for internal call (edge-to-edge)
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              homeId,
+              systemKey: parsedArgs.system_type,
+              replacementStatus: parsedArgs.replacement_status,
+              installYear: parsedArgs.install_year,
+              installSource: 'owner_reported',
+              installMetadata: {
+                knowledge_source: parsedArgs.knowledge_source || 'memory',
+                source: 'chat_conversation',
+              }
+            })
+          }
+        );
+        
+        if (!response.ok) {
+          const error = await response.text();
+          console.error('[update_system_info] Failed:', response.status, error);
+          return JSON.stringify({
+            type: 'system_update',
+            success: false,
+            reason: 'api_error',
+            message: 'I wasn\'t able to save that update. Please try again.'
+          });
+        }
+        
+        const result = await response.json();
+        console.log('[update_system_info] Success:', result);
+        
+        // HARDENING FIX #4: Structured response envelope
+        return JSON.stringify({
+          type: 'system_update',
+          success: true,
+          systemKey: parsedArgs.system_type,
+          alreadyRecorded: result.alreadyRecorded || false,
+          installedLine: result.installedLine,
+          confidenceLevel: result.confidenceLevel,
+          message: result.alreadyRecorded 
+            ? `That's already recorded. Your ${parsedArgs.system_type} shows as ${result.installedLine}.`
+            : result.message,
+        });
+      } catch (error) {
+        console.error('[update_system_info] Error:', error);
+        return JSON.stringify({
+          type: 'system_update',
+          success: false,
+          reason: 'exception',
+          message: 'I encountered an error saving your update. Please try again.'
+        });
+      }
+    }
       
     default:
       return 'I can help you with that. What specific information would you like?';

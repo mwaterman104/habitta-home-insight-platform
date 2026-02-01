@@ -295,7 +295,20 @@ export function ChatConsole({
     // Notify parent of user reply (triggers state transition to DECISION)
     onUserReply?.();
     
-    await sendMessage(message);
+    const response = await sendMessage(message);
+    
+    // HARDENING FIX #4: Check response envelope for system updates, not tool name
+    if (response?.functionResult) {
+      try {
+        const result = JSON.parse(response.functionResult);
+        if (result.type === 'system_update' && result.success && !result.alreadyRecorded) {
+          console.log('[ChatConsole] System updated via chat:', result.systemKey);
+          onSystemUpdated?.();
+        }
+      } catch {
+        // Not JSON or no system update — that's fine
+      }
+    }
   };
 
   /**
