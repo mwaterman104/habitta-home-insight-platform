@@ -77,6 +77,39 @@ function formatInstalledLine(
   }
 }
 
+/**
+ * Pick the highest-authority record from duplicates
+ * Tiebreaking: authority -> confidence -> created_at (newest wins)
+ */
+function pickHighestAuthorityRecord(records: any[]): any {
+  const authorityOrder: Record<string, number> = {
+    'permit_verified': 4,
+    'inspection': 3,
+    'owner_reported': 2,
+    'heuristic': 1,
+  };
+  
+  return records.reduce((best, current) => {
+    const bestAuth = authorityOrder[best.install_source] || 0;
+    const currentAuth = authorityOrder[current.install_source] || 0;
+    
+    // 1. Higher authority wins
+    if (currentAuth > bestAuth) return current;
+    if (currentAuth < bestAuth) return best;
+    
+    // 2. Same authority: higher confidence wins
+    const bestConf = best.confidence || 0;
+    const currentConf = current.confidence || 0;
+    if (currentConf > bestConf) return current;
+    if (currentConf < bestConf) return best;
+    
+    // 3. Same authority + confidence: newer record wins
+    const bestDate = new Date(best.created_at || 0).getTime();
+    const currentDate = new Date(current.created_at || 0).getTime();
+    return currentDate > bestDate ? current : best;
+  });
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -213,13 +246,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get existing system record
-    const { data: existingSystem, error: systemError } = await supabaseAdmin
+    // Normalize kind to lowercase for consistent storage
+    const normalizedKind = systemKey.toLowerCase();
+
+    // Case-insensitive lookup - find all variants
+    const { data: existingSystems, error: systemError } = await supabaseAdmin
       .from('systems')
       .select('*')
       .eq('home_id', homeId)
-      .eq('kind', systemKey)
-      .maybeSingle();
+      .ilike('kind', normalizedKind);
+
+    // Pick highest-authority record if multiple exist
+    const existingSystem = existingSystems && existingSystems.length > 0
+      ? pickHighestAuthorityRecord(existingSystems)
+      : null;
+
+    // Log if duplicates found (shouldn't happen after cleanup)
+    if (existingSystems && existingSystems.length > 1) {
+      console.warn(`[update-system-install] Found ${existingSystems.length} duplicate records for ${normalizedKind}`);
+    }
 
     if (systemError) {
       console.error('Error fetching system:', systemError);
@@ -312,7 +357,7 @@ Deno.serve(async (req) => {
     const systemPayload = {
       home_id: homeId,
       user_id: userId,
-      kind: systemKey,
+      kind: normalizedKind, // Always lowercase
       install_year: newInstallYear,
       install_month: newInstallMonth,
       install_source: newInstallSource,
@@ -340,6 +385,19 @@ Deno.serve(async (req) => {
         );
       }
       updatedSystem = data;
+
+      // Defensive cleanup: delete any remaining duplicates
+      if (existingSystems && existingSystems.length > 1) {
+        const duplicateIds = existingSystems
+          .filter(s => s.id !== existingSystem.id)
+          .map(s => s.id);
+          
+        console.warn('[update-system-install] Cleaning up duplicates:', duplicateIds);
+        await supabaseAdmin
+          .from('systems')
+          .delete()
+          .in('id', duplicateIds);
+      }
     } else {
       // Insert new
       const { data, error: insertError } = await supabaseAdmin
@@ -348,14 +406,45 @@ Deno.serve(async (req) => {
         .select()
         .single();
 
+      // Handle race condition if unique constraint fires
       if (insertError) {
-        console.error('Error inserting system:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create system' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        if (insertError.code === '23505') { // Unique constraint violation
+          console.warn('[update-system-install] Duplicate detected during insert, retrying update...');
+          
+          // Another process created the record between our check and insert
+          const { data: retrySystem } = await supabaseAdmin
+            .from('systems')
+            .select('*')
+            .eq('home_id', homeId)
+            .ilike('kind', normalizedKind)
+            .single();
+            
+          if (retrySystem) {
+            const { data: retryData } = await supabaseAdmin
+              .from('systems')
+              .update(systemPayload)
+              .eq('id', retrySystem.id)
+              .select()
+              .single();
+              
+            updatedSystem = retryData;
+          } else {
+            console.error('Error inserting system (race retry failed):', insertError);
+            return new Response(
+              JSON.stringify({ error: 'Failed to create system' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
+          console.error('Error inserting system:', insertError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to create system' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
+        updatedSystem = data;
       }
-      updatedSystem = data;
     }
 
     // Write audit event

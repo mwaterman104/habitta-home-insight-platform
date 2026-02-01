@@ -175,6 +175,59 @@ interface SystemRow {
   replacement_status: string | null;
   material: string | null;
   confidence: number | null;
+  created_at?: string | null;
+}
+
+/**
+ * Select the best system record from potentially duplicate records
+ * Uses case-insensitive matching and authority-based selection
+ */
+function selectBestSystemRecord(
+  systems: SystemRow[] | null,
+  systemType: string
+): SystemRow | undefined {
+  if (!systems) return undefined;
+  
+  // Case-insensitive matching
+  const matching = systems.filter(s => 
+    s.kind.toLowerCase() === systemType.toLowerCase()
+  );
+  
+  if (matching.length === 0) return undefined;
+  if (matching.length === 1) return matching[0];
+  
+  // Log warning if duplicates found (shouldn't happen after cleanup)
+  console.warn(
+    `[capital-timeline] Found ${matching.length} records for "${systemType}". Using authority resolution.`
+  );
+  
+  // Authority priority with proper tiebreaking
+  const authorityOrder: Record<string, number> = {
+    'permit_verified': 4,
+    'inspection': 3,
+    'owner_reported': 2,
+    'heuristic': 1,
+  };
+  
+  return matching.reduce((best, current) => {
+    const bestAuth = authorityOrder[best.install_source || 'heuristic'] || 0;
+    const currentAuth = authorityOrder[current.install_source || 'heuristic'] || 0;
+    
+    // 1. Higher authority wins
+    if (currentAuth > bestAuth) return current;
+    if (currentAuth < bestAuth) return best;
+    
+    // 2. Same authority: higher confidence wins
+    const bestConf = best.confidence || 0;
+    const currentConf = current.confidence || 0;
+    if (currentConf > bestConf) return current;
+    if (currentConf < bestConf) return best;
+    
+    // 3. Same authority + confidence: newer record wins
+    const bestDate = new Date(best.created_at || 0).getTime();
+    const currentDate = new Date(current.created_at || 0).getTime();
+    return currentDate > bestDate ? current : best;
+  });
 }
 
 interface PermitRecord {
@@ -460,15 +513,15 @@ Deno.serve(async (req) => {
       yearBuilt: home.year_built || 2000,
       state: home.state || 'FL',
       city: home.city,
-      roofMaterial: systems?.find(s => s.kind === 'roof')?.material || 'unknown',
-      waterHeaterType: systems?.find(s => s.kind === 'water_heater')?.material || 'unknown',
+      roofMaterial: selectBestSystemRecord(systems, 'roof')?.material || 'unknown',
+      waterHeaterType: selectBestSystemRecord(systems, 'water_heater')?.material || 'unknown',
     };
 
     const regionContext = getRegionContext(propertyContext.state, propertyContext.city);
 
     // Single system detail request
     if (action === 'system-detail' && systemType) {
-      const userSystem = systems?.find(s => s.kind === systemType);
+      const userSystem = selectBestSystemRecord(systems, systemType);
       
       // Step A: Resolve authority (POLICY)
       const resolvedInstall = resolveInstallAuthority(
@@ -501,8 +554,8 @@ Deno.serve(async (req) => {
     const limitingFactors: string[] = [];
 
     for (const sysType of systemTypes) {
-      // Find user-provided system data
-      const userSystem = systems?.find(s => s.kind === sysType);
+      // Find user-provided system data (case-insensitive with authority resolution)
+      const userSystem = selectBestSystemRecord(systems, sysType);
       
       // Step A: Resolve authority (POLICY)
       const resolvedInstall = resolveInstallAuthority(

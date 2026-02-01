@@ -3989,6 +3989,63 @@ export type Database = {
         }
         Relationships: []
       }
+      systems_backup_20260201: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          home_id: string | null
+          id: string | null
+          install_metadata: Json | null
+          install_month: number | null
+          install_source: string | null
+          install_year: number | null
+          kind: string | null
+          material: string | null
+          notes: string | null
+          raw_data: Json | null
+          replacement_status: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          home_id?: string | null
+          id?: string | null
+          install_metadata?: Json | null
+          install_month?: number | null
+          install_source?: string | null
+          install_year?: number | null
+          kind?: string | null
+          material?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          replacement_status?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          home_id?: string | null
+          id?: string | null
+          install_metadata?: Json | null
+          install_month?: number | null
+          install_source?: string | null
+          install_year?: number | null
+          kind?: string | null
+          material?: string | null
+          notes?: string | null
+          raw_data?: Json | null
+          replacement_status?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           actual_hours: number | null
