@@ -16,6 +16,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Extract and validate user ID from JWT token
+ * Returns userId if valid, undefined if auth is not provided
+ * Throws Response with 401 if auth is malformed/invalid
+ */
+async function extractUserId(
+  authHeader: string | null,
+  supabase: any
+): Promise<string | undefined> {
+  // No auth header = anonymous request (valid for some endpoints)
+  if (!authHeader) {
+    console.warn('[ai-home-assistant] No authorization header present');
+    return undefined;
+  }
+
+  // Validate Bearer format
+  if (!authHeader.startsWith('Bearer ')) {
+    console.error('[ai-home-assistant] Invalid auth header format');
+    throw new Response(
+      JSON.stringify({ error: 'Invalid authorization header format' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Extract and validate token
+  const token = authHeader.replace('Bearer ', '').trim();
+  
+  if (!token) {
+    console.error('[ai-home-assistant] Empty token after extraction');
+    throw new Response(
+      JSON.stringify({ error: 'Missing authentication token' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Validate token with Supabase (CRITICAL: pass token explicitly)
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  
+  if (error) {
+    console.error('[ai-home-assistant] Auth error:', error.message);
+    
+    // Specific handling for expired tokens
+    if (error.message.includes('expired')) {
+      throw new Response(
+        JSON.stringify({ error: 'Session expired', code: 'TOKEN_EXPIRED' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    throw new Response(
+      JSON.stringify({ error: 'Authentication failed', details: error.message }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  const userId = user?.id;
+  
+  if (!userId) {
+    console.error('[ai-home-assistant] No user ID in valid token');
+    throw new Response(
+      JSON.stringify({ error: 'Invalid user session' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  console.log('[ai-home-assistant] User authenticated:', userId);
+  return userId;
+}
+
 // ============================================================================
 // COPY GOVERNOR (Server-Side Authority)
 // ============================================================================
@@ -213,9 +282,15 @@ serve(async (req) => {
 
     // Get the authenticated user (needed for system updates)
     let userId: string | undefined;
-    if (authHeader) {
-      const { data: { user } } = await supabase.auth.getUser();
-      userId = user?.id;
+    try {
+      userId = await extractUserId(authHeader, supabase);
+    } catch (errorResponse) {
+      // If extractUserId throws a Response, return it directly
+      if (errorResponse instanceof Response) {
+        return errorResponse;
+      }
+      // Re-throw unexpected errors
+      throw errorResponse;
     }
 
     const { 
