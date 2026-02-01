@@ -168,36 +168,69 @@ function formatRelativeTime(date?: Date): string {
 }
 
 /**
- * Get timeline position (0-100) based on system state and months remaining
+ * CANONICAL ZONE THRESHOLDS
+ * 
+ * OK:    0–60%  (Early life)
+ * WATCH: 60–80% (Mid-life awareness)
+ * PLAN:  80–100%+ (Late-life planning)
+ */
+const ZONE_THRESHOLDS = {
+  OK_MAX: 60,
+  WATCH_MAX: 80,
+} as const;
+
+/** System-specific typical lifespans in months (fallback only) */
+const TYPICAL_LIFESPANS_MONTHS: Record<string, number> = {
+  hvac: 180,           // 15 years
+  roof: 300,           // 25 years
+  water_heater: 144,   // 12 years
+};
+
+/**
+ * CANONICAL LIFECYCLE POSITION ALGORITHM
+ * 
+ * Position = (ageYears / expectedLifespan) * 100
+ * 
+ * This must match LifespanProgressBar (System Detail view).
+ * Authority affects confidence, not positioning.
  */
 function getTimelinePosition(system: BaselineSystem): number {
-  const months = system.monthsRemaining;
-  
-  // If no months data, use state-based positioning
-  if (months === undefined) {
-    switch (system.state) {
-      case 'stable': return 25;
-      case 'planning_window': return 70;
-      case 'elevated': return 90;
-      case 'baseline_incomplete': return 50;
-    }
+  // PRIMARY: Use age-based positioning (% of lifespan consumed)
+  if (
+    system.ageYears !== undefined &&
+    system.expectedLifespan !== undefined &&
+    system.expectedLifespan > 0
+  ) {
+    const consumedPercent = (system.ageYears / system.expectedLifespan) * 100;
+    return Math.min(100, Math.max(0, consumedPercent));
   }
   
-  // Map months remaining to position
-  // More months = left (OK), fewer months = right (PLAN)
-  const maxMonths = 300; // 25 years
-  const normalized = Math.min(100, Math.max(0, (months / maxMonths) * 100));
+  // FALLBACK: Use months remaining with system-specific typical lifespans
+  if (system.monthsRemaining !== undefined) {
+    // Extract base system type from key (e.g., 'hvac_unit_1' → 'hvac')
+    const baseKey = system.key.split('_')[0];
+    const typicalLifespanMonths = TYPICAL_LIFESPANS_MONTHS[baseKey] ?? 180;
+    
+    const monthsConsumed = typicalLifespanMonths - system.monthsRemaining;
+    const consumedPercent = (monthsConsumed / typicalLifespanMonths) * 100;
+    return Math.min(100, Math.max(0, consumedPercent));
+  }
   
-  // Invert: 0 months = 100% (right/PLAN), max months = 0% (left/OK)
-  return 100 - normalized;
+  // FINAL FALLBACK: State-based positioning
+  switch (system.state) {
+    case 'stable': return 30;
+    case 'baseline_incomplete': return 50;
+    case 'planning_window': return 75;
+    case 'elevated': return 90;
+  }
 }
 
 /**
- * Get zone from position (0-100)
+ * Get zone from position (0-100) using canonical thresholds
  */
 function getZoneFromPosition(position: number): Zone {
-  if (position < 33.33) return 'ok';
-  if (position < 66.66) return 'watch';
+  if (position < ZONE_THRESHOLDS.OK_MAX) return 'ok';
+  if (position < ZONE_THRESHOLDS.WATCH_MAX) return 'watch';
   return 'plan';
 }
 
@@ -322,8 +355,9 @@ interface SegmentedScaleProps {
 
 function SegmentedScale({ position, zone, baselineStrength, isExpanded }: SegmentedScaleProps) {
   // Calculate position within the active zone (0-100%)
-  const zoneStart = zone === 'ok' ? 0 : zone === 'watch' ? 33.33 : 66.66;
-  const zoneWidth = zone === 'plan' ? 33.34 : 33.33;
+  // Using 60/80 thresholds: OK=0-60, WATCH=60-80, PLAN=80-100
+  const zoneStart = zone === 'ok' ? 0 : zone === 'watch' ? ZONE_THRESHOLDS.OK_MAX : ZONE_THRESHOLDS.WATCH_MAX;
+  const zoneWidth = zone === 'ok' ? ZONE_THRESHOLDS.OK_MAX : zone === 'watch' ? (ZONE_THRESHOLDS.WATCH_MAX - ZONE_THRESHOLDS.OK_MAX) : (100 - ZONE_THRESHOLDS.WATCH_MAX);
   const positionWithinZone = ((position - zoneStart) / zoneWidth) * 100;
   
   return (
@@ -338,6 +372,7 @@ function SegmentedScale({ position, zone, baselineStrength, isExpanded }: Segmen
         positionWithinZone={zone === 'ok' ? positionWithinZone : undefined}
         baselineStrength={baselineStrength}
         isExpanded={isExpanded}
+        flex="flex-[60]"
       />
       <ZoneSegment 
         zone="watch" 
@@ -346,6 +381,7 @@ function SegmentedScale({ position, zone, baselineStrength, isExpanded }: Segmen
         positionWithinZone={zone === 'watch' ? positionWithinZone : undefined}
         baselineStrength={baselineStrength}
         isExpanded={isExpanded}
+        flex="flex-[20]"
       />
       <ZoneSegment 
         zone="plan" 
@@ -354,7 +390,7 @@ function SegmentedScale({ position, zone, baselineStrength, isExpanded }: Segmen
         positionWithinZone={zone === 'plan' ? positionWithinZone : undefined}
         baselineStrength={baselineStrength}
         isExpanded={isExpanded}
-        flex="flex-[34]"
+        flex="flex-[20]"
       />
     </div>
   );
