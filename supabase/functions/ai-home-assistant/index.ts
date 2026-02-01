@@ -203,10 +203,20 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    // Create authenticated Supabase client with user's JWT
+    const authHeader = req.headers.get('Authorization');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: authHeader ? { Authorization: authHeader } : {} } }
     );
+
+    // Get the authenticated user (needed for system updates)
+    let userId: string | undefined;
+    if (authHeader) {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id;
+    }
 
     const { 
       message, 
@@ -235,10 +245,11 @@ serve(async (req) => {
       visibleBaselineCount: visibleBaseline?.length ?? 0,
       isPlanningSession,
       interventionId,
+      userId: userId ? 'present' : 'missing',
     });
 
-    // Get property context
-    const propertyContext = await getPropertyContext(supabase, propertyId);
+    // Get property context (includes homeId and userId for tool calls)
+    const propertyContext = await getPropertyContext(supabase, propertyId, userId);
     
     // Get copy style profile from governor
     const copyProfile = getAdvisorCopyProfile(advisorState as AdvisorState, confidence, risk as RiskLevel);
@@ -372,7 +383,7 @@ function enrichSystemWithLifecycle(
   };
 }
 
-async function getPropertyContext(supabase: any, propertyId: string) {
+async function getPropertyContext(supabase: any, propertyId: string, userId?: string) {
   const [
     { data: rawSystems },
     { data: recommendations },
@@ -412,8 +423,9 @@ async function getPropertyContext(supabase: any, propertyId: string) {
   console.log(`[getPropertyContext] Verified: ${verifiedCount}, Estimated: ${estimatedCount}`);
 
   return {
-    // CRITICAL: Pass homeId for update_system_info tool (HARDENING FIX #3)
+    // CRITICAL: Pass homeId and userId for update_system_info tool (HARDENING FIX #3)
     homeId: propertyId,
+    userId,
     systems: enrichedSystems,
     activeRecommendations: recommendations || [],
     recentPredictions: predictions || [],
@@ -1082,8 +1094,9 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       return `Cost comparisons for ${parsedArgs.repair_type} require specific system and regional data. If you'd like, I can help you research typical costs for your area or connect you with local professionals for estimates.`;
       
     case 'update_system_info': {
-      // HARDENING FIX #3: Intelligible failure state when homeId missing
+      // HARDENING FIX #3: Intelligible failure state when homeId or userId missing
       const homeId = context?.homeId;
+      const userId = context?.userId;
       
       if (!homeId) {
         console.error('[update_system_info] No homeId in context');
@@ -1095,8 +1108,19 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
         });
       }
       
+      if (!userId) {
+        console.error('[update_system_info] No userId in context');
+        return JSON.stringify({
+          type: 'system_update',
+          success: false,
+          reason: 'no_auth',
+          message: 'I can\'t save that update because you\'re not signed in. Please sign in and try again.'
+        });
+      }
+      
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
         
         if (!supabaseUrl || !supabaseAnonKey) {
@@ -1114,6 +1138,7 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
           systemKey: parsedArgs.system_type,
           replacementStatus: parsedArgs.replacement_status,
           installYear: parsedArgs.install_year,
+          userId: 'present',
         });
         
         const response = await fetch(
@@ -1124,7 +1149,7 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
               'Content-Type': 'application/json',
               'apikey': supabaseAnonKey,
               // Use service role for internal call (edge-to-edge)
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || supabaseAnonKey}`,
+              'Authorization': `Bearer ${supabaseServiceKey || supabaseAnonKey}`,
             },
             body: JSON.stringify({
               homeId,
@@ -1132,6 +1157,8 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
               replacementStatus: parsedArgs.replacement_status,
               installYear: parsedArgs.install_year,
               installSource: 'owner_reported',
+              // Pass userId for internal authentication (service-to-service)
+              userId,
               installMetadata: {
                 knowledge_source: parsedArgs.knowledge_source || 'memory',
                 source: 'chat_conversation',
