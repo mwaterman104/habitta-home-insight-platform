@@ -30,6 +30,8 @@ interface UpdateRequest {
   installYear?: number;
   installMonth?: number;
   installSource?: InstallSource;
+  // For internal edge-to-edge calls (service role auth)
+  userId?: string;
   installMetadata?: {
     installer?: 'diy' | 'licensed_pro' | 'builder';
     knowledge_source?: 'permit' | 'receipt' | 'inspection' | 'memory';
@@ -88,7 +90,7 @@ Deno.serve(async (req) => {
   try {
     // Parse request
     const body: UpdateRequest = await req.json();
-    const { homeId, systemKey, replacementStatus, installYear, installMonth, installSource, installMetadata } = body;
+    const { homeId, systemKey, replacementStatus, installYear, installMonth, installSource, installMetadata, userId: bodyUserId } = body;
 
     // Validate required fields
     if (!homeId || !systemKey || !replacementStatus) {
@@ -115,24 +117,43 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's JWT
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // Determine if this is an internal service-to-service call
+    // Internal calls use service role key and pass userId in the body
+    const isServiceRoleCall = authHeader.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '__never_match__');
+    
+    let userId: string;
+    
+    if (isServiceRoleCall && bodyUserId) {
+      // Internal call from another edge function (e.g., ai-home-assistant)
+      // Trust the userId passed in the body
+      console.log('[update-system-install] Internal service call, using provided userId');
+      userId = bodyUserId;
+    } else {
+      // External call - verify user from JWT
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
       );
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
     }
 
+    // Create service client for database operations
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
     // Verify user owns the home
-    const { data: home, error: homeError } = await supabase
+    const { data: home, error: homeError } = await supabaseAdmin
       .from('homes')
       .select('id, user_id, year_built')
       .eq('id', homeId)
@@ -145,7 +166,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (home.user_id !== user.id) {
+    if (home.user_id !== userId) {
       return new Response(
         JSON.stringify({ error: 'Access denied to this home' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -153,7 +174,7 @@ Deno.serve(async (req) => {
     }
 
     // Get existing system record
-    const { data: existingSystem, error: systemError } = await supabase
+    const { data: existingSystem, error: systemError } = await supabaseAdmin
       .from('systems')
       .select('*')
       .eq('home_id', homeId)
@@ -250,7 +271,7 @@ Deno.serve(async (req) => {
     // Upsert system record
     const systemPayload = {
       home_id: homeId,
-      user_id: user.id,
+      user_id: userId,
       kind: systemKey,
       install_year: newInstallYear,
       install_month: newInstallMonth,
@@ -264,7 +285,7 @@ Deno.serve(async (req) => {
     let updatedSystem;
     if (existingSystem) {
       // Update existing
-      const { data, error: updateError } = await supabase
+      const { data, error: updateError } = await supabaseAdmin
         .from('systems')
         .update(systemPayload)
         .eq('id', existingSystem.id)
@@ -281,7 +302,7 @@ Deno.serve(async (req) => {
       updatedSystem = data;
     } else {
       // Insert new
-      const { data, error: insertError } = await supabase
+      const { data, error: insertError } = await supabaseAdmin
         .from('systems')
         .insert(systemPayload)
         .select()
@@ -301,7 +322,7 @@ Deno.serve(async (req) => {
     const auditPayload = {
       system_id: updatedSystem.id,
       home_id: homeId,
-      user_id: user.id,
+      user_id: userId,
       prev_install_year: prevInstallYear,
       new_install_year: newInstallYear,
       prev_install_source: prevInstallSource,
@@ -314,7 +335,7 @@ Deno.serve(async (req) => {
       },
     };
 
-    const { error: auditError } = await supabase
+    const { error: auditError } = await supabaseAdmin
       .from('system_install_events')
       .insert(auditPayload);
 
