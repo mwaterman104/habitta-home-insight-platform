@@ -116,6 +116,36 @@ export function getSystemConfig(systemType: string): SystemConfig {
  * HVAC-specific constants (for backward compatibility)
  * These should be phased out in favor of SYSTEM_CONFIGS.hvac
  */
+/**
+ * Emergency replacement premium multipliers by system type
+ * Based on industry data for unplanned vs planned replacements
+ * Emergency work typically costs 40-80% more due to:
+ * - Rush scheduling
+ * - Limited contractor availability
+ * - No time for competitive bidding
+ * - Potential secondary damage
+ */
+export const EMERGENCY_PREMIUMS: Record<SystemType, number> = {
+  hvac: 0.60,           // 60% premium - high demand, specialized
+  roof: 0.50,           // 50% premium - weather urgency
+  water_heater: 0.60,   // 60% premium - immediate need
+  electrical_panel: 0.40, // 40% premium - less time-critical
+  plumbing: 0.70,       // 70% premium - water damage risk
+  pool: 0.35,           // 35% premium - seasonal flexibility
+  solar: 0.30,          // 30% premium - rarely emergency
+};
+
+export const DEFAULT_EMERGENCY_PREMIUM = 0.60;
+
+export function getEmergencyPremium(systemType: string): number {
+  const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
+  return EMERGENCY_PREMIUMS[normalized as SystemType] ?? DEFAULT_EMERGENCY_PREMIUM;
+}
+
+/**
+ * HVAC-specific constants (for backward compatibility)
+ * These should be phased out in favor of SYSTEM_CONFIGS.hvac
+ */
 export const HVAC_BASELINE_LIFESPAN = SYSTEM_CONFIGS.hvac.baselineLifespan;
 export const HVAC_SIGMA = SYSTEM_CONFIGS.hvac.sigma;
 export const HVAC_REPLACEMENT_PENALTY = SYSTEM_CONFIGS.hvac.replacementPenalty;

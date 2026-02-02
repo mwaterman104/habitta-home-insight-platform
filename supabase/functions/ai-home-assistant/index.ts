@@ -1164,9 +1164,96 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       });
     }
       
-    case 'calculate_cost_impact':
-      // HONESTY GATE: No placeholder cost math - never use "approximately 0%" or fake calculations
-      return `Cost comparisons for ${parsedArgs.repair_type} require specific system and regional data. If you'd like, I can help you research typical costs for your area or connect you with local professionals for estimates.`;
+    case 'calculate_cost_impact': {
+      // Import system configs for cost data
+      const { getSystemConfig, getEmergencyPremium } = await import('../_shared/systemConfigs.ts');
+      
+      // Normalize repair_type to system key
+      const rawType = parsedArgs.repair_type || 'water_heater';
+      const systemType = rawType.toLowerCase().replace(/\s+/g, '_');
+      const config = getSystemConfig(systemType);
+      
+      // Find the system in context
+      const systemContext = context.systems?.find((s: EnrichedSystemContext) => 
+        s.kind.toLowerCase() === systemType
+      );
+      
+      // HONESTY GATE: If no system data, don't fabricate
+      if (!systemContext) {
+        return JSON.stringify({
+          type: 'replacement_tradeoff',
+          success: false,
+          systemType,
+          displayName: config.displayName,
+          message: `I don't have enough information about your ${config.displayName.toLowerCase()} to provide a cost comparison. Would you like to tell me when it was installed?`
+        });
+      }
+      
+      // Step 1: Establish cost baselines
+      const plannedLow = config.replacementCostRange.min;
+      const plannedHigh = config.replacementCostRange.max;
+      
+      // Step 2: Apply emergency premium
+      const emergencyPremium = getEmergencyPremium(systemType);
+      const emergencyPremiumPercent = Math.round(emergencyPremium * 100);
+      const emergencyLow = Math.round(plannedLow * (1 + emergencyPremium));
+      const emergencyHigh = Math.round(plannedHigh * (1 + emergencyPremium));
+      
+      // Step 3: Calculate timeline context
+      const currentYear = new Date().getFullYear();
+      const yearsUntilLikely = systemContext.replacementWindow?.likelyYear 
+        ? systemContext.replacementWindow.likelyYear - currentYear 
+        : null;
+      
+      // Step 4: Determine risk band (from lifecycle stage + years remaining)
+      let riskBand: 'low' | 'moderate' | 'elevated';
+      if (systemContext.lifecycleStage === 'late' || (yearsUntilLikely !== null && yearsUntilLikely <= 2)) {
+        riskBand = 'elevated';
+      } else if (systemContext.lifecycleStage === 'mid' || (yearsUntilLikely !== null && yearsUntilLikely <= 5)) {
+        riskBand = 'moderate';
+      } else {
+        riskBand = 'low';
+      }
+      
+      // Step 5: Compute tradeoff delta (cost of being forced vs choosing)
+      const tradeoffLow = emergencyLow - plannedLow;
+      const tradeoffHigh = emergencyHigh - plannedHigh;
+      
+      // Step 6: Neutral recommendations based on risk band
+      const recommendations: Record<'low' | 'moderate' | 'elevated', string> = {
+        elevated: 'Planning ahead reduces the risk of higher emergency costs.',
+        moderate: 'This is a reasonable window to research options and budget.',
+        low: 'No action needed now; periodic review is sufficient.',
+      };
+      
+      return JSON.stringify({
+        type: 'replacement_tradeoff',
+        success: true,
+        systemType,
+        displayName: config.displayName,
+        plannedReplacement: {
+          low: plannedLow,
+          high: plannedHigh,
+          label: 'Planned replacement'
+        },
+        emergencyReplacement: {
+          low: emergencyLow,
+          high: emergencyHigh,
+          label: 'Emergency replacement',
+          premiumPercent: emergencyPremiumPercent
+        },
+        tradeoffDelta: {
+          low: tradeoffLow,
+          high: tradeoffHigh,
+          description: 'By replacing proactively vs. emergency'
+        },
+        yearsUntilLikely,
+        riskBand,
+        recommendation: recommendations[riskBand],
+        dataQuality: systemContext.dataQuality,
+        disclosureNote: systemContext.disclosureNote
+      });
+    }
       
     case 'update_system_info': {
       // HARDENING FIX #3: Intelligible failure state when homeId or userId missing

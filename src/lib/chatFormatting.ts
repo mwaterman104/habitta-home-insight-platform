@@ -38,6 +38,21 @@ export interface SystemUpdateData {
   reason?: string;
 }
 
+export interface ReplacementTradeoffData {
+  success: boolean;
+  systemType: string;
+  displayName?: string;
+  plannedReplacement?: { low: number; high: number; label: string };
+  emergencyReplacement?: { low: number; high: number; label: string; premiumPercent: number };
+  tradeoffDelta?: { low: number; high: number; description: string };
+  yearsUntilLikely?: number | null;
+  riskBand?: 'low' | 'moderate' | 'elevated';
+  recommendation?: string;
+  dataQuality?: string;
+  disclosureNote?: string;
+  message?: string;
+}
+
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
@@ -48,6 +63,7 @@ export interface ExtractedStructuredData {
     suggestion?: string;
   };
   systemUpdate?: SystemUpdateData;
+  replacementTradeoff?: ReplacementTradeoffData;
 }
 
 export interface NormalizedContent {
@@ -147,6 +163,95 @@ function extractSystemUpdateData(content: string): {
   }
   
   return { systemUpdate, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Extract replacement tradeoff JSON and convert to human-readable message
+ */
+function extractReplacementTradeoffData(content: string): {
+  replacementTradeoff?: ReplacementTradeoffData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  const jsonPattern = /\{[\s\S]*?"type":\s*"replacement_tradeoff"[\s\S]*?\}/g;
+  
+  let cleanedContent = content;
+  let replacementTradeoff: ReplacementTradeoffData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const matches = content.match(jsonPattern);
+  if (matches) {
+    for (const match of matches) {
+      try {
+        const data = JSON.parse(match);
+        if (data.type === 'replacement_tradeoff') {
+          replacementTradeoff = data;
+          humanReadableMessage = buildReplacementTradeoffMessage(data);
+          cleanedContent = cleanedContent.replace(match, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse replacement tradeoff JSON:', e);
+        cleanedContent = cleanedContent.replace(match, '');
+      }
+    }
+  }
+  
+  return { replacementTradeoff, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Build human-readable tradeoff message
+ * Following advisor copy governance: ranges only, no urgency language
+ */
+function buildReplacementTradeoffMessage(data: ReplacementTradeoffData): string {
+  if (!data.success) {
+    return data.message || "I couldn't generate a cost comparison for that system.";
+  }
+  
+  const formatRange = (low: number, high: number) => {
+    if (low === high) return `$${low.toLocaleString()}`;
+    return `$${low.toLocaleString()}–$${high.toLocaleString()}`;
+  };
+  
+  const displayName = data.displayName || data.systemType.replace(/_/g, ' ');
+  
+  let message = `**Replacement Cost Tradeoff: ${displayName}**\n\n`;
+  
+  // Planned replacement
+  if (data.plannedReplacement) {
+    message += `• **${data.plannedReplacement.label}**: ${formatRange(data.plannedReplacement.low, data.plannedReplacement.high)}\n`;
+  }
+  
+  // Emergency replacement
+  if (data.emergencyReplacement) {
+    message += `• **${data.emergencyReplacement.label}**: ${formatRange(data.emergencyReplacement.low, data.emergencyReplacement.high)}`;
+    if (data.emergencyReplacement.premiumPercent) {
+      message += ` (${data.emergencyReplacement.premiumPercent}% premium)`;
+    }
+    message += '\n';
+  }
+  
+  // Tradeoff delta
+  if (data.tradeoffDelta) {
+    message += `• **Potential cost difference**: ${formatRange(data.tradeoffDelta.low, data.tradeoffDelta.high)}\n`;
+  }
+  
+  // Timeline
+  if (data.yearsUntilLikely !== null && data.yearsUntilLikely !== undefined) {
+    message += `\n**Timeline**: Replacement likely needed in ~${data.yearsUntilLikely} years.\n`;
+  }
+  
+  // Recommendation (neutral framing)
+  if (data.recommendation) {
+    message += `\n${data.recommendation}`;
+  }
+  
+  // Disclosure note
+  if (data.disclosureNote) {
+    message += `\n\n_${data.disclosureNote}_`;
+  }
+  
+  return message;
 }
 
 /**
@@ -288,23 +393,31 @@ export function extractAndSanitize(content: string): NormalizedContent {
   }
   
   // 2. Extract system update data
-  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage } = extractSystemUpdateData(afterContractors);
+  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage: systemUpdateMsg } = extractSystemUpdateData(afterContractors);
   if (systemUpdate) {
     structuredData.systemUpdate = systemUpdate;
   }
   
-  // 3. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterSystemUpdate);
-  
-  // 4. If there's a system update, add the human-readable message
-  if (humanReadableMessage && cleanText.trim() === '') {
-    cleanText = humanReadableMessage;
-  } else if (humanReadableMessage) {
-    // If there's already content, append the confirmation
-    cleanText = `${cleanText.trim()}\n\n${humanReadableMessage}`;
+  // 3. Extract replacement tradeoff data
+  const { replacementTradeoff, cleanedContent: afterTradeoff, humanReadableMessage: tradeoffMsg } = extractReplacementTradeoffData(afterSystemUpdate);
+  if (replacementTradeoff) {
+    structuredData.replacementTradeoff = replacementTradeoff;
   }
   
-  // 5. Clean up excessive whitespace
+  // 4. Strip remaining artifact tags
+  let cleanText = stripArtifactTags(afterTradeoff);
+  
+  // 5. Append human-readable messages
+  const messages = [systemUpdateMsg, tradeoffMsg].filter(Boolean);
+  for (const msg of messages) {
+    if (cleanText.trim() === '') {
+      cleanText = msg!;
+    } else {
+      cleanText = `${cleanText.trim()}\n\n${msg}`;
+    }
+  }
+  
+  // 6. Clean up excessive whitespace
   cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
   
   return { cleanText, structuredData };
