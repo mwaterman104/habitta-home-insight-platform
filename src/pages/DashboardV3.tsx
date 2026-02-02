@@ -303,6 +303,42 @@ export default function DashboardV3() {
     return { nowTasks: fallbackNow, thisYearTasks: fallbackYear, futureYearsTasks: fallbackFuture };
   }, [maintenanceTasks, hvacPrediction]);
 
+  // ============================================================
+  // Mobile-specific derivations
+  // NOTE: These are internal lifecycle states for data processing.
+  // UI mapping to user-facing labels (Stable/Watch/Plan) happens
+  // downstream in PrimarySystemCard and SecondarySystemsList.
+  // ============================================================
+  const mobileBaselineSystems: BaselineSystem[] = useMemo(() => {
+    if (!capitalTimeline?.systems) return [];
+    const currentYear = new Date().getFullYear();
+    return capitalTimeline.systems.map(sys => {
+      const likelyYear = sys.replacementWindow?.likelyYear;
+      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
+      
+      // Internal state taxonomy (not UI labels)
+      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
+      if (sys.dataQuality === 'low') {
+        state = 'baseline_incomplete';
+      } else if (remainingYears !== undefined && remainingYears <= 1) {
+        state = 'elevated';
+      } else if (remainingYears !== undefined && remainingYears <= 3) {
+        state = 'planning_window';
+      }
+      
+      return {
+        key: sys.systemId,
+        displayName: sys.systemLabel,
+        state,
+        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
+        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
+        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
+        installYear: sys.installYear,
+        installSource: sys.installSource,
+      };
+    });
+  }, [capitalTimeline]);
+
   // Navigate to system detail AND trigger advisor state
   const handleSystemClick = (systemKey: string) => {
     selectSystem(systemKey);
@@ -379,6 +415,11 @@ export default function DashboardV3() {
     }
   }, [userHome?.id, refetchTasks, invalidateRiskDeltas, queryClient]);
 
+  // ========================================================
+  // 🚨 HOOKS BOUNDARY - Do not add hooks below this point.
+  // React hooks must be declared above early returns.
+  // ========================================================
+
   // Loading state
   if (loading) {
     return (
@@ -420,37 +461,6 @@ export default function DashboardV3() {
   const fullAddress = `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`;
   const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
 
-
-  // Derive baseline systems from capital timeline for mobile
-  const mobileBaselineSystems: BaselineSystem[] = useMemo(() => {
-    if (!capitalTimeline?.systems) return [];
-    const currentYear = new Date().getFullYear();
-    return capitalTimeline.systems.map(sys => {
-      const likelyYear = sys.replacementWindow?.likelyYear;
-      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
-      
-      // Derive state from replacement window
-      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
-      if (sys.dataQuality === 'low') {
-        state = 'baseline_incomplete';
-      } else if (remainingYears !== undefined && remainingYears <= 1) {
-        state = 'elevated';
-      } else if (remainingYears !== undefined && remainingYears <= 3) {
-        state = 'planning_window';
-      }
-      
-      return {
-        key: sys.systemId,
-        displayName: sys.systemLabel,
-        state,
-        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
-        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
-        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
-        installYear: sys.installYear,
-        installSource: sys.installSource,
-      };
-    });
-  }, [capitalTimeline]);
 
   // Mobile: Contract-compliant summary view
   if (isMobile) {
