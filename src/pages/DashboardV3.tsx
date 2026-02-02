@@ -79,6 +79,9 @@ export default function DashboardV3() {
   const [loading, setLoading] = useState(true);
   const [userHome, setUserHome] = useState<UserHome | null>(null);
   
+  // Mobile chat sheet state - must be declared before any early returns
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  
   // HVAC Prediction State
   const [hvacPrediction, setHvacPrediction] = useState<SystemPrediction | null>(null);
   const [hvacLoading, setHvacLoading] = useState(false);
@@ -417,8 +420,6 @@ export default function DashboardV3() {
   const fullAddress = `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`;
   const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
 
-  // Mobile chat sheet state
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   // Derive baseline systems from capital timeline for mobile
   const mobileBaselineSystems: BaselineSystem[] = useMemo(() => {
