@@ -1,76 +1,222 @@
 
 
-# Fix: System Update JSON Should Not Appear in Chat
+# Implementation: Replacement Tradeoff Engine
 
-## Problem
+## Overview
 
-When a user updates system information via chat (e.g., "the roof is original"), the raw JSON response is being displayed directly:
+Replace the broken `calculate_cost_impact` stub with a deterministic replacement tradeoff engine that quantifies the financial consequences of waiting versus proactive replacement.
 
-```json
-{"type":"system_update","success":true,"systemKey":"roof","alreadyRecorded":false,"installedLine":"Installed 2012 (original system)","confidenceLevel":"medium","message":"Marked as original system. Your forecasts have been updated."}
-```
+**Core Principle**: The system evaluates tradeoffs, not estimates. Every output answers:
+> "What do I gain or risk by waiting versus acting now — and why?"
 
-Instead, users should see a natural language confirmation like:
-> "I've saved that the roof is original to the house (owner-reported). You'll see it reflected in your system timeline."
+---
 
-## Root Cause
+## Data Sources (Already Available)
 
-Two issues combine to create this bug:
-
-1. **Server-side** (`ai-home-assistant/index.ts` line 658): When a tool call completes, the raw JSON `functionResult` is appended to the AI message. If the AI didn't write any content, only the raw JSON is shown.
-
-2. **Client-side** (`chatFormatting.ts`): The normalization layer extracts `contractor_recommendations` JSON blocks but **does not handle `system_update` JSON blocks**.
-
-## Solution
-
-Add `system_update` handling to the chat formatting normalization layer. This is consistent with the existing pattern for `contractor_recommendations`:
-
-1. Detect `system_update` JSON blocks in the message content
-2. Extract the structured data
-3. Convert to a human-readable confirmation message
-4. Strip the raw JSON from the displayed content
+| Source | Location | Data |
+|--------|----------|------|
+| System configs | `_shared/systemConfigs.ts` | `replacementCostRange`, `displayName`, `baselineLifespan` |
+| System context | `ai-home-assistant/index.ts` | `EnrichedSystemContext` with `lifecycleStage`, `replacementWindow`, `dataQuality`, `disclosureNote` |
+| Emergency premiums | `client/mock/cost_model.json` | Category-specific multipliers (will extract to constants) |
 
 ---
 
 ## Technical Changes
 
-### File: `src/lib/chatFormatting.ts`
+### File 1: `supabase/functions/_shared/systemConfigs.ts`
 
-**Add new type for system updates:**
-
-```typescript
-export interface SystemUpdateData {
-  success: boolean;
-  systemKey: string;
-  alreadyRecorded: boolean;
-  installedLine?: string;
-  confidenceLevel?: string;
-  message?: string;
-  reason?: string;
-}
-
-export interface ExtractedStructuredData {
-  contractors?: { ... };
-  systemUpdate?: SystemUpdateData;  // NEW
-}
-```
-
-**Add extraction function for system updates:**
+**Add emergency premium constants (after line 105):**
 
 ```typescript
 /**
- * Extract system update JSON and convert to human-readable message
- * Returns the extracted data and cleaned content
+ * Emergency replacement premium multipliers by system type
+ * Based on industry data for unplanned vs planned replacements
+ * Emergency work typically costs 40-80% more due to:
+ * - Rush scheduling
+ * - Limited contractor availability
+ * - No time for competitive bidding
+ * - Potential secondary damage
  */
-function extractSystemUpdateData(content: string): {
+export const EMERGENCY_PREMIUMS: Record<SystemType, number> = {
+  hvac: 0.60,           // 60% premium - high demand, specialized
+  roof: 0.50,           // 50% premium - weather urgency
+  water_heater: 0.60,   // 60% premium - immediate need
+  electrical_panel: 0.40, // 40% premium - less time-critical
+  plumbing: 0.70,       // 70% premium - water damage risk
+  pool: 0.35,           // 35% premium - seasonal flexibility
+  solar: 0.30,          // 30% premium - rarely emergency
+};
+
+export const DEFAULT_EMERGENCY_PREMIUM = 0.60;
+
+export function getEmergencyPremium(systemType: string): number {
+  const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
+  return EMERGENCY_PREMIUMS[normalized as SystemType] ?? DEFAULT_EMERGENCY_PREMIUM;
+}
+```
+
+---
+
+### File 2: `supabase/functions/ai-home-assistant/index.ts`
+
+**Update import (line 12):**
+
+```typescript
+import { 
+  SYSTEM_CONFIGS, 
+  getSystemConfig, 
+  getEmergencyPremium,
+  type SystemConfig 
+} from '../_shared/systemConfigs.ts';
+```
+
+**Replace the `calculate_cost_impact` handler (lines 1167-1169):**
+
+```typescript
+case 'calculate_cost_impact': {
+  // Normalize repair_type to system key
+  const rawType = parsedArgs.repair_type || 'water_heater';
+  const systemType = rawType.toLowerCase().replace(/\s+/g, '_');
+  const config = getSystemConfig(systemType);
+  
+  // Find the system in context
+  const systemContext = context.systems?.find((s: EnrichedSystemContext) => 
+    s.kind.toLowerCase() === systemType
+  );
+  
+  // HONESTY GATE: If no system data, don't fabricate
+  if (!systemContext) {
+    return JSON.stringify({
+      type: 'replacement_tradeoff',
+      success: false,
+      systemType,
+      displayName: config.displayName,
+      message: `I don't have enough information about your ${config.displayName.toLowerCase()} to provide a cost comparison. Would you like to tell me when it was installed?`
+    });
+  }
+  
+  // Step 1: Establish cost baselines
+  const plannedLow = config.replacementCostRange.min;
+  const plannedHigh = config.replacementCostRange.max;
+  
+  // Step 2: Apply emergency premium
+  const emergencyPremium = getEmergencyPremium(systemType);
+  const emergencyPremiumPercent = Math.round(emergencyPremium * 100);
+  const emergencyLow = Math.round(plannedLow * (1 + emergencyPremium));
+  const emergencyHigh = Math.round(plannedHigh * (1 + emergencyPremium));
+  
+  // Step 3: Calculate timeline context
+  const currentYear = new Date().getFullYear();
+  const yearsUntilLikely = systemContext.replacementWindow?.likelyYear 
+    ? systemContext.replacementWindow.likelyYear - currentYear 
+    : null;
+  
+  // Step 4: Determine risk band (from lifecycle stage + years remaining)
+  let riskBand: 'low' | 'moderate' | 'elevated';
+  if (systemContext.lifecycleStage === 'late' || (yearsUntilLikely !== null && yearsUntilLikely <= 2)) {
+    riskBand = 'elevated';
+  } else if (systemContext.lifecycleStage === 'mid' || (yearsUntilLikely !== null && yearsUntilLikely <= 5)) {
+    riskBand = 'moderate';
+  } else {
+    riskBand = 'low';
+  }
+  
+  // Step 5: Compute tradeoff delta (cost of being forced vs choosing)
+  const tradeoffLow = emergencyLow - plannedLow;
+  const tradeoffHigh = emergencyHigh - plannedHigh;
+  
+  // Step 6: Neutral recommendations based on risk band
+  const recommendations: Record<'low' | 'moderate' | 'elevated', string> = {
+    elevated: 'Planning ahead reduces the risk of higher emergency costs.',
+    moderate: 'This is a reasonable window to research options and budget.',
+    low: 'No action needed now; periodic review is sufficient.',
+  };
+  
+  return JSON.stringify({
+    type: 'replacement_tradeoff',
+    success: true,
+    systemType,
+    displayName: config.displayName,
+    plannedReplacement: {
+      low: plannedLow,
+      high: plannedHigh,
+      label: 'Planned replacement'
+    },
+    emergencyReplacement: {
+      low: emergencyLow,
+      high: emergencyHigh,
+      label: 'Emergency replacement',
+      premiumPercent: emergencyPremiumPercent
+    },
+    tradeoffDelta: {
+      low: tradeoffLow,
+      high: tradeoffHigh,
+      description: 'By replacing proactively vs. emergency'
+    },
+    yearsUntilLikely,
+    riskBand,
+    recommendation: recommendations[riskBand],
+    dataQuality: systemContext.dataQuality,
+    disclosureNote: systemContext.disclosureNote
+  });
+}
+```
+
+---
+
+### File 3: `src/lib/chatFormatting.ts`
+
+**Add type definition (after line 39):**
+
+```typescript
+export interface ReplacementTradeoffData {
+  success: boolean;
+  systemType: string;
+  displayName?: string;
+  plannedReplacement?: { low: number; high: number; label: string };
+  emergencyReplacement?: { low: number; high: number; label: string; premiumPercent: number };
+  tradeoffDelta?: { low: number; high: number; description: string };
+  yearsUntilLikely?: number | null;
+  riskBand?: 'low' | 'moderate' | 'elevated';
+  recommendation?: string;
+  dataQuality?: string;
+  disclosureNote?: string;
+  message?: string;
+}
+```
+
+**Update ExtractedStructuredData interface (line 41-51):**
+
+```typescript
+export interface ExtractedStructuredData {
+  contractors?: {
+    service?: string;
+    disclaimer: string;
+    confidence: string;
+    items: ContractorRecommendation[];
+    message?: string;
+    suggestion?: string;
+  };
   systemUpdate?: SystemUpdateData;
+  replacementTradeoff?: ReplacementTradeoffData;  // NEW
+}
+```
+
+**Add extraction function (after extractSystemUpdateData, around line 150):**
+
+```typescript
+/**
+ * Extract replacement tradeoff JSON and convert to human-readable message
+ */
+function extractReplacementTradeoffData(content: string): {
+  replacementTradeoff?: ReplacementTradeoffData;
   cleanedContent: string;
   humanReadableMessage?: string;
 } {
-  const jsonPattern = /\{[\s\S]*?"type":\s*"system_update"[\s\S]*?\}/g;
+  const jsonPattern = /\{[\s\S]*?"type":\s*"replacement_tradeoff"[\s\S]*?\}/g;
   
   let cleanedContent = content;
-  let systemUpdate: SystemUpdateData | undefined;
+  let replacementTradeoff: ReplacementTradeoffData | undefined;
   let humanReadableMessage: string | undefined;
   
   const matches = content.match(jsonPattern);
@@ -78,83 +224,78 @@ function extractSystemUpdateData(content: string): {
     for (const match of matches) {
       try {
         const data = JSON.parse(match);
-        if (data.type === 'system_update') {
-          systemUpdate = {
-            success: data.success,
-            systemKey: data.systemKey,
-            alreadyRecorded: data.alreadyRecorded || false,
-            installedLine: data.installedLine,
-            confidenceLevel: data.confidenceLevel,
-            message: data.message,
-            reason: data.reason,
-          };
-          
-          // Build human-readable confirmation
-          humanReadableMessage = buildSystemUpdateConfirmation(systemUpdate);
-          
-          // Remove the JSON block from content
+        if (data.type === 'replacement_tradeoff') {
+          replacementTradeoff = data;
+          humanReadableMessage = buildReplacementTradeoffMessage(data);
           cleanedContent = cleanedContent.replace(match, '');
         }
       } catch (e) {
-        console.warn('Failed to parse system update JSON:', e);
+        console.warn('Failed to parse replacement tradeoff JSON:', e);
         cleanedContent = cleanedContent.replace(match, '');
       }
     }
   }
   
-  return { systemUpdate, cleanedContent, humanReadableMessage };
+  return { replacementTradeoff, cleanedContent, humanReadableMessage };
 }
-```
 
-**Add human-readable message builder (following advisor copy governance rules):**
-
-```typescript
 /**
- * Build human-readable confirmation following advisor copy governance.
- * Reference: memory/style/advisor/conversational-write-confirmation
- * 
- * Required pattern: "I've saved that the [system] was [action] in [year] (owner-reported). 
- * You'll see it reflected in your system timeline."
+ * Build human-readable tradeoff message
+ * Following advisor copy governance: ranges only, no urgency language
  */
-function buildSystemUpdateConfirmation(data: SystemUpdateData): string {
-  const systemNames: Record<string, string> = {
-    hvac: 'HVAC system',
-    roof: 'roof',
-    water_heater: 'water heater',
+function buildReplacementTradeoffMessage(data: ReplacementTradeoffData): string {
+  if (!data.success) {
+    return data.message || "I couldn't generate a cost comparison for that system.";
+  }
+  
+  const formatRange = (low: number, high: number) => {
+    if (low === high) return `$${low.toLocaleString()}`;
+    return `$${low.toLocaleString()}–$${high.toLocaleString()}`;
   };
   
-  const systemName = systemNames[data.systemKey] || data.systemKey.replace(/_/g, ' ');
+  const displayName = data.displayName || data.systemType.replace(/_/g, ' ');
   
-  if (!data.success) {
-    return data.message || "I wasn't able to save that update. Please try again.";
+  let message = `**Replacement Cost Tradeoff: ${displayName}**\n\n`;
+  
+  // Planned replacement
+  if (data.plannedReplacement) {
+    message += `• **${data.plannedReplacement.label}**: ${formatRange(data.plannedReplacement.low, data.plannedReplacement.high)}\n`;
   }
   
-  if (data.alreadyRecorded) {
-    return `That's already recorded. Your ${systemName} shows as ${data.installedLine || 'up to date'}.`;
+  // Emergency replacement
+  if (data.emergencyReplacement) {
+    message += `• **${data.emergencyReplacement.label}**: ${formatRange(data.emergencyReplacement.low, data.emergencyReplacement.high)}`;
+    if (data.emergencyReplacement.premiumPercent) {
+      message += ` (${data.emergencyReplacement.premiumPercent}% premium)`;
+    }
+    message += '\n';
   }
   
-  // Extract year from installedLine if available (e.g., "Installed 2012 (original system)")
-  const yearMatch = data.installedLine?.match(/\b(19|20)\d{2}\b/);
-  const year = yearMatch ? yearMatch[0] : '';
-  
-  // Determine action from installedLine
-  const isOriginal = data.installedLine?.toLowerCase().includes('original');
-  const action = isOriginal ? 'is original to the house' : `was installed in ${year}`;
-  
-  if (year && !isOriginal) {
-    return `I've saved that the ${systemName} was installed in ${year} (owner-reported). You'll see it reflected in your system timeline.`;
+  // Tradeoff delta
+  if (data.tradeoffDelta) {
+    message += `• **Potential cost difference**: ${formatRange(data.tradeoffDelta.low, data.tradeoffDelta.high)}\n`;
   }
   
-  if (isOriginal) {
-    return `I've saved that the ${systemName} is original to the house (owner-reported). You'll see it reflected in your system timeline.`;
+  // Timeline
+  if (data.yearsUntilLikely !== null && data.yearsUntilLikely !== undefined) {
+    message += `\n**Timeline**: Replacement likely needed in ~${data.yearsUntilLikely} years.\n`;
   }
   
-  // Fallback to server message if we can't parse specifics
-  return data.message || `I've updated your ${systemName} information. You'll see it reflected in your system timeline.`;
+  // Recommendation (neutral framing)
+  if (data.recommendation) {
+    message += `\n${data.recommendation}`;
+  }
+  
+  // Disclosure note
+  if (data.disclosureNote) {
+    message += `\n\n_${data.disclosureNote}_`;
+  }
+  
+  return message;
 }
 ```
 
-**Update `extractAndSanitize` to include system updates:**
+**Update extractAndSanitize function (lines 281-311):**
 
 ```typescript
 export function extractAndSanitize(content: string): NormalizedContent {
@@ -166,24 +307,32 @@ export function extractAndSanitize(content: string): NormalizedContent {
     structuredData.contractors = contractors;
   }
   
-  // 2. Extract system update data (NEW)
-  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage } = extractSystemUpdateData(afterContractors);
+  // 2. Extract system update data
+  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage: systemUpdateMsg } = extractSystemUpdateData(afterContractors);
   if (systemUpdate) {
     structuredData.systemUpdate = systemUpdate;
   }
   
-  // 3. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterSystemUpdate);
-  
-  // 4. If there's a system update, prepend the human-readable message
-  if (humanReadableMessage && cleanText.trim() === '') {
-    cleanText = humanReadableMessage;
-  } else if (humanReadableMessage) {
-    // If there's already content, append the confirmation
-    cleanText = `${cleanText.trim()}\n\n${humanReadableMessage}`;
+  // 3. Extract replacement tradeoff data (NEW)
+  const { replacementTradeoff, cleanedContent: afterTradeoff, humanReadableMessage: tradeoffMsg } = extractReplacementTradeoffData(afterSystemUpdate);
+  if (replacementTradeoff) {
+    structuredData.replacementTradeoff = replacementTradeoff;
   }
   
-  // 5. Clean up excessive whitespace
+  // 4. Strip remaining artifact tags
+  let cleanText = stripArtifactTags(afterTradeoff);
+  
+  // 5. Append human-readable messages
+  const messages = [systemUpdateMsg, tradeoffMsg].filter(Boolean);
+  for (const msg of messages) {
+    if (cleanText.trim() === '') {
+      cleanText = msg!;
+    } else {
+      cleanText = `${cleanText.trim()}\n\n${msg}`;
+    }
+  }
+  
+  // 6. Clean up excessive whitespace
   cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
   
   return { cleanText, structuredData };
@@ -192,41 +341,60 @@ export function extractAndSanitize(content: string): NormalizedContent {
 
 ---
 
-## Files to Modify
+## Files to Modify Summary
 
 | File | Changes |
 |------|---------|
-| `src/lib/chatFormatting.ts` | Add `SystemUpdateData` type, `extractSystemUpdateData` function, `buildSystemUpdateConfirmation` function, update `extractAndSanitize` |
+| `supabase/functions/_shared/systemConfigs.ts` | Add `EMERGENCY_PREMIUMS` constants and `getEmergencyPremium()` helper |
+| `supabase/functions/ai-home-assistant/index.ts` | Import emergency premium helper; replace `calculate_cost_impact` stub with full tradeoff logic |
+| `src/lib/chatFormatting.ts` | Add `ReplacementTradeoffData` type, extraction function, message builder; update `extractAndSanitize` |
 
 ---
 
-## Expected Results
+## Expected Output
 
-### Before
+### Before (Broken)
 
-User says: "the roof is original"
+User: "yes" (to cost comparison offer)
 
-Chat shows:
-```
-{"type":"system_update","success":true,"systemKey":"roof",...}
-```
+> "Cost comparisons for water heater replacement require specific system and regional data..."
 
-### After
+### After (Fixed)
 
-User says: "the roof is original"
+User: "yes" (to cost comparison offer)
 
-Chat shows:
-> I've saved that the roof is original to the house (owner-reported). You'll see it reflected in your system timeline.
+> **Replacement Cost Tradeoff: Water Heater**
+>
+> • **Planned replacement**: $1,200–$3,500
+> • **Emergency replacement**: $1,920–$5,600 (60% premium)
+> • **Potential cost difference**: $720–$2,100
+>
+> **Timeline**: Replacement likely needed in ~2 years.
+>
+> Planning ahead reduces the risk of higher emergency costs.
+>
+> _Based on confirmed installation data. Actual costs vary by region and unit._
 
 ---
 
-## Alignment with Advisor Copy Governance
+## Governance Alignment
 
-This fix adheres to:
+- **Honesty Gate**: Returns structured failure with clarifying prompt if system data is missing
+- **Evidence-first**: Uses only data present in `EnrichedSystemContext`
+- **Ranges, not precision**: Always shows `$X–$Y`, never false exactness
+- **Neutral framing**: Recommendations reference planning, never urgency/commands
+- **Normalization layer**: Follows existing pattern for `system_update` and `contractor_recommendations`
 
-1. **memory/style/advisor/conversational-write-confirmation**: Uses exact pattern "I've saved that the [system] was [action] in [year] (owner-reported). You'll see it reflected in your system timeline."
+---
 
-2. **memory/architecture/chat/formatting-normalization-layer**: Extends the existing pattern for extracting structured JSON and converting to user-friendly display.
+## Test Checklist
 
-3. **memory/product/advisor/ai-output-contract**: Structured data is emitted as explicit JSON blocks with a `type` field, which the normalization layer processes.
+- [ ] Water heater tradeoff returns real numbers from `SYSTEM_CONFIGS`
+- [ ] HVAC tradeoff works (verify $6,000–$12,000 base, 60% premium)
+- [ ] Roof tradeoff works (verify $8,000–$25,000 base, 50% premium)
+- [ ] Unknown system gracefully prompts for more info
+- [ ] Currency formatting uses proper separators (e.g., `$12,000`)
+- [ ] Disclosure notes appear when `disclosureNote` is present
+- [ ] Risk bands correctly map to lifecycle stage
+- [ ] No urgency language or commands in output
 
