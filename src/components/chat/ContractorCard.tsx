@@ -15,7 +15,7 @@
  * - Category is descriptive only ("Listed as")
  */
 
-import { Wrench, Star } from 'lucide-react';
+import { Wrench, Star, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ContractorRecommendation } from '@/lib/chatFormatting';
 
@@ -29,21 +29,39 @@ export function ContractorCard({
   reviewCount,
   category,
   location,
+  websiteUri,
+  phone,
   className,
 }: ContractorCardProps) {
+  const isClickable = !!websiteUri;
+  
+  const handleClick = () => {
+    if (websiteUri) {
+      window.open(websiteUri, '_blank', 'noopener,noreferrer');
+    }
+  };
+  
   return (
     <div
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onClick={isClickable ? handleClick : undefined}
+      onKeyDown={isClickable ? (e) => e.key === 'Enter' && handleClick() : undefined}
       className={cn(
-        'bg-card border border-border rounded-lg p-4 hover:shadow-sm transition-shadow',
+        'bg-card border border-border rounded-lg p-4 transition-all',
+        isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/30 active:scale-[0.99]',
         className
       )}
     >
       {/* Header: Icon + Name */}
       <div className="flex items-center gap-2 mb-3">
         <Wrench className="h-4 w-4 text-muted-foreground shrink-0" />
-        <h4 className="font-semibold text-foreground text-sm leading-tight truncate">
+        <h4 className="font-semibold text-foreground text-sm leading-tight truncate flex-1">
           {name}
         </h4>
+        {isClickable && (
+          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        )}
       </div>
       
       {/* Rating line: ⭐ 4.9 · 127 Google reviews */}
@@ -65,6 +83,13 @@ export function ContractorCard({
       {location && (
         <p className="text-sm text-muted-foreground">
           Near {location}
+        </p>
+      )}
+      
+      {/* Phone (optional) */}
+      {phone && (
+        <p className="text-sm text-primary mt-1">
+          {phone}
         </p>
       )}
     </div>
