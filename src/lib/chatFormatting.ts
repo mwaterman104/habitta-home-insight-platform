@@ -127,7 +127,8 @@ function extractSystemUpdateData(content: string): {
   cleanedContent: string;
   humanReadableMessage?: string;
 } {
-  const jsonPattern = /\{[\s\S]*?"type":\s*"system_update"[\s\S]*?\}/g;
+  // Use a more precise pattern that matches balanced braces
+  const jsonPattern = /\{[^{}]*"type"\s*:\s*"system_update"[^{}]*\}/g;
   
   let cleanedContent = content;
   let systemUpdate: SystemUpdateData | undefined;
@@ -136,6 +137,7 @@ function extractSystemUpdateData(content: string): {
   const matches = content.match(jsonPattern);
   if (matches) {
     for (const match of matches) {
+      if (!match) continue;
       try {
         const data = JSON.parse(match);
         if (data.type === 'system_update') {
@@ -157,7 +159,10 @@ function extractSystemUpdateData(content: string): {
         }
       } catch (e) {
         console.warn('Failed to parse system update JSON:', e);
-        cleanedContent = cleanedContent.replace(match, '');
+        // Safely remove the match
+        if (match) {
+          cleanedContent = cleanedContent.replace(match, '');
+        }
       }
     }
   }
@@ -173,30 +178,98 @@ function extractReplacementTradeoffData(content: string): {
   cleanedContent: string;
   humanReadableMessage?: string;
 } {
-  const jsonPattern = /\{[\s\S]*?"type":\s*"replacement_tradeoff"[\s\S]*?\}/g;
-  
+  // Look for JSON objects containing replacement_tradeoff type
+  // Use a function to find balanced JSON objects
   let cleanedContent = content;
   let replacementTradeoff: ReplacementTradeoffData | undefined;
   let humanReadableMessage: string | undefined;
   
-  const matches = content.match(jsonPattern);
-  if (matches) {
-    for (const match of matches) {
+  // Find potential JSON start positions
+  const typeMarker = '"type":"replacement_tradeoff"';
+  const typeMarkerAlt = '"type": "replacement_tradeoff"';
+  
+  let searchContent = content;
+  let offset = 0;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    // Find the opening brace before this marker
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    // Find balanced closing brace
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
       try {
-        const data = JSON.parse(match);
+        const data = JSON.parse(jsonStr);
         if (data.type === 'replacement_tradeoff') {
           replacementTradeoff = data;
           humanReadableMessage = buildReplacementTradeoffMessage(data);
-          cleanedContent = cleanedContent.replace(match, '');
+          cleanedContent = cleanedContent.replace(jsonStr, '');
         }
       } catch (e) {
         console.warn('Failed to parse replacement tradeoff JSON:', e);
-        cleanedContent = cleanedContent.replace(match, '');
+        // Remove the malformed JSON
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    // Move past this occurrence
+    searchContent = searchContent.substring(markerIndex + 10);
+    offset += markerIndex + 10;
+  }
+  
+  return { replacementTradeoff, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Extract a balanced JSON object starting from a given position
+ */
+function extractBalancedJson(content: string, startIndex: number): string | null {
+  if (content[startIndex] !== '{') return null;
+  
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = startIndex; i < content.length; i++) {
+    const char = content[i];
+    
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') depth++;
+      if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          return content.substring(startIndex, i + 1);
+        }
       }
     }
   }
   
-  return { replacementTradeoff, cleanedContent, humanReadableMessage };
+  return null;
 }
 
 /**
@@ -269,9 +342,6 @@ function extractContractorData(content: string): {
   };
   cleanedContent: string;
 } {
-  // Pattern: JSON object with type field for contractor recommendations
-  const jsonPattern = /\{[\s\S]*?"type":\s*"contractor_recommendations"[\s\S]*?\}/g;
-  
   let cleanedContent = content;
   let contractors: {
     service?: string;
@@ -282,11 +352,31 @@ function extractContractorData(content: string): {
     suggestion?: string;
   } | undefined;
   
-  const matches = content.match(jsonPattern);
-  if (matches) {
-    for (const match of matches) {
+  // Find potential JSON start positions for contractor recommendations
+  const typeMarker = '"type":"contractor_recommendations"';
+  const typeMarkerAlt = '"type": "contractor_recommendations"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    // Find the opening brace before this marker
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    // Find balanced closing brace
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
       try {
-        const data = JSON.parse(match);
+        const data = JSON.parse(jsonStr);
         if (data.type === 'contractor_recommendations') {
           // Validate contractor data - support both old (specialty) and new (category) formats
           const validContractors = (data.contractors || []).filter(
@@ -314,15 +404,21 @@ function extractContractorData(content: string): {
             message: data.message,
             suggestion: data.suggestion
           };
+          
+          // Remove the JSON block from content
+          cleanedContent = cleanedContent.replace(jsonStr, '');
         }
-        // Remove the JSON block from content
-        cleanedContent = cleanedContent.replace(match, '');
       } catch (e) {
         console.warn('Failed to parse contractor JSON:', e);
         // Remove malformed JSON to prevent it from showing
-        cleanedContent = cleanedContent.replace(match, '');
+        if (jsonStr) {
+          cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
       }
     }
+    
+    // Move past this occurrence
+    searchContent = searchContent.substring(markerIndex + 10);
   }
   
   return { contractors, cleanedContent };
