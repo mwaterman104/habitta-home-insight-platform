@@ -60,10 +60,10 @@ import {
   getModeBehavior,
   formatProvenanceOpeningMessage,
   getWhyStateLabel,
-  generatePersonalBlurb,
   isFirstVisit,
   markFirstVisitComplete,
 } from "@/lib/chatModeCopy";
+import { generatePersonalBlurb } from "@/lib/chatGreetings";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
 // ============================================
@@ -248,20 +248,11 @@ export function ChatConsole({
     if (baselineSystems.length === 0) return;
     
     if (messages.length === 0 && !hasShownBaselineOpening) {
-      const planningCount = baselineSystems.filter(
-        s => s.state === 'planning_window' || s.state === 'elevated'
-      ).length;
-      
-      const message = generatePersonalBlurb({
-        yearBuilt,
-        systemCount: baselineSystems.length,
-        planningCount,
-        confidenceLevel,
-        isFirstVisit: isFirstUserVisit,
-        // NEW: Pass verification context for honest baseline reporting
-        verifiedSystemCount,
-        totalSystemCount: totalSystemCount ?? baselineSystems.length,
-      });
+      // New simplified call - systems have all the data
+      const message = generatePersonalBlurb(
+        baselineSystems, 
+        isFirstUserVisit
+      );
       
       injectMessage(message);
       markBaselineOpeningShown(propertyId); // Pass propertyId for property-specific flag
