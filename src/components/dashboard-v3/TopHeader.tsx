@@ -18,6 +18,8 @@ interface TopHeaderProps {
   healthStatus: 'healthy' | 'attention' | 'critical';
   onAddressClick?: () => void;
   hasNotifications?: boolean;
+  /** Mobile condensed mode: smaller height, tighter truncation, hide date */
+  condensed?: boolean;
 }
 
 /**
@@ -30,7 +32,8 @@ export function TopHeader({
   address, 
   healthStatus, 
   onAddressClick,
-  hasNotifications = false 
+  hasNotifications = false,
+  condensed = false
 }: TopHeaderProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -59,34 +62,40 @@ export function TopHeader({
   });
 
   return (
-    <header className="h-16 border-b bg-card px-6 flex items-center justify-between shrink-0">
+    <header className={`border-b bg-card flex items-center justify-between shrink-0 ${
+      condensed ? 'h-14 px-3' : 'h-16 px-6'
+    }`}>
       {/* Left: Brand + Property Selector */}
-      <div className="flex items-center gap-4">
-        <span className="font-serif text-xl font-semibold text-primary">Habitta</span>
+      <div className={`flex items-center ${condensed ? 'gap-2' : 'gap-4'}`}>
+        <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>Habitta</span>
         
         <button 
           onClick={onAddressClick}
           className="flex items-center gap-2 hover:bg-muted/50 rounded-lg px-2 py-1.5 transition-colors"
         >
-          <div className="h-8 w-8 rounded bg-primary flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-bold text-sm">🏠</span>
+          <div className={`rounded bg-primary flex items-center justify-center shrink-0 ${
+            condensed ? 'h-7 w-7' : 'h-8 w-8'
+          }`}>
+            <span className={`text-primary-foreground font-bold ${condensed ? 'text-xs' : 'text-sm'}`}>🏠</span>
           </div>
           <div className="text-left">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-sm truncate max-w-[200px]">
+              <span className={`font-medium text-sm truncate ${condensed ? 'max-w-[120px]' : 'max-w-[200px]'}`}>
                 {address.split(',')[0]}
               </span>
-              {getStatusBadge()}
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              {!condensed && getStatusBadge()}
+              <ChevronDown className={`text-muted-foreground ${condensed ? 'h-3 w-3' : 'h-4 w-4'}`} />
             </div>
           </div>
         </button>
       </div>
 
-      {/* Center: Date (hidden on smaller screens) */}
-      <div className="hidden md:block text-sm text-muted-foreground">
-        {currentDate}
-      </div>
+      {/* Center: Date (hidden on mobile/condensed) */}
+      {!condensed && (
+        <div className="hidden md:block text-sm text-muted-foreground">
+          {currentDate}
+        </div>
+      )}
 
       {/* Right: Notifications + Profile */}
       <div className="flex items-center gap-2">
