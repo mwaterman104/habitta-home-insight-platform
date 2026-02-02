@@ -28,6 +28,16 @@ export interface ContractorRecommendation {
   phone?: string;
 }
 
+export interface SystemUpdateData {
+  success: boolean;
+  systemKey: string;
+  alreadyRecorded: boolean;
+  installedLine?: string;
+  confidenceLevel?: string;
+  message?: string;
+  reason?: string;
+}
+
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
@@ -37,6 +47,7 @@ export interface ExtractedStructuredData {
     message?: string;
     suggestion?: string;
   };
+  systemUpdate?: SystemUpdateData;
 }
 
 export interface NormalizedContent {
@@ -47,6 +58,96 @@ export interface NormalizedContent {
 // ============================================
 // Structured Data Extraction
 // ============================================
+
+/**
+ * Build human-readable confirmation following advisor copy governance.
+ * Reference: memory/style/advisor/conversational-write-confirmation
+ * 
+ * Required pattern: "I've saved that the [system] was [action] in [year] (owner-reported). 
+ * You'll see it reflected in your system timeline."
+ */
+function buildSystemUpdateConfirmation(data: SystemUpdateData): string {
+  const systemNames: Record<string, string> = {
+    hvac: 'HVAC system',
+    roof: 'roof',
+    water_heater: 'water heater',
+  };
+  
+  const systemName = systemNames[data.systemKey] || data.systemKey.replace(/_/g, ' ');
+  
+  if (!data.success) {
+    return data.message || "I wasn't able to save that update. Please try again.";
+  }
+  
+  if (data.alreadyRecorded) {
+    return `That's already recorded. Your ${systemName} shows as ${data.installedLine || 'up to date'}.`;
+  }
+  
+  // Extract year from installedLine if available (e.g., "Installed 2012 (original system)")
+  const yearMatch = data.installedLine?.match(/\b(19|20)\d{2}\b/);
+  const year = yearMatch ? yearMatch[0] : '';
+  
+  // Determine action from installedLine
+  const isOriginal = data.installedLine?.toLowerCase().includes('original');
+  
+  if (year && !isOriginal) {
+    return `I've saved that the ${systemName} was installed in ${year} (owner-reported). You'll see it reflected in your system timeline.`;
+  }
+  
+  if (isOriginal) {
+    return `I've saved that the ${systemName} is original to the house (owner-reported). You'll see it reflected in your system timeline.`;
+  }
+  
+  // Fallback to server message if we can't parse specifics
+  return data.message || `I've updated your ${systemName} information. You'll see it reflected in your system timeline.`;
+}
+
+/**
+ * Extract system update JSON and convert to human-readable message
+ * Returns the extracted data and cleaned content
+ */
+function extractSystemUpdateData(content: string): {
+  systemUpdate?: SystemUpdateData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  const jsonPattern = /\{[\s\S]*?"type":\s*"system_update"[\s\S]*?\}/g;
+  
+  let cleanedContent = content;
+  let systemUpdate: SystemUpdateData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const matches = content.match(jsonPattern);
+  if (matches) {
+    for (const match of matches) {
+      try {
+        const data = JSON.parse(match);
+        if (data.type === 'system_update') {
+          systemUpdate = {
+            success: data.success,
+            systemKey: data.systemKey,
+            alreadyRecorded: data.alreadyRecorded || false,
+            installedLine: data.installedLine,
+            confidenceLevel: data.confidenceLevel,
+            message: data.message,
+            reason: data.reason,
+          };
+          
+          // Build human-readable confirmation
+          humanReadableMessage = buildSystemUpdateConfirmation(systemUpdate);
+          
+          // Remove the JSON block from content
+          cleanedContent = cleanedContent.replace(match, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse system update JSON:', e);
+        cleanedContent = cleanedContent.replace(match, '');
+      }
+    }
+  }
+  
+  return { systemUpdate, cleanedContent, humanReadableMessage };
+}
 
 /**
  * Extract structured JSON data from content
@@ -186,10 +287,24 @@ export function extractAndSanitize(content: string): NormalizedContent {
     structuredData.contractors = contractors;
   }
   
-  // 2. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterContractors);
+  // 2. Extract system update data
+  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage } = extractSystemUpdateData(afterContractors);
+  if (systemUpdate) {
+    structuredData.systemUpdate = systemUpdate;
+  }
   
-  // 3. Clean up excessive whitespace
+  // 3. Strip remaining artifact tags
+  let cleanText = stripArtifactTags(afterSystemUpdate);
+  
+  // 4. If there's a system update, add the human-readable message
+  if (humanReadableMessage && cleanText.trim() === '') {
+    cleanText = humanReadableMessage;
+  } else if (humanReadableMessage) {
+    // If there's already content, append the confirmation
+    cleanText = `${cleanText.trim()}\n\n${humanReadableMessage}`;
+  }
+  
+  // 5. Clean up excessive whitespace
   cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
   
   return { cleanText, structuredData };
