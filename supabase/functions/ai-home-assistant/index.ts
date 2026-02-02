@@ -584,12 +584,13 @@ async function generateAIResponse(
           type: 'function',
           function: {
             name: 'calculate_cost_impact',
-            description: 'Calculate the cost impact of a repair or maintenance decision',
+            description: 'Calculate cost information for repairs, replacements, or NEW installations. Works for EXISTING systems (provides replacement timing + emergency vs planned costs) and PROPOSED additions (provides typical installation cost ranges).',
             parameters: {
               type: 'object',
               properties: {
-                repair_type: { type: 'string', description: 'Type of repair or maintenance' },
-                delay_months: { type: 'number', description: 'Months to delay the work' }
+                repair_type: { type: 'string', description: 'Type of repair, system, or addition (e.g., "hvac", "mini_split", "water_heater")' },
+                delay_months: { type: 'number', description: 'Months to delay the work (for existing systems only)' },
+                quantity: { type: 'number', description: 'Number of units or zones (for proposed additions, defaults to 1)' }
               },
               required: ['repair_type'],
               additionalProperties: false
@@ -955,6 +956,13 @@ ${profileToPromptInstructions(copyProfile)}
   }
 
   prompt += `
+COST CALCULATION RULES:
+- For EXISTING systems: calculate_cost_impact returns replacement timing + emergency vs planned costs
+- For PROPOSED additions (mini-split, new system): calculate_cost_impact returns typical installation cost ranges
+- Never claim "no information" if a valid cost range exists — present what you know
+- Use "rush install" language for new additions, not "emergency" language
+- Always recommend getting 2–3 quotes from licensed contractors
+
 CORE BEHAVIOR:
 - Reference what's visible on screen (the forecast, timeline, system cards)
 - Present choices, not commands
@@ -1171,6 +1179,7 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       // Normalize repair_type to system key
       const rawType = parsedArgs.repair_type || 'water_heater';
       const systemType = rawType.toLowerCase().replace(/\s+/g, '_');
+      const quantity = parsedArgs.quantity ?? 1;
       const config = getSystemConfig(systemType);
       
       // Find the system in context
@@ -1178,17 +1187,45 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
         s.kind.toLowerCase() === systemType
       );
       
-      // HONESTY GATE: If no system data, don't fabricate
-      if (!systemContext) {
+      // Determine system mode: existing (in DB) or proposed (new addition)
+      const systemMode = systemContext ? 'existing' : 'proposed';
+      
+      // ===== PROPOSED SYSTEM PATH =====
+      // Provide cost ranges for systems not yet in the home
+      if (systemMode === 'proposed') {
+        const baseLow = config.replacementCostRange.min * quantity;
+        const baseHigh = config.replacementCostRange.max * quantity;
+        
+        // Use rush premium if defined, otherwise fall back to emergency premium
+        const rushPremium = config.rushInstallPremium ?? getEmergencyPremium(systemType);
+        const rushPremiumPercent = Math.round(rushPremium * 100);
+        
         return JSON.stringify({
-          type: 'replacement_tradeoff',
-          success: false,
+          type: 'proposed_addition',
+          success: true,
+          systemMode: 'proposed',
           systemType,
           displayName: config.displayName,
-          message: `I don't have enough information about your ${config.displayName.toLowerCase()} to provide a cost comparison. Would you like to tell me when it was installed?`
+          quantity,
+          estimatedCost: {
+            low: baseLow,
+            high: baseHigh,
+            label: quantity > 1 
+              ? `Typical installation range (${quantity} zones)` 
+              : 'Typical installation range'
+          },
+          rushPremium: {
+            percent: rushPremiumPercent,
+            low: Math.round(baseLow * (1 + rushPremium)),
+            high: Math.round(baseHigh * (1 + rushPremium)),
+            label: 'Expedited scheduling'
+          },
+          expectedLifespan: config.baselineLifespan,
+          recommendation: 'Get 2–3 quotes from licensed contractors for pricing specific to your home.'
         });
       }
       
+      // ===== EXISTING SYSTEM PATH =====
       // Step 1: Establish cost baselines
       const plannedLow = config.replacementCostRange.min;
       const plannedHigh = config.replacementCostRange.max;
