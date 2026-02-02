@@ -10,7 +10,7 @@
  * @version v1
  */
 
-export type SystemType = 'hvac' | 'roof' | 'water_heater' | 'electrical_panel' | 'plumbing' | 'pool' | 'solar';
+export type SystemType = 'hvac' | 'roof' | 'water_heater' | 'electrical_panel' | 'plumbing' | 'pool' | 'solar' | 'mini_split';
 
 export interface SystemConfig {
   /** Baseline median lifespan in years (L50_base) */
@@ -27,6 +27,8 @@ export interface SystemConfig {
   displayName: string;
   /** Typical replacement cost range */
   replacementCostRange: { min: number; max: number };
+  /** Rush install premium for proposed additions (optional, defaults to emergency premium) */
+  rushInstallPremium?: number;
 }
 
 /**
@@ -102,6 +104,16 @@ export const SYSTEM_CONFIGS: Record<SystemType, SystemConfig> = {
     displayName: 'Solar Panels',
     replacementCostRange: { min: 15000, max: 35000 },
   },
+  mini_split: {
+    baselineLifespan: 20,
+    sigma: 3.0,
+    permitKeywords: ['mini-split', 'ductless', 'mini split', 'ductless heat pump', 'ductless ac'],
+    replacementPenalty: 0.01,
+    climateMultiplierMax: 0.10,
+    displayName: 'Mini-Split',
+    replacementCostRange: { min: 1500, max: 5000 }, // Per zone
+    rushInstallPremium: 0.15, // 15% - expedited scheduling, not emergency
+  },
 };
 
 /**
@@ -133,6 +145,7 @@ export const EMERGENCY_PREMIUMS: Record<SystemType, number> = {
   plumbing: 0.70,       // 70% premium - water damage risk
   pool: 0.35,           // 35% premium - seasonal flexibility
   solar: 0.30,          // 30% premium - rarely emergency
+  mini_split: 0.20,     // 20% premium - specialized but lower urgency
 };
 
 export const DEFAULT_EMERGENCY_PREMIUM = 0.60;
