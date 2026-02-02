@@ -19,12 +19,15 @@ import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import BottomNavigation from "@/components/BottomNavigation";
 
 // Dashboard V3 Components
 import { TopHeader } from "@/components/dashboard-v3/TopHeader";
 import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
 import { RightColumn } from "@/components/dashboard-v3/RightColumn";
+import { MobileDashboardView, MobileChatSheet } from "@/components/dashboard-v3/mobile";
+import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 // ChatDock is now rendered inside MiddleColumn, not here
 
 interface UserHome {
@@ -414,45 +417,81 @@ export default function DashboardV3() {
   const fullAddress = `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`;
   const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
 
-  // Mobile: Single column layout
+  // Mobile chat sheet state
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+
+  // Derive baseline systems from capital timeline for mobile
+  const mobileBaselineSystems: BaselineSystem[] = useMemo(() => {
+    if (!capitalTimeline?.systems) return [];
+    const currentYear = new Date().getFullYear();
+    return capitalTimeline.systems.map(sys => {
+      const likelyYear = sys.replacementWindow?.likelyYear;
+      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
+      
+      // Derive state from replacement window
+      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
+      if (sys.dataQuality === 'low') {
+        state = 'baseline_incomplete';
+      } else if (remainingYears !== undefined && remainingYears <= 1) {
+        state = 'elevated';
+      } else if (remainingYears !== undefined && remainingYears <= 3) {
+        state = 'planning_window';
+      }
+      
+      return {
+        key: sys.systemId,
+        displayName: sys.systemLabel,
+        state,
+        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
+        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
+        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
+        installYear: sys.installYear,
+        installSource: sys.installSource,
+      };
+    });
+  }, [capitalTimeline]);
+
+  // Mobile: Contract-compliant summary view
   if (isMobile) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background flex flex-col">
         <TopHeader 
           address={fullAddress}
           healthStatus={getHealthStatus()}
           onAddressClick={handleAddressClick}
+          condensed
         />
-        <main className="p-4 pb-24">
-          <MiddleColumn
-            homeForecast={homeForecast}
-            forecastLoading={forecastLoading}
-            hvacPrediction={hvacPrediction}
-            hvacLoading={hvacLoading}
-            capitalTimeline={capitalTimeline}
-            timelineLoading={timelineLoading}
-            maintenanceData={maintenanceTimelineData}
-            chatExpanded={shouldChatBeOpen}
-            onChatExpandChange={handleChatExpandChange}
-            hasAgentMessage={hasAgentMessage}
-            propertyId={userHome.id}
-            onSystemClick={handleSystemFocus}
-            isEnriching={isEnriching}
-            isMobile={true}
-            advisorState={advisorState}
-            focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
-            openingMessage={openingMessage}
-            confidence={confidence}
-            risk={risk}
-            onUserReply={handleUserReply}
-            onTaskComplete={handleTaskComplete}
-            chatMode={chatModeContext.mode}
-            systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
-            onSystemUpdated={handleSystemUpdated}
-            homeSystems={homeSystems}
-            yearBuilt={userHome.year_built}
+        
+        <main className="flex-1 p-3 pb-20 space-y-3">
+          <MobileDashboardView
+            systems={capitalTimeline?.systems || []}
+            healthStatus={getHealthStatus()}
+            onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
+            onChatOpen={() => setMobileChatOpen(true)}
           />
         </main>
+        
+        <BottomNavigation />
+        
+        <MobileChatSheet
+          open={mobileChatOpen}
+          onClose={() => setMobileChatOpen(false)}
+          propertyId={userHome.id}
+          baselineSystems={mobileBaselineSystems}
+          confidenceLevel={confidence > 0.75 ? 'High' : confidence > 0.5 ? 'Moderate' : confidence > 0.25 ? 'Early' : 'Unknown'}
+          yearBuilt={userHome.year_built}
+          advisorState={advisorState}
+          focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+          openingMessage={openingMessage}
+          confidence={confidence}
+          risk={risk}
+          onUserReply={handleUserReply}
+          chatMode={chatModeContext.mode}
+          baselineSource={chatModeContext.baselineSource}
+          systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
+          onSystemUpdated={handleSystemUpdated}
+          onWhyClick={(key) => selectSystem(key)}
+        />
       </div>
     );
   }
