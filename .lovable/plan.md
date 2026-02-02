@@ -1,400 +1,505 @@
 
 
-# Implementation: Replacement Tradeoff Engine
+# Implementation Plan: Revised Greeting System for Habitta
 
 ## Overview
 
-Replace the broken `calculate_cost_impact` stub with a deterministic replacement tradeoff engine that quantifies the financial consequences of waiting versus proactive replacement.
-
-**Core Principle**: The system evaluates tradeoffs, not estimates. Every output answers:
-> "What do I gain or risk by waiting versus acting now — and why?"
+Replace the current process-focused greeting logic with a state-aware, user-centric greeting system that leads with outcomes (stability, peace of mind) and frames uncertainty as learning progress.
 
 ---
 
-## Data Sources (Already Available)
+## Critical Field Mappings (Verified)
 
-| Source | Location | Data |
-|--------|----------|------|
-| System configs | `_shared/systemConfigs.ts` | `replacementCostRange`, `displayName`, `baselineLifespan` |
-| System context | `ai-home-assistant/index.ts` | `EnrichedSystemContext` with `lifecycleStage`, `replacementWindow`, `dataQuality`, `disclosureNote` |
-| Emergency premiums | `client/mock/cost_model.json` | Category-specific multipliers (will extract to constants) |
+### BaselineSystem Interface (from `BaselineSurface.tsx`)
 
----
+```typescript
+export interface BaselineSystem {
+  key: string;
+  displayName: string;                          // ✅ Already formatted: "HVAC", "Water Heater"
+  state: SystemState;
+  confidence: number;
+  monthsRemaining?: number;
+  baselineStrength?: number;
+  ageYears?: number;
+  expectedLifespan?: number;
+  installSource?: 'permit' | 'inferred' | 'unknown';  // ✅ Use this for verification
+  installYear?: number | null;
+  installedLine?: string;
+}
+```
 
-## Technical Changes
+### Mapping Logic
 
-### File 1: `supabase/functions/_shared/systemConfigs.ts`
+| Greeting System Needs | Actual Field | Mapping Logic |
+|----------------------|--------------|---------------|
+| Is system verified? | `installSource === 'permit'` | Permit = verified |
+| System display name | `displayName` | Use directly (already formatted) |
+| System key/ID | `key` | Use directly |
+| System status | `state` | Use directly |
 
-**Add emergency premium constants (after line 105):**
+### Helper Functions (Corrected)
 
 ```typescript
 /**
- * Emergency replacement premium multipliers by system type
- * Based on industry data for unplanned vs planned replacements
- * Emergency work typically costs 40-80% more due to:
- * - Rush scheduling
- * - Limited contractor availability
- * - No time for competitive bidding
- * - Potential secondary damage
+ * Check if system has verified (permit-based) install data
  */
-export const EMERGENCY_PREMIUMS: Record<SystemType, number> = {
-  hvac: 0.60,           // 60% premium - high demand, specialized
-  roof: 0.50,           // 50% premium - weather urgency
-  water_heater: 0.60,   // 60% premium - immediate need
-  electrical_panel: 0.40, // 40% premium - less time-critical
-  plumbing: 0.70,       // 70% premium - water damage risk
-  pool: 0.35,           // 35% premium - seasonal flexibility
-  solar: 0.30,          // 30% premium - rarely emergency
-};
+function isSystemVerified(system: BaselineSystem): boolean {
+  return system.installSource === 'permit';
+}
 
-export const DEFAULT_EMERGENCY_PREMIUM = 0.60;
-
-export function getEmergencyPremium(systemType: string): number {
-  const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
-  return EMERGENCY_PREMIUMS[normalized as SystemType] ?? DEFAULT_EMERGENCY_PREMIUM;
+/**
+ * Get system display name (already formatted)
+ */
+function getSystemDisplayName(system: BaselineSystem): string {
+  return system.displayName;
 }
 ```
 
 ---
 
-### File 2: `supabase/functions/ai-home-assistant/index.ts`
+## Key Changes Summary
 
-**Update import (line 12):**
+| Current Behavior | New Behavior |
+|------------------|--------------|
+| "Your home has 3 systems I'm tracking" | "Your home is stable—I'm monitoring 3 systems" |
+| Generic system counts | Specific system names (HVAC, water heater, roof) |
+| "Establishing baseline" (jargon) | "Gathering baseline data" (accessible) |
+| No engagement hooks | Soft engagement prompts ("Want to see what I know?") |
+| Single template for all states | State-aware templates (first visit, stable, partial) |
+
+---
+
+## Technical Architecture
+
+### New File: `src/lib/chatGreetings.ts`
+
+Creates a new greeting module with:
+
+1. **State determination logic** - Determines which greeting state applies
+2. **Greeting templates by state** - Different templates for first visit, returning stable, returning partial
+3. **Helper functions** - System name formatting, list building, time-of-day detection
+4. **A/B testing support** - Multiple variations per state for future testing
+5. **Drop-in replacement** - Exports `generatePersonalBlurb()` that accepts `BaselineSystem[]`
+
+---
+
+## File Changes
+
+### File 1: `src/lib/chatGreetings.ts` (NEW)
+
+Complete implementation with corrected field mappings:
 
 ```typescript
-import { 
-  SYSTEM_CONFIGS, 
-  getSystemConfig, 
-  getEmergencyPremium,
-  type SystemConfig 
-} from '../_shared/systemConfigs.ts';
-```
+/**
+ * Revised Greeting System for Habitta
+ * 
+ * Philosophy:
+ * - Lead with outcome (stability, peace of mind), not process
+ * - Frame uncertainty as learning, not incompleteness
+ * - Use specific system names when available
+ * - Provide soft engagement hooks
+ * - Differentiate by user state (first visit, returning, etc.)
+ */
 
-**Replace the `calculate_cost_impact` handler (lines 1167-1169):**
+import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
 
-```typescript
-case 'calculate_cost_impact': {
-  // Normalize repair_type to system key
-  const rawType = parsedArgs.repair_type || 'water_heater';
-  const systemType = rawType.toLowerCase().replace(/\s+/g, '_');
-  const config = getSystemConfig(systemType);
+// ============================================
+// Types
+// ============================================
+
+export type GreetingState = 
+  | 'first_visit'       // User has never seen Habitta before
+  | 'returning_stable'  // All systems verified, nothing needs attention
+  | 'returning_partial' // Some systems verified, still learning others
+  | 'returning_attention' // Handled by advisor opening (not here)
+  ;
+
+export interface GreetingContext {
+  state: GreetingState;
+  systems: BaselineSystem[];
+  verifiedCount: number;
+  establishingCount: number;
+  hasActiveRisks: boolean;
+  propertyName?: string;
+  timeOfDay: 'morning' | 'afternoon' | 'evening';
+}
+
+// ============================================
+// Verification Helper (Corrected Mapping)
+// ============================================
+
+/**
+ * Check if system has verified (permit-based) install data
+ * Uses installSource field from BaselineSystem
+ */
+function isSystemVerified(system: BaselineSystem): boolean {
+  return system.installSource === 'permit';
+}
+
+// ============================================
+// Main Greeting Generator
+// ============================================
+
+export function generateGreeting(context: GreetingContext): string {
+  const { state } = context;
   
-  // Find the system in context
-  const systemContext = context.systems?.find((s: EnrichedSystemContext) => 
-    s.kind.toLowerCase() === systemType
+  switch (state) {
+    case 'first_visit':
+      return generateFirstVisitGreeting(context);
+    
+    case 'returning_stable':
+      return generateStableGreeting(context);
+    
+    case 'returning_partial':
+      return generatePartialGreeting(context);
+    
+    default:
+      return generateStableGreeting(context);
+  }
+}
+
+// ============================================
+// Greeting Templates by State
+// ============================================
+
+function generateFirstVisitGreeting(context: GreetingContext): string {
+  const { timeOfDay, systems, propertyName } = context;
+  const systemCount = systems.length;
+  
+  let greeting = `Good ${timeOfDay}${propertyName ? ` and welcome to ${propertyName}` : ''}. I'm Habitta—I monitor your home's key systems and give you advance notice when something needs attention.`;
+  
+  if (systemCount > 0) {
+    const systemNames = getSystemNamesSummary(systems, 3);
+    greeting += ` I'm tracking ${systemCount} systems for you: ${systemNames}.`;
+  }
+  
+  greeting += ` I'm gathering baseline data on your systems right now, which helps me spot when things change.`;
+  greeting += ` This means you'll get proactive alerts instead of emergency surprises.`;
+  greeting += ` Want to see what I've learned about your home so far?`;
+  
+  return greeting;
+}
+
+function generateStableGreeting(context: GreetingContext): string {
+  const { timeOfDay, systems, verifiedCount } = context;
+  const systemCount = systems.length;
+  
+  let greeting = `Good ${timeOfDay}. Your home is stable—I'm monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} and nothing needs immediate attention.`;
+  
+  if (verifiedCount === systemCount) {
+    greeting += ` I've verified all your systems from permit records and historical data.`;
+  } else if (verifiedCount > 0) {
+    const verifiedNames = getVerifiedSystemNames(systems, 2);
+    greeting += ` I've verified ${verifiedNames} from permit records.`;
+  }
+  
+  greeting += ` I'll let you know if I spot anything that needs your attention. Want to see details on any of your systems?`;
+  
+  return greeting;
+}
+
+function generatePartialGreeting(context: GreetingContext): string {
+  const { timeOfDay, systems, verifiedCount, establishingCount } = context;
+  const systemCount = systems.length;
+  
+  let greeting = `Good ${timeOfDay}. Your home is stable—I'm monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} and nothing needs immediate attention.`;
+  
+  if (verifiedCount > 0) {
+    const verifiedNames = getVerifiedSystemNames(systems, 3);
+    greeting += ` I've verified ${verifiedNames} from permit records.`;
+  }
+  
+  if (establishingCount > 0) {
+    const establishingNames = getEstablishingSystemNames(systems, 2);
+    if (establishingNames) {
+      greeting += ` I'm still gathering baseline data on ${establishingNames}—this helps me give you accurate timelines when things need attention.`;
+    } else {
+      greeting += ` I'm still gathering baseline data on ${establishingCount} ${establishingCount === 1 ? 'system' : 'systems'}.`;
+    }
+  }
+  
+  greeting += ` Want to see what I know so far?`;
+  
+  return greeting;
+}
+
+// ============================================
+// Helper Functions (Using Correct Fields)
+// ============================================
+
+/**
+ * Get summary of system names using displayName field
+ */
+function getSystemNamesSummary(systems: BaselineSystem[], maxCount: number = 3): string {
+  const names = systems
+    .filter(s => s.displayName)
+    .map(s => s.displayName)  // Use displayName directly - already formatted
+    .slice(0, maxCount);
+  
+  const remaining = systems.length - names.length;
+  
+  if (remaining > 0) {
+    return `${names.join(', ')}, and ${remaining} more`;
+  }
+  
+  return formatList(names);
+}
+
+/**
+ * Get names of verified systems (installSource === 'permit')
+ */
+function getVerifiedSystemNames(systems: BaselineSystem[], maxCount: number = 3): string {
+  const verified = systems
+    .filter(s => isSystemVerified(s) && s.displayName)
+    .map(s => s.displayName)
+    .slice(0, maxCount);
+  
+  if (verified.length === 0) return '';
+  
+  const totalVerified = systems.filter(isSystemVerified).length;
+  const remaining = totalVerified - verified.length;
+  
+  if (remaining > 0) {
+    return `${formatList(verified)} and ${remaining} more`;
+  }
+  
+  return formatList(verified);
+}
+
+/**
+ * Get names of systems still being established (not permit-verified)
+ */
+function getEstablishingSystemNames(systems: BaselineSystem[], maxCount: number = 2): string {
+  const establishing = systems
+    .filter(s => !isSystemVerified(s) && s.displayName)
+    .map(s => s.displayName)
+    .slice(0, maxCount);
+  
+  if (establishing.length === 0) return '';
+  
+  const totalEstablishing = systems.filter(s => !isSystemVerified(s)).length;
+  const remaining = totalEstablishing - establishing.length;
+  
+  if (remaining > 0) {
+    return `${formatList(establishing)} and ${remaining} more`;
+  }
+  
+  return formatList(establishing);
+}
+
+/**
+ * Format array into natural language list
+ */
+function formatList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return `your ${items[0]}`;
+  if (items.length === 2) return `your ${items[0]} and ${items[1]}`;
+  
+  const lastItem = items[items.length - 1];
+  const otherItems = items.slice(0, -1);
+  return `your ${otherItems.join(', ')}, and ${lastItem}`;
+}
+
+/**
+ * Get time of day for greeting
+ */
+export function getTimeOfDay(): 'morning' | 'afternoon' | 'evening' {
+  const hour = new Date().getHours();
+  
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  return 'evening';
+}
+
+/**
+ * Determine greeting state based on context
+ */
+export function determineGreetingState(context: {
+  isFirstVisit: boolean;
+  systems: BaselineSystem[];
+  hasActiveRisks: boolean;
+}): GreetingState {
+  const { isFirstVisit, systems, hasActiveRisks } = context;
+  
+  if (isFirstVisit) {
+    return 'first_visit';
+  }
+  
+  if (hasActiveRisks) {
+    return 'returning_attention';
+  }
+  
+  const verifiedCount = systems.filter(isSystemVerified).length;
+  const totalCount = systems.length;
+  
+  if (verifiedCount === totalCount && totalCount > 0) {
+    return 'returning_stable';
+  }
+  
+  return 'returning_partial';
+}
+
+// ============================================
+// Drop-in Replacement for ChatConsole
+// ============================================
+
+/**
+ * Drop-in replacement for generatePersonalBlurb from chatModeCopy.ts
+ * 
+ * @param systems - BaselineSystem array from ChatConsole props
+ * @param isFirstVisit - Whether this is the user's first visit
+ */
+export function generatePersonalBlurb(
+  systems: BaselineSystem[], 
+  isFirstVisit: boolean = false
+): string {
+  const verifiedCount = systems.filter(isSystemVerified).length;
+  const establishingCount = systems.length - verifiedCount;
+  
+  // Check for active risks (planning window or elevated state)
+  const hasActiveRisks = systems.some(
+    s => s.state === 'planning_window' || s.state === 'elevated'
   );
   
-  // HONESTY GATE: If no system data, don't fabricate
-  if (!systemContext) {
-    return JSON.stringify({
-      type: 'replacement_tradeoff',
-      success: false,
-      systemType,
-      displayName: config.displayName,
-      message: `I don't have enough information about your ${config.displayName.toLowerCase()} to provide a cost comparison. Would you like to tell me when it was installed?`
-    });
+  const state = determineGreetingState({
+    isFirstVisit,
+    systems,
+    hasActiveRisks,
+  });
+  
+  // If there are active risks, let the advisor opening handle it
+  if (state === 'returning_attention') {
+    // Fall back to stable greeting - advisor will add the alert
+    const context: GreetingContext = {
+      state: 'returning_stable',
+      systems,
+      verifiedCount,
+      establishingCount,
+      hasActiveRisks: false,
+      timeOfDay: getTimeOfDay(),
+    };
+    return generateGreeting(context);
   }
   
-  // Step 1: Establish cost baselines
-  const plannedLow = config.replacementCostRange.min;
-  const plannedHigh = config.replacementCostRange.max;
-  
-  // Step 2: Apply emergency premium
-  const emergencyPremium = getEmergencyPremium(systemType);
-  const emergencyPremiumPercent = Math.round(emergencyPremium * 100);
-  const emergencyLow = Math.round(plannedLow * (1 + emergencyPremium));
-  const emergencyHigh = Math.round(plannedHigh * (1 + emergencyPremium));
-  
-  // Step 3: Calculate timeline context
-  const currentYear = new Date().getFullYear();
-  const yearsUntilLikely = systemContext.replacementWindow?.likelyYear 
-    ? systemContext.replacementWindow.likelyYear - currentYear 
-    : null;
-  
-  // Step 4: Determine risk band (from lifecycle stage + years remaining)
-  let riskBand: 'low' | 'moderate' | 'elevated';
-  if (systemContext.lifecycleStage === 'late' || (yearsUntilLikely !== null && yearsUntilLikely <= 2)) {
-    riskBand = 'elevated';
-  } else if (systemContext.lifecycleStage === 'mid' || (yearsUntilLikely !== null && yearsUntilLikely <= 5)) {
-    riskBand = 'moderate';
-  } else {
-    riskBand = 'low';
-  }
-  
-  // Step 5: Compute tradeoff delta (cost of being forced vs choosing)
-  const tradeoffLow = emergencyLow - plannedLow;
-  const tradeoffHigh = emergencyHigh - plannedHigh;
-  
-  // Step 6: Neutral recommendations based on risk band
-  const recommendations: Record<'low' | 'moderate' | 'elevated', string> = {
-    elevated: 'Planning ahead reduces the risk of higher emergency costs.',
-    moderate: 'This is a reasonable window to research options and budget.',
-    low: 'No action needed now; periodic review is sufficient.',
+  const context: GreetingContext = {
+    state,
+    systems,
+    verifiedCount,
+    establishingCount,
+    hasActiveRisks: false,
+    timeOfDay: getTimeOfDay(),
   };
   
-  return JSON.stringify({
-    type: 'replacement_tradeoff',
-    success: true,
-    systemType,
-    displayName: config.displayName,
-    plannedReplacement: {
-      low: plannedLow,
-      high: plannedHigh,
-      label: 'Planned replacement'
-    },
-    emergencyReplacement: {
-      low: emergencyLow,
-      high: emergencyHigh,
-      label: 'Emergency replacement',
-      premiumPercent: emergencyPremiumPercent
-    },
-    tradeoffDelta: {
-      low: tradeoffLow,
-      high: tradeoffHigh,
-      description: 'By replacing proactively vs. emergency'
-    },
-    yearsUntilLikely,
-    riskBand,
-    recommendation: recommendations[riskBand],
-    dataQuality: systemContext.dataQuality,
-    disclosureNote: systemContext.disclosureNote
-  });
+  return generateGreeting(context);
 }
 ```
 
 ---
 
-### File 3: `src/lib/chatFormatting.ts`
+### File 2: `src/components/dashboard-v3/ChatConsole.tsx`
 
-**Add type definition (after line 39):**
+Update import and simplify the greeting call:
+
+**Import change (around line 31):**
 
 ```typescript
-export interface ReplacementTradeoffData {
-  success: boolean;
-  systemType: string;
-  displayName?: string;
-  plannedReplacement?: { low: number; high: number; label: string };
-  emergencyReplacement?: { low: number; high: number; label: string; premiumPercent: number };
-  tradeoffDelta?: { low: number; high: number; description: string };
-  yearsUntilLikely?: number | null;
-  riskBand?: 'low' | 'moderate' | 'elevated';
-  recommendation?: string;
-  dataQuality?: string;
-  disclosureNote?: string;
-  message?: string;
-}
+// OLD
+import { 
+  generatePersonalBlurb,
+  getPromptsForMode, 
+  getEmptyStateForMode,
+  // ... other imports
+} from '@/lib/chatModeCopy';
+
+// NEW
+import { 
+  getPromptsForMode, 
+  getEmptyStateForMode,
+  // ... other imports (keep all except generatePersonalBlurb)
+} from '@/lib/chatModeCopy';
+import { generatePersonalBlurb } from '@/lib/chatGreetings';
 ```
 
-**Update ExtractedStructuredData interface (line 41-51):**
+**Simplify greeting generation (around lines 255-264):**
 
 ```typescript
-export interface ExtractedStructuredData {
-  contractors?: {
-    service?: string;
-    disclaimer: string;
-    confidence: string;
-    items: ContractorRecommendation[];
-    message?: string;
-    suggestion?: string;
-  };
-  systemUpdate?: SystemUpdateData;
-  replacementTradeoff?: ReplacementTradeoffData;  // NEW
-}
+// OLD
+const message = generatePersonalBlurb({
+  yearBuilt,
+  systemCount: baselineSystems.length,
+  planningCount,
+  confidenceLevel,
+  isFirstVisit: isFirstUserVisit,
+  verifiedSystemCount,
+  totalSystemCount: totalSystemCount ?? baselineSystems.length,
+});
+
+// NEW (much simpler - systems have all the data)
+const message = generatePersonalBlurb(
+  baselineSystems, 
+  isFirstUserVisit
+);
 ```
 
-**Add extraction function (after extractSystemUpdateData, around line 150):**
+---
 
-```typescript
-/**
- * Extract replacement tradeoff JSON and convert to human-readable message
- */
-function extractReplacementTradeoffData(content: string): {
-  replacementTradeoff?: ReplacementTradeoffData;
-  cleanedContent: string;
-  humanReadableMessage?: string;
-} {
-  const jsonPattern = /\{[\s\S]*?"type":\s*"replacement_tradeoff"[\s\S]*?\}/g;
-  
-  let cleanedContent = content;
-  let replacementTradeoff: ReplacementTradeoffData | undefined;
-  let humanReadableMessage: string | undefined;
-  
-  const matches = content.match(jsonPattern);
-  if (matches) {
-    for (const match of matches) {
-      try {
-        const data = JSON.parse(match);
-        if (data.type === 'replacement_tradeoff') {
-          replacementTradeoff = data;
-          humanReadableMessage = buildReplacementTradeoffMessage(data);
-          cleanedContent = cleanedContent.replace(match, '');
-        }
-      } catch (e) {
-        console.warn('Failed to parse replacement tradeoff JSON:', e);
-        cleanedContent = cleanedContent.replace(match, '');
-      }
-    }
-  }
-  
-  return { replacementTradeoff, cleanedContent, humanReadableMessage };
-}
+## Greeting Examples by State
 
-/**
- * Build human-readable tradeoff message
- * Following advisor copy governance: ranges only, no urgency language
- */
-function buildReplacementTradeoffMessage(data: ReplacementTradeoffData): string {
-  if (!data.success) {
-    return data.message || "I couldn't generate a cost comparison for that system.";
-  }
-  
-  const formatRange = (low: number, high: number) => {
-    if (low === high) return `$${low.toLocaleString()}`;
-    return `$${low.toLocaleString()}–$${high.toLocaleString()}`;
-  };
-  
-  const displayName = data.displayName || data.systemType.replace(/_/g, ' ');
-  
-  let message = `**Replacement Cost Tradeoff: ${displayName}**\n\n`;
-  
-  // Planned replacement
-  if (data.plannedReplacement) {
-    message += `• **${data.plannedReplacement.label}**: ${formatRange(data.plannedReplacement.low, data.plannedReplacement.high)}\n`;
-  }
-  
-  // Emergency replacement
-  if (data.emergencyReplacement) {
-    message += `• **${data.emergencyReplacement.label}**: ${formatRange(data.emergencyReplacement.low, data.emergencyReplacement.high)}`;
-    if (data.emergencyReplacement.premiumPercent) {
-      message += ` (${data.emergencyReplacement.premiumPercent}% premium)`;
-    }
-    message += '\n';
-  }
-  
-  // Tradeoff delta
-  if (data.tradeoffDelta) {
-    message += `• **Potential cost difference**: ${formatRange(data.tradeoffDelta.low, data.tradeoffDelta.high)}\n`;
-  }
-  
-  // Timeline
-  if (data.yearsUntilLikely !== null && data.yearsUntilLikely !== undefined) {
-    message += `\n**Timeline**: Replacement likely needed in ~${data.yearsUntilLikely} years.\n`;
-  }
-  
-  // Recommendation (neutral framing)
-  if (data.recommendation) {
-    message += `\n${data.recommendation}`;
-  }
-  
-  // Disclosure note
-  if (data.disclosureNote) {
-    message += `\n\n_${data.disclosureNote}_`;
-  }
-  
-  return message;
-}
+### First Visit
+```
+Good morning and welcome. I'm Habitta—I monitor your home's key systems 
+and give you advance notice when something needs attention. I'm tracking 
+3 systems for you: your HVAC, Water Heater, and Roof. I'm gathering 
+baseline data on your systems right now, which helps me spot when things 
+change. This means you'll get proactive alerts instead of emergency 
+surprises. Want to see what I've learned about your home so far?
 ```
 
-**Update extractAndSanitize function (lines 281-311):**
+### Returning - All Verified (Stable)
+```
+Good afternoon. Your home is stable—I'm monitoring 3 systems and nothing 
+needs immediate attention. I've verified all your systems from permit 
+records and historical data. I'll let you know if I spot anything that 
+needs your attention. Want to see details on any of your systems?
+```
 
-```typescript
-export function extractAndSanitize(content: string): NormalizedContent {
-  const structuredData: ExtractedStructuredData = {};
-  
-  // 1. Extract contractor data first
-  const { contractors, cleanedContent: afterContractors } = extractContractorData(content);
-  if (contractors) {
-    structuredData.contractors = contractors;
-  }
-  
-  // 2. Extract system update data
-  const { systemUpdate, cleanedContent: afterSystemUpdate, humanReadableMessage: systemUpdateMsg } = extractSystemUpdateData(afterContractors);
-  if (systemUpdate) {
-    structuredData.systemUpdate = systemUpdate;
-  }
-  
-  // 3. Extract replacement tradeoff data (NEW)
-  const { replacementTradeoff, cleanedContent: afterTradeoff, humanReadableMessage: tradeoffMsg } = extractReplacementTradeoffData(afterSystemUpdate);
-  if (replacementTradeoff) {
-    structuredData.replacementTradeoff = replacementTradeoff;
-  }
-  
-  // 4. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterTradeoff);
-  
-  // 5. Append human-readable messages
-  const messages = [systemUpdateMsg, tradeoffMsg].filter(Boolean);
-  for (const msg of messages) {
-    if (cleanText.trim() === '') {
-      cleanText = msg!;
-    } else {
-      cleanText = `${cleanText.trim()}\n\n${msg}`;
-    }
-  }
-  
-  // 6. Clean up excessive whitespace
-  cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
-  
-  return { cleanText, structuredData };
-}
+### Returning - Partial Data
+```
+Good evening. Your home is stable—I'm monitoring 3 systems and nothing 
+needs immediate attention. I've verified your HVAC and Water Heater from 
+permit records. I'm still gathering baseline data on your Roof—this helps 
+me give you accurate timelines when things need attention. Want to see 
+what I know so far?
 ```
 
 ---
 
 ## Files to Modify Summary
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/_shared/systemConfigs.ts` | Add `EMERGENCY_PREMIUMS` constants and `getEmergencyPremium()` helper |
-| `supabase/functions/ai-home-assistant/index.ts` | Import emergency premium helper; replace `calculate_cost_impact` stub with full tradeoff logic |
-| `src/lib/chatFormatting.ts` | Add `ReplacementTradeoffData` type, extraction function, message builder; update `extractAndSanitize` |
+| File | Action | Changes |
+|------|--------|---------|
+| `src/lib/chatGreetings.ts` | CREATE | Full greeting system with correct `BaselineSystem` field mappings |
+| `src/components/dashboard-v3/ChatConsole.tsx` | MODIFY | Update import, simplify greeting call to pass `baselineSystems` directly |
 
 ---
 
-## Expected Output
+## Backward Compatibility
 
-### Before (Broken)
-
-User: "yes" (to cost comparison offer)
-
-> "Cost comparisons for water heater replacement require specific system and regional data..."
-
-### After (Fixed)
-
-User: "yes" (to cost comparison offer)
-
-> **Replacement Cost Tradeoff: Water Heater**
->
-> • **Planned replacement**: $1,200–$3,500
-> • **Emergency replacement**: $1,920–$5,600 (60% premium)
-> • **Potential cost difference**: $720–$2,100
->
-> **Timeline**: Replacement likely needed in ~2 years.
->
-> Planning ahead reduces the risk of higher emergency costs.
->
-> _Based on confirmed installation data. Actual costs vary by region and unit._
-
----
-
-## Governance Alignment
-
-- **Honesty Gate**: Returns structured failure with clarifying prompt if system data is missing
-- **Evidence-first**: Uses only data present in `EnrichedSystemContext`
-- **Ranges, not precision**: Always shows `$X–$Y`, never false exactness
-- **Neutral framing**: Recommendations reference planning, never urgency/commands
-- **Normalization layer**: Follows existing pattern for `system_update` and `contractor_recommendations`
+- The old `generatePersonalBlurb` in `chatModeCopy.ts` remains untouched
+- New function has simpler signature: `(systems: BaselineSystem[], isFirstVisit?: boolean)`
+- All other imports from `chatModeCopy.ts` continue to work unchanged
 
 ---
 
 ## Test Checklist
 
-- [ ] Water heater tradeoff returns real numbers from `SYSTEM_CONFIGS`
-- [ ] HVAC tradeoff works (verify $6,000–$12,000 base, 60% premium)
-- [ ] Roof tradeoff works (verify $8,000–$25,000 base, 50% premium)
-- [ ] Unknown system gracefully prompts for more info
-- [ ] Currency formatting uses proper separators (e.g., `$12,000`)
-- [ ] Disclosure notes appear when `disclosureNote` is present
-- [ ] Risk bands correctly map to lifecycle stage
-- [ ] No urgency language or commands in output
+- [ ] First visit greeting shows value prop and engagement hook
+- [ ] Returning user (all verified) shows stable message with system names
+- [ ] Returning user (partial) shows verified + learning message
+- [ ] Time-of-day greetings work correctly (morning/afternoon/evening)
+- [ ] Singular/plural grammar is correct ("1 system" vs "3 systems")
+- [ ] System names use `displayName` correctly (HVAC, Water Heater, Roof)
+- [ ] Verification check uses `installSource === 'permit'` correctly
+- [ ] Greeting doesn't duplicate if user has existing messages
+- [ ] Session storage flags work correctly per property
 
