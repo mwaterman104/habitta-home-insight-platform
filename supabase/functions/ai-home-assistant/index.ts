@@ -86,6 +86,42 @@ async function extractUserId(
 }
 
 // ============================================================================
+// EXECUTION BOUNDARY GUARDRAIL
+// ============================================================================
+
+/**
+ * Sanitize pre-tool assistant content.
+ * INVARIANT: Execution artifacts NEVER reach the client.
+ * 
+ * If content contains ANY execution marker, return empty string.
+ * This is fail-closed behavior — strip rather than risk leaking.
+ */
+function sanitizePreToolContent(content: string | null | undefined): string {
+  if (!content || !content.trim()) return '';
+  
+  // Execution artifact markers (fail-closed: if present, strip entirely)
+  const executionMarkers = [
+    '"action"',           // ReAct-style tool invocation
+    '"action_input"',     // ReAct argument block
+    '"tool_calls"',       // OpenAI tool call metadata
+    '"function"',         // Function definition in content
+    '"arguments"',        // Raw argument dump
+  ];
+  
+  // If ANY execution marker is present, treat entire content as internal
+  const hasExecutionArtifact = executionMarkers.some(marker => 
+    content.includes(marker)
+  );
+  
+  if (hasExecutionArtifact) {
+    console.log('[sanitizePreToolContent] Stripped execution artifact from assistant content');
+    return '';
+  }
+  
+  return content.trim();
+}
+
+// ============================================================================
 // COPY GOVERNOR (Server-Side Authority)
 // ============================================================================
 
@@ -655,8 +691,16 @@ async function generateAIResponse(
       arguments: toolCall.function.arguments
     }, context);
     
+    // EXECUTION BOUNDARY GUARDRAIL:
+    // When tool_calls are present, the assistant's content is internal reasoning
+    // and MUST NOT be returned to the user. Only the function result is user-facing.
+    // Any content containing execution artifacts is stripped entirely.
+    const sanitizedContent = sanitizePreToolContent(aiMessage.content);
+    
     return {
-      message: `${aiMessage.content || ''}\n\n${functionResult}`.trim(),
+      message: sanitizedContent 
+        ? `${sanitizedContent}\n\n${functionResult}`.trim()
+        : functionResult,
       functionCall: toolCall.function,
       functionResult
     };
