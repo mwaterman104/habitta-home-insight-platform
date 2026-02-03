@@ -53,6 +53,17 @@ export interface ReplacementTradeoffData {
   message?: string;
 }
 
+export interface ProposedAdditionData {
+  success: boolean;
+  systemType: string;
+  displayName?: string;
+  quantity?: number;
+  estimatedCost?: { low: number; high: number; label: string };
+  rushPremium?: { percent: number; low: number; high: number; label: string };
+  expectedLifespan?: number;
+  recommendation?: string;
+}
+
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
@@ -64,11 +75,74 @@ export interface ExtractedStructuredData {
   };
   systemUpdate?: SystemUpdateData;
   replacementTradeoff?: ReplacementTradeoffData;
+  proposedAddition?: ProposedAdditionData;
 }
 
 export interface NormalizedContent {
   cleanText: string;
   structuredData: ExtractedStructuredData;
+}
+
+// ============================================
+// Execution Artifact Firewall (P0 Safety Layer)
+// ============================================
+
+/**
+ * EXECUTION ARTIFACT CLASSIFICATION
+ * 
+ * Execution: action, action_input, tool_calls, function, arguments
+ * Domain:    contractor_recommendations, system_update, replacement_tradeoff, proposed_addition
+ * 
+ * Policy: Strip execution unconditionally. Parse domain artifacts.
+ */
+const EXECUTION_KEYS = ['action', 'action_input', 'tool_calls', 'function', 'arguments'] as const;
+const DOMAIN_TYPES = ['contractor_recommendations', 'system_update', 'replacement_tradeoff', 'proposed_addition'] as const;
+
+/**
+ * Strip execution artifacts from content.
+ * Runs FIRST in the pipeline — before any domain extraction.
+ * 
+ * INVARIANT: If a JSON object contains execution keys, it is removed entirely.
+ */
+function stripExecutionArtifacts(content: string): string {
+  let cleaned = content;
+  let searchStart = 0;
+  
+  while (searchStart < cleaned.length) {
+    // Find next JSON object candidate
+    const braceIndex = cleaned.indexOf('{', searchStart);
+    if (braceIndex === -1) break;
+    
+    const jsonStr = extractBalancedJson(cleaned, braceIndex);
+    if (!jsonStr) {
+      searchStart = braceIndex + 1;
+      continue;
+    }
+    
+    try {
+      const parsed = JSON.parse(jsonStr);
+      
+      // Check if this is an execution artifact
+      const isExecutionArtifact = EXECUTION_KEYS.some(key => key in parsed);
+      
+      // Check if this is a known domain type (whitelist)
+      const isDomainArtifact = parsed.type && DOMAIN_TYPES.includes(parsed.type);
+      
+      if (isExecutionArtifact && !isDomainArtifact) {
+        // Strip this execution artifact
+        console.warn('[stripExecutionArtifacts] Removed execution artifact:', Object.keys(parsed).slice(0, 3));
+        cleaned = cleaned.slice(0, braceIndex) + cleaned.slice(braceIndex + jsonStr.length);
+        // Don't advance searchStart — check same position for consecutive artifacts
+        continue;
+      }
+    } catch {
+      // Not valid JSON, skip
+    }
+    
+    searchStart = braceIndex + jsonStr.length;
+  }
+  
+  return cleaned;
 }
 
 // ============================================
@@ -328,9 +402,93 @@ function buildReplacementTradeoffMessage(data: ReplacementTradeoffData): string 
 }
 
 /**
- * Extract structured JSON data from content
- * Looks for JSON blocks with "type": "contractor_recommendations"
+ * Build human-readable proposed addition message
+ * For new system installation estimates (not existing systems)
  */
+function buildProposedAdditionMessage(data: ProposedAdditionData): string {
+  if (!data.success) {
+    return "I couldn't estimate costs for that system.";
+  }
+  
+  const formatRange = (low: number, high: number) => {
+    if (low === high) return `$${low.toLocaleString()}`;
+    return `$${low.toLocaleString()}–$${high.toLocaleString()}`;
+  };
+  
+  const displayName = data.displayName || data.systemType.replace(/_/g, ' ');
+  const quantityNote = data.quantity && data.quantity > 1 ? ` (${data.quantity} units)` : '';
+  
+  let message = `**Installation Estimate: ${displayName}${quantityNote}**\n\n`;
+  
+  if (data.estimatedCost) {
+    message += `• **${data.estimatedCost.label}**: ${formatRange(data.estimatedCost.low, data.estimatedCost.high)}\n`;
+  }
+  
+  if (data.rushPremium) {
+    message += `• **${data.rushPremium.label}**: ${formatRange(data.rushPremium.low, data.rushPremium.high)} (+${data.rushPremium.percent}%)\n`;
+  }
+  
+  if (data.expectedLifespan) {
+    message += `\n**Expected lifespan**: ~${data.expectedLifespan} years\n`;
+  }
+  
+  if (data.recommendation) {
+    message += `\n${data.recommendation}`;
+  }
+  
+  return message;
+}
+
+/**
+ * Extract proposed addition JSON and convert to human-readable message
+ */
+function extractProposedAdditionData(content: string): {
+  proposedAddition?: ProposedAdditionData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  let cleanedContent = content;
+  let proposedAddition: ProposedAdditionData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const typeMarker = '"type":"proposed_addition"';
+  const typeMarkerAlt = '"type": "proposed_addition"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'proposed_addition') {
+          proposedAddition = data;
+          humanReadableMessage = buildProposedAdditionMessage(data);
+          cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse proposed addition JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { proposedAddition, cleanedContent, humanReadableMessage };
+}
 function extractContractorData(content: string): {
   contractors?: {
     service?: string;
@@ -482,8 +640,11 @@ function stripArtifactTags(content: string): string {
 export function extractAndSanitize(content: string): NormalizedContent {
   const structuredData: ExtractedStructuredData = {};
   
-  // 1. Extract contractor data first (before stripping tags)
-  const { contractors, cleanedContent: afterContractors } = extractContractorData(content);
+  // 0. FIRST: Strip execution artifacts (fail-closed firewall)
+  let cleanedContent = stripExecutionArtifacts(content);
+  
+  // 1. Extract contractor data
+  const { contractors, cleanedContent: afterContractors } = extractContractorData(cleanedContent);
   if (contractors) {
     structuredData.contractors = contractors;
   }
@@ -500,11 +661,17 @@ export function extractAndSanitize(content: string): NormalizedContent {
     structuredData.replacementTradeoff = replacementTradeoff;
   }
   
-  // 4. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterTradeoff);
+  // 4. Extract proposed addition data
+  const { proposedAddition, cleanedContent: afterProposed, humanReadableMessage: proposedMsg } = extractProposedAdditionData(afterTradeoff);
+  if (proposedAddition) {
+    structuredData.proposedAddition = proposedAddition;
+  }
   
-  // 5. Append human-readable messages
-  const messages = [systemUpdateMsg, tradeoffMsg].filter(Boolean);
+  // 5. Strip remaining artifact tags
+  let cleanText = stripArtifactTags(afterProposed);
+  
+  // 6. Append human-readable messages
+  const messages = [systemUpdateMsg, tradeoffMsg, proposedMsg].filter(Boolean);
   for (const msg of messages) {
     if (cleanText.trim() === '') {
       cleanText = msg!;
@@ -513,7 +680,7 @@ export function extractAndSanitize(content: string): NormalizedContent {
     }
   }
   
-  // 6. Clean up excessive whitespace
+  // 7. Clean up excessive whitespace
   cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
   
   return { cleanText, structuredData };
