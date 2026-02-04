@@ -4,17 +4,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { SystemPlanView } from "@/components/system/SystemPlanView";
 import type { SystemTimelineEntry, CapitalSystemType, InstallSource, DataQuality, SystemCategory, WindowUncertainty } from "@/types/capitalTimeline";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SYSTEM_META } from "@/lib/systemMeta";
 
 /**
  * SystemPlanPage - Route handler for /systems/:systemKey/plan
  * 
  * Fetches system data and renders SystemPlanView
+ * Handles case where system type is valid but no data exists yet
  */
 export default function SystemPlanPage() {
   const { systemKey } = useParams<{ systemKey: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // Check if this is a valid system type
+  const isValidSystem = systemKey ? isValidSystemKey(systemKey) : false;
   
   // Fetch user's home
   const { data: home } = useQuery({
@@ -52,7 +59,7 @@ export default function SystemPlanPage() {
     enabled: !!home?.id && !!systemKey,
   });
   
-  // Transform to SystemTimelineEntry
+  // Transform to SystemTimelineEntry (or create default for valid but missing systems)
   const system: SystemTimelineEntry | null = systemData ? {
     systemId: systemData.system_key as CapitalSystemType,
     systemLabel: getSystemLabel(systemData.system_key),
@@ -82,7 +89,7 @@ export default function SystemPlanPage() {
       explanation: 'Regular maintenance can extend system life',
     },
     disclosureNote: '',
-  } : null;
+  } : isValidSystem && systemKey ? createDefaultSystemEntry(systemKey as CapitalSystemType) : null;
   
   const handleBack = () => {
     navigate(-1);
@@ -107,6 +114,80 @@ export default function SystemPlanPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  // Invalid system key (not in our supported systems)
+  if (!isValidSystem) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <p className="text-muted-foreground">System not found.</p>
+        <button 
+          onClick={handleBack}
+          className="text-primary mt-4"
+        >
+          Go back
+        </button>
+      </div>
+    );
+  }
+  
+  // Valid system type but no data yet - show "no data" state with helpful guidance
+  if (!systemData && isValidSystem && systemKey) {
+    const systemLabel = getSystemMetaLabel(systemKey);
+    
+    return (
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <header className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
+          <button 
+            onClick={handleBack}
+            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="text-sm">← Back</span>
+          </button>
+        </header>
+        
+        <div className="p-4 space-y-6">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">{systemLabel}</h1>
+            <p className="text-sm text-muted-foreground mt-1">No data available yet</p>
+          </div>
+          
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    We don't have information about your {systemLabel.toLowerCase()} yet.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Add your system details to get personalized planning recommendations, 
+                    cost estimates, and timing guidance.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="pt-2 space-y-2">
+                <Button 
+                  onClick={() => navigate(`/systems/${systemKey}`)}
+                  className="w-full"
+                >
+                  Add {systemLabel} Details
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={handleBack}
+                  className="w-full"
+                >
+                  Go Back
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -136,6 +217,39 @@ export default function SystemPlanPage() {
 }
 
 // ============== Helper Functions ==============
+
+function createDefaultSystemEntry(systemKey: CapitalSystemType): SystemTimelineEntry {
+  const currentYear = new Date().getFullYear();
+  
+  return {
+    systemId: systemKey,
+    systemLabel: getSystemLabel(systemKey),
+    category: getSystemCategory(systemKey),
+    installSource: 'unknown' as InstallSource,
+    installYear: null,
+    dataQuality: 'low' as DataQuality,
+    replacementWindow: {
+      earlyYear: currentYear + 5,
+      likelyYear: currentYear + 10,
+      lateYear: currentYear + 15,
+      rationale: 'Default estimate - add system details for accuracy',
+    },
+    windowUncertainty: 'high' as WindowUncertainty,
+    capitalCost: {
+      low: 6000,
+      high: 12000,
+      currency: 'USD',
+      costDrivers: ['Brand', 'Efficiency rating', 'Installation complexity'],
+    },
+    lifespanDrivers: [],
+    maintenanceEffect: {
+      shiftsTimeline: true,
+      expectedDelayYears: 2,
+      explanation: 'Regular maintenance can extend system life',
+    },
+    disclosureNote: 'Add your system details for personalized recommendations',
+  };
+}
 
 function getSystemLabel(systemKey: string): string {
   const labels: Record<string, string> = {
