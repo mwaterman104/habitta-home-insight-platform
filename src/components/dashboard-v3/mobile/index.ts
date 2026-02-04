@@ -1,6 +1,6 @@
 export { HomeStatusSummary } from "./HomeStatusSummary";
-export { PrimarySystemCard } from "./PrimarySystemCard";
+export { PrimarySystemFocusCard } from "./PrimarySystemFocusCard";
 export { SecondarySystemsList } from "./SecondarySystemsList";
-export { ChatCTA } from "./ChatCTA";
+export { ContextualChatLauncher, getContextualOpeningMessage, CHAT_QUICK_REPLIES } from "./ContextualChatLauncher";
 export { MobileDashboardView } from "./MobileDashboardView";
 export { MobileChatSheet } from "./MobileChatSheet";

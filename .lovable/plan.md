@@ -1,21 +1,31 @@
-
-
 # Habitta Mobile Home Pulse & System Plan
-## Refined Implementation Specification
+
+## Status: ✅ IMPLEMENTED (2026-02-04)
 
 ---
 
-## Executive Summary
+## Implementation Summary
+
+All phases completed. The mobile experience now transforms from "passive viewer" to "authoritative steward":
+
+| Component | Status | File |
+|-----------|--------|------|
+| Priority Score Infrastructure | ✅ | `src/services/priorityScoring.ts`, `src/services/failureProbability.ts` |
+| Cost Premiums | ✅ | `supabase/functions/_shared/systemConfigs.ts` |
+| Home Status Summary (Now/Next/Later) | ✅ | `src/components/dashboard-v3/mobile/HomeStatusSummary.tsx` |
+| Primary Focus Card | ✅ | `src/components/dashboard-v3/mobile/PrimarySystemFocusCard.tsx` |
+| Secondary Systems Stack | ✅ | `src/components/dashboard-v3/mobile/SecondarySystemsList.tsx` |
+| Contextual Chat Launcher | ✅ | `src/components/dashboard-v3/mobile/ContextualChatLauncher.tsx` |
+| System Plan View | ✅ | `src/components/system/SystemPlanView.tsx`, `src/pages/SystemPlanPage.tsx` |
+| Mobile Copy Governance | ✅ | `src/lib/mobileCopy.ts` |
+| Analytics Events | ✅ | `src/lib/analytics/mobileEvents.ts` |
+| Developer Guardrails | ✅ | `src/lib/mobile/GUARDRAILS.md` |
+
+---
+
+## Original Specification
 
 This plan transforms the mobile experience from a "passive viewer" into an "authoritative steward" by implementing:
-
-1. **Priority Score Infrastructure** using `failureProbability12mo` (not remaining years)
-2. **Home Status Summary** with Now/Next/Later structure
-3. **Primary Focus Card** with insight + View Plan CTA
-4. **Secondary Systems Stack** with "aging" guardrail
-5. **Contextual Chat Launcher** with system-anchored opening
-6. **System "View Plan" Screen** - single vertical narrative
-7. **Named Cost Premiums** for consistency across layers
 
 ---
 

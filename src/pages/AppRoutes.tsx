@@ -10,6 +10,7 @@ import Dashboard from "./Dashboard";
 import DashboardV3 from "./DashboardV3";
 import SystemPage from "./SystemPage";
 import SystemsHub from "./SystemsHub";
+import SystemPlanPage from "./SystemPlanPage";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingFlow from "./OnboardingFlow";
@@ -64,6 +65,13 @@ export function AppRoutes() {
           <Route path="/systems/:systemKey" element={
             <ProtectedRoute>
               <SystemPage />
+            </ProtectedRoute>
+          } />
+          
+          {/* System Plan View: Mobile-optimized planning screen */}
+          <Route path="/systems/:systemKey/plan" element={
+            <ProtectedRoute>
+              <SystemPlanPage />
             </ProtectedRoute>
           } />
           
