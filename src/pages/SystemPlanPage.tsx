@@ -2,18 +2,27 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { SystemPlanView } from "@/components/system/SystemPlanView";
-import type { SystemTimelineEntry, CapitalSystemType, InstallSource, DataQuality, SystemCategory, WindowUncertainty } from "@/types/capitalTimeline";
+import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SYSTEM_META } from "@/lib/systemMeta";
+import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SUPPORTED_SYSTEMS } from "@/lib/systemMeta";
 
 /**
  * SystemPlanPage - Route handler for /systems/:systemKey/plan
  * 
- * Fetches system data and renders SystemPlanView
- * Handles case where system type is valid but no data exists yet
+ * IMPORTANT ARCHITECTURE GUARDRAIL:
+ * This page MUST source systems from useCapitalTimeline (capital-timeline edge function).
+ * 
+ * DO NOT query home_systems directly.
+ * 
+ * Rationale:
+ * - capitalTimeline is the definitive authority for lifecycle logic
+ * - It resolves systems from multiple sources (permits, home age, user input)
+ * - Direct home_systems queries miss permit-derived and inferred systems
+ * - This caused the "No data available" bug for systems visible on desktop
  */
 export default function SystemPlanPage() {
   const { systemKey } = useParams<{ systemKey: string }>();
@@ -23,8 +32,11 @@ export default function SystemPlanPage() {
   // Check if this is a valid system type
   const isValidSystem = systemKey ? isValidSystemKey(systemKey) : false;
   
+  // Check if system has valid config (using SUPPORTED_SYSTEMS as proxy)
+  const hasValidConfig = systemKey ? SUPPORTED_SYSTEMS.includes(systemKey as any) : false;
+  
   // Fetch user's home
-  const { data: home } = useQuery({
+  const { data: home, isLoading: homeLoading } = useQuery({
     queryKey: ['user-home', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -40,56 +52,21 @@ export default function SystemPlanPage() {
     enabled: !!user,
   });
   
-  // Fetch system data
-  const { data: systemData, isLoading } = useQuery({
-    queryKey: ['system-plan', home?.id, systemKey],
-    queryFn: async () => {
-      if (!home?.id || !systemKey) return null;
-      
-      const { data, error } = await supabase
-        .from('home_systems')
-        .select('*')
-        .eq('home_id', home.id)
-        .eq('system_key', systemKey)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!home?.id && !!systemKey,
+  // IMPORTANT: Use capitalTimeline as the canonical source of truth
+  // Do NOT query home_systems directly - it misses permit-derived systems
+  const { timeline, loading: timelineLoading, error: timelineError } = useCapitalTimeline({
+    homeId: home?.id,
+    enabled: !!home?.id,
   });
   
-  // Transform to SystemTimelineEntry (or create default for valid but missing systems)
-  const system: SystemTimelineEntry | null = systemData ? {
-    systemId: systemData.system_key as CapitalSystemType,
-    systemLabel: getSystemLabel(systemData.system_key),
-    category: getSystemCategory(systemData.system_key),
-    installSource: (systemData.data_sources?.[0] as InstallSource) ?? 'unknown',
-    installYear: systemData.install_date 
-      ? new Date(systemData.install_date).getFullYear() 
-      : systemData.manufacture_year ?? null,
-    dataQuality: getDataQuality(systemData.confidence_score),
-    replacementWindow: {
-      earlyYear: calculateEarlyYear(systemData),
-      likelyYear: calculateLikelyYear(systemData),
-      lateYear: calculateLateYear(systemData),
-      rationale: 'Based on system age and typical lifespan',
-    },
-    windowUncertainty: 'medium' as WindowUncertainty,
-    capitalCost: {
-      low: 6000,
-      high: 12000,
-      currency: 'USD',
-      costDrivers: ['Brand', 'Efficiency rating', 'Installation complexity'],
-    },
-    lifespanDrivers: [],
-    maintenanceEffect: {
-      shiftsTimeline: true,
-      expectedDelayYears: 2,
-      explanation: 'Regular maintenance can extend system life',
-    },
-    disclosureNote: '',
-  } : isValidSystem && systemKey ? createDefaultSystemEntry(systemKey as CapitalSystemType) : null;
+  // Find matching system in timeline
+  const system: SystemTimelineEntry | null = (() => {
+    // Guardrail: Timeline must be fully loaded before rendering
+    if (!timeline || !timeline.systems) return null;
+    
+    // Find by systemId match
+    return timeline.systems.find(s => s.systemId === systemKey) ?? null;
+  })();
   
   const handleBack = () => {
     navigate(-1);
@@ -110,10 +87,26 @@ export default function SystemPlanPage() {
     navigate(`/systems/${systemKey}`);
   };
   
-  if (isLoading) {
+  // Handle loading state (home or timeline still fetching)
+  if (homeLoading || timelineLoading || (home?.id && !timeline)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  // Handle timeline error
+  if (timelineError) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <p className="text-muted-foreground">Unable to load system data.</p>
+        <button 
+          onClick={handleBack}
+          className="text-primary mt-4"
+        >
+          Go back
+        </button>
       </div>
     );
   }
@@ -133,8 +126,25 @@ export default function SystemPlanPage() {
     );
   }
   
-  // Valid system type but no data yet - show "no data" state with helpful guidance
-  if (!systemData && isValidSystem && systemKey) {
+  // Valid system type but no config available yet
+  if (!hasValidConfig && systemKey) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <p className="text-muted-foreground">
+          Planning data for this system is coming soon.
+        </p>
+        <button 
+          onClick={handleBack}
+          className="text-primary mt-4"
+        >
+          Go back
+        </button>
+      </div>
+    );
+  }
+  
+  // Valid system type but not in timeline - show "not detected" state
+  if (!system && isValidSystem && systemKey && timeline?.systems) {
     const systemLabel = getSystemMetaLabel(systemKey);
     
     return (
@@ -152,7 +162,9 @@ export default function SystemPlanPage() {
         <div className="p-4 space-y-6">
           <div>
             <h1 className="text-xl font-semibold text-foreground">{systemLabel}</h1>
-            <p className="text-sm text-muted-foreground mt-1">No data available yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              This system isn't detected for this home
+            </p>
           </div>
           
           <Card>
@@ -161,11 +173,10 @@ export default function SystemPlanPage() {
                 <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-foreground">
-                    We don't have information about your {systemLabel.toLowerCase()} yet.
+                    We haven't detected a {systemLabel.toLowerCase()} for your home.
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Add your system details to get personalized planning recommendations, 
-                    cost estimates, and timing guidance.
+                    If you believe this is incorrect, you can add it manually.
                   </p>
                 </div>
               </div>
@@ -192,6 +203,7 @@ export default function SystemPlanPage() {
     );
   }
   
+  // Final fallback if somehow we still don't have a system
   if (!system) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -214,109 +226,4 @@ export default function SystemPlanPage() {
       onAddMaintenance={handleAddMaintenance}
     />
   );
-}
-
-// ============== Helper Functions ==============
-
-function createDefaultSystemEntry(systemKey: CapitalSystemType): SystemTimelineEntry {
-  const currentYear = new Date().getFullYear();
-  
-  return {
-    systemId: systemKey,
-    systemLabel: getSystemLabel(systemKey),
-    category: getSystemCategory(systemKey),
-    installSource: 'unknown' as InstallSource,
-    installYear: null,
-    dataQuality: 'low' as DataQuality,
-    replacementWindow: {
-      earlyYear: currentYear + 5,
-      likelyYear: currentYear + 10,
-      lateYear: currentYear + 15,
-      rationale: 'Default estimate - add system details for accuracy',
-    },
-    windowUncertainty: 'high' as WindowUncertainty,
-    capitalCost: {
-      low: 6000,
-      high: 12000,
-      currency: 'USD',
-      costDrivers: ['Brand', 'Efficiency rating', 'Installation complexity'],
-    },
-    lifespanDrivers: [],
-    maintenanceEffect: {
-      shiftsTimeline: true,
-      expectedDelayYears: 2,
-      explanation: 'Regular maintenance can extend system life',
-    },
-    disclosureNote: 'Add your system details for personalized recommendations',
-  };
-}
-
-function getSystemLabel(systemKey: string): string {
-  const labels: Record<string, string> = {
-    hvac: 'HVAC System',
-    roof: 'Roof',
-    water_heater: 'Water Heater',
-  };
-  return labels[systemKey] ?? systemKey;
-}
-
-function getSystemCategory(systemKey: string): SystemCategory {
-  if (systemKey === 'roof') return 'structural';
-  if (systemKey === 'water_heater') return 'utility';
-  return 'mechanical';
-}
-
-function getDataQuality(confidenceScore: number | null): DataQuality {
-  if (!confidenceScore) return 'low';
-  if (confidenceScore >= 0.8) return 'high';
-  if (confidenceScore >= 0.5) return 'medium';
-  return 'low';
-}
-
-function calculateEarlyYear(systemData: any): number {
-  const installYear = systemData.install_date 
-    ? new Date(systemData.install_date).getFullYear()
-    : systemData.manufacture_year;
-  
-  if (!installYear) return new Date().getFullYear() + 5;
-  
-  const lifespanMin: Record<string, number> = {
-    hvac: 12,
-    roof: 18,
-    water_heater: 8,
-  };
-  
-  return installYear + (lifespanMin[systemData.system_key] ?? 12);
-}
-
-function calculateLikelyYear(systemData: any): number {
-  const installYear = systemData.install_date 
-    ? new Date(systemData.install_date).getFullYear()
-    : systemData.manufacture_year;
-  
-  if (!installYear) return new Date().getFullYear() + 10;
-  
-  const lifespanTypical: Record<string, number> = {
-    hvac: 15,
-    roof: 22,
-    water_heater: 10,
-  };
-  
-  return installYear + (lifespanTypical[systemData.system_key] ?? 15);
-}
-
-function calculateLateYear(systemData: any): number {
-  const installYear = systemData.install_date 
-    ? new Date(systemData.install_date).getFullYear()
-    : systemData.manufacture_year;
-  
-  if (!installYear) return new Date().getFullYear() + 15;
-  
-  const lifespanMax: Record<string, number> = {
-    hvac: 18,
-    roof: 30,
-    water_heater: 12,
-  };
-  
-  return installYear + (lifespanMax[systemData.system_key] ?? 18);
 }
