@@ -1,5 +1,10 @@
 import { ChevronRight } from "lucide-react";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import { 
+  SECONDARY_STATUS, 
+  getPlanningStatus,
+  getSystemDisplayName 
+} from "@/lib/mobileCopy";
 
 interface SecondarySystemsListProps {
   systems: SystemTimelineEntry[];
@@ -16,6 +21,7 @@ const MAX_VISIBLE = 3;
  * - Text only (no cards)
  * - No nested components
  * - Maximum 3 visible, "+N more" if exceeded
+ * - Critical Guardrail: Systems past lifespan are NEVER labeled "Stable"
  */
 export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsListProps) {
   if (!systems || systems.length === 0) return null;
@@ -23,22 +29,48 @@ export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsL
   const visibleSystems = systems.slice(0, MAX_VISIBLE);
   const hiddenCount = systems.length - MAX_VISIBLE;
 
-  // Get single-word status from replacement window
-  const getStatusWord = (system: SystemTimelineEntry): string => {
-    const currentYear = new Date().getFullYear();
-    const likelyYear = system.replacementWindow?.likelyYear;
-    const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
+  const currentYear = new Date().getFullYear();
 
-    if (!remainingYears || remainingYears > 5) return 'Stable';
-    if (remainingYears <= 2) return 'Plan';
-    return 'Watch';
+  // Get status with aging guardrail
+  const getStatusInfo = (system: SystemTimelineEntry): { 
+    label: string; 
+    showChevron: boolean;
+  } => {
+    const installYear = system.installYear;
+    const age = installYear ? currentYear - installYear : null;
+    
+    const likelyYear = system.replacementWindow?.likelyYear;
+    const expectedLifespan = likelyYear && installYear 
+      ? likelyYear - installYear 
+      : 15;
+    
+    const remainingYears = likelyYear ? likelyYear - currentYear : null;
+    
+    // Get planning status with aging guardrail
+    const statusKey = getPlanningStatus(remainingYears, age, expectedLifespan);
+    
+    // Map planning status to secondary status labels
+    const statusMap: Record<string, keyof typeof SECONDARY_STATUS> = {
+      stable: 'stable',
+      watch: 'watch',
+      plan: 'plan',
+      aging: 'aging',
+    };
+    
+    const secondaryKey = statusMap[statusKey] || 'stable';
+    const label = SECONDARY_STATUS[secondaryKey];
+    
+    // Only show chevron for non-stable systems (they're actionable)
+    const showChevron = statusKey !== 'stable';
+    
+    return { label, showChevron };
   };
 
   return (
     <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
       {visibleSystems.map((system, index) => {
-        const displayName = system.systemLabel;
-        const status = getStatusWord(system);
+        const displayName = system.systemLabel || getSystemDisplayName(system.systemId);
+        const { label, showChevron } = getStatusInfo(system);
         const isLast = index === visibleSystems.length - 1 && hiddenCount <= 0;
 
         return (
@@ -50,9 +82,11 @@ export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsL
             }`}
           >
             <span className="text-sm text-foreground">
-              {displayName} <span className="text-muted-foreground">· {status}</span>
+              {displayName} <span className="text-muted-foreground">· {label}</span>
             </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            {showChevron && (
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            )}
           </button>
         );
       })}

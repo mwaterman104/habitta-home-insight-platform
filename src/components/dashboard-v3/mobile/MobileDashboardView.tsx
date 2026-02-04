@@ -1,8 +1,16 @@
+import { useNavigate } from "react-router-dom";
 import { HomeStatusSummary } from "./HomeStatusSummary";
-import { PrimarySystemCard } from "./PrimarySystemCard";
+import { PrimarySystemFocusCard } from "./PrimarySystemFocusCard";
 import { SecondarySystemsList } from "./SecondarySystemsList";
-import { ChatCTA } from "./ChatCTA";
+import { ContextualChatLauncher } from "./ContextualChatLauncher";
+import { selectPrimarySystem } from "@/services/priorityScoring";
+import { 
+  trackMobileEvent, 
+  checkPrimaryFocusChanged,
+  MOBILE_EVENTS 
+} from "@/lib/analytics/mobileEvents";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import { useEffect } from "react";
 
 // ============================================================
 // MOBILE RENDER CONTRACT ENFORCEMENT
@@ -41,6 +49,10 @@ interface MobileDashboardViewProps {
  * - Sequential, not comparative
  * - One idea at a time
  * - Comparative/dense content gated behind intent
+ * 
+ * Priority Score integration:
+ * - Uses selectPrimarySystem() for deterministic selection
+ * - Tracks primary focus changes for trust validation
  */
 export function MobileDashboardView({
   systems,
@@ -48,48 +60,85 @@ export function MobileDashboardView({
   onSystemTap,
   onChatOpen
 }: MobileDashboardViewProps) {
-  // Select primary system: closest to replacement window
-  const selectPrimarySystem = (): SystemTimelineEntry | null => {
-    if (!systems || systems.length === 0) return null;
-
-    const currentYear = new Date().getFullYear();
-    
-    // Sort by how soon replacement is likely
-    const sorted = [...systems].sort((a, b) => {
-      const aYear = a.replacementWindow?.likelyYear ?? 9999;
-      const bYear = b.replacementWindow?.likelyYear ?? 9999;
-      return aYear - bYear;
-    });
-
-    return sorted[0];
-  };
-
-  const primarySystem = selectPrimarySystem();
+  const navigate = useNavigate();
+  
+  // Use Priority Score to select primary system
+  const { primary, scored } = selectPrimarySystem(systems);
+  const primarySystem = primary?.system ?? null;
+  const priorityExplanation = primary?.explanation ?? '';
+  
+  // Get secondary systems (all except primary)
   const secondarySystems = primarySystem 
     ? systems.filter(s => s.systemId !== primarySystem.systemId)
     : systems.slice(1);
+
+  // Track primary focus changes within session (trust validation)
+  useEffect(() => {
+    if (primarySystem) {
+      const changed = checkPrimaryFocusChanged(primarySystem.systemId);
+      if (changed) {
+        trackMobileEvent(MOBILE_EVENTS.PRIMARY_FOCUS_CHANGED_SESSION, {
+          systemKey: primarySystem.systemId,
+        });
+      }
+      
+      // Track impression
+      trackMobileEvent(MOBILE_EVENTS.PRIMARY_FOCUS_IMPRESSION, {
+        systemKey: primarySystem.systemId,
+        score: primary?.score,
+      });
+    }
+  }, [primarySystem?.systemId, primary?.score]);
+
+  // Handle View Plan navigation
+  const handleViewPlan = () => {
+    if (primarySystem) {
+      trackMobileEvent(MOBILE_EVENTS.VIEW_PLAN_OPEN, {
+        systemKey: primarySystem.systemId,
+      });
+      navigate(`/systems/${primarySystem.systemId}/plan`);
+    }
+  };
 
   // Empty state
   if (!systems || systems.length === 0) {
     return (
       <div className="space-y-4">
-        <HomeStatusSummary systems={[]} healthStatus="healthy" />
-        <ChatCTA promptText="Help me get started" onTap={onChatOpen} />
+        <HomeStatusSummary 
+          systems={[]} 
+          primarySystem={null}
+          priorityExplanation=""
+          secondarySystemsCount={0}
+        />
+        <ContextualChatLauncher 
+          primarySystem={null}
+          priorityExplanation=""
+          onTap={onChatOpen} 
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <HomeStatusSummary systems={systems} healthStatus={healthStatus} />
+    <div className="space-y-4">
+      {/* Now/Next/Later Status Summary */}
+      <HomeStatusSummary 
+        systems={systems} 
+        primarySystem={primarySystem}
+        priorityExplanation={priorityExplanation}
+        secondarySystemsCount={secondarySystems.length}
+      />
       
+      {/* Primary Focus Card */}
       {primarySystem && (
-        <PrimarySystemCard 
+        <PrimarySystemFocusCard 
           system={primarySystem} 
-          onTap={() => onSystemTap(primarySystem.systemId)} 
+          priorityExplanation={priorityExplanation}
+          onViewPlan={handleViewPlan}
         />
       )}
       
+      {/* Secondary Systems List */}
       {secondarySystems.length > 0 && (
         <SecondarySystemsList 
           systems={secondarySystems} 
@@ -97,8 +146,10 @@ export function MobileDashboardView({
         />
       )}
       
-      <ChatCTA 
-        promptText="What should I do?" 
+      {/* Contextual Chat Launcher */}
+      <ContextualChatLauncher 
+        primarySystem={primarySystem}
+        priorityExplanation={priorityExplanation}
         onTap={onChatOpen} 
       />
     </div>

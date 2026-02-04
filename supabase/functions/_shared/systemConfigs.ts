@@ -129,6 +129,21 @@ export function getSystemConfig(systemType: string): SystemConfig {
  * These should be phased out in favor of SYSTEM_CONFIGS.hvac
  */
 /**
+ * COST PREMIUMS - Named constants for UI, edge functions, and AI alignment
+ * 
+ * Planned:    Scheduled in advance with flexibility (base cost)
+ * Typical:    Shorter window, limited flexibility (+20%)
+ * Emergency:  Post-failure, high urgency (uses EMERGENCY_PREMIUMS per system)
+ */
+export const COST_PREMIUMS = {
+  planned: 1.0,
+  typical: 1.2,
+  // emergency uses EMERGENCY_PREMIUMS[systemType] below
+} as const;
+
+export type CostTier = 'planned' | 'typical' | 'emergency';
+
+/**
  * Emergency replacement premium multipliers by system type
  * Based on industry data for unplanned vs planned replacements
  * Emergency work typically costs 40-80% more due to:
