@@ -1,14 +1,18 @@
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { SystemPlanView } from "@/components/system/SystemPlanView";
+import { MobileChatSheet } from "@/components/dashboard-v3/mobile";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SUPPORTED_SYSTEMS } from "@/lib/systemMeta";
+import { CHAT_PRIMING, getSystemDisplayName } from "@/lib/mobileCopy";
 
 /**
  * SystemPlanPage - Route handler for /systems/:systemKey/plan
@@ -34,6 +38,9 @@ export default function SystemPlanPage() {
   
   // Check if system has valid config (using SUPPORTED_SYSTEMS as proxy)
   const hasValidConfig = systemKey ? SUPPORTED_SYSTEMS.includes(systemKey as any) : false;
+  
+  // Chat sheet state for docked chat
+  const [chatOpen, setChatOpen] = useState(false);
   
   // Fetch user's home
   const { data: home, isLoading: homeLoading } = useQuery({
@@ -218,12 +225,64 @@ export default function SystemPlanPage() {
     );
   }
   
+  // Get display name for priming message
+  const displayName = system.systemLabel || getSystemDisplayName(system.systemId);
+  
+  // Generate priming message for this system
+  const primingMessage = CHAT_PRIMING.systemPlan(displayName, system.installYear);
+  
+  // Build baseline systems for chat context
+  const baselineSystems: BaselineSystem[] = useMemo(() => {
+    if (!timeline?.systems) return [];
+    const currentYear = new Date().getFullYear();
+    return timeline.systems.map(sys => {
+      const likelyYear = sys.replacementWindow?.likelyYear;
+      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
+      
+      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
+      if (sys.dataQuality === 'low') {
+        state = 'baseline_incomplete';
+      } else if (remainingYears !== undefined && remainingYears <= 1) {
+        state = 'elevated';
+      } else if (remainingYears !== undefined && remainingYears <= 3) {
+        state = 'planning_window';
+      }
+      
+      return {
+        key: sys.systemId,
+        displayName: sys.systemLabel,
+        state,
+        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
+        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
+        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
+        installYear: sys.installYear,
+        installSource: sys.installSource,
+      };
+    });
+  }, [timeline]);
+  
   return (
-    <SystemPlanView
-      system={system}
-      onBack={handleBack}
-      onStartPlanning={handleStartPlanning}
-      onAddMaintenance={handleAddMaintenance}
-    />
+    <>
+      <SystemPlanView
+        system={system}
+        onBack={handleBack}
+        onStartPlanning={handleStartPlanning}
+        onAddMaintenance={handleAddMaintenance}
+        onChatExpand={() => setChatOpen(true)}
+      />
+      
+      {/* Mobile Chat Sheet */}
+      <MobileChatSheet
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        propertyId={home?.id || ''}
+        baselineSystems={baselineSystems}
+        confidenceLevel="Moderate"
+        focusContext={{ systemKey: systemKey!, trigger: 'plan_view' }}
+        primingMessage={primingMessage}
+        chatMode="silent_steward"
+        baselineSource="inferred"
+      />
+    </>
   );
 }

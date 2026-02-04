@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, Settings, LogOut } from "lucide-react";
+import { Bell, ChevronDown, Settings, LogOut, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,6 +20,8 @@ interface TopHeaderProps {
   hasNotifications?: boolean;
   /** Mobile condensed mode: smaller height, tighter truncation, hide date */
   condensed?: boolean;
+  /** Callback for hamburger menu tap (mobile only) */
+  onMenuOpen?: () => void;
 }
 
 /**
@@ -33,7 +35,8 @@ export function TopHeader({
   healthStatus, 
   onAddressClick,
   hasNotifications = false,
-  condensed = false
+  condensed = false,
+  onMenuOpen
 }: TopHeaderProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -65,8 +68,20 @@ export function TopHeader({
     <header className={`border-b bg-card flex items-center justify-between shrink-0 ${
       condensed ? 'h-14 px-3' : 'h-16 px-6'
     }`}>
-      {/* Left: Brand + Property Selector */}
+      {/* Left: Hamburger (mobile) + Brand + Property Selector */}
       <div className={`flex items-center ${condensed ? 'gap-2' : 'gap-4'}`}>
+        {/* Hamburger menu for mobile */}
+        {condensed && onMenuOpen && (
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onMenuOpen}
+            className="h-8 w-8"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
+        
         <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>Habitta</span>
         
         <button 

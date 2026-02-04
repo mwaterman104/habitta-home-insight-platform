@@ -27,6 +27,7 @@ import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
 import { RightColumn } from "@/components/dashboard-v3/RightColumn";
 import { MobileDashboardView, MobileChatSheet } from "@/components/dashboard-v3/mobile";
+import { MobileSystemDrawer } from "@/components/mobile";
 import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 // ChatDock is now rendered inside MiddleColumn, not here
 
@@ -81,6 +82,9 @@ export default function DashboardV3() {
   
   // Mobile chat sheet state - must be declared before any early returns
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  
+  // Mobile system drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
   
   // HVAC Prediction State
   const [hvacPrediction, setHvacPrediction] = useState<SystemPrediction | null>(null);
@@ -464,13 +468,30 @@ export default function DashboardV3() {
 
   // Mobile: Contract-compliant summary view
   if (isMobile) {
+    // Get active system key for drawer highlighting
+    const activeSystemKey = focusContext.type === 'SYSTEM' ? focusContext.systemKey : undefined;
+    
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <TopHeader 
           address={fullAddress}
           healthStatus={getHealthStatus()}
           onAddressClick={handleAddressClick}
+          onMenuOpen={() => setDrawerOpen(true)}
           condensed
+        />
+        
+        {/* System Drawer */}
+        <MobileSystemDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          systems={capitalTimeline?.systems || []}
+          activeSystemKey={activeSystemKey}
+          address={fullAddress}
+          onNavigate={(path) => {
+            navigate(path);
+            setDrawerOpen(false);
+          }}
         />
         
         <main className="flex-1 p-3 pb-20 space-y-3">
@@ -482,7 +503,7 @@ export default function DashboardV3() {
           />
         </main>
         
-        <BottomNavigation />
+        <BottomNavigation onChatOpen={() => setMobileChatOpen(true)} />
         
         <MobileChatSheet
           open={mobileChatOpen}
