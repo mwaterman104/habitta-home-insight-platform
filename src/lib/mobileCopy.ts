@@ -150,6 +150,30 @@ export const CHAT_QUICK_REPLIES = [
   "Why this system first?",
 ] as const;
 
+// ============== Chat Priming Templates ==============
+
+/**
+ * Contextual priming messages for chat
+ * Invites diagnosis and observation, not generic questions
+ */
+export const CHAT_PRIMING = {
+  /**
+   * System Plan screen priming
+   * Invites diagnosis, not generic questions
+   */
+  systemPlan: (systemLabel: string, installYear?: number) => {
+    const ageContext = installYear 
+      ? ` installed around ${installYear}` 
+      : '';
+    return `You're looking at your ${systemLabel}${ageContext}. What are you noticing?`;
+  },
+  
+  /**
+   * General priming (no system context)
+   */
+  general: () => "How can I help you understand your home better?",
+} as const;
+
 // ============== View Plan Copy ==============
 
 export const PLAN_COPY = {

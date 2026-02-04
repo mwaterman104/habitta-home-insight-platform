@@ -2,22 +2,43 @@ import { Home, MessageCircle, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
-// Phase 1: Simplified bottom navigation - 3 items only
-const bottomNavItems = [
+interface BottomNavigationProps {
+  /** Callback to open the chat sheet (replaces "Help" navigation) */
+  onChatOpen?: () => void;
+}
+
+type NavItem = 
+  | { title: string; url: string; icon: React.ElementType; action?: never }
+  | { title: string; action: string; icon: React.ElementType; url?: never };
+
+// Phase 2: Chat replaces Help as core mobile primitive
+const bottomNavItems: NavItem[] = [
   { title: "Home Pulse", url: "/dashboard", icon: Home },
-  { title: "Help", url: "/chatdiy", icon: MessageCircle },
+  { title: "Chat", action: "openChat", icon: MessageCircle },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
-export default function BottomNavigation() {
+export default function BottomNavigation({ onChatOpen }: BottomNavigationProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (path: string) => {
-    if (path === '/dashboard') {
-      return location.pathname === path || location.pathname.startsWith('/system');
+  const isActive = (item: NavItem) => {
+    if ('url' in item && item.url) {
+      if (item.url === '/dashboard') {
+        return location.pathname === item.url || location.pathname.startsWith('/system');
+      }
+      return location.pathname === item.url;
     }
-    return location.pathname === path;
+    // Chat action is never "active" in nav sense
+    return false;
+  };
+
+  const handleNavClick = (item: NavItem) => {
+    if ('action' in item && item.action === 'openChat') {
+      onChatOpen?.();
+    } else if ('url' in item && item.url) {
+      navigate(item.url);
+    }
   };
 
   return (
@@ -28,9 +49,9 @@ export default function BottomNavigation() {
             key={item.title}
             variant="ghost"
             size="sm"
-            onClick={() => navigate(item.url)}
+            onClick={() => handleNavClick(item)}
             className={`flex flex-col items-center gap-1 h-12 px-4 ${
-              isActive(item.url) 
+              isActive(item) 
                 ? "text-primary bg-primary/10" 
                 : "text-muted-foreground hover:text-foreground"
             }`}

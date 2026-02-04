@@ -1,6 +1,8 @@
+import { useRef, useEffect } from "react";
 import { ArrowLeft, CheckCircle2, AlertTriangle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DockedChatInput } from "@/components/mobile/DockedChatInput";
 import type { SystemTimelineEntry, CapitalSystemType } from "@/types/capitalTimeline";
 import { 
   PLANNING_STATUS, 
@@ -52,6 +54,8 @@ interface SystemPlanViewProps {
   onBack: () => void;
   onStartPlanning: () => void;
   onAddMaintenance: () => void;
+  /** Callback to expand chat sheet */
+  onChatExpand?: () => void;
 }
 
 // ============== Helper Functions ==============
@@ -196,7 +200,10 @@ export function SystemPlanView({
   onBack,
   onStartPlanning,
   onAddMaintenance,
+  onChatExpand,
 }: SystemPlanViewProps) {
+  // Ref for scroll management (Rule 1: Content visibility)
+  const costSectionRef = useRef<HTMLDivElement>(null);
   const currentYear = new Date().getFullYear();
   const installYear = system.installYear;
   const age = installYear ? currentYear - installYear : null;
@@ -275,7 +282,7 @@ export function SystemPlanView({
         </div>
         
         {/* Section B: Cost Reality */}
-        <Card>
+        <Card ref={costSectionRef}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
               Cost Reality
@@ -333,23 +340,35 @@ export function SystemPlanView({
         </Card>
       </div>
       
-      {/* Section E: Action Footer (sticky) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border p-4 space-y-2">
-        <Button 
-          onClick={handleStartPlanning}
-          className="w-full"
-          size="lg"
-        >
-          {PLAN_COPY.actions.primary}
-        </Button>
-        <Button 
-          onClick={handleAddMaintenance}
-          variant="outline"
-          className="w-full"
-          size="lg"
-        >
-          {PLAN_COPY.actions.secondary}
-        </Button>
+      {/* Section E: Action Footer with Docked Chat (sticky) */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border">
+        {/* Docked chat input - only show if handler provided */}
+        {onChatExpand && (
+          <DockedChatInput
+            systemKey={system.systemId}
+            systemLabel={displayName}
+            onExpandChat={onChatExpand}
+          />
+        )}
+        
+        {/* Action buttons */}
+        <div className="p-4 pt-3 space-y-2">
+          <Button 
+            onClick={handleStartPlanning}
+            className="w-full"
+            size="lg"
+          >
+            {PLAN_COPY.actions.primary}
+          </Button>
+          <Button 
+            onClick={handleAddMaintenance}
+            variant="outline"
+            className="w-full"
+            size="lg"
+          >
+            {PLAN_COPY.actions.secondary}
+          </Button>
+        </div>
       </div>
     </div>
   );
