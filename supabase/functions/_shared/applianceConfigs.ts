@@ -9,21 +9,26 @@
  
  export type IssueTier = 'small_appliance' | 'medium_system' | 'capital_system';
  
- export type SmallApplianceType = 
-   | 'garbage_disposal' 
-   | 'faucet' 
-   | 'toilet'
-   | 'toilet_flapper'
-   | 'gfci_outlet'
-   | 'doorbell'
-   | 'smoke_detector';
+export type SmallApplianceType = 
+  | 'garbage_disposal' 
+  | 'faucet' 
+  | 'toilet'
+  | 'toilet_flapper'
+  | 'gfci_outlet'
+  | 'doorbell'
+  | 'smoke_detector'
+  | 'microwave';
  
- export type MediumSystemType = 
-   | 'sump_pump'
-   | 'garage_door_opener'
-   | 'dishwasher_repair'
-   | 'water_softener'
-   | 'whole_house_fan';
+export type MediumSystemType = 
+  | 'sump_pump'
+  | 'garage_door_opener'
+  | 'dishwasher_repair'
+  | 'water_softener'
+  | 'whole_house_fan'
+  | 'washing_machine'
+  | 'dryer'
+  | 'refrigerator'
+  | 'oven_range';
  
  export type ApplianceType = SmallApplianceType | MediumSystemType;
  
@@ -97,15 +102,23 @@
      keywords: ['doorbell', 'door bell', 'chime', 'ring doorbell'],
      tradeType: 'electrician',
    },
-   smoke_detector: {
-     tier: 'small_appliance',
-     displayName: 'Smoke Detector',
-     costRange: { min: 25, max: 100 },
-     typicalLifespan: 10,
-     diyEligible: true,
-     keywords: ['smoke detector', 'smoke alarm', 'fire alarm', 'carbon monoxide detector', 'co detector'],
-   },
- };
+  smoke_detector: {
+    tier: 'small_appliance',
+    displayName: 'Smoke Detector',
+    costRange: { min: 25, max: 100 },
+    typicalLifespan: 10,
+    diyEligible: true,
+    keywords: ['smoke detector', 'smoke alarm', 'fire alarm', 'carbon monoxide detector', 'co detector'],
+  },
+  microwave: {
+    tier: 'small_appliance',
+    displayName: 'Microwave',
+    costRange: { min: 100, max: 400 },
+    typicalLifespan: 10,
+    diyEligible: true,
+    keywords: ['microwave', 'over-the-range microwave', 'countertop microwave', 'built-in microwave'],
+  },
+};
  
  /**
   * Tier 2: Medium System / Trade Repair
@@ -147,16 +160,52 @@
      keywords: ['water softener', 'soft water', 'hard water', 'water conditioning'],
      tradeType: 'plumber',
    },
-   whole_house_fan: {
-     tier: 'medium_system',
-     displayName: 'Whole House Fan',
-     costRange: { min: 400, max: 1500 },
-     typicalLifespan: 15,
-     diyEligible: false,
-     keywords: ['whole house fan', 'attic fan', 'house fan'],
-     tradeType: 'electrician',
-   },
- };
+  whole_house_fan: {
+    tier: 'medium_system',
+    displayName: 'Whole House Fan',
+    costRange: { min: 400, max: 1500 },
+    typicalLifespan: 15,
+    diyEligible: false,
+    keywords: ['whole house fan', 'attic fan', 'house fan'],
+    tradeType: 'electrician',
+  },
+  washing_machine: {
+    tier: 'medium_system',
+    displayName: 'Washing Machine',
+    costRange: { min: 400, max: 1200 },
+    typicalLifespan: 12,
+    diyEligible: false,
+    keywords: ['washer', 'washing machine', 'laundry machine', 'clothes washer', 'front load washer', 'top load washer'],
+    tradeType: 'appliance repair',
+  },
+  dryer: {
+    tier: 'medium_system',
+    displayName: 'Dryer',
+    costRange: { min: 350, max: 1000 },
+    typicalLifespan: 13,
+    diyEligible: false,
+    keywords: ['dryer', 'clothes dryer', 'tumble dryer', 'gas dryer', 'electric dryer'],
+    tradeType: 'appliance repair',
+  },
+  refrigerator: {
+    tier: 'medium_system',
+    displayName: 'Refrigerator',
+    costRange: { min: 500, max: 2500 },
+    typicalLifespan: 15,
+    diyEligible: false,
+    keywords: ['refrigerator', 'fridge', 'freezer', 'french door fridge', 'side by side fridge'],
+    tradeType: 'appliance repair',
+  },
+  oven_range: {
+    tier: 'medium_system',
+    displayName: 'Oven/Range',
+    costRange: { min: 400, max: 2000 },
+    typicalLifespan: 15,
+    diyEligible: false,
+    keywords: ['oven', 'range', 'stove', 'cooktop', 'gas range', 'electric range', 'induction cooktop'],
+    tradeType: 'appliance repair',
+  },
+};
  
  /**
   * Combined appliance configs for lookup
