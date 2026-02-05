@@ -91,6 +91,18 @@ export interface MediumSystemRepairData {
   message?: string;
 }
 
+export interface HomeEventData {
+  success: boolean;
+  eventId?: string;
+  assetId?: string;
+  isNewAsset?: boolean;
+  eventType?: string;
+  systemKind?: string;
+  title?: string;
+  message?: string;
+  clarificationNeeded?: boolean;
+}
+
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
@@ -106,6 +118,7 @@ export interface ExtractedStructuredData {
   unknownIssue?: UnknownIssueData;
   smallApplianceRepair?: SmallApplianceRepairData;
   mediumSystemRepair?: MediumSystemRepairData;
+  homeEvent?: HomeEventData;
 }
 
 export interface NormalizedContent {
@@ -126,7 +139,7 @@ export interface NormalizedContent {
  * Policy: Strip execution unconditionally. Parse domain artifacts.
  */
 const EXECUTION_KEYS = ['action', 'action_input', 'tool_calls', 'function', 'arguments'] as const;
-const DOMAIN_TYPES = ['contractor_recommendations', 'system_update', 'replacement_tradeoff', 'proposed_addition', 'unknown_issue', 'small_appliance_repair', 'medium_system_repair'] as const;
+const DOMAIN_TYPES = ['contractor_recommendations', 'system_update', 'replacement_tradeoff', 'proposed_addition', 'unknown_issue', 'small_appliance_repair', 'medium_system_repair', 'home_event_recorded'] as const;
 
 /**
  * Strip execution artifacts from content.
@@ -712,7 +725,72 @@ function extractMediumSystemData(content: string): {
           
           humanReadableMessage = parts.join(' ');
           cleanedContent = cleanedContent.replace(jsonStr, '');
+}
+
+/**
+ * Extract home_event_recorded JSON from content
+ * Part of the Home Record (Carfax for the Home) system
+ */
+function extractHomeEventData(content: string): {
+  homeEvent?: HomeEventData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  let cleanedContent = content;
+  let homeEvent: HomeEventData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const typeMarker = '"type":"home_event_recorded"';
+  const typeMarkerAlt = '"type": "home_event_recorded"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'home_event_recorded') {
+          homeEvent = {
+            success: data.success,
+            eventId: data.eventId,
+            assetId: data.assetId,
+            isNewAsset: data.isNewAsset,
+            eventType: data.eventType,
+            systemKind: data.systemKind,
+            title: data.title,
+            message: data.message,
+            clarificationNeeded: data.clarificationNeeded,
+          };
+          
+          // Use the message from the server (already well-formatted)
+          humanReadableMessage = data.message || data.title || 'Home record updated.';
+          
+          cleanedContent = cleanedContent.replace(jsonStr, '');
         }
+      } catch (e) {
+        console.warn('Failed to parse home_event_recorded JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { homeEvent, cleanedContent, humanReadableMessage };
+}
       } catch (e) {
         console.warn('Failed to parse medium_system_repair JSON:', e);
         cleanedContent = cleanedContent.replace(jsonStr, '');
@@ -960,14 +1038,20 @@ export function extractAndSanitize(content: string): NormalizedContent {
     structuredData.mediumSystemRepair = mediumSystemRepair;
   }
   
-  // 8. Catch-all: Strip any remaining tool JSON that slipped through (defense in depth)
-  const afterCatchAll = stripRemainingToolJson(afterMedium);
+  // 8. Extract home event data (Carfax for the Home)
+  const { homeEvent, cleanedContent: afterHomeEvent, humanReadableMessage: homeEventMsg } = extractHomeEventData(afterMedium);
+  if (homeEvent) {
+    structuredData.homeEvent = homeEvent;
+  }
   
-  // 9. Strip remaining artifact tags
+  // 9. Catch-all: Strip any remaining tool JSON that slipped through (defense in depth)
+  const afterCatchAll = stripRemainingToolJson(afterHomeEvent);
+  
+  // 10. Strip remaining artifact tags
   let cleanText = stripArtifactTags(afterCatchAll);
   
-  // 10. Append human-readable messages
-  const messages = [systemUpdateMsg, tradeoffMsg, proposedMsg, unknownMsg, smallMsg, mediumMsg].filter(Boolean);
+  // 11. Append human-readable messages
+  const messages = [systemUpdateMsg, tradeoffMsg, proposedMsg, unknownMsg, smallMsg, mediumMsg, homeEventMsg].filter(Boolean);
   for (const msg of messages) {
     if (cleanText.trim() === '') {
       cleanText = msg!;

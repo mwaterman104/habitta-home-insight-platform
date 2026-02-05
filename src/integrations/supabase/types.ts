@@ -1503,6 +1503,164 @@ export type Database = {
           },
         ]
       }
+      home_assets: {
+        Row: {
+          category: string
+          confidence: number
+          created_at: string
+          home_id: string
+          id: string
+          install_date: string | null
+          kind: string
+          manufacturer: string | null
+          metadata: Json
+          model: string | null
+          notes: string | null
+          removal_date: string | null
+          serial: string | null
+          source: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          confidence?: number
+          created_at?: string
+          home_id: string
+          id?: string
+          install_date?: string | null
+          kind: string
+          manufacturer?: string | null
+          metadata?: Json
+          model?: string | null
+          notes?: string | null
+          removal_date?: string | null
+          serial?: string | null
+          source: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          confidence?: number
+          created_at?: string
+          home_id?: string
+          id?: string
+          install_date?: string | null
+          kind?: string
+          manufacturer?: string | null
+          metadata?: Json
+          model?: string | null
+          notes?: string | null
+          removal_date?: string | null
+          serial?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_assets_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_assets_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
+      home_events: {
+        Row: {
+          asset_id: string | null
+          cost_actual: number | null
+          cost_estimated: Json | null
+          created_at: string
+          description: string | null
+          event_type: string
+          home_id: string
+          id: string
+          metadata: Json
+          related_event_id: string | null
+          severity: string
+          source: string
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          asset_id?: string | null
+          cost_actual?: number | null
+          cost_estimated?: Json | null
+          created_at?: string
+          description?: string | null
+          event_type: string
+          home_id: string
+          id?: string
+          metadata?: Json
+          related_event_id?: string | null
+          severity?: string
+          source: string
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          asset_id?: string | null
+          cost_actual?: number | null
+          cost_estimated?: Json | null
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          home_id?: string
+          id?: string
+          metadata?: Json
+          related_event_id?: string | null
+          severity?: string
+          source?: string
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "home_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+          {
+            foreignKeyName: "home_events_related_event_id_fkey"
+            columns: ["related_event_id"]
+            isOneToOne: false
+            referencedRelation: "home_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       home_interactions: {
         Row: {
           created_at: string | null

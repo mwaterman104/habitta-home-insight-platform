@@ -545,17 +545,24 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     { data: rawSystems },
     { data: recommendations },
     { data: predictions },
-    { data: home }
+    { data: home },
+    { data: homeAssets },
+    { data: openEvents }
   ] = await Promise.all([
     // CANONICAL TRUTH: Read from 'systems' table (same as capital-timeline)
     supabase.from('systems').select('*').eq('home_id', propertyId),
     supabase.from('smart_recommendations').select('*').eq('property_id', propertyId).eq('is_completed', false).limit(5),
     supabase.from('prediction_accuracy').select('*').eq('property_id', propertyId).limit(3),
     // Extended home query for lifecycle calculations
-    supabase.from('homes').select('id, latitude, longitude, city, state, zip_code, year_built').eq('id', propertyId).single()
+    supabase.from('homes').select('id, latitude, longitude, city, state, zip_code, year_built').eq('id', propertyId).single(),
+    // HOME RECORD: Fetch active assets (VIN layer)
+    supabase.from('home_assets').select('*').eq('home_id', propertyId).eq('status', 'active'),
+    // HOME RECORD: Fetch open events for follow-up linking
+    supabase.from('home_events').select('*').eq('home_id', propertyId).eq('status', 'open').order('created_at', { ascending: false }).limit(5)
   ]);
 
   console.log(`[getPropertyContext] Fetched ${rawSystems?.length || 0} systems from canonical 'systems' table for home ${propertyId}`);
+  console.log(`[getPropertyContext] Fetched ${homeAssets?.length || 0} home assets, ${openEvents?.length || 0} open events`);
 
   // Build property context for lifecycle calculations
   const propertyContext: LifecyclePropertyContext = {
@@ -592,7 +599,10 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
       city: home.city,
       state: home.state,
       zipCode: home.zip_code
-    } : null
+    } : null,
+    // HOME RECORD context
+    homeAssets: homeAssets || [],
+    openEvents: openEvents || [],
   };
 }
 
@@ -711,6 +721,74 @@ async function generateAIResponse(
               additionalProperties: false
             }
           }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'record_home_event',
+            description: 'Record a home event to the permanent home record (Carfax for the Home). Use for: discovering new appliances/systems mentioned in conversation, recording issues, diagnoses, recommendations, repairs, user decisions, and status changes. Events are immutable — status changes create new linked events.',
+            parameters: {
+              type: 'object',
+              properties: {
+                event_type: {
+                  type: 'string',
+                  enum: ['system_discovered', 'issue_reported', 'diagnosis', 'recommendation', 'repair_completed', 'maintenance_performed', 'replacement', 'user_decision', 'contractor_referred', 'status_change'],
+                  description: 'The type of event to record'
+                },
+                system_kind: {
+                  type: 'string',
+                  description: 'The kind of system or appliance (e.g., washing_machine, dryer, refrigerator, hvac, roof, dishwasher, hot_tub, garbage_disposal)'
+                },
+                title: {
+                  type: 'string',
+                  description: 'Short human-readable summary of the event'
+                },
+                description: {
+                  type: 'string',
+                  description: 'Detailed description of the event'
+                },
+                severity: {
+                  type: 'string',
+                  enum: ['info', 'minor', 'moderate', 'major'],
+                  description: 'Severity level (default: info)'
+                },
+                cost_estimate_low: {
+                  type: 'number',
+                  description: 'Low end of estimated cost range'
+                },
+                cost_estimate_high: {
+                  type: 'number',
+                  description: 'High end of estimated cost range'
+                },
+                manufacturer: {
+                  type: 'string',
+                  description: 'Brand/manufacturer (for system_discovered events)'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model number (for system_discovered events)'
+                },
+                age_estimate_years: {
+                  type: 'number',
+                  description: 'Approximate age in years (for system_discovered events)'
+                },
+                resolution: {
+                  type: 'string',
+                  description: 'Resolution description (for repair_completed, user_decision events)'
+                },
+                related_event_id: {
+                  type: 'string',
+                  description: 'UUID of a prior event to link to (for follow-ups, status changes)'
+                },
+                metadata: {
+                  type: 'object',
+                  description: 'Additional structured data (symptom, probable_cause, decision, etc.)'
+                }
+              },
+              required: ['event_type', 'system_kind', 'title'],
+              additionalProperties: false
+            }
+          }
         }
       ],
       tool_choice: 'auto'
@@ -807,12 +885,31 @@ FORBIDDEN when referencing verified systems:
 `;
   }
 
+  // Build home assets context for discovery protocol
+  const homeAssetsInfo = (context.homeAssets || []).map((a: any) => {
+    const ageNote = a.metadata?.age_estimate_years ? `, ~${a.metadata.age_estimate_years} years old` : '';
+    const brandNote = a.manufacturer ? ` (${a.manufacturer})` : '';
+    return `- ${a.kind.replace(/_/g, ' ')}${brandNote}${ageNote}, ${a.source}-reported, confidence: ${a.confidence}`;
+  }).join('\n');
+
+  const openEventsInfo = (context.openEvents || []).map((e: any) => {
+    const daysAgo = Math.floor((Date.now() - new Date(e.created_at).getTime()) / (1000 * 60 * 60 * 24));
+    const timeNote = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+    return `- [${e.id}] ${e.title} (${e.severity}, reported ${timeNote})`;
+  }).join('\n');
+
   // Base personality
   let prompt = `You are Habitta AI, an expert home maintenance advisor. You are a calm, knowledgeable steward — not a pushy assistant.
 
 PROPERTY CONTEXT:
 Current Systems:
 ${systemInfo || 'No systems registered yet'}
+
+HOME ASSETS ON FILE:
+${homeAssetsInfo || 'No assets discovered yet'}
+
+OPEN ISSUES:
+${openEventsInfo || 'No open issues'}
 
 Active Recommendations:
 ${recommendations || 'No active recommendations'}
@@ -1177,7 +1274,51 @@ CORE BEHAVIOR:
 - Prioritize safety and professional help for complex work
 
 When the user asks "what if" questions, shift to analytical mode and compare tradeoffs clearly.
-When the user commits to a path, shift to procedural mode and help them execute.`;
+When the user commits to a path, shift to procedural mode and help them execute.
+
+HOME RECORD PROTOCOLS (CARFAX FOR THE HOME — MANDATORY):
+
+SYSTEM DISCOVERY PROTOCOL:
+When the user mentions an appliance or system by name (e.g., "washing machine", "dishwasher", "hot tub", "dryer", "refrigerator") that does NOT appear in HOME ASSETS ON FILE:
+1. Acknowledge: "I don't have a [system] on record for your home yet."
+2. Call record_home_event with event_type: 'system_discovered' IMMEDIATELY
+3. Ask ONE contextual question (brand OR approximate age — not both)
+4. Continue with the conversation naturally
+No user permission required. This is bookkeeping, not publishing.
+Do NOT ask "Would you like me to add this to your record?" — just do it.
+
+ISSUE RECORDING PROTOCOL:
+After completing a diagnosis or providing repair/replacement guidance, call record_home_event to persist the finding:
+1. Log event_type: 'diagnosis' with severity, probable cause, and confidence in metadata
+2. If you provided a recommendation, log a second event_type: 'recommendation' with path (repair/replace/defer), urgency, and rationale in metadata
+3. Link both to the original issue_reported event via related_event_id if one exists
+The user should see a subtle confirmation that this is part of their home record.
+
+FOLLOW-UP LINKING PROTOCOL:
+When the user returns to discuss a previously-reported issue (e.g., "I got the washer fixed", "How's the washing machine?", "The repair cost $200"):
+1. Find the original open event in OPEN ISSUES context (use the event ID shown in brackets)
+2. Create a linked event (user_decision, repair_completed, or status_change)
+3. Use related_event_id to chain to the original event ID
+4. Acknowledge: "I've updated the record. The [issue] is now [status]."
+
+IMMUTABILITY RULE (CRITICAL):
+NEVER update an existing home_events record. Status changes are NEW events:
+Wrong: Update issue #123 status from 'open' to 'resolved'
+Right: Create new event type='status_change', status='resolved', related_event_id='issue-123-uuid'
+This preserves the full audit trail.
+
+CONTRACTOR REFERRAL GUARD:
+When recording event_type='contractor_referred':
+- Status is ALWAYS 'info' — NEVER 'resolved'
+- It NEVER closes or resolves a linked issue
+- It is advisory-only, recorded for history
+
+CONFIDENCE CEILING (ENFORCED BY TOOL):
+- Chat-discovered assets cap at confidence 60
+- Photo-verified assets cap at 80
+- Pro invoice / permit assets cap at 95
+- Never exceed 95 without external verification
+`;
 
   return prompt;
 }
@@ -1699,6 +1840,204 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       }
     }
       
+    case 'record_home_event': {
+      // HOME RECORD: Record event to the immutable ledger
+      const homeId = context?.homeId;
+      const userId = context?.userId;
+      
+      if (!homeId || !userId) {
+        console.error('[record_home_event] Missing homeId or userId');
+        return JSON.stringify({
+          type: 'home_event_recorded',
+          success: false,
+          message: !homeId 
+            ? 'I can\'t record this because no home is selected.'
+            : 'I can\'t record this because you\'re not signed in.'
+        });
+      }
+      
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+        
+        if (!supabaseUrl || !supabaseServiceKey) {
+          return JSON.stringify({
+            type: 'home_event_recorded',
+            success: false,
+            message: 'Configuration error. Please try again.'
+          });
+        }
+        
+        // Create service-role client for writes
+        const { createClient: createServiceClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const serviceSupabase = createServiceClient(supabaseUrl, supabaseServiceKey);
+        
+        const eventType = parsedArgs.event_type;
+        const systemKind = parsedArgs.system_kind?.toLowerCase().replace(/\s+/g, '_');
+        
+        // CONFIDENCE CEILING enforcement
+        const confidenceCeilings: Record<string, number> = {
+          chat: 60, photo: 80, pro: 95, permit: 95, manual: 60
+        };
+        const source = 'chat';
+        const maxConfidence = confidenceCeilings[source] || 60;
+        const baseConfidence = Math.min(50, maxConfidence);
+        
+        let assetId: string | null = null;
+        let isNewAsset = false;
+        let clarificationNeeded = false;
+        
+        // HARDENED ASSET MATCHING
+        if (systemKind) {
+          const { data: existingAssets } = await serviceSupabase
+            .from('home_assets')
+            .select('id, kind, manufacturer, model')
+            .eq('home_id', homeId)
+            .eq('kind', systemKind)
+            .eq('status', 'active');
+          
+          if (existingAssets && existingAssets.length === 1) {
+            // Exactly one match — attach
+            assetId = existingAssets[0].id;
+            console.log(`[record_home_event] Matched asset: ${assetId}`);
+          } else if (existingAssets && existingAssets.length > 1) {
+            // MULTIPLE matches — do NOT auto-attach (hardening rule)
+            console.log(`[record_home_event] Multiple active ${systemKind} found (${existingAssets.length}). Not auto-attaching.`);
+            clarificationNeeded = true;
+          } else if (eventType === 'system_discovered') {
+            // ZERO matches + discovery event — create new asset
+            const installDate = parsedArgs.age_estimate_years 
+              ? new Date(new Date().getFullYear() - parsedArgs.age_estimate_years, 0, 1).toISOString().split('T')[0]
+              : null;
+            
+            const assetMetadata: Record<string, any> = {};
+            if (parsedArgs.age_estimate_years) assetMetadata.age_estimate_years = parsedArgs.age_estimate_years;
+            
+            const { data: newAsset, error: assetError } = await serviceSupabase
+              .from('home_assets')
+              .insert({
+                home_id: homeId,
+                user_id: userId,
+                category: categorizeKind(systemKind),
+                kind: systemKind,
+                manufacturer: parsedArgs.manufacturer || null,
+                model: parsedArgs.model || null,
+                install_date: installDate,
+                status: 'active',
+                source,
+                confidence: baseConfidence,
+                metadata: assetMetadata,
+              })
+              .select('id')
+              .single();
+            
+            if (assetError) {
+              console.error('[record_home_event] Asset creation failed:', assetError);
+            } else {
+              assetId = newAsset.id;
+              isNewAsset = true;
+              console.log(`[record_home_event] Created new asset: ${assetId}`);
+            }
+          }
+        }
+        
+        // CONTRACTOR REFERRAL GUARD: never set resolved status
+        const eventStatus = eventType === 'contractor_referred' ? 'info'
+          : eventType === 'status_change' ? (parsedArgs.metadata?.new_status || 'resolved')
+          : eventType === 'system_discovered' ? 'info'
+          : eventType === 'diagnosis' ? 'open'
+          : eventType === 'recommendation' ? 'open'
+          : 'open';
+        
+        // Build cost estimate
+        const costEstimated = (parsedArgs.cost_estimate_low || parsedArgs.cost_estimate_high)
+          ? { low: parsedArgs.cost_estimate_low, high: parsedArgs.cost_estimate_high }
+          : null;
+        
+        // Build metadata with semantic sub-records
+        const eventMetadata = parsedArgs.metadata || {};
+        if (parsedArgs.resolution) eventMetadata.resolution = parsedArgs.resolution;
+        
+        // INSERT event (append-only — no updates ever)
+        const { data: newEvent, error: eventError } = await serviceSupabase
+          .from('home_events')
+          .insert({
+            home_id: homeId,
+            user_id: userId,
+            asset_id: assetId,
+            event_type: eventType,
+            title: parsedArgs.title,
+            description: parsedArgs.description || null,
+            severity: parsedArgs.severity || 'info',
+            status: eventStatus,
+            cost_estimated: costEstimated,
+            source,
+            related_event_id: parsedArgs.related_event_id || null,
+            metadata: eventMetadata,
+          })
+          .select('id')
+          .single();
+        
+        if (eventError) {
+          console.error('[record_home_event] Event creation failed:', eventError);
+          return JSON.stringify({
+            type: 'home_event_recorded',
+            success: false,
+            message: 'I wasn\'t able to record this to your home history. Please try again.'
+          });
+        }
+        
+        console.log(`[record_home_event] Event recorded: ${newEvent.id}, type=${eventType}, asset=${assetId || 'none'}`);
+        
+        // Build response message
+        const kindLabel = systemKind?.replace(/_/g, ' ') || 'system';
+        let responseMessage: string;
+        
+        if (isNewAsset) {
+          const brandNote = parsedArgs.manufacturer ? ` ${parsedArgs.manufacturer}` : '';
+          const ageNote = parsedArgs.age_estimate_years ? ` (~${parsedArgs.age_estimate_years} years old)` : '';
+          responseMessage = `Added to your home record:${brandNote} ${kindLabel}${ageNote} (chat-reported)`;
+        } else if (eventType === 'diagnosis') {
+          responseMessage = `Recorded diagnosis: ${parsedArgs.title}`;
+        } else if (eventType === 'recommendation') {
+          responseMessage = `Recorded recommendation: ${parsedArgs.title}`;
+        } else if (eventType === 'status_change') {
+          responseMessage = `Updated: ${kindLabel} — ${parsedArgs.title}`;
+        } else if (eventType === 'repair_completed') {
+          responseMessage = `Recorded: ${kindLabel} repair completed`;
+        } else {
+          responseMessage = `Recorded: ${parsedArgs.title}`;
+        }
+        
+        const result: Record<string, any> = {
+          type: 'home_event_recorded',
+          success: true,
+          eventId: newEvent.id,
+          assetId,
+          isNewAsset,
+          eventType,
+          systemKind,
+          title: parsedArgs.title,
+          message: responseMessage,
+        };
+        
+        if (clarificationNeeded) {
+          result.clarificationNeeded = true;
+          result.message += ` (Note: I see multiple ${kindLabel}s on file — please clarify which one you're referring to.)`;
+        }
+        
+        return JSON.stringify(result);
+      } catch (error) {
+        console.error('[record_home_event] Error:', error);
+        return JSON.stringify({
+          type: 'home_event_recorded',
+          success: false,
+          message: 'I encountered an error recording this event. Please try again.'
+        });
+      }
+    }
+
     default:
       return 'I can help you with that. What specific information would you like?';
   }
@@ -1729,4 +2068,24 @@ function generateFollowUpSuggestions(message: string, context: any): string[] {
   }
   
   return suggestions.slice(0, 3);
+}
+
+// ============================================================================
+// HOME RECORD HELPERS
+// ============================================================================
+
+function categorizeKind(kind: string): string {
+  const appliances = [
+    'washing_machine', 'dryer', 'refrigerator', 'dishwasher', 'oven', 'range',
+    'microwave', 'garbage_disposal', 'freezer', 'ice_maker', 'wine_cooler',
+    'washer_dryer_combo', 'trash_compactor'
+  ];
+  const structures = [
+    'roof', 'foundation', 'siding', 'windows', 'doors', 'deck', 'fence',
+    'driveway', 'patio', 'garage_door', 'gutters'
+  ];
+  
+  if (appliances.includes(kind)) return 'appliance';
+  if (structures.includes(kind)) return 'structure';
+  return 'system'; // hvac, water_heater, electrical_panel, pool, solar, etc.
 }
