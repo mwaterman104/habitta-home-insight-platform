@@ -1,201 +1,139 @@
 
-# Cinematic Background Video for Landing Page
+# Fix: Tool Failure JSON Leak + Missing Appliance Coverage
 
-## Overview
+## Problem Summary
 
-Add an immersive, premium video background to the hero section that evokes "home as sanctuary" while maintaining perfect text readability and brand alignment.
+Two interrelated bugs cause raw JSON to leak into user-facing chat:
 
----
-
-## Video Strategy (Based on Your Feedback)
-
-### Approach: Cinemagraph-Style "Living Gradient"
-
-Rather than a full-motion video, we'll use footage with **minimal, hypnotic movement**:
-- Morning light slowly shifting across a surface
-- Soft curtains barely moving
-- Steam rising from a coffee cup (if visible)
-- Rain gently streaking a window
-
-This creates the "alive" feeling without distraction.
-
-### Video Source
-
-We'll use a high-quality stock video URL from Pexels. For immediate implementation, I'll use:
-
-**Primary:** Warm morning light through sheer curtains (abstract, textural)
-- POV/first-person perspective
-- Slow, barely-perceptible motion
-- Golden hour color grading that complements the cream/green palette
-
-The URL will be configurable for easy swapping if you find better footage or commission custom.
+1. **Missing appliances**: `washing_machine`, `dryer`, `refrigerator`, `oven_range`, `microwave` are not in the edge function's `APPLIANCE_CONFIGS`, so `classifyIssueType()` returns `null` and the tool emits `{"type":"unknown_issue",...}`
+2. **No frontend handler**: The normalization layer (`chatFormatting.ts`) only handles 4 domain types: `contractor_recommendations`, `system_update`, `replacement_tradeoff`, `proposed_addition`. The three new response types (`unknown_issue`, `small_appliance_repair`, `medium_system_repair`) pass through untranslated.
 
 ---
 
-## Implementation
+## Phase 1: Add Missing Appliances to Edge Function Registry
 
-### New Component: `VideoBackground.tsx`
+**File:** `supabase/functions/_shared/applianceConfigs.ts`
 
-```text
-src/components/
-  VideoBackground.tsx  <- New reusable component
-```
+Add 5 missing appliances that the frontend already tracks in `applianceTiers.ts`:
 
-**Features:**
-- Full-bleed video with `object-cover` scaling
-- Muted, autoplay, loop (seamless)
-- Brand-aligned overlay gradient (primary green → cream)
-- Graceful fallback to animated gradient
-- `prefers-reduced-motion` support
-- Slow connection detection (`navigator.connection`)
-- Mobile: poster image only (no video on < 768px)
+### New `SmallApplianceType` additions:
+| Key | Display | Cost Range | DIY | Keywords |
+|-----|---------|-----------|-----|----------|
+| `microwave` | Microwave | $100-$400 | Yes | microwave, over-the-range microwave |
 
-### Component Structure
+### New `MediumSystemType` additions:
+| Key | Display | Cost Range | DIY | Keywords |
+|-----|---------|-----------|-----|----------|
+| `washing_machine` | Washing Machine | $400-$1,200 | No | washer, washing machine, laundry machine, clothes washer |
+| `dryer` | Dryer | $350-$1,000 | No | dryer, clothes dryer, tumble dryer |
+| `refrigerator` | Refrigerator | $500-$2,500 | No | refrigerator, fridge, freezer |
+| `oven_range` | Oven/Range | $400-$2,000 | No | oven, range, stove, cooktop |
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ <VideoBackground>                                       │
-│   ├─ <video> (absolute, z-0)                            │
-│   │    ├─ poster="first-frame.jpg" (loading state)      │
-│   │    ├─ <source type="video/mp4">                     │
-│   │    └─ <source type="video/webm">                    │
-│   ├─ <div> Overlay gradient (z-10)                      │
-│   │    └─ from-primary/50 via-background/40 to-background│
-│   └─ {children} Content (z-20)                          │
-│        └─ text-shadow for extra safety                  │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Integration in LandingPage
-
-Wrap the hero section content with VideoBackground:
-
-**Current (lines 79-114):**
-```jsx
-<section className="relative pt-24 pb-20 ...">
-  <div className="absolute inset-0 bg-gradient-to-b ..." />
-  {/* Content */}
-</section>
-```
-
-**After:**
-```jsx
-<VideoBackground 
-  videoUrl="https://videos.pexels.com/..."
-  posterUrl="/hero-poster.jpg"
-  overlayClassName="from-primary/50 via-background/40 to-background"
->
-  <section className="pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 sm:px-6">
-    {/* Same hero content, now with text-shadow */}
-  </section>
-</VideoBackground>
-```
+### Type updates:
+- Add `microwave` to `SmallApplianceType` union
+- Add `washing_machine`, `dryer`, `refrigerator`, `oven_range` to `MediumSystemType` union
 
 ---
 
-## Technical Details
+## Phase 2: Frontend Normalization (Critical Safety Fix)
 
-### Video Requirements
+**File:** `src/lib/chatFormatting.ts`
 
-| Property | Value |
-|----------|-------|
-| Format | MP4 (H.264) primary, WebM fallback |
-| Resolution | 1920x1080 (scales responsively) |
-| Duration | 20-40 seconds (seamless loop) |
-| Target size | < 5MB |
-| Audio | None (muted attribute) |
-| Loop point | Imperceptible transition |
+### A. Expand `DOMAIN_TYPES` whitelist (line 99)
 
-### Performance & Accessibility
+Add `unknown_issue`, `small_appliance_repair`, `medium_system_repair` to prevent the execution artifact firewall from accidentally stripping these as execution artifacts.
 
-1. **Reduced Motion**: If `prefers-reduced-motion: reduce`, show static poster with subtle CSS gradient animation instead
+### B. Add extraction + translation functions
 
-2. **Slow Connection Detection**:
-```typescript
-const connection = (navigator as any).connection;
-const isSlow = connection?.effectiveType === '2g' || 
-               connection?.effectiveType === 'slow-2g';
-if (isSlow) return <GradientFallback />;
+Three new functions following the same pattern as `extractSystemUpdateData`:
+
+- **`extractUnknownIssueData(content)`** -- Finds `{"type":"unknown_issue",...}`, removes the JSON, returns a human-readable message: *"To provide accurate cost information, I need a bit more detail about the specific issue."*
+
+- **`extractSmallApplianceData(content)`** -- Finds `{"type":"small_appliance_repair",...}`, removes the JSON, returns formatted text with cost range, DIY eligibility, and trade recommendation.
+
+- **`extractMediumSystemData(content)`** -- Finds `{"type":"medium_system_repair",...}`, removes the JSON, returns formatted text with cost range, professional recommendation, and safety note.
+
+### C. Wire into `extractAndSanitize()` pipeline
+
+Add three new extraction steps (after step 4, before artifact tag stripping):
+- Step 5: Extract unknown issue data
+- Step 6: Extract small appliance data
+- Step 7: Extract medium system data
+
+Append their human-readable messages to clean text, same as existing pattern.
+
+### D. Add catch-all JSON stripper (defense in depth)
+
+After all known extractors run but before final cleanup, scan for any remaining `{"type":"..."}` JSON objects and strip them entirely. This prevents future tool response types from leaking if new tools are added before the frontend is updated.
+
+### E. Update `ExtractedStructuredData` interface
+
+Add optional fields for the three new data types so they can be consumed by future UI components if needed.
+
+---
+
+## Phase 3: Diagnostic Gating in System Prompt
+
+**File:** `supabase/functions/ai-home-assistant/index.ts`
+
+Add mandatory diagnostic gating rules to `createSystemPrompt()` (after the existing COST CALCULATION RULES section around line 1002):
+
 ```
+DIAGNOSTIC GATING RULES (MANDATORY):
+Before calling calculate_cost_impact, you MUST have identified at least ONE of:
+- A specific appliance or system (e.g., "garbage disposal", "HVAC", "washing machine")
+- A specific component (e.g., "drain pump", "compressor", "control board")
+- An error code or specific symptom
 
-3. **Mobile Strategy**: No video on screens < 768px - use poster image with animated gradient overlay
+If the user describes a CATEGORY without specifying what's wrong:
+1. Acknowledge the issue calmly
+2. Ask ONE narrowing question about symptoms or error codes
+3. ONLY THEN call the cost tool
 
-4. **Text Readability Safety Net**:
-```css
-.hero-text {
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-```
-
-### Brand-Aligned Overlay
-
-The overlay gradient will use Habitta's colors:
-- Top: `primary/50` (deep green, 50% opacity)
-- Middle: `background/40` (cream, 40% opacity) 
-- Bottom: `background` (solid cream, seamless transition to next section)
-
-This ensures the video enhances rather than fights the brand.
-
-### Fallback Behavior
-
-If video fails to load or is disabled:
-```text
-┌─────────────────────────────────────────────┐
-│  Animated gradient background               │
-│  (subtle shift between primary/accent)      │
-│  + Floating soft glow effects               │
-└─────────────────────────────────────────────┘
+FORBIDDEN PATTERN:
+"I've pulled a breakdown of costs..." followed by a tool call.
+You may NOT announce results before the tool has returned successfully.
 ```
 
 ---
 
 ## Files Changed
 
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `src/components/VideoBackground.tsx` | Reusable video background with fallback |
-
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `src/pages/LandingPage.tsx` | Wrap hero with VideoBackground, add text-shadow utility |
-| `src/index.css` | Add `.hero-text-shadow` utility class |
+| `supabase/functions/_shared/applianceConfigs.ts` | Add `washing_machine`, `dryer`, `refrigerator`, `oven_range`, `microwave` with keywords |
+| `src/lib/chatFormatting.ts` | Expand DOMAIN_TYPES, add 3 extraction/translation functions, catch-all JSON stripper |
+| `supabase/functions/ai-home-assistant/index.ts` | Add diagnostic gating rules to system prompt |
 
 ---
 
-## Video Candidates (Pexels - Free, No Attribution)
+## Defense in Depth (3 Layers)
 
-1. **Warm Light Through Curtains** 
-   - Abstract, textural
-   - Golden tones complement brand
-   - Minimal motion
+1. **Layer 1 (Registry):** The appliance is now recognized, so `classifyIssueType()` returns a valid tier instead of `null`. The tool returns `small_appliance_repair` or `medium_system_repair` with proper cost data.
 
-2. **Rain on Glass (Interior POV)**
-   - Cozy, contemplative mood
-   - Perfect loop potential
-   - Universal "home" feeling
+2. **Layer 2 (Normalization):** Even if the tool returns `unknown_issue` (for genuinely unrecognized items), the frontend catches the JSON, strips it, and replaces it with human-readable text.
 
-3. **Morning Kitchen Scene (Soft Focus)**
-   - Steam, light play
-   - Warm and inviting
-   - Avoids "stock family" problem
+3. **Layer 3 (Catch-all):** Any remaining `{"type":"..."}` JSON that slips through all extractors is stripped entirely. No raw JSON ever reaches the user.
 
-The component will accept a `videoUrl` prop so you can easily swap videos without code changes.
+Any single layer prevents the bug. All three together make it structurally impossible.
 
 ---
 
-## Result
+## Expected Behavior After Fix
 
-The landing page hero will transform from a static gradient to an immersive "living" background that:
+**User:** "My washing machine is broken"
 
-- Evokes feelings of home comfort and sanctuary
-- Uses barely-perceptible motion (cinemagraph style)
-- Maintains perfect text contrast with overlay + shadow
-- Degrades gracefully on slow connections and mobile
-- Respects accessibility preferences
-- Aligns with Habitta's calm, intelligent brand voice
+**AI (correct):**
+> Washing machine issues can range from simple fixes to component replacements.
+>
+> Most washing machine repairs run $150-$500 for individual components, or $400-$1,200 for a full replacement.
+>
+> To narrow this down: do you know the error code on the display, or can you describe what the washer does right before it stops?
 
-The video will feel like a "breathing" background rather than competing for attention.
+**What will NOT happen:**
+- No raw JSON in the chat
+- No `{"type":"unknown_issue",...}` visible to user
+- No HVAC fallback costs
+- No "system failure" language for appliances
