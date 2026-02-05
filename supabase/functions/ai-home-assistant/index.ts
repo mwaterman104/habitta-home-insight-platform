@@ -118,7 +118,53 @@ function sanitizePreToolContent(content: string | null | undefined): string {
     return '';
   }
   
-  return content.trim();
+  // ── Narration Guard ──
+  // Strip sentences containing forward-commit language.
+  // These are phrases where the AI claims to have fetched/prioritized data
+  // before the tool has actually returned results.
+  // Sentence-level filter: preserves legitimate contextual prose.
+  const forwardCommitPatterns = [
+    "i'll pull",
+    "i've pulled",
+    "i have pulled",
+    "i'll find",
+    "i've found",
+    "i found",
+    "i've prioritized",
+    "i've identified",
+    "i've located",
+    "i have found",
+    "i have prioritized",
+    "i have identified",
+    "i have located",
+    "here are some",
+    "here are local",
+    "let me pull",
+    "let me find",
+    "let me look up",
+    "i'll look up",
+    "i've compiled",
+    "i have compiled",
+  ];
+
+  // Split into sentences (period followed by space or end of string)
+  const sentences = content.trim().split(/(?<=\.)\s+/);
+  const filtered = sentences.filter(sentence => {
+    const lower = sentence.toLowerCase();
+    const isForwardCommit = forwardCommitPatterns.some(pattern => lower.includes(pattern));
+    if (isForwardCommit) {
+      console.log(`[sanitizePreToolContent] Stripped forward-commit sentence: "${sentence.substring(0, 80)}..."`);
+    }
+    return !isForwardCommit;
+  });
+
+  const result = filtered.join(' ').trim();
+  
+  if (result.length < content.trim().length) {
+    console.log(`[sanitizePreToolContent] Narration guard: ${sentences.length - filtered.length} sentence(s) stripped`);
+  }
+
+  return result;
 }
 
 // ============================================================================
@@ -1679,7 +1725,7 @@ function generateFollowUpSuggestions(message: string, context: any): string[] {
   if (suggestions.length === 0) {
     suggestions.push('What maintenance should I focus on this season?');
     suggestions.push('Show me my system health overview');
-    suggestions.push('Help me find local contractors');
+    suggestions.push('Find a pro near me');
   }
   
   return suggestions.slice(0, 3);
