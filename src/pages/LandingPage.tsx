@@ -4,7 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { WaitlistForm } from '@/components/WaitlistForm';
 import Logo from '@/components/Logo';
+import VideoBackground from '@/components/VideoBackground';
 import chatPreview from '@/assets/habitta-chat-preview.png';
+import heroVideo from '@/assets/hero-background.mp4';
 import { 
   Eye, 
   Clock, 
@@ -77,41 +79,45 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 sm:px-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-muted/30" />
-        <div 
-          className={`container mx-auto max-w-4xl text-center relative z-10 transition-all duration-1000 ${
-            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
-          }`}
-        >
-          <div className="mb-6 sm:mb-8 flex justify-center">
-            <Logo size="xl" animated />
-          </div>
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-primary mb-4 sm:mb-6 leading-tight px-4">
-            Your home, understood.
-          </h1>
-          <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground mb-8 sm:mb-10 leading-relaxed max-w-2xl mx-auto px-4">
-            Habitta continuously evaluates your home's condition, risk, and future costs — so you can make smart decisions before things break.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
-            <Button 
-              size="lg"
-              onClick={() => scrollToSection('waitlist')}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 touch-friendly"
-            >
-              Join Early Access
-            </Button>
-            <Button 
-              size="lg"
-              variant="outline"
-              onClick={() => scrollToSection('preview')}
-              className="text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground touch-friendly"
-            >
-              Preview the App
-            </Button>
+      <VideoBackground
+        videoSrc={heroVideo}
+        overlayClassName="from-primary/60 via-primary/30 to-background"
+      >
+        <div className="pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 sm:px-6">
+          <div 
+            className={`container mx-auto max-w-4xl text-center transition-all duration-1000 ${
+              isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
+            }`}
+          >
+            <div className="mb-6 sm:mb-8 flex justify-center">
+              <Logo size="xl" animated />
+            </div>
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-primary-foreground mb-4 sm:mb-6 leading-tight px-4 hero-text-shadow">
+              Your home, understood.
+            </h1>
+            <p className="text-lg sm:text-xl md:text-2xl text-primary-foreground/80 mb-8 sm:mb-10 leading-relaxed max-w-2xl mx-auto px-4 hero-text-shadow">
+              Habitta continuously evaluates your home's condition, risk, and future costs — so you can make smart decisions before things break.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
+              <Button 
+                size="lg"
+                onClick={() => scrollToSection('waitlist')}
+                className="bg-accent hover:bg-accent/90 text-accent-foreground text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 touch-friendly"
+              >
+                Join Early Access
+              </Button>
+              <Button 
+                size="lg"
+                variant="outline"
+                onClick={() => scrollToSection('preview')}
+                className="text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-2 border-primary-foreground/60 text-primary-foreground hover:bg-primary-foreground/10 touch-friendly hero-text-shadow"
+              >
+                Preview the App
+              </Button>
+            </div>
           </div>
         </div>
-      </section>
+      </VideoBackground>
 
       {/* Preview Section */}
       <section id="preview" className="py-12 sm:py-20 px-4 sm:px-6 bg-card">
