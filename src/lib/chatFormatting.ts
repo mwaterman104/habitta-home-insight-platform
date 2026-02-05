@@ -64,6 +64,33 @@ export interface ProposedAdditionData {
   recommendation?: string;
 }
 
+export interface UnknownIssueData {
+  success: false;
+  issueType?: string;
+  message?: string;
+  suggestion?: string;
+}
+
+export interface SmallApplianceRepairData {
+  success: boolean;
+  applianceType?: string;
+  displayName?: string;
+  costRange?: { min: number; max: number };
+  diyEligible?: boolean;
+  tradeType?: string;
+  message?: string;
+}
+
+export interface MediumSystemRepairData {
+  success: boolean;
+  systemType?: string;
+  displayName?: string;
+  costRange?: { min: number; max: number };
+  diyEligible?: boolean;
+  tradeType?: string;
+  message?: string;
+}
+
 export interface ExtractedStructuredData {
   contractors?: {
     service?: string;
@@ -76,6 +103,9 @@ export interface ExtractedStructuredData {
   systemUpdate?: SystemUpdateData;
   replacementTradeoff?: ReplacementTradeoffData;
   proposedAddition?: ProposedAdditionData;
+  unknownIssue?: UnknownIssueData;
+  smallApplianceRepair?: SmallApplianceRepairData;
+  mediumSystemRepair?: MediumSystemRepairData;
 }
 
 export interface NormalizedContent {
@@ -96,7 +126,7 @@ export interface NormalizedContent {
  * Policy: Strip execution unconditionally. Parse domain artifacts.
  */
 const EXECUTION_KEYS = ['action', 'action_input', 'tool_calls', 'function', 'arguments'] as const;
-const DOMAIN_TYPES = ['contractor_recommendations', 'system_update', 'replacement_tradeoff', 'proposed_addition'] as const;
+const DOMAIN_TYPES = ['contractor_recommendations', 'system_update', 'replacement_tradeoff', 'proposed_addition', 'unknown_issue', 'small_appliance_repair', 'medium_system_repair'] as const;
 
 /**
  * Strip execution artifacts from content.
@@ -489,6 +519,251 @@ function extractProposedAdditionData(content: string): {
   
   return { proposedAddition, cleanedContent, humanReadableMessage };
 }
+/**
+ * Extract unknown_issue JSON and convert to human-readable message
+ * Handles tool failures where the system couldn't classify the issue
+ */
+function extractUnknownIssueData(content: string): {
+  unknownIssue?: UnknownIssueData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  let cleanedContent = content;
+  let unknownIssue: UnknownIssueData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const typeMarker = '"type":"unknown_issue"';
+  const typeMarkerAlt = '"type": "unknown_issue"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'unknown_issue') {
+          unknownIssue = {
+            success: false,
+            issueType: data.issueType,
+            message: data.message,
+            suggestion: data.suggestion,
+          };
+          
+          const issueLabel = data.issueType ? data.issueType.replace(/_/g, ' ') : 'this issue';
+          humanReadableMessage = `To provide accurate cost information for ${issueLabel}, I need a bit more detail about the specific problem — such as a symptom, error code, or which component is affected.`;
+          
+          cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse unknown_issue JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { unknownIssue, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Extract small_appliance_repair JSON and convert to human-readable message
+ */
+function extractSmallApplianceData(content: string): {
+  smallApplianceRepair?: SmallApplianceRepairData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  let cleanedContent = content;
+  let smallApplianceRepair: SmallApplianceRepairData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const typeMarker = '"type":"small_appliance_repair"';
+  const typeMarkerAlt = '"type": "small_appliance_repair"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'small_appliance_repair') {
+          smallApplianceRepair = {
+            success: data.success,
+            applianceType: data.applianceType,
+            displayName: data.displayName,
+            costRange: data.costRange,
+            diyEligible: data.diyEligible,
+            tradeType: data.tradeType,
+            message: data.message,
+          };
+          
+          const name = data.displayName || data.applianceType?.replace(/_/g, ' ') || 'this appliance';
+          const parts: string[] = [];
+          
+          if (data.costRange) {
+            parts.push(`Typical cost range for ${name}: $${data.costRange.min.toLocaleString()}–$${data.costRange.max.toLocaleString()}.`);
+          }
+          
+          if (data.diyEligible === true) {
+            parts.push('This is generally a manageable DIY project, though hiring a pro is always an option.');
+          } else if (data.diyEligible === false && data.tradeType) {
+            parts.push(`A ${data.tradeType} can typically handle this. Getting 2-3 quotes is recommended.`);
+          }
+          
+          humanReadableMessage = parts.join(' ');
+          cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse small_appliance_repair JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { smallApplianceRepair, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Extract medium_system_repair JSON and convert to human-readable message
+ */
+function extractMediumSystemData(content: string): {
+  mediumSystemRepair?: MediumSystemRepairData;
+  cleanedContent: string;
+  humanReadableMessage?: string;
+} {
+  let cleanedContent = content;
+  let mediumSystemRepair: MediumSystemRepairData | undefined;
+  let humanReadableMessage: string | undefined;
+  
+  const typeMarker = '"type":"medium_system_repair"';
+  const typeMarkerAlt = '"type": "medium_system_repair"';
+  
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'medium_system_repair') {
+          mediumSystemRepair = {
+            success: data.success,
+            systemType: data.systemType,
+            displayName: data.displayName,
+            costRange: data.costRange,
+            diyEligible: data.diyEligible,
+            tradeType: data.tradeType,
+            message: data.message,
+          };
+          
+          const name = data.displayName || data.systemType?.replace(/_/g, ' ') || 'this system';
+          const parts: string[] = [];
+          
+          if (data.costRange) {
+            parts.push(`Typical cost range for ${name}: $${data.costRange.min.toLocaleString()}–$${data.costRange.max.toLocaleString()}.`);
+          }
+          
+          if (data.tradeType) {
+            parts.push(`We recommend consulting a qualified ${data.tradeType} for this work.`);
+          }
+          
+          parts.push('Getting 2-3 quotes from licensed professionals is recommended.');
+          
+          humanReadableMessage = parts.join(' ');
+          cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse medium_system_repair JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { mediumSystemRepair, cleanedContent, humanReadableMessage };
+}
+
+/**
+ * Catch-all JSON stripper (Defense in Depth)
+ * Removes any remaining {"type":"..."} JSON objects that weren't caught by specific extractors.
+ * This prevents future tool response types from leaking into the UI.
+ */
+function stripRemainingToolJson(content: string): string {
+  let cleaned = content;
+  let searchStart = 0;
+  
+  while (searchStart < cleaned.length) {
+    const braceIndex = cleaned.indexOf('{', searchStart);
+    if (braceIndex === -1) break;
+    
+    const jsonStr = extractBalancedJson(cleaned, braceIndex);
+    if (!jsonStr) {
+      searchStart = braceIndex + 1;
+      continue;
+    }
+    
+    try {
+      const parsed = JSON.parse(jsonStr);
+      
+      // If it has a "type" field and looks like a tool response, strip it
+      if (parsed.type && typeof parsed.type === 'string' && 
+          (parsed.success !== undefined || parsed.message || parsed.costRange || parsed.issueType)) {
+        console.warn('[stripRemainingToolJson] Caught unhandled tool response:', parsed.type);
+        cleaned = cleaned.slice(0, braceIndex) + cleaned.slice(braceIndex + jsonStr.length);
+        continue;
+      }
+    } catch {
+      // Not valid JSON, skip
+    }
+    
+    searchStart = braceIndex + jsonStr.length;
+  }
+  
+  return cleaned;
+}
+
 function extractContractorData(content: string): {
   contractors?: {
     service?: string;
@@ -667,11 +942,32 @@ export function extractAndSanitize(content: string): NormalizedContent {
     structuredData.proposedAddition = proposedAddition;
   }
   
-  // 5. Strip remaining artifact tags
-  let cleanText = stripArtifactTags(afterProposed);
+  // 5. Extract unknown issue data (tool failure normalization)
+  const { unknownIssue, cleanedContent: afterUnknown, humanReadableMessage: unknownMsg } = extractUnknownIssueData(afterProposed);
+  if (unknownIssue) {
+    structuredData.unknownIssue = unknownIssue;
+  }
   
-  // 6. Append human-readable messages
-  const messages = [systemUpdateMsg, tradeoffMsg, proposedMsg].filter(Boolean);
+  // 6. Extract small appliance repair data
+  const { smallApplianceRepair, cleanedContent: afterSmall, humanReadableMessage: smallMsg } = extractSmallApplianceData(afterUnknown);
+  if (smallApplianceRepair) {
+    structuredData.smallApplianceRepair = smallApplianceRepair;
+  }
+  
+  // 7. Extract medium system repair data
+  const { mediumSystemRepair, cleanedContent: afterMedium, humanReadableMessage: mediumMsg } = extractMediumSystemData(afterSmall);
+  if (mediumSystemRepair) {
+    structuredData.mediumSystemRepair = mediumSystemRepair;
+  }
+  
+  // 8. Catch-all: Strip any remaining tool JSON that slipped through (defense in depth)
+  const afterCatchAll = stripRemainingToolJson(afterMedium);
+  
+  // 9. Strip remaining artifact tags
+  let cleanText = stripArtifactTags(afterCatchAll);
+  
+  // 10. Append human-readable messages
+  const messages = [systemUpdateMsg, tradeoffMsg, proposedMsg, unknownMsg, smallMsg, mediumMsg].filter(Boolean);
   for (const msg of messages) {
     if (cleanText.trim() === '') {
       cleanText = msg!;
@@ -680,7 +976,7 @@ export function extractAndSanitize(content: string): NormalizedContent {
     }
   }
   
-  // 7. Clean up excessive whitespace
+  // 11. Clean up excessive whitespace
   cleanText = cleanText.replace(/\n{3,}/g, '\n\n').trim();
   
   return { cleanText, structuredData };

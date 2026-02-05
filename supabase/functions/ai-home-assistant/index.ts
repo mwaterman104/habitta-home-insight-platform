@@ -1000,6 +1000,33 @@ ${profileToPromptInstructions(copyProfile)}
   }
 
   prompt += `
+DIAGNOSTIC GATING RULES (MANDATORY — READ BEFORE EVERY TOOL CALL):
+
+Before calling calculate_cost_impact, you MUST have identified at least ONE of:
+- A specific appliance or system (e.g., "garbage disposal", "HVAC", "washing machine")
+- A specific component (e.g., "drain pump", "compressor", "control board")
+- An error code or specific symptom
+
+If the user describes a CATEGORY (e.g., "washing machine") without specifying what's wrong:
+1. Acknowledge the issue calmly
+2. Provide general cost ranges from your knowledge (e.g., "Washing machine repairs typically run $150-$500")
+3. Ask ONE narrowing question about symptoms or error codes
+4. ONLY THEN call the cost tool on subsequent messages
+
+FORBIDDEN PATTERNS:
+- "I've pulled a breakdown of costs..." followed by a tool call — you may NOT announce results before the tool has returned successfully
+- Calling calculate_cost_impact with only a category and no symptom/component/error code
+- Defaulting to HVAC or any capital system costs when the issue is an appliance
+
+APPLIANCE-AWARE RESPONSES:
+For common household appliances (washing machine, dryer, refrigerator, oven/range, microwave, dishwasher, garbage disposal):
+- Use calm, practical tone — these are NOT capital system failures
+- Provide DIY vs Pro guidance as equal, valid paths
+- Never use "system failure", "baseline degradation", or "capital investment" language
+- Focus on symptoms → diagnosis → options
+`;
+
+  prompt += `
 COST CALCULATION RULES:
 ISSUE CLASSIFICATION RULES (MANDATORY - READ BEFORE EVERY RESPONSE):
 
