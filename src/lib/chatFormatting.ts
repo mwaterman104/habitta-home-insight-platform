@@ -725,6 +725,17 @@ function extractMediumSystemData(content: string): {
           
           humanReadableMessage = parts.join(' ');
           cleanedContent = cleanedContent.replace(jsonStr, '');
+        }
+      } catch (e) {
+        console.warn('Failed to parse medium_system_repair JSON:', e);
+        cleanedContent = cleanedContent.replace(jsonStr, '');
+      }
+    }
+    
+    searchContent = searchContent.substring(markerIndex + 10);
+  }
+  
+  return { mediumSystemRepair, cleanedContent, humanReadableMessage };
 }
 
 /**
@@ -790,17 +801,6 @@ function extractHomeEventData(content: string): {
   }
   
   return { homeEvent, cleanedContent, humanReadableMessage };
-}
-      } catch (e) {
-        console.warn('Failed to parse medium_system_repair JSON:', e);
-        cleanedContent = cleanedContent.replace(jsonStr, '');
-      }
-    }
-    
-    searchContent = searchContent.substring(markerIndex + 10);
-  }
-  
-  return { mediumSystemRepair, cleanedContent, humanReadableMessage };
 }
 
 /**
