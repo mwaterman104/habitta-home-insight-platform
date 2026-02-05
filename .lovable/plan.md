@@ -1,519 +1,337 @@
 
 
-# Mobile Conversation-First Transformation
-## Final Implementation Specification (Refined)
+# Tier-Aware Home Issue Responsiveness
+
+## Problem Summary
+
+When a user asks about a garbage disposal breaking (a $150-$400 repair), the AI incorrectly triggers HVAC cost analysis ($6,000-$19,200). This destroys trust by presenting a disproportionately high cost for a minor issue.
+
+**Root Cause Chain:**
+1. User mentions "garbage disposal" 
+2. AI calls `calculate_cost_impact` with `repair_type: "garbage_disposal"`
+3. `getSystemConfig("garbage_disposal")` fails to find a match
+4. Falls back to `SYSTEM_CONFIGS.hvac` (line 124 of `systemConfigs.ts`)
+5. User sees HVAC replacement costs for a $200 appliance
 
 ---
 
-## Executive Summary
+## Solution: Three-Tier Classification Framework
 
-Transform mobile from "dashboard with chat attached" to "chat with evidence orbit." Core changes:
+### Tier Model
 
-1. **Persistent Docked Chat Input** on System Plan screens
-2. **System Drawer** via hamburger menu for global navigation
-3. **Replace "Help" with unified Chat** in bottom navigation
-4. **Contextual Chat Priming** with per-system guard
-5. **Scroll + Role Constraints** to preserve authority
-
----
-
-## Behavioral Rules (Must Be Enforced)
-
-### Rule 1: Docked Input Must Not Obscure Content
-
-```text
-On first render, SystemPlanView scrolls so that the top of 
-"Cost Reality" section is visible above the docked input.
-```
-
-This ensures evidence is seen before conversation begins.
-
-### Rule 2: Priming Injection is Per-Context, Not Per-Open
-
-```typescript
-// Guard against re-injection
-const hasPrimedForContext = useRef<string | null>(null);
-
-useEffect(() => {
-  if (open && primingMessage && focusContext?.systemKey) {
-    if (hasPrimedForContext.current !== focusContext.systemKey) {
-      injectPrimingMessage(primingMessage);
-      hasPrimedForContext.current = focusContext.systemKey;
-    }
-  }
-}, [open, primingMessage, focusContext?.systemKey]);
-```
-
-### Rule 3: Active System Must Be Highlighted in Drawer
-
-The System Drawer must visually pin/highlight the currently active system to prevent disorientation.
-
-### Rule 4: Bottom Nav Chat Scoping
-
-| User Location | Chat Scope |
-|---------------|------------|
-| System Plan Page | Scope to that system |
-| Home Pulse Dashboard | Scope to Primary Focus system |
-| Other pages | General context |
-
-### Rule 5: Chat Role Constraints (Architecture Guardrail)
-
-```text
-Chat MAY:
-- Explain visible data
-- Respond to observations
-- Activate/highlight existing evidence
-
-Chat MAY NOT:
-- Invent new lifecycle states
-- Contradict System Plan conclusions
-- Introduce actions not visible in UI
-```
-
-This prevents the AI from becoming a second decision engine.
+| Tier | Category | Examples | Cost Range | Response Style |
+|------|----------|----------|------------|----------------|
+| 1 | Small Appliance | Garbage disposal, faucet, toilet, GFCI | $50-$500 | Calm, practical, DIY-eligible |
+| 2 | Medium System | Water heater repair, sump pump, garage door | $300-$3,000 | Balanced, safety-aware |
+| 3 | Capital System | HVAC, Roof, Electrical Panel | $5,000+ | Strategic, planning-oriented |
 
 ---
 
-## Phase 1: System Drawer (Global Navigation)
+## Implementation
 
-### 1.1 Create MobileSystemDrawer Component
+### Phase 1: Add Appliance Config Registry
 
-**New File:** `src/components/mobile/MobileSystemDrawer.tsx`
+**File:** `supabase/functions/_shared/applianceConfigs.ts` (New)
 
-```text
-┌────────────────────────────────────┐
-│  ☰  My Home                        │
-│  ──────────────────────────────────│
-│                                    │
-│  🏠 Home Pulse                     │
-│  📊 Systems                        │
-│      ▸ HVAC (Aging)         ← ●    │  ← Active indicator
-│      ▸ Water Heater (Watch)        │
-│      ▸ Roof (Stable)               │
-│  📁 Documents                      │
-│  👤 Home Profile                   │
-│  ──────────────────────────────────│
-│  ⚙️ Settings                       │
-└────────────────────────────────────┘
-```
-
-**Interface:**
+Create a parallel configuration for appliances and minor repairs, separate from capital systems:
 
 ```typescript
-interface MobileSystemDrawerProps {
-  open: boolean;
-  onClose: () => void;
-  systems: SystemTimelineEntry[];
-  activeSystemKey?: string;  // For visual highlight
-  address: string;
-  onNavigate: (path: string) => void;
-}
-```
+export type ApplianceType = 
+  | 'garbage_disposal' 
+  | 'faucet' 
+  | 'toilet' 
+  | 'dishwasher_repair'
+  | 'gfci_outlet'
+  | 'garage_door_opener'
+  | 'sump_pump';
 
-**Implementation Notes:**
-- Uses existing `Sheet` component with `side="left"`
-- Active system shows bullet indicator (●) and slightly darker background
-- Each system shows status badge derived from `getPlanningStatus()`
-- Tapping system navigates to `/systems/:systemKey/plan`
+export type IssueTier = 'small_appliance' | 'medium_system' | 'capital_system';
 
-### 1.2 Add Hamburger Trigger to TopHeader
-
-**Modify:** `src/components/dashboard-v3/TopHeader.tsx`
-
-Add new props and hamburger icon for mobile:
-
-```typescript
-interface TopHeaderProps {
-  // ... existing
-  onMenuOpen?: () => void;  // New
+export interface ApplianceConfig {
+  tier: IssueTier;
+  displayName: string;
+  costRange: { min: number; max: number };
+  typicalLifespan: number;
+  diyEligible: boolean;
+  keywords: string[];
 }
 
-// In render (left side, before brand):
-{condensed && onMenuOpen && (
-  <Button 
-    variant="ghost" 
-    size="icon" 
-    onClick={onMenuOpen}
-    className="mr-1"
-  >
-    <Menu className="h-5 w-5" />
-  </Button>
-)}
-```
-
-### 1.3 Integrate Drawer in DashboardV3
-
-**Modify:** `src/pages/DashboardV3.tsx`
-
-```typescript
-const [drawerOpen, setDrawerOpen] = useState(false);
-
-// In mobile render:
-<TopHeader 
-  // ... existing props
-  onMenuOpen={() => setDrawerOpen(true)}
-/>
-
-<MobileSystemDrawer
-  open={drawerOpen}
-  onClose={() => setDrawerOpen(false)}
-  systems={capitalTimeline?.systems || []}
-  activeSystemKey={focusContext.type === 'SYSTEM' ? focusContext.systemKey : undefined}
-  address={fullAddress}
-  onNavigate={(path) => {
-    navigate(path);
-    setDrawerOpen(false);
-  }}
-/>
-```
-
----
-
-## Phase 2: Persistent Docked Chat on System Plan
-
-### 2.1 Create DockedChatInput Component
-
-**New File:** `src/components/mobile/DockedChatInput.tsx`
-
-Visual structure:
-
-```text
-┌────────────────────────────────────────────────────────┐
-│  💬 Ask about this water heater...              [→]   │
-└────────────────────────────────────────────────────────┘
-```
-
-**Interface:**
-
-```typescript
-interface DockedChatInputProps {
-  systemKey: string;
-  systemLabel: string;
-  onExpandChat: () => void;
-}
-```
-
-**Implementation Notes:**
-- Input is read-only visual affordance (tapping expands full chat)
-- Pre-scoped placeholder: "Ask about this [system]..."
-- No separate "Ask" CTA needed
-- Minimal height (~56px) to preserve content visibility
-
-### 2.2 Modify SystemPlanView for Docked Chat
-
-**Modify:** `src/components/system/SystemPlanView.tsx`
-
-**New Props:**
-
-```typescript
-interface SystemPlanViewProps {
-  // ... existing
-  onChatExpand: () => void;
-  propertyId: string;
-}
-```
-
-**Layout Changes:**
-
-```typescript
-// 1. Add ref for scroll management
-const costSectionRef = useRef<HTMLDivElement>(null);
-
-// 2. Scroll to Cost Reality on mount (Rule 1)
-useEffect(() => {
-  if (costSectionRef.current) {
-    costSectionRef.current.scrollIntoView({ behavior: 'instant', block: 'start' });
-  }
-}, []);
-
-// 3. Update footer structure
-<div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border">
-  {/* Docked chat input */}
-  <DockedChatInput
-    systemKey={system.systemId}
-    systemLabel={displayName}
-    onExpandChat={onChatExpand}
-  />
-  
-  {/* Action buttons below chat */}
-  <div className="px-4 pb-4 pt-2 space-y-2">
-    <Button onClick={handleStartPlanning} className="w-full" size="lg">
-      {PLAN_COPY.actions.primary}
-    </Button>
-    <Button onClick={handleAddMaintenance} variant="outline" className="w-full" size="lg">
-      {PLAN_COPY.actions.secondary}
-    </Button>
-  </div>
-</div>
-```
-
-### 2.3 Add Chat Sheet to SystemPlanPage
-
-**Modify:** `src/pages/SystemPlanPage.tsx`
-
-```typescript
-const [chatOpen, setChatOpen] = useState(false);
-
-// Generate priming message for this system
-const primingMessage = system 
-  ? CHAT_PRIMING.systemPlan(displayName, system.installYear)
-  : undefined;
-
-// Pass handlers to SystemPlanView
-<SystemPlanView
-  system={system}
-  onBack={handleBack}
-  onStartPlanning={handleStartPlanning}
-  onAddMaintenance={handleAddMaintenance}
-  onChatExpand={() => setChatOpen(true)}
-  propertyId={home?.id || ''}
-/>
-
-// Render MobileChatSheet
-<MobileChatSheet
-  open={chatOpen}
-  onClose={() => setChatOpen(false)}
-  propertyId={home?.id || ''}
-  focusContext={{ systemKey: systemKey!, trigger: 'plan_view' }}
-  primingMessage={primingMessage}
-  // ... other props from timeline context
-/>
-```
-
----
-
-## Phase 3: Contextual Chat Priming
-
-### 3.1 Add Priming Templates to mobileCopy.ts
-
-**Modify:** `src/lib/mobileCopy.ts`
-
-```typescript
-// ============== Chat Priming Templates ==============
-
-export const CHAT_PRIMING = {
-  /**
-   * System Plan screen priming
-   * Invites diagnosis, not generic questions
-   */
-  systemPlan: (systemLabel: string, installYear?: number) => {
-    const ageContext = installYear 
-      ? ` installed around ${installYear}` 
-      : '';
-    return `You're looking at your ${systemLabel}${ageContext}. What are you noticing?`;
+export const APPLIANCE_CONFIGS: Record<ApplianceType, ApplianceConfig> = {
+  garbage_disposal: {
+    tier: 'small_appliance',
+    displayName: 'Garbage Disposal',
+    costRange: { min: 150, max: 400 },
+    typicalLifespan: 12,
+    diyEligible: true,
+    keywords: ['disposal', 'garbage disposal', 'kitchen disposal', 'insinkerator']
   },
-  
-  /**
-   * General priming (no system context)
-   */
-  general: () => "How can I help you understand your home better?",
-} as const;
-```
-
-### 3.2 Update MobileChatSheet for Priming (with Guard)
-
-**Modify:** `src/components/dashboard-v3/mobile/MobileChatSheet.tsx`
-
-```typescript
-interface MobileChatSheetProps {
-  // ... existing
-  primingMessage?: string;
-}
-
-// Inside component:
-const hasPrimedForContext = useRef<string | null>(null);
-
-useEffect(() => {
-  if (open && primingMessage && focusContext?.systemKey) {
-    // Guard: Only prime once per system context (Rule 2)
-    if (hasPrimedForContext.current !== focusContext.systemKey) {
-      // Inject as assistant message at conversation start
-      // (Implementation depends on how ChatConsole handles initial messages)
-      hasPrimedForContext.current = focusContext.systemKey;
-    }
-  }
-}, [open, primingMessage, focusContext?.systemKey]);
-
-// Reset guard when sheet closes
-useEffect(() => {
-  if (!open) {
-    hasPrimedForContext.current = null;
-  }
-}, [open]);
-```
-
----
-
-## Phase 4: Replace "Help" with Chat
-
-### 4.1 Update BottomNavigation
-
-**Modify:** `src/components/BottomNavigation.tsx`
-
-```typescript
-interface BottomNavigationProps {
-  onChatOpen?: () => void;
-}
-
-const bottomNavItems = [
-  { title: "Home Pulse", url: "/dashboard", icon: Home },
-  { title: "Chat", action: "openChat", icon: MessageCircle },  // Changed
-  { title: "Settings", url: "/settings", icon: Settings },
-];
-
-export default function BottomNavigation({ onChatOpen }: BottomNavigationProps) {
-  // ...
-
-  const handleNavClick = (item: typeof bottomNavItems[0]) => {
-    if ('action' in item && item.action === 'openChat') {
-      onChatOpen?.();
-    } else if ('url' in item) {
-      navigate(item.url);
-    }
-  };
-
-  // Update isActive logic for Chat (no URL to match)
-  const isActive = (item: typeof bottomNavItems[0]) => {
-    if ('url' in item) {
-      if (item.url === '/dashboard') {
-        return location.pathname === item.url || location.pathname.startsWith('/system');
-      }
-      return location.pathname === item.url;
-    }
-    return false;  // Chat action is never "active" in nav sense
-  };
-}
-```
-
-### 4.2 Update DashboardV3 to Pass Chat Opener
-
-**Modify:** `src/pages/DashboardV3.tsx`
-
-```typescript
-<BottomNavigation onChatOpen={() => setMobileChatOpen(true)} />
-```
-
-### 4.3 Chat Scoping Logic (Rule 4)
-
-When chat opens from bottom nav, scope is determined by current route:
-
-```typescript
-// In DashboardV3:
-const getChatScopeFromRoute = () => {
-  if (location.pathname.startsWith('/systems/')) {
-    // On System Plan - scope to that system
-    const systemKey = location.pathname.split('/')[2];
-    return { systemKey, trigger: 'bottom_nav' };
-  }
-  
-  // On Dashboard - scope to Primary Focus
-  if (primarySystem) {
-    return { systemKey: primarySystem.systemId, trigger: 'bottom_nav' };
-  }
-  
-  // General context
-  return undefined;
+  faucet: {
+    tier: 'small_appliance',
+    displayName: 'Faucet',
+    costRange: { min: 100, max: 350 },
+    typicalLifespan: 20,
+    diyEligible: true,
+    keywords: ['faucet', 'tap', 'sink faucet', 'kitchen faucet', 'bathroom faucet']
+  },
+  toilet: {
+    tier: 'small_appliance',
+    displayName: 'Toilet',
+    costRange: { min: 150, max: 500 },
+    typicalLifespan: 25,
+    diyEligible: true,
+    keywords: ['toilet', 'flapper', 'fill valve', 'running toilet']
+  },
+  // ... additional appliances
 };
 ```
 
-### 4.4 Update LeftColumn for Consistency
+### Phase 2: Update getSystemConfig with Fail-Closed Behavior
 
-**Modify:** `src/components/dashboard-v3/LeftColumn.tsx`
+**File:** `supabase/functions/_shared/systemConfigs.ts`
+
+Replace the HVAC fallback with explicit failure:
 
 ```typescript
-const bottomItems = [
-  { title: "Reports", path: "/validation", icon: FileText },
-  { title: "Chat", action: "openChat", icon: MessageCircle },  // Changed
-  { title: "Settings", path: "/settings", icon: Settings },
-];
+// CURRENT (DANGEROUS):
+export function getSystemConfig(systemType: string): SystemConfig {
+  const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
+  return SYSTEM_CONFIGS[normalized as SystemType] || SYSTEM_CONFIGS.hvac; // BAD
+}
+
+// FIXED:
+export function getSystemConfig(systemType: string): SystemConfig | null {
+  const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
+  return SYSTEM_CONFIGS[normalized as SystemType] || null; // Fail-closed
+}
+
+// New helper for classification
+export function classifyIssueType(issueType: string): {
+  tier: 'small_appliance' | 'medium_system' | 'capital_system';
+  config: ApplianceConfig | SystemConfig;
+} | null {
+  const normalized = issueType.toLowerCase().replace(/[^a-z_]/g, '');
+  
+  // Check appliances first
+  if (APPLIANCE_CONFIGS[normalized]) {
+    return { tier: APPLIANCE_CONFIGS[normalized].tier, config: APPLIANCE_CONFIGS[normalized] };
+  }
+  
+  // Check capital systems
+  if (SYSTEM_CONFIGS[normalized]) {
+    return { tier: 'capital_system', config: SYSTEM_CONFIGS[normalized] };
+  }
+  
+  return null; // Unknown - AI should ask clarifying question
+}
 ```
 
-Note: Desktop chat behavior may differ - this ensures mental model consistency.
+### Phase 3: Add Tier-Aware Cost Tool
+
+**File:** `supabase/functions/ai-home-assistant/index.ts`
+
+Update `calculate_cost_impact` to handle tiers:
+
+```typescript
+case 'calculate_cost_impact': {
+  const { classifyIssueType, APPLIANCE_CONFIGS } = await import('../_shared/systemConfigs.ts');
+  
+  const rawType = parsedArgs.repair_type || '';
+  const normalized = rawType.toLowerCase().replace(/\s+/g, '_');
+  
+  // STEP 1: Classify the issue
+  const classification = classifyIssueType(normalized);
+  
+  // STEP 2: Handle unknown issues (fail-closed)
+  if (!classification) {
+    return JSON.stringify({
+      type: 'unknown_issue',
+      success: false,
+      issueType: rawType,
+      message: 'I need more details to provide accurate cost information.',
+      suggestion: 'Can you describe the specific component or system that needs attention?'
+    });
+  }
+  
+  // STEP 3: Route to tier-appropriate handler
+  if (classification.tier === 'small_appliance') {
+    const applianceConfig = classification.config as ApplianceConfig;
+    return JSON.stringify({
+      type: 'small_appliance_repair',
+      success: true,
+      tier: 'small_appliance',
+      displayName: applianceConfig.displayName,
+      costRange: {
+        low: applianceConfig.costRange.min,
+        high: applianceConfig.costRange.max,
+        label: 'Typical replacement cost (installed)'
+      },
+      diyEligible: applianceConfig.diyEligible,
+      typicalLifespan: applianceConfig.typicalLifespan,
+      recommendation: applianceConfig.diyEligible 
+        ? 'This is often a manageable DIY project, but a plumber can also handle it quickly.'
+        : 'Most homeowners hire a professional for this type of repair.',
+      // NO lifecycle language, NO emergency premiums for small repairs
+    });
+  }
+  
+  // Tier 2 and 3 continue to existing logic...
+}
+```
+
+### Phase 4: Add Tier-Aware System Prompt Rules
+
+**File:** `supabase/functions/ai-home-assistant/index.ts` (createSystemPrompt)
+
+Add mandatory tier classification instructions:
+
+```typescript
+prompt += `
+ISSUE CLASSIFICATION RULES (MANDATORY - READ BEFORE EVERY RESPONSE):
+
+Before discussing costs, repairs, or recommendations, you MUST classify the issue:
+
+TIER 1 - SMALL APPLIANCE ($50-$500):
+Examples: Garbage disposal, faucet, toilet, dishwasher drain, GFCI outlet
+Response rules:
+- State clearly this is a small, contained issue
+- Provide realistic cost range (never more than $500)
+- Offer DIY vs Pro as equal, valid paths
+- NO lifecycle language, NO "system failure", NO "baseline" references
+- Tone: Calm, practical, encouraging
+
+TIER 2 - MEDIUM SYSTEM ($300-$3,000):
+Examples: Water heater repair, sump pump, garage door motor
+Response rules:
+- Balanced, informative tone
+- Safety considerations are appropriate
+- DIY possible for some users
+- May reference lifecycle for larger components
+
+TIER 3 - CAPITAL SYSTEM ($5,000+):
+Examples: HVAC replacement, roof, sewer line, foundation
+Response rules:
+- Strategic, planning-oriented
+- Lifecycle and timing tradeoffs appropriate
+- Recommend professional assessment
+
+CRITICAL GUARDRAIL:
+HVAC, Roof, and other capital systems may NEVER be used as defaults.
+If you cannot classify the issue, ask a clarifying question instead.
+
+FORBIDDEN LANGUAGE FOR TIER 1:
+- "System failure"
+- "Disrupts your home"
+- "Baseline degradation"
+- "Long-term risk"
+- "Capital investment"
+`;
+```
+
+### Phase 5: Add Mode Switching (DIY vs Pro)
+
+Update the AI assistant to explicitly switch modes based on user intent:
+
+```typescript
+// In system prompt
+prompt += `
+MODE SWITCHING RULES:
+
+DIY MODE TRIGGER - User says:
+- "I'll do it myself"
+- "Can I fix this?"
+- "Is this a DIY job?"
+
+DIY MODE BEHAVIOR:
+- Acknowledge their capability
+- Provide step-by-step guidance
+- Emphasize safety
+- Focus on execution, not cost modeling
+- Example: "Great — this is a very manageable DIY project. I'll walk you through it."
+
+PRO MODE TRIGGER - User says:
+- "I want a plumber"
+- "I'd rather hire someone"
+- "Can you recommend a pro?"
+
+PRO MODE BEHAVIOR:
+- Normalize hiring help
+- Explain what to ask for
+- Share fair pricing expectations
+- Offer local recommendations
+- Example: "That makes sense. Most plumbers can replace a disposal in under an hour."
+`;
+```
 
 ---
 
-## Files Summary
+## Files Changed
 
 ### New Files
-
 | File | Purpose |
 |------|---------|
-| `src/components/mobile/MobileSystemDrawer.tsx` | Left-side drawer with system navigation |
-| `src/components/mobile/DockedChatInput.tsx` | Persistent chat input for System Plan |
+| `supabase/functions/_shared/applianceConfigs.ts` | Appliance tier registry with cost bands |
 
 ### Modified Files
-
 | File | Changes |
 |------|---------|
-| `src/components/dashboard-v3/TopHeader.tsx` | Add `onMenuOpen` prop, hamburger icon |
-| `src/components/system/SystemPlanView.tsx` | Add DockedChatInput, scroll behavior, new props |
-| `src/pages/SystemPlanPage.tsx` | Add MobileChatSheet, priming message |
-| `src/lib/mobileCopy.ts` | Add `CHAT_PRIMING` templates |
-| `src/components/dashboard-v3/mobile/MobileChatSheet.tsx` | Add `primingMessage` with per-context guard |
-| `src/components/BottomNavigation.tsx` | Replace "Help" with "Chat" action, add `onChatOpen` |
-| `src/pages/DashboardV3.tsx` | Add drawer state, pass `onMenuOpen` and `onChatOpen` |
-| `src/components/dashboard-v3/LeftColumn.tsx` | Replace "Help" with "Chat" for consistency |
+| `supabase/functions/_shared/systemConfigs.ts` | Remove HVAC fallback, add `classifyIssueType()` |
+| `supabase/functions/ai-home-assistant/index.ts` | Tier-aware `calculate_cost_impact`, updated system prompt |
 
 ---
 
-## Implementation Order
+## Expected Behavior After Fix
 
-| Phase | Priority | Components | Effort |
-|-------|----------|------------|--------|
-| 1 | P0 | MobileSystemDrawer, TopHeader hamburger | Medium |
-| 2 | P0 | DockedChatInput, SystemPlanView integration | Medium |
-| 3 | P1 | Chat priming with guard in MobileChatSheet | Low |
-| 4 | P0 | BottomNavigation → Chat action + scoping | Low |
-| 5 | P1 | LeftColumn consistency | Low |
+**User:** "My kitchen garbage disposal broke"
 
----
+**AI Response (Correct):**
+> "No problem — a broken garbage disposal is usually a small, contained repair.
+> 
+> Most replacements run about $150–$400 installed, depending on the unit.
+> 
+> This is often something homeowners can handle themselves, but a plumber can also swap it quickly.
+> 
+> Would you like to:
+> - Try a DIY fix
+> - Get help finding a pro
+> - Do a quick diagnosis first"
 
-## UX Shift Summary
-
-### Before
-```text
-"Here's your status. If you want, you can chat."
-Chat is an escape hatch.
-Navigation requires bottom nav or tapping CTAs.
-```
-
-### After
-```text
-"Habitta is already here with me, looking at this thing."
-Chat input is always visible on System Plan.
-Hamburger drawer provides global navigation.
-"Chat" replaces "Help" as core primitive.
-```
+**What Will NOT Happen:**
+- No HVAC cost analysis
+- No "system failure" language
+- No "baseline degradation" references
+- No $6,000-$19,000 cost ranges
 
 ---
 
-## Copy Changes
+## Success Criteria
 
-| Location | Before | After |
-|----------|--------|-------|
-| BottomNavigation | "Help" | "Chat" |
-| LeftColumn | "Help" | "Chat" |
-| DockedChatInput placeholder | N/A | "Ask about this [system]..." |
-| Chat priming message | N/A | "You're looking at your Water Heater installed around 2012. What are you noticing?" |
+This fix is working when:
+1. Small problems feel small (garbage disposal = $150-$400)
+2. Big problems feel navigable (HVAC = strategic planning)
+3. Users don't feel talked down to
+4. Users act immediately instead of abandoning the chat
+5. HVAC is NEVER shown as a fallback for unrecognized issues
 
 ---
 
 ## Technical Notes
 
-### Scroll Behavior (Rule 1)
-The `scrollIntoView` call uses `behavior: 'instant'` to avoid jarring animation on initial load. The `block: 'start'` positions the Cost Reality section at the top of the visible area above the docked footer.
+### Why Not Just Add Garbage Disposal to SYSTEM_CONFIGS?
 
-### Sheet vs Drawer Components
-- **System Drawer:** Uses `Sheet` with `side="left"`
-- **Chat Sheet:** Uses `Drawer` (bottom) via existing `MobileChatSheet`
+That would be architecturally wrong. `SYSTEM_CONFIGS` is for capital/structural systems with:
+- Multi-decade lifespans
+- Replacement windows
+- Climate stress factors
+- Emergency premium calculations
 
-No new component library additions required.
+Small appliances don't need this complexity. They need:
+- Simple cost range
+- DIY eligibility flag
+- Calm, practical tone
 
-### Avoiding Double Chat
-All chat surfaces open the same `MobileChatSheet`:
-- DockedChatInput → opens with system context
-- ContextualChatLauncher → opens with Primary Focus context
-- Bottom nav "Chat" → opens with route-derived context
+Mixing these concerns would pollute the capital system logic.
 
-Single chat primitive, multiple entry points.
+### Alignment with Frontend
+
+The frontend already has `src/lib/applianceTiers.ts` with Tier 1/Tier 2 appliances. This fix brings the edge function into alignment with that classification.
 
