@@ -1,78 +1,118 @@
 
 
-# Fix: PRO MODE Contractor Tool Enforcement
+# Fix: Narration Guard + "Find a Pro" CTA Rename
 
-## Problem
+## What's Working
 
-When a user clicks "hire a pro" after discussing an appliance issue, the AI generates prose like "I'll pull some local recommendations for you" and "I've prioritized technicians known for quick response times" -- but never actually calls the `get_contractor_recommendations` tool. The user sees empty promises instead of real contractor cards.
+The contractor tool is now being called. Cards render with real Google Places data. The execution fix is solid.
 
-This is the same "authority drift" pattern: the model says the right things without doing the right things.
+## What's Still Broken
 
-## Root Cause
+The AI generates forward-commit prose **before** the tool results:
 
-1. The PRO MODE system prompt says "Offer local recommendations" -- advisory, not mandatory
-2. `tool_choice: 'auto'` lets the model skip the tool entirely
-3. Forward-commit language bans only cover `calculate_cost_impact`, not contractor discovery
-4. The `searchQueries` map inside `searchLocalContractors` is missing appliance repair service types, so even if the tool were called with `service_type: "appliance_repair"`, it would fall back to a generic search
+> "I'll pull some local recommendations for you. Since your washing machine is a critical daily appliance, I've prioritized technicians known for quick response times."
 
-## Fix (3 Changes, 1 File)
+This text passes through `sanitizePreToolContent()` (line 98-122) because that function only strips **execution artifacts** (JSON markers like `"tool_calls"`, `"arguments"`). It does not strip **false narration** -- prose that claims data retrieval happened when it hasn't.
 
-All changes are in `supabase/functions/ai-home-assistant/index.ts`.
+The result: the user sees a temporal mismatch. The AI speaks in past-tense authority ("I've prioritized...") but the data renders later. This violates the trust contract.
 
-### Change 1: Strengthen PRO MODE Prompt (System Prompt)
+## Root Cause (Exact Location)
 
-**Location:** Lines 1085-1095 (PRO MODE section of `createSystemPrompt`)
+Lines 698-702 in `supabase/functions/ai-home-assistant/index.ts`:
 
-Replace the soft "Offer local recommendations" guidance with mandatory tool invocation rules:
+```text
+const sanitizedContent = sanitizePreToolContent(aiMessage.content);
 
-- Expand trigger phrases: add "hire a pro", "find a contractor", "find someone", "get quotes"
-- Make tool call mandatory: "You MUST call `get_contractor_recommendations` immediately"
-- Infer `service_type` from conversation context (e.g., washing machine discussion means `appliance_repair`)
-- Ban prose-only contractor promises
+return {
+  message: sanitizedContent
+    ? `${sanitizedContent}\n\n${functionResult}`.trim()
+    : functionResult,
+  ...
+};
+```
 
-### Change 2: Extend Forward-Commit Bans (System Prompt)
+`sanitizePreToolContent` is the only gate between the AI's pre-tool prose and the user. It strips JSON artifacts but allows forward-commit language through untouched.
 
-**Location:** Lines 1016-1019 (FORBIDDEN PATTERNS in DIAGNOSTIC GATING RULES)
+## Fix (3 Changes)
 
-Add contractor-specific forbidden patterns:
+### Change 1: Add Narration Guard to `sanitizePreToolContent`
 
-- "I'll pull some local recommendations..." before `get_contractor_recommendations` returns
-- "I've prioritized technicians..." without tool results
-- Any present-tense claim of contractor data retrieval before the tool has executed
+**File:** `supabase/functions/ai-home-assistant/index.ts` (lines 99-122)
 
-### Change 3: Add Appliance Repair to Contractor Search Queries
+Extend `sanitizePreToolContent` to also strip sentences containing forward-commit language. This is a sentence-level filter, not a full content strip -- it preserves legitimate contextual prose (e.g., "For a mechanical issue like this, an appliance repair technician can diagnose the exact part") while removing only the offending sentences.
 
-**Location:** Lines 1159-1168 (the `searchQueries` map inside `searchLocalContractors`)
+Forward-commit patterns to strip:
 
-Add missing service type mappings so the Google Places search actually returns relevant results:
+| Pattern | Example |
+|---------|---------|
+| `i'll pull` | "I'll pull some local recommendations..." |
+| `i've pulled` | "I've pulled together some options..." |
+| `i have pulled` | "I have pulled the latest data..." |
+| `i've prioritized` | "I've prioritized technicians known for..." |
+| `i've found` | "I've found some great options..." |
+| `i found` | "I found several highly-rated..." |
+| `here are some` (before tool result) | "Here are some contractors..." |
+| `i've identified` | "I've identified the best matches..." |
+| `i've located` | "I've located several options..." |
+| `i'll find` | "I'll find the best options..." |
+| `let me pull` | "Let me pull up some recommendations..." |
 
-| Service Type | Search Query |
-|-------------|-------------|
-| `appliance_repair` | `appliance repair technician` |
-| `appliance` | `appliance repair technician` |
-| `washing_machine` | `washing machine repair` |
-| `dryer` | `dryer repair technician` |
-| `refrigerator` | `refrigerator repair technician` |
-| `oven` | `oven range repair technician` |
-| `dishwasher` | `dishwasher repair technician` |
+Implementation approach:
+- Split content into sentences (by `.` followed by space or end)
+- Filter out any sentence whose lowercase form contains a forward-commit pattern
+- Rejoin remaining sentences
+- If all sentences were stripped, return empty string (tool result stands alone)
+- Log when sentences are stripped for debugging
 
-### What About Runtime Enforcement?
+### Change 2: Rename "Help me find local contractors" Suggestion
 
-The user's audit correctly identifies that system prompt instructions are advisory, not enforceable. A true runtime enforcement gate (checking if `tool_calls` includes `get_contractor_recommendations` after the LLM responds, and retrying with forced `tool_choice` if not) would make this bulletproof.
+**File:** `supabase/functions/ai-home-assistant/index.ts` (line 1682)
 
-However, implementing a full retry loop with forced `tool_choice` adds significant complexity:
+Change:
+```
+'Help me find local contractors'
+```
+To:
+```
+'Find a pro near me'
+```
 
-- It requires a second LLM call (cost and latency)
-- It needs careful error handling for the retry path
-- The forced retry must reconstruct context correctly
+This aligns the suggestion text with the "find" framing (discovery, not endorsement) and matches the PRO MODE trigger phrases.
 
-The current approach combines three reinforcing layers:
+### Change 3: No CTA Rename Needed in Frontend
 
-1. **Strong prompt language** ("MUST call", not "offer") -- this alone fixes most cases since Gemini follows explicit instructions well
-2. **Forward-commit ban** -- prevents the failure mode where the model promises results without calling the tool
-3. **Search query coverage** -- ensures the tool returns useful results when called
+After searching the codebase, the "hire a pro" text the user clicks is **not** a hardcoded CTA in the frontend. It comes from one of two places:
+- The AI's own suggestion chips (generated server-side via `generateFollowUpSuggestions`)
+- The user typing it manually
 
-This is a pragmatic fix that addresses the immediate failure. A runtime enforcement gate can be added as a follow-up if prompt-level enforcement proves insufficient.
+The `generateFollowUpSuggestions` function on line 1682 already contains the only frontend-adjacent reference: `'Help me find local contractors'`. Changing this to `'Find a pro near me'` covers the CTA rename.
+
+The `SUGGESTED_PROMPTS` in `src/lib/chatModeCopy.ts` (the frozen prompt chips shown in the chat UI) do not contain any "hire" language -- they are mode-specific and already use observational framing. No changes needed there.
+
+---
+
+## Technical Details
+
+### Narration Guard Implementation
+
+The guard runs inside `sanitizePreToolContent`, which is called **only** when `tool_calls` are present (line 698). This means:
+- It only activates when the AI is about to execute a tool
+- It never affects normal prose-only responses
+- It preserves contextual sentences that don't contain forward-commit patterns
+
+```text
+Sentence-level filter (pseudocode):
+
+sentences = splitIntoSentences(content)
+filtered = sentences.filter(s => !containsForwardCommitPattern(s.toLowerCase()))
+return filtered.join(' ').trim()
+```
+
+This is surgical: a response like "That makes sense. I'll pull some local recommendations for you. An appliance repair specialist can diagnose the part quickly." becomes "That makes sense. An appliance repair specialist can diagnose the part quickly." -- the good prose survives, the forward-commit is stripped.
+
+### Why Sentence-Level, Not Full Strip
+
+The existing `sanitizePreToolContent` does full-content stripping for execution artifacts (if any marker is found, return empty string). Forward-commit language is different: the AI may generate genuinely useful contextual prose alongside the offending sentence. Stripping the entire content would lose valuable context like "For a mechanical issue like a drum not spinning, an appliance repair technician can usually diagnose the exact part within minutes."
 
 ---
 
@@ -80,18 +120,22 @@ This is a pragmatic fix that addresses the immediate failure. A runtime enforcem
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/ai-home-assistant/index.ts` | Strengthen PRO MODE prompt, extend forward-commit bans, add appliance repair search queries |
+| `supabase/functions/ai-home-assistant/index.ts` | Add forward-commit narration guard to `sanitizePreToolContent`; rename suggestion text |
 
 ## Expected Behavior After Fix
 
-**User:** "hire a pro" (after discussing washing machine)
+**User:** "find a pro" (after discussing washing machine)
 
-**Before (broken):**
-> "I'll pull some local recommendations for you. I've prioritized technicians known for quick response times. What specific information would you like?"
+**Before (current):**
+> "I'll pull some local recommendations for you. Since your washing machine is a critical daily appliance, I've prioritized technicians known for quick response times."
+>
+> [Contractor cards with real data]
 
 **After (correct):**
-> "That makes sense. For a mechanical issue like this, an appliance repair technician can usually diagnose the exact part failure quickly."
+> "That makes sense. For a mechanical issue like this, an appliance repair specialist can usually diagnose the exact part within minutes."
 >
-> [Contractor cards appear with real Google Places data: names, ratings, phone numbers]
+> [Contractor cards with real data]
 >
-> "When you call, ask whether they stock common washer parts and what their diagnostic fee covers."
+> (Post-tool guidance may follow: "When you call, ask about diagnostic fees and parts availability.")
+
+The AI acknowledges intent, the tool executes silently, results render, and any post-result guidance is truthful because it references data that already exists.
