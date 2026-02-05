@@ -110,7 +110,7 @@ export default function LandingPage() {
                 size="lg"
                 variant="outline"
                 onClick={() => scrollToSection('preview')}
-                className="text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-2 border-primary-foreground/60 text-primary-foreground hover:bg-primary-foreground/10 touch-friendly hero-text-shadow"
+                className="bg-transparent text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-2 border-primary-foreground/60 text-primary-foreground hover:bg-primary-foreground/10 touch-friendly hero-text-shadow"
               >
                 Preview the App
               </Button>
