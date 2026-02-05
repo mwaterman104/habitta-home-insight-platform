@@ -4,7 +4,7 @@
  * NORMALIZATION LAYER ORCHESTRATOR
  * 
  * This component:
- * 1. Extracts structured data (contractors, etc.)
+ * 1. Extracts structured data (contractors, home events, etc.)
  * 2. Sanitizes artifact tags
  * 3. Renders structured components FIRST (Validation First pattern)
  * 4. Renders remaining text via ReactMarkdown
@@ -13,6 +13,7 @@
 import ReactMarkdown from 'react-markdown';
 import { extractAndSanitize } from '@/lib/chatFormatting';
 import { ContractorRecommendations } from './ContractorRecommendations';
+import { HomeEventConfirmation } from './HomeEventConfirmation';
 
 interface ChatMessageContentProps {
   content: string;
@@ -23,7 +24,7 @@ export function ChatMessageContent({ content }: ChatMessageContentProps) {
   const { cleanText, structuredData } = extractAndSanitize(content);
   
   // 2. Check if we have any content to render
-  const hasStructured = !!structuredData.contractors;
+  const hasStructured = !!structuredData.contractors || !!structuredData.homeEvent;
   const hasText = cleanText.trim().length > 0;
   
   if (!hasStructured && !hasText) {
@@ -41,6 +42,11 @@ export function ChatMessageContent({ content }: ChatMessageContentProps) {
           message={structuredData.contractors.message}
           suggestion={structuredData.contractors.suggestion}
         />
+      )}
+      
+      {/* Home Record confirmation (quiet bookkeeping) */}
+      {structuredData.homeEvent && (
+        <HomeEventConfirmation event={structuredData.homeEvent} />
       )}
       
       {/* Prose content via ReactMarkdown */}
