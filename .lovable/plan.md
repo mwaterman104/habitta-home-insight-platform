@@ -1,139 +1,97 @@
 
-# Fix: Tool Failure JSON Leak + Missing Appliance Coverage
 
-## Problem Summary
+# Fix: PRO MODE Contractor Tool Enforcement
 
-Two interrelated bugs cause raw JSON to leak into user-facing chat:
+## Problem
 
-1. **Missing appliances**: `washing_machine`, `dryer`, `refrigerator`, `oven_range`, `microwave` are not in the edge function's `APPLIANCE_CONFIGS`, so `classifyIssueType()` returns `null` and the tool emits `{"type":"unknown_issue",...}`
-2. **No frontend handler**: The normalization layer (`chatFormatting.ts`) only handles 4 domain types: `contractor_recommendations`, `system_update`, `replacement_tradeoff`, `proposed_addition`. The three new response types (`unknown_issue`, `small_appliance_repair`, `medium_system_repair`) pass through untranslated.
+When a user clicks "hire a pro" after discussing an appliance issue, the AI generates prose like "I'll pull some local recommendations for you" and "I've prioritized technicians known for quick response times" -- but never actually calls the `get_contractor_recommendations` tool. The user sees empty promises instead of real contractor cards.
 
----
+This is the same "authority drift" pattern: the model says the right things without doing the right things.
 
-## Phase 1: Add Missing Appliances to Edge Function Registry
+## Root Cause
 
-**File:** `supabase/functions/_shared/applianceConfigs.ts`
+1. The PRO MODE system prompt says "Offer local recommendations" -- advisory, not mandatory
+2. `tool_choice: 'auto'` lets the model skip the tool entirely
+3. Forward-commit language bans only cover `calculate_cost_impact`, not contractor discovery
+4. The `searchQueries` map inside `searchLocalContractors` is missing appliance repair service types, so even if the tool were called with `service_type: "appliance_repair"`, it would fall back to a generic search
 
-Add 5 missing appliances that the frontend already tracks in `applianceTiers.ts`:
+## Fix (3 Changes, 1 File)
 
-### New `SmallApplianceType` additions:
-| Key | Display | Cost Range | DIY | Keywords |
-|-----|---------|-----------|-----|----------|
-| `microwave` | Microwave | $100-$400 | Yes | microwave, over-the-range microwave |
+All changes are in `supabase/functions/ai-home-assistant/index.ts`.
 
-### New `MediumSystemType` additions:
-| Key | Display | Cost Range | DIY | Keywords |
-|-----|---------|-----------|-----|----------|
-| `washing_machine` | Washing Machine | $400-$1,200 | No | washer, washing machine, laundry machine, clothes washer |
-| `dryer` | Dryer | $350-$1,000 | No | dryer, clothes dryer, tumble dryer |
-| `refrigerator` | Refrigerator | $500-$2,500 | No | refrigerator, fridge, freezer |
-| `oven_range` | Oven/Range | $400-$2,000 | No | oven, range, stove, cooktop |
+### Change 1: Strengthen PRO MODE Prompt (System Prompt)
 
-### Type updates:
-- Add `microwave` to `SmallApplianceType` union
-- Add `washing_machine`, `dryer`, `refrigerator`, `oven_range` to `MediumSystemType` union
+**Location:** Lines 1085-1095 (PRO MODE section of `createSystemPrompt`)
 
----
+Replace the soft "Offer local recommendations" guidance with mandatory tool invocation rules:
 
-## Phase 2: Frontend Normalization (Critical Safety Fix)
+- Expand trigger phrases: add "hire a pro", "find a contractor", "find someone", "get quotes"
+- Make tool call mandatory: "You MUST call `get_contractor_recommendations` immediately"
+- Infer `service_type` from conversation context (e.g., washing machine discussion means `appliance_repair`)
+- Ban prose-only contractor promises
 
-**File:** `src/lib/chatFormatting.ts`
+### Change 2: Extend Forward-Commit Bans (System Prompt)
 
-### A. Expand `DOMAIN_TYPES` whitelist (line 99)
+**Location:** Lines 1016-1019 (FORBIDDEN PATTERNS in DIAGNOSTIC GATING RULES)
 
-Add `unknown_issue`, `small_appliance_repair`, `medium_system_repair` to prevent the execution artifact firewall from accidentally stripping these as execution artifacts.
+Add contractor-specific forbidden patterns:
 
-### B. Add extraction + translation functions
+- "I'll pull some local recommendations..." before `get_contractor_recommendations` returns
+- "I've prioritized technicians..." without tool results
+- Any present-tense claim of contractor data retrieval before the tool has executed
 
-Three new functions following the same pattern as `extractSystemUpdateData`:
+### Change 3: Add Appliance Repair to Contractor Search Queries
 
-- **`extractUnknownIssueData(content)`** -- Finds `{"type":"unknown_issue",...}`, removes the JSON, returns a human-readable message: *"To provide accurate cost information, I need a bit more detail about the specific issue."*
+**Location:** Lines 1159-1168 (the `searchQueries` map inside `searchLocalContractors`)
 
-- **`extractSmallApplianceData(content)`** -- Finds `{"type":"small_appliance_repair",...}`, removes the JSON, returns formatted text with cost range, DIY eligibility, and trade recommendation.
+Add missing service type mappings so the Google Places search actually returns relevant results:
 
-- **`extractMediumSystemData(content)`** -- Finds `{"type":"medium_system_repair",...}`, removes the JSON, returns formatted text with cost range, professional recommendation, and safety note.
+| Service Type | Search Query |
+|-------------|-------------|
+| `appliance_repair` | `appliance repair technician` |
+| `appliance` | `appliance repair technician` |
+| `washing_machine` | `washing machine repair` |
+| `dryer` | `dryer repair technician` |
+| `refrigerator` | `refrigerator repair technician` |
+| `oven` | `oven range repair technician` |
+| `dishwasher` | `dishwasher repair technician` |
 
-### C. Wire into `extractAndSanitize()` pipeline
+### What About Runtime Enforcement?
 
-Add three new extraction steps (after step 4, before artifact tag stripping):
-- Step 5: Extract unknown issue data
-- Step 6: Extract small appliance data
-- Step 7: Extract medium system data
+The user's audit correctly identifies that system prompt instructions are advisory, not enforceable. A true runtime enforcement gate (checking if `tool_calls` includes `get_contractor_recommendations` after the LLM responds, and retrying with forced `tool_choice` if not) would make this bulletproof.
 
-Append their human-readable messages to clean text, same as existing pattern.
+However, implementing a full retry loop with forced `tool_choice` adds significant complexity:
 
-### D. Add catch-all JSON stripper (defense in depth)
+- It requires a second LLM call (cost and latency)
+- It needs careful error handling for the retry path
+- The forced retry must reconstruct context correctly
 
-After all known extractors run but before final cleanup, scan for any remaining `{"type":"..."}` JSON objects and strip them entirely. This prevents future tool response types from leaking if new tools are added before the frontend is updated.
+The current approach combines three reinforcing layers:
 
-### E. Update `ExtractedStructuredData` interface
+1. **Strong prompt language** ("MUST call", not "offer") -- this alone fixes most cases since Gemini follows explicit instructions well
+2. **Forward-commit ban** -- prevents the failure mode where the model promises results without calling the tool
+3. **Search query coverage** -- ensures the tool returns useful results when called
 
-Add optional fields for the three new data types so they can be consumed by future UI components if needed.
-
----
-
-## Phase 3: Diagnostic Gating in System Prompt
-
-**File:** `supabase/functions/ai-home-assistant/index.ts`
-
-Add mandatory diagnostic gating rules to `createSystemPrompt()` (after the existing COST CALCULATION RULES section around line 1002):
-
-```
-DIAGNOSTIC GATING RULES (MANDATORY):
-Before calling calculate_cost_impact, you MUST have identified at least ONE of:
-- A specific appliance or system (e.g., "garbage disposal", "HVAC", "washing machine")
-- A specific component (e.g., "drain pump", "compressor", "control board")
-- An error code or specific symptom
-
-If the user describes a CATEGORY without specifying what's wrong:
-1. Acknowledge the issue calmly
-2. Ask ONE narrowing question about symptoms or error codes
-3. ONLY THEN call the cost tool
-
-FORBIDDEN PATTERN:
-"I've pulled a breakdown of costs..." followed by a tool call.
-You may NOT announce results before the tool has returned successfully.
-```
+This is a pragmatic fix that addresses the immediate failure. A runtime enforcement gate can be added as a follow-up if prompt-level enforcement proves insufficient.
 
 ---
 
 ## Files Changed
 
-### Modified Files
-
 | File | Changes |
 |------|---------|
-| `supabase/functions/_shared/applianceConfigs.ts` | Add `washing_machine`, `dryer`, `refrigerator`, `oven_range`, `microwave` with keywords |
-| `src/lib/chatFormatting.ts` | Expand DOMAIN_TYPES, add 3 extraction/translation functions, catch-all JSON stripper |
-| `supabase/functions/ai-home-assistant/index.ts` | Add diagnostic gating rules to system prompt |
-
----
-
-## Defense in Depth (3 Layers)
-
-1. **Layer 1 (Registry):** The appliance is now recognized, so `classifyIssueType()` returns a valid tier instead of `null`. The tool returns `small_appliance_repair` or `medium_system_repair` with proper cost data.
-
-2. **Layer 2 (Normalization):** Even if the tool returns `unknown_issue` (for genuinely unrecognized items), the frontend catches the JSON, strips it, and replaces it with human-readable text.
-
-3. **Layer 3 (Catch-all):** Any remaining `{"type":"..."}` JSON that slips through all extractors is stripped entirely. No raw JSON ever reaches the user.
-
-Any single layer prevents the bug. All three together make it structurally impossible.
-
----
+| `supabase/functions/ai-home-assistant/index.ts` | Strengthen PRO MODE prompt, extend forward-commit bans, add appliance repair search queries |
 
 ## Expected Behavior After Fix
 
-**User:** "My washing machine is broken"
+**User:** "hire a pro" (after discussing washing machine)
 
-**AI (correct):**
-> Washing machine issues can range from simple fixes to component replacements.
->
-> Most washing machine repairs run $150-$500 for individual components, or $400-$1,200 for a full replacement.
->
-> To narrow this down: do you know the error code on the display, or can you describe what the washer does right before it stops?
+**Before (broken):**
+> "I'll pull some local recommendations for you. I've prioritized technicians known for quick response times. What specific information would you like?"
 
-**What will NOT happen:**
-- No raw JSON in the chat
-- No `{"type":"unknown_issue",...}` visible to user
-- No HVAC fallback costs
-- No "system failure" language for appliances
+**After (correct):**
+> "That makes sense. For a mechanical issue like this, an appliance repair technician can usually diagnose the exact part failure quickly."
+>
+> [Contractor cards appear with real Google Places data: names, ratings, phone numbers]
+>
+> "When you call, ask whether they stock common washer parts and what their diagnostic fee covers."
