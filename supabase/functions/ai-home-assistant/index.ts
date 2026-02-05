@@ -1001,8 +1001,75 @@ ${profileToPromptInstructions(copyProfile)}
 
   prompt += `
 COST CALCULATION RULES:
+ISSUE CLASSIFICATION RULES (MANDATORY - READ BEFORE EVERY RESPONSE):
+
+Before discussing costs, repairs, or recommendations, you MUST classify the issue:
+
+TIER 1 - SMALL APPLIANCE ($50-$500):
+Examples: Garbage disposal, faucet, toilet, dishwasher drain, GFCI outlet, smoke detector
+Response rules:
+- State clearly this is a small, contained issue
+- Provide realistic cost range (never more than $500)
+- Offer DIY vs Pro as equal, valid paths
+- NO lifecycle language, NO "system failure", NO "baseline" references
+- Tone: Calm, practical, encouraging
+
+TIER 2 - MEDIUM SYSTEM ($300-$3,000):
+Examples: Sump pump, garage door opener, water softener
+Response rules:
+- Balanced, informative tone
+- Safety considerations are appropriate
+- DIY possible for some users
+- May mention typical lifespan for context
+
+TIER 3 - CAPITAL SYSTEM ($5,000+):
+Examples: HVAC replacement, roof, sewer line, foundation, electrical panel
+Response rules:
+- Strategic, planning-oriented
+- Lifecycle and timing tradeoffs appropriate
+- Recommend professional assessment
+
+CRITICAL GUARDRAIL:
+HVAC, Roof, and other capital systems may NEVER be used as defaults.
+If you cannot classify the issue, ask a clarifying question instead.
+
+FORBIDDEN LANGUAGE FOR TIER 1:
+- "System failure"
+- "Disrupts your home"  
+- "Baseline degradation"
+- "Long-term risk"
+- "Capital investment"
+- "Emergency replacement"
+
+MODE SWITCHING RULES:
+
+DIY MODE TRIGGER - User says:
+- "I'll do it myself"
+- "Can I fix this?"
+- "Is this a DIY job?"
+
+DIY MODE BEHAVIOR:
+- Acknowledge their capability
+- Provide step-by-step guidance
+- Emphasize safety
+- Focus on execution, not cost modeling
+- Example: "Great — this is a very manageable DIY project. I'll walk you through it."
+
+PRO MODE TRIGGER - User says:
+- "I want a plumber"
+- "I'd rather hire someone"
+- "Can you recommend a pro?"
+
+PRO MODE BEHAVIOR:
+- Normalize hiring help
+- Explain what to ask for
+- Share fair pricing expectations
+- Offer local recommendations
+- Example: "That makes sense. Most plumbers can replace a disposal in under an hour."
+
 - For EXISTING systems: calculate_cost_impact returns replacement timing + emergency vs planned costs
 - For PROPOSED additions (mini-split, new system): calculate_cost_impact returns typical installation cost ranges
+- For SMALL APPLIANCES: calculate_cost_impact returns simple cost ranges with DIY guidance
 - Never claim "no information" if a valid cost range exists — present what you know
 - Use "rush install" language for new additions, not "emergency" language
 - Always recommend getting 2–3 quotes from licensed contractors
@@ -1218,13 +1285,94 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       
     case 'calculate_cost_impact': {
       // Import system configs for cost data
-      const { getSystemConfig, getEmergencyPremium } = await import('../_shared/systemConfigs.ts');
+      const { getSystemConfig, getEmergencyPremium, classifyIssueType } = await import('../_shared/systemConfigs.ts');
       
       // Normalize repair_type to system key
       const rawType = parsedArgs.repair_type || 'water_heater';
       const systemType = rawType.toLowerCase().replace(/\s+/g, '_');
       const quantity = parsedArgs.quantity ?? 1;
+      
+      // STEP 1: Classify the issue using tier-aware system
+      const classification = classifyIssueType(rawType);
+      
+      // STEP 2: Handle unknown issues (fail-closed - no HVAC fallback!)
+      if (!classification) {
+        console.log(`[calculate_cost_impact] Unknown issue type: ${rawType} - requesting clarification`);
+        return JSON.stringify({
+          type: 'unknown_issue',
+          success: false,
+          issueType: rawType,
+          message: 'I need more details to provide accurate cost information.',
+          suggestion: 'Can you describe the specific component or system that needs attention?'
+        });
+      }
+      
+      // STEP 3: Route to tier-appropriate handler
+      // ===== TIER 1: SMALL APPLIANCE PATH =====
+      if (classification.tier === 'small_appliance') {
+        const applianceConfig = classification.config as any;
+        console.log(`[calculate_cost_impact] Small appliance: ${classification.systemKey}`);
+        
+        return JSON.stringify({
+          type: 'small_appliance_repair',
+          success: true,
+          tier: 'small_appliance',
+          systemKey: classification.systemKey,
+          displayName: applianceConfig.displayName,
+          costRange: {
+            low: applianceConfig.costRange.min,
+            high: applianceConfig.costRange.max,
+            label: 'Typical replacement cost (installed)'
+          },
+          diyEligible: applianceConfig.diyEligible,
+          typicalLifespan: applianceConfig.typicalLifespan,
+          tradeType: applianceConfig.tradeType,
+          recommendation: applianceConfig.diyEligible 
+            ? 'This is often a manageable DIY project, but a professional can also handle it quickly.'
+            : 'Most homeowners hire a professional for this type of repair.',
+        });
+      }
+      
+      // ===== TIER 2: MEDIUM SYSTEM PATH =====
+      if (classification.tier === 'medium_system') {
+        const mediumConfig = classification.config as any;
+        console.log(`[calculate_cost_impact] Medium system: ${classification.systemKey}`);
+        
+        return JSON.stringify({
+          type: 'medium_system_repair',
+          success: true,
+          tier: 'medium_system',
+          systemKey: classification.systemKey,
+          displayName: mediumConfig.displayName,
+          costRange: {
+            low: mediumConfig.costRange.min,
+            high: mediumConfig.costRange.max,
+            label: 'Typical replacement/repair cost'
+          },
+          diyEligible: mediumConfig.diyEligible,
+          typicalLifespan: mediumConfig.typicalLifespan,
+          tradeType: mediumConfig.tradeType,
+          recommendation: mediumConfig.diyEligible 
+            ? 'Some homeowners tackle this themselves, but safety considerations apply.'
+            : 'We recommend getting quotes from licensed professionals.',
+          safetyNote: 'Consider safety factors before attempting DIY on this type of system.',
+        });
+      }
+      
+      // ===== TIER 3: CAPITAL SYSTEM PATH (existing logic) =====
       const config = getSystemConfig(systemType);
+      
+      // Guard against null config (shouldn't happen after classification, but defensive)
+      if (!config) {
+        console.error(`[calculate_cost_impact] No config found for classified capital system: ${systemType}`);
+        return JSON.stringify({
+          type: 'unknown_issue',
+          success: false,
+          issueType: rawType,
+          message: 'I encountered an error processing this system type.',
+          suggestion: 'Please try describing the system differently.'
+        });
+      }
       
       // Find the system in context
       const systemContext = context.systems?.find((s: EnrichedSystemContext) => 
@@ -1234,8 +1382,8 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       // Determine system mode: existing (in DB) or proposed (new addition)
       const systemMode = systemContext ? 'existing' : 'proposed';
       
-      // ===== PROPOSED SYSTEM PATH =====
-      // Provide cost ranges for systems not yet in the home
+      // ===== PROPOSED CAPITAL SYSTEM PATH =====
+      // Provide cost ranges for capital systems not yet in the home
       if (systemMode === 'proposed') {
         const baseLow = config.replacementCostRange.min * quantity;
         const baseHigh = config.replacementCostRange.max * quantity;

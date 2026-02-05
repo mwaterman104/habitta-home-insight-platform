@@ -121,7 +121,64 @@ export const SYSTEM_CONFIGS: Record<SystemType, SystemConfig> = {
  */
 export function getSystemConfig(systemType: string): SystemConfig {
   const normalized = systemType.toLowerCase().replace(/[^a-z_]/g, '');
-  return SYSTEM_CONFIGS[normalized as SystemType] || SYSTEM_CONFIGS.hvac;
+   return SYSTEM_CONFIGS[normalized as SystemType] || null as unknown as SystemConfig;
+}
+
+// ============================================================================
+// TIER-AWARE ISSUE CLASSIFICATION
+// ============================================================================
+
+import { 
+  APPLIANCE_CONFIGS, 
+  type ApplianceConfig, 
+  type ApplianceType,
+  type IssueTier,
+  findApplianceByKeyword 
+} from './applianceConfigs.ts';
+
+export type { IssueTier, ApplianceConfig };
+
+export interface IssueClassification {
+  tier: IssueTier;
+  config: ApplianceConfig | SystemConfig;
+  systemKey: string;
+  isCapitalSystem: boolean;
+}
+
+/**
+ * Classify an issue type into the appropriate tier.
+ * This is the primary guard against HVAC fallback.
+ * 
+ * Returns null for unknown issues (AI should ask clarifying question).
+ */
+export function classifyIssueType(issueType: string): IssueClassification | null {
+  const normalized = issueType.toLowerCase().replace(/[^a-z_]/g, '_').replace(/_+/g, '_');
+  
+  // Step 1: Check appliances first (small + medium tiers)
+  const applianceMatch = findApplianceByKeyword(issueType);
+  if (applianceMatch) {
+    return {
+      tier: applianceMatch.config.tier,
+      config: applianceMatch.config,
+      systemKey: applianceMatch.type,
+      isCapitalSystem: false,
+    };
+  }
+  
+  // Step 2: Check capital systems
+  const systemConfig = SYSTEM_CONFIGS[normalized as SystemType];
+  if (systemConfig) {
+    return {
+      tier: 'capital_system',
+      config: systemConfig,
+      systemKey: normalized,
+      isCapitalSystem: true,
+    };
+  }
+  
+  // Step 3: Unknown - return null (fail-closed)
+  // The AI should ask a clarifying question instead of escalating
+  return null;
 }
 
 /**
