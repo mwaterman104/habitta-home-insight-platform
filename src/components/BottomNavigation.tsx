@@ -1,4 +1,4 @@
-import { Home, MessageCircle, Settings } from "lucide-react";
+import { Home, MessageCircle, FileText, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +15,7 @@ type NavItem =
 const bottomNavItems: NavItem[] = [
   { title: "Home Pulse", url: "/dashboard", icon: Home },
   { title: "Chat", action: "openChat", icon: MessageCircle },
+  { title: "Report", url: "/report", icon: FileText },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
