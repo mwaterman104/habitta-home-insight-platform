@@ -29,6 +29,7 @@ import PropertyReportPage from "./PropertyReportPage";
 import LandingPage from "./LandingPage";
 import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 import MobilePhotoCaptureRoute from "./MobilePhotoCaptureRoute";
+import HomeReportPage from "./HomeReportPage";
 
 export function AppRoutes() {
   return (
@@ -79,6 +80,13 @@ export function AppRoutes() {
           <Route path="/home-profile" element={
             <ProtectedRoute>
               <HomeProfilePage />
+            </ProtectedRoute>
+          } />
+          
+          {/* Home Report: Read-only document surface */}
+          <Route path="/report" element={
+            <ProtectedRoute>
+              <HomeReportPage />
             </ProtectedRoute>
           } />
           

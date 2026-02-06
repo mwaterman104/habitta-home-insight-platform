@@ -34,7 +34,7 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   ];
 
   const bottomItems = [
-    { title: "Reports", path: "/validation", icon: FileText },
+    { title: "Report", path: "/report", icon: FileText },
     { title: "Chat", path: "/dashboard", icon: MessageCircle, action: 'chat' },
     { title: "Settings", path: "/settings", icon: Settings },
   ];
