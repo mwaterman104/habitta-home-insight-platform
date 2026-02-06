@@ -1,332 +1,221 @@
 
 
-# Home Record: Hardened Implementation ("Carfax for the Home")
+# Home Report Tab -- Hardened Implementation Plan
 
-## Overview
+## Summary
 
-This plan implements the master system of record with all hardening tweaks applied. Two new tables, one new AI tool, system prompt protocols, and chat formatting -- everything needed to turn conversations into permanent home history.
+Add "Report" as a permanent, first-class navigation surface at `/report`. This is a read-only document rendered as an interface -- structured, printable, and valuable from day one even when sparse. It aggregates data from `homes`, `home_assets`, `home_events`, and `systems` with explicit deduplication and resolution rules to prevent the five implementation traps identified in the QA review.
 
-## Database Layer (Step 1)
+## Navigation Changes
 
-### Table: `home_assets` (VIN Layer)
+### Mobile Bottom Bar
+Add "Report" as a 4th item. New order: **Home Pulse | Chat | Report | Settings**.
 
-One durable identity per physical thing. Assets are never deleted -- only status-transitioned via events.
+File: `src/components/BottomNavigation.tsx`
+- Add `FileText` import from lucide-react
+- Insert `{ title: "Report", url: "/report", icon: FileText }` at position 3 (between Chat and Settings)
 
-| Column | Type | Default | Purpose |
-|--------|------|---------|---------|
-| `id` | uuid | `gen_random_uuid()` | Primary key |
-| `home_id` | uuid | FK to homes | Which home |
-| `user_id` | uuid | not null | Owner (for RLS) |
-| `category` | text | not null | `appliance`, `system`, `structure` |
-| `kind` | text | not null | `washing_machine`, `hvac`, `roof`, etc. |
-| `manufacturer` | text | nullable | Brand name |
-| `model` | text | nullable | Model number |
-| `serial` | text | nullable | Serial number |
-| `install_date` | date | nullable | When installed |
-| `removal_date` | date | nullable | When removed/replaced |
-| `status` | text | `'active'` | `active`, `replaced`, `removed`, `unknown` |
-| `source` | text | not null | `chat`, `photo`, `permit`, `pro`, `manual` |
-| `confidence` | integer | 50 | 0-100, capped by source type |
-| `notes` | text | nullable | Free-form |
-| `metadata` | jsonb | `'{}'` | Age estimate, fuel type, capacity, etc. |
-| `created_at` | timestamptz | `now()` | |
-| `updated_at` | timestamptz | `now()` | |
+### Desktop Left Sidebar
+Replace the current "Reports" item (which points to `/validation`, an internal admin tool) with a user-facing "Report" item pointing to `/report`.
 
-**Confidence Ceiling Rules** (enforced in tool handler, not DB constraint):
+File: `src/components/dashboard-v3/LeftColumn.tsx`
+- In `bottomItems`, change the first entry from `{ title: "Reports", path: "/validation", ... }` to `{ title: "Report", path: "/report", ... }`
 
-| Source | Max Confidence |
-|--------|---------------|
-| `chat` | 60 |
-| `photo` | 80 |
-| `pro` (invoice) | 95 |
-| `permit` | 95 |
+### Route
+File: `src/pages/AppRoutes.tsx`
+- Add a new protected route: `/report` rendering `HomeReportPage` (standalone, using `DashboardV3Layout` wrapper like Systems Hub and Home Profile)
 
-**Indexes**: `(home_id, kind)`, `(user_id)`
+## Data Hook: `src/hooks/useHomeReport.ts`
 
-**RLS**: Users can CRUD assets for homes they own (`user_id = auth.uid()`). Service role can write on behalf of users.
+A single hook that fetches and assembles all report data. Uses TanStack `useQuery` for caching.
 
-### Table: `home_events` (Immutable Ledger)
+### Four Parallel Queries
 
-Append-only. Events are never mutated -- status changes are new events linked via `related_event_id`.
+1. **Property**: `homes` table, single row by `home_id` (from `useUserHome` context)
+2. **Assets**: `home_assets` where `home_id = X` and `status != 'removed'`
+3. **Events**: `home_events` where `home_id = X`, ordered by `created_at desc`, **limit 200** (client-side cap to prevent unbounded growth; documented as a future pagination point)
+4. **Legacy systems**: `systems` where `home_id = X` (supplemental for core systems not yet in `home_assets`)
 
-| Column | Type | Default | Purpose |
-|--------|------|---------|---------|
-| `id` | uuid | `gen_random_uuid()` | Primary key |
-| `home_id` | uuid | FK to homes | Which home |
-| `user_id` | uuid | not null | Owner (for RLS) |
-| `asset_id` | uuid | nullable, FK to home_assets | Which asset |
-| `event_type` | text | not null | See list below |
-| `title` | text | not null | Human-readable summary |
-| `description` | text | nullable | Detailed description |
-| `severity` | text | `'info'` | `info`, `minor`, `moderate`, `major` |
-| `status` | text | `'open'` | `open`, `in_progress`, `resolved`, `deferred` |
-| `cost_estimated` | jsonb | nullable | `{low: 150, high: 400}` |
-| `cost_actual` | numeric | nullable | What was paid |
-| `source` | text | not null | `chat`, `photo`, `pro`, `permit`, `manual` |
-| `related_event_id` | uuid | nullable, FK to self | Event chaining |
-| `metadata` | jsonb | `'{}'` | Semantic sub-records |
-| `created_at` | timestamptz | `now()` | |
+### Hardening Rule 1: Asset Deduplication
 
-**Event Types**: `system_discovered`, `issue_reported`, `diagnosis`, `recommendation`, `repair_completed`, `maintenance_performed`, `replacement`, `user_decision`, `contractor_referred`, `status_change`
+The `systems` table tracks core lifecycle systems (HVAC, roof, water heater) using a `kind` field. The `home_assets` table may also have entries for those same systems discovered via chat. To prevent showing duplicate rows:
 
-**Hardening Rule -- Append-Only Semantics**:
-- No `UPDATE` policy on `home_events` -- only `INSERT` and `SELECT`
-- Status changes are recorded as new `status_change` events linked via `related_event_id`
-- No `resolved_at` column -- resolution is determined by the existence of a linked `status_change` event with `status: 'resolved'`
-
-**Indexes**: `(home_id)`, `(asset_id)`, `(related_event_id)`
-
-**RLS**: Users can INSERT and SELECT events for homes they own. No UPDATE or DELETE.
-
-### Semantic Sub-Records (in `metadata` JSONB)
-
-For `issue_reported`:
 ```text
-{"symptom": "Drum spins slowly, grinding noise", "reported_by": "homeowner"}
+const assetKinds = new Set(homeAssets.map(a => a.kind));
+const supplementalSystems = legacySystems.filter(s => !assetKinds.has(s.kind));
 ```
 
-For `diagnosis`:
-```text
-{"probable_cause": "Worn drive belt", "confidence": 0.72, "diagnosed_by": "ai"}
-```
+`home_assets` always wins. `systems` is fallback-only for items not yet discovered into the VIN layer. Supplemental systems are displayed with a label like "Estimated from public data".
 
-For `recommendation`:
-```text
-{"path": "repair", "who": "pro", "urgency": "soon", "rationale": "Risk of motor damage"}
-```
+### Hardening Rule 2: Issue Resolution Logic
 
-For `user_decision`:
-```text
-{"decision": "hire_pro", "contractor_name": "ABC Appliance"}
-```
+An issue is considered **resolved** if any of the following exist in the event chain:
+- A `status_change` event with `status = 'resolved'` and `related_event_id = issue.id`
+- A `repair_completed` event with `related_event_id = issue.id`
 
-For `contractor_referred`:
-```text
-{"contractors_shown": 3, "service_type": "appliance_repair"}
-```
+This is computed client-side by building a lookup map: `Map<event_id, related_events[]>`. Each `issue_reported` event is checked against this map. Documented in code comments as the canonical resolution rule.
 
-### Hardening: `contractor_referred` Cannot Resolve Issues
+### Hardening Rule 3: Deferred Recommendation Guardrails
 
-The `contractor_referred` event type is purely informational. The tool handler enforces:
-- It never sets `status: 'resolved'` on any linked issue
-- It never changes asset status
-- It is recorded as an advisory-only event in the chain
+A recommendation is considered "deferred" only if:
+1. `event_type = 'recommendation'`
+2. No linked `user_decision` event exists (via `related_event_id`)
+3. The associated asset (if any) still has `status = 'active'` (filters out zombie recommendations for replaced/removed assets)
 
-## AI Tool Layer (Step 2)
+### Hardening Rule 4: Event Cap
 
-### New Tool: `record_home_event`
+The events query is capped at 200 rows (`limit(200)`). This prevents unbounded reads as the ledger grows. A code comment marks this as a future materialized-view or pagination candidate.
 
-Added to the tools array in `generateAIResponse` alongside `schedule_maintenance`, `get_contractor_recommendations`, etc.
+### Return Shape
 
-**Tool Definition Parameters**:
-
-| Parameter | Required | Type | Notes |
-|-----------|----------|------|-------|
-| `event_type` | Yes | string | One of the event types listed above |
-| `system_kind` | Yes | string | `washing_machine`, `hvac`, `roof`, etc. |
-| `title` | Yes | string | Short human-readable summary |
-| `description` | No | string | Detailed description |
-| `severity` | No | string | `info`, `minor`, `moderate`, `major` (default: `info`) |
-| `cost_estimate_low` | No | number | Low end of cost range |
-| `cost_estimate_high` | No | number | High end of cost range |
-| `manufacturer` | No | string | For system discovery |
-| `model` | No | string | For system discovery |
-| `age_estimate_years` | No | number | For system discovery |
-| `resolution` | No | string | For `user_decision` or `repair_completed` events |
-| `related_event_id` | No | string | UUID linking to prior event |
-| `metadata` | No | object | Additional structured data |
-
-### Tool Handler Logic
-
-**Asset Matching (Hardened)**:
-
-When the tool is called:
-
-1. Query `home_assets` for `(home_id, kind, status = 'active')`
-2. If exactly ONE match: attach event to that asset
-3. If ZERO matches and `event_type = 'system_discovered'`: create new asset with `source = 'chat'`, `confidence = 50`
-4. If MULTIPLE active matches of the same kind: do NOT auto-attach. Log the event with `asset_id = null` and include a note in the response asking the user to clarify which one (e.g., "I see two washing machines on file -- which one are you referring to?")
-
-This prevents silent mis-attribution.
-
-**Confidence Ceiling Enforcement**:
-
-When creating an asset via `system_discovered`:
-- Source `chat` caps confidence at 60
-- If the user later provides a photo, a separate update can raise to 80
-- If a permit confirms, can go to 95
-- Never exceeds 95 without external verification
-
-**Contractor Referral Guard**:
-
-When `event_type = 'contractor_referred'`:
-- Status is always `'info'` -- never `'resolved'`
-- `related_event_id` is set to the original issue if one exists
-- No asset status changes occur
-
-**Return Format**:
-
-The handler returns structured JSON:
+The hook returns a structured object with pre-categorized data:
 
 ```text
 {
-  "type": "home_event_recorded",
-  "success": true,
-  "eventId": "uuid",
-  "assetId": "uuid",
-  "isNewAsset": true,
-  "eventType": "system_discovered",
-  "systemKind": "washing_machine",
-  "title": "Washing machine discovered",
-  "message": "Added to your home record: Samsung washing machine (chat-reported, ~5 years old)"
+  property: { address, yearBuilt, squareFeet, ownershipSince }
+  assets: { coreSystems: [...], appliances: [...] }   // deduplicated
+  openIssues: [...]                                    // with linked recommendations
+  resolvedHistory: [...]                               // repairs + resolved issues
+  replacements: [...]
+  deferredRecommendations: [...]                       // zombie-filtered
+  coverage: { assetCount, issueCount, repairCount, avgConfidence, verifiedPct, estimatedPct }
+  loading, error
 }
 ```
 
-### Property Context Enhancement
+## Page: `src/pages/HomeReportPage.tsx`
 
-Update `getPropertyContext()` to also fetch `home_assets` for the property:
+Wraps content in `DashboardV3Layout`. Renders all seven sections in fixed order. Shows the global framing header and "Download PDF" action (right-aligned, quiet).
 
-```text
-supabase.from('home_assets').select('*').eq('home_id', propertyId).eq('status', 'active')
-```
+## Report Section Components
 
-Add to system prompt under a new section:
+All in `src/components/report/`. Each follows the document-first principle: if printed tomorrow, it still makes sense.
 
-```text
-HOME ASSETS ON FILE:
-- Washing Machine (Samsung, ~2021, chat-reported, confidence: 50)
-- Refrigerator (LG, photo-verified, confidence: 75)
-```
+### 1. `ReportHeader.tsx`
+- Title: "Home Report"
+- Subtitle: address + build year
+- Description: "A running record of the systems, appliances, issues, and work associated with this property."
+- Actions: "Download PDF" button (right-aligned, secondary variant, `FileDown` icon)
 
-Also fetch recent open events:
+### 2. `PropertyOverviewSection.tsx`
+- Data: `homes` table (address, year_built, square_feet, created_at)
+- Always visible. Unknown fields show "Not available"
+- No inference, no estimation
 
-```text
-supabase.from('home_events').select('*').eq('home_id', propertyId).eq('status', 'open').order('created_at', { ascending: false }).limit(5)
-```
+### 3. `AssetInventorySection.tsx`
+- Split into "Core Systems" and "Appliances" sub-sections
+- Core Systems: `home_assets` where `category = 'system'` PLUS deduplicated `systems` fallback
+- Appliances: `home_assets` where `category = 'appliance'`
+- Each item shows: kind (display name), manufacturer, install date/estimate, confidence label
+- Confidence labels: `< 50` = "Estimated", `50-74` = "Chat-reported", `75-89` = "Photo-verified", `>= 90` = "Verified"
+- Empty state: "No appliances documented yet"
 
-Add to prompt:
+### 4. `OpenIssuesSection.tsx`
+- Only renders if there are open issues (hidden entirely otherwise)
+- Each issue shows: asset name, title, reported date, severity, status, linked recommendation (if any), cost estimate
+- Linked recommendation found by scanning events where `related_event_id = issue.id` and `event_type = 'recommendation'`
 
-```text
-OPEN ISSUES:
-- Washing machine drum not spinning (moderate, reported 2 days ago)
-```
+### 5. `ResolvedHistorySection.tsx`
+- Shows `repair_completed` and `maintenance_performed` events, plus issues determined resolved by the resolution logic
+- Grouped by asset (not timeline) -- humans think in objects
+- Each entry shows: asset, title, diagnosed date, resolved date, outcome, cost
+- Empty state: "No resolved issues yet"
 
-This gives the AI full context for discovery checks and follow-up linking.
+### 6. `ReplacementsSection.tsx`
+- Shows `replacement` events with old/new asset context
+- Each entry shows: asset kind, old install date, replacement date, source
+- Empty state: "No replacements recorded"
 
-## System Prompt Protocols (Step 3)
+### 7. `DeferredRecommendationsSection.tsx`
+- Shows recommendations with no linked decision and active assets only
+- Each shows: asset, recommendation path, urgency, date noted
+- Neutral tone -- no warnings, no red banners, just facts
+- Empty state: "No deferred recommendations"
 
-### SYSTEM DISCOVERY PROTOCOL
+### 8. `CoverageSummarySection.tsx`
+- Derived metrics: assets documented, issues logged, repairs recorded, average confidence
+- Additionally shows: % verified assets, % estimated assets (addresses the QA feedback that avg confidence alone is weak)
+- Footer text: "Some records are estimated or inferred. Confidence increases as systems are verified through photos, permits, or professional work."
 
-```text
-When the user mentions an appliance or system by name (e.g., "washing machine", 
-"dishwasher", "hot tub") that does NOT appear in PROPERTY CONTEXT or HOME ASSETS ON FILE:
+## PDF Export: `src/lib/reportPdfGenerator.ts`
 
-1. Acknowledge: "I don't have a [system] on record for your home yet."
-2. Call record_home_event with event_type: 'system_discovered'
-3. Ask ONE contextual question (brand OR approximate age -- not both)
-4. Continue with the conversation naturally
+Uses the same HTML-to-Blob approach proven in `src/components/validation/PDFReportGenerator.tsx`:
+1. Generate a self-contained HTML string with inline CSS
+2. Create a Blob of type `text/html`
+3. Trigger download as `home-report-[address]-[date].html`
 
-No user permission required. This is bookkeeping, not publishing.
-Do NOT ask "Would you like me to add this to your record?" -- just do it.
-```
+The generator accepts the same structured data returned by `useHomeReport`, ensuring the PDF and screen render from identical data (no drift). Section order and language match the on-screen report exactly. No UI chrome in the export.
 
-### ISSUE RECORDING PROTOCOL
+## Empty-State Language (Doctrine Compliance)
 
-```text
-After completing a diagnosis or providing repair/replacement guidance, call 
-record_home_event to persist the finding:
+The report never uses "incomplete", "missing", or "you should add". Instead:
+- "Not yet documented"
+- "Estimated from public data"
+- "Will update over time"
+- "As you chat with Habitta, this report builds itself."
 
-1. Log event_type: 'diagnosis' with severity, probable cause, and confidence in metadata
-2. If you provided a recommendation, log a second event_type: 'recommendation' 
-   with path (repair/replace/defer), urgency, and rationale in metadata
-3. Link both to the original issue_reported event via related_event_id
-
-The user should see a subtle confirmation that this is part of their home record.
-```
-
-### FOLLOW-UP LINKING PROTOCOL
-
-```text
-When the user returns to discuss a previously-reported issue:
-- "I got the washer fixed"
-- "How's the washing machine?"
-- "The repair cost $200"
-
-1. Find the original open event in OPEN ISSUES context
-2. Create a linked event (user_decision, repair_completed, or status_change)
-3. Use related_event_id to chain to the original
-4. Acknowledge: "I've updated the record. The [issue] is now [status]."
-```
-
-### IMMUTABILITY RULE
+Day-1 experience with no events:
 
 ```text
-NEVER update an existing home_events record. Status changes are NEW events:
+Home Report
+123 Palm Ave -- Built 1989
 
-Wrong: Update issue #123 status from 'open' to 'resolved'
-Right: Create new event type='status_change', status='resolved', 
-       related_event_id='issue-123-uuid'
+This report tracks the systems, appliances, and work
+associated with your home over time.
 
-This preserves the full audit trail.
+Current coverage:
+  Home details: Available
+  Core systems: Partial
+  Appliances: Not yet documented
+  Issues & repairs: None yet
+
+As you chat with Habitta, this report will automatically
+build itself.
 ```
 
-## Chat Formatting Layer (Step 4)
+## Files Created
 
-### New Type: `HomeEventData`
-
-Added to `src/lib/chatFormatting.ts`:
-
-```text
-export interface HomeEventData {
-  success: boolean;
-  eventId?: string;
-  assetId?: string;
-  isNewAsset?: boolean;
-  eventType?: string;
-  systemKind?: string;
-  title?: string;
-  message?: string;
-}
-```
-
-### Extraction
-
-- Add `'home_event_recorded'` to the `DOMAIN_TYPES` whitelist
-- Add `extractHomeEventData()` function following the same balanced-brace pattern as existing extractors (e.g., `extractSystemUpdateData`)
-- Build human-readable confirmation messages:
-  - Discovery: "Added to your home record: Samsung washing machine (chat-reported, ~5 years old)"
-  - Issue: "Recorded: Washing machine drum not spinning (moderate severity)"
-  - Diagnosis: "Recorded diagnosis: Likely worn drive belt -- repair estimate $150-$400"
-  - Status change: "Updated: Washing machine issue resolved"
-
-### ChatMessageContent Update
-
-Add rendering for `home_event_recorded` type in `ChatMessageContent.tsx`:
-- A subtle confirmation card with muted background, small check icon, and one-line summary
-- Placed AFTER structured data (contractors, cost analysis) but BEFORE prose
-- Not a loud toast or alert -- this is quiet bookkeeping
-
-## Files Changed
-
-| File | Changes |
+| File | Purpose |
 |------|---------|
-| New migration SQL | Create `home_assets` and `home_events` tables with RLS, indexes, triggers |
-| `supabase/functions/ai-home-assistant/index.ts` | Add `record_home_event` tool definition, handler with hardened asset matching, confidence ceiling, contractor guard; update `getPropertyContext` to fetch assets and open events; add Discovery, Issue Recording, Follow-up, and Immutability protocols to system prompt |
-| `src/lib/chatFormatting.ts` | Add `HomeEventData` interface, `home_event_recorded` to `DOMAIN_TYPES`, `extractHomeEventData()` function |
-| `src/components/chat/ChatMessageContent.tsx` | Add subtle confirmation card rendering for home event records |
+| `src/pages/HomeReportPage.tsx` | Page container with DashboardV3Layout |
+| `src/hooks/useHomeReport.ts` | Data fetching + dedup + resolution logic |
+| `src/components/report/ReportHeader.tsx` | Title, address, PDF action |
+| `src/components/report/PropertyOverviewSection.tsx` | Address, year, sqft |
+| `src/components/report/AssetInventorySection.tsx` | Core systems + appliances (deduplicated) |
+| `src/components/report/OpenIssuesSection.tsx` | Active issues with linked recommendations |
+| `src/components/report/ResolvedHistorySection.tsx` | Repairs + maintenance, grouped by asset |
+| `src/components/report/ReplacementsSection.tsx` | Major replacements |
+| `src/components/report/DeferredRecommendationsSection.tsx` | Unacted recommendations (zombie-filtered) |
+| `src/components/report/CoverageSummarySection.tsx` | Confidence + coverage metrics |
+| `src/lib/reportPdfGenerator.ts` | HTML export from same data source |
 
-## What This Does NOT Change
+## Files Modified
 
-- The canonical `systems` table remains the authority for core lifecycle systems (HVAC, Roof, Water Heater)
-- The existing `home_systems` table remains the evidence layer for photo analysis
-- The existing `update_system_info` tool continues to handle core system install updates
-- No existing UI dashboards are modified -- this is backend-first
-- The `home_assets` table complements (not replaces) existing tables
+| File | Change |
+|------|--------|
+| `src/pages/AppRoutes.tsx` | Add `/report` protected route |
+| `src/components/BottomNavigation.tsx` | Add "Report" as 4th nav item |
+| `src/components/dashboard-v3/LeftColumn.tsx` | Replace "Reports" (admin) with "Report" (user-facing) |
+
+## No Database Changes
+
+This is a pure read surface. No migrations, no new tables, no RLS changes. All data sources (`homes`, `home_assets`, `home_events`, `systems`) already exist with appropriate RLS.
 
 ## Implementation Order
 
-1. **Migration** -- Create both tables, RLS, indexes, updated_at trigger
-2. **Edge function** -- Tool definition, handler, context fetch, system prompt protocols
-3. **Chat formatting** -- Type, extraction, domain type whitelist
-4. **Chat rendering** -- Confirmation card component
+1. **Data hook** (`useHomeReport.ts`) -- all dedup, resolution, and filtering logic lives here
+2. **Section components** -- all 8 report sections, each self-contained
+3. **Page container** (`HomeReportPage.tsx`) -- assembles sections
+4. **Navigation** -- route + bottom nav + sidebar updates
+5. **PDF export** -- generator function + download trigger
+
+## QA Checklist (All Five Traps Addressed)
+
+| Trap | Fix | Where |
+|------|-----|-------|
+| Asset duplication (systems + home_assets) | Deduplicate by `kind`; `home_assets` wins | `useHomeReport.ts` |
+| Event status resolution | Explicit rule: resolved = linked `repair_completed` or `status_change` to resolved | `useHomeReport.ts` |
+| Zombie deferred recommendations | Filter by `asset.status = 'active'` | `useHomeReport.ts` |
+| Unbounded event query | Cap at 200 rows; documented pagination point | `useHomeReport.ts` |
+| PDF/screen drift | Single data source feeds both screen and PDF render | `reportPdfGenerator.ts` |
 
