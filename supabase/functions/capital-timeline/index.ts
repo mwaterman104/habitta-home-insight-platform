@@ -1,11 +1,12 @@
 /**
  * capital-timeline - Generates unified CapEx timeline for a home
  * 
- * ARCHITECTURE (v2):
+ * ARCHITECTURE (v3 - Earned Confidence):
  * - This is the ORCHESTRATOR and POLICY ENGINE
  * - It decides which data source wins (authority resolution)
  * - It calls pure calculators for lifecycle math
  * - It returns pre-formatted labels (UI renders blindly)
+ * - NEW: Material-aware, climate-gated, confidence-bounded
  * 
  * Authority Priority:
  * 1. User overrides (owner_reported, inspection) — User corrects data
@@ -22,13 +23,20 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { 
   calculateSystemLifecycle,
+  calculateRoofLifecycle,
   dataQualityFromConfidence,
   hasValidPermit,
   extractPermitYear,
+  classifyClimate,
   getRegionContext,
+  deriveCostConfidence,
+  deriveTypicalBand,
+  normalizeRoofMaterial,
   type ResolvedInstallInput,
   type LifecycleOutput,
-  type PropertyContext 
+  type PropertyContext,
+  type ResolvedClimateContext,
+  type ConfidenceLevel,
 } from '../_shared/systemInference.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -65,6 +73,8 @@ interface SystemTimelineEntry {
   capitalCost: {
     low: number;
     high: number;
+    typicalLow?: number;
+    typicalHigh?: number;
     currency: 'USD';
     costDrivers: string[];
   };
@@ -81,12 +91,20 @@ interface SystemTimelineEntry {
     explanation: string;
   };
   disclosureNote: string;
-  // NEW: Pre-formatted labels for UI
+  // Pre-formatted labels for UI
   installedLine: string;
   confidenceScore: number;
   confidenceLevel: 'low' | 'medium' | 'high';
   lastEventAt?: string;
   eventShiftYears?: number;
+  // Earned confidence fields (v3)
+  materialType?: string;
+  materialSource?: string;
+  climateZone?: string;
+  climateConfidence?: string;
+  costConfidence?: string;
+  costAttributionLine?: string;
+  costDisclaimer?: string;
 }
 
 interface CapitalOutlook {
@@ -101,10 +119,6 @@ interface CapitalOutlook {
 
 // ============== Confidence Scoring ==============
 
-/**
- * Base confidence scores by install source
- * Matches the canonical model in memory
- */
 function getBaseConfidenceScore(source: string): number {
   switch (source) {
     case 'permit_verified': return 0.85;
@@ -115,9 +129,6 @@ function getBaseConfidenceScore(source: string): number {
   }
 }
 
-/**
- * Map install source to UI label
- */
 function formatInstallSourceLabel(source: string): string {
   switch (source) {
     case 'permit_verified': return 'permit-verified';
@@ -128,9 +139,6 @@ function formatInstallSourceLabel(source: string): string {
   }
 }
 
-/**
- * Map new install sources to legacy format for backward compatibility
- */
 function mapInstallSourceToLegacy(source: string): 'permit' | 'inferred' | 'unknown' {
   switch (source) {
     case 'permit_verified':
@@ -144,10 +152,6 @@ function mapInstallSourceToLegacy(source: string): 'permit' | 'inferred' | 'unkn
   }
 }
 
-/**
- * Format the installed line for UI display
- * Canonical formatter - UI renders this blindly
- */
 function formatInstalledLine(
   installYear: number | null,
   installSource: string,
@@ -166,6 +170,71 @@ function formatInstalledLine(
   return `Installed ${installYear} (${sourceLabel})`;
 }
 
+// ============== Attribution & Disclaimer Copy ==============
+
+/**
+ * formatCostAttributionLine - Confidence-gated server-side copy
+ * 
+ * No UI copy invention allowed. This is the single source of truth
+ * for cost attribution language.
+ */
+function formatCostAttributionLine(
+  systemType: string,
+  material: string | null | undefined,
+  climate: ResolvedClimateContext
+): string {
+  const systemLabel = systemType === 'water_heater' ? 'water heater'
+    : systemType === 'hvac' ? 'HVAC system'
+    : systemType;
+
+  // HVAC has duty-cycle-specific copy
+  if (systemType === 'hvac') {
+    if (climate.dutyCycle.hvac === 'extreme') {
+      return 'HVAC estimates reflect heavy year-round usage in your climate.';
+    }
+    if (climate.dutyCycle.hvac === 'high') {
+      return 'HVAC estimates adjusted for above-average seasonal usage.';
+    }
+    return 'HVAC estimates based on typical usage for your area.';
+  }
+
+  // Climate confidence gates copy tone
+  if (climate.climateConfidence === 'high' && material && material !== 'unknown') {
+    const climateDesc = climate.climateZone === 'coastal' ? 'coastal exposure'
+      : climate.climateZone === 'high_heat' ? 'high heat and humidity'
+      : climate.climateZone === 'freeze_thaw' ? 'freeze-thaw cycles'
+      : 'regional conditions';
+    return `Estimates reflect your ${material} ${systemLabel}, ${climateDesc}, and regional labor costs.`;
+  }
+
+  if (climate.climateConfidence === 'medium' && material && material !== 'unknown') {
+    return `Estimates reflect a ${material} ${systemLabel} and regional climate usage.`;
+  }
+
+  if (climate.climateConfidence === 'medium') {
+    return 'Estimates adjusted for regional climate usage.';
+  }
+
+  return 'Estimates based on typical conditions for homes in your area.';
+}
+
+/**
+ * formatCostDisclaimer - System-specific defensive copy
+ * Non-negotiable one-liner per system type.
+ */
+function formatCostDisclaimer(systemType: string): string {
+  switch (systemType) {
+    case 'roof':
+      return 'Final pricing varies with roof complexity and access.';
+    case 'hvac':
+      return 'Final pricing varies with equipment efficiency, ductwork condition, and access.';
+    case 'water_heater':
+      return 'Final pricing varies with fuel type and installation requirements.';
+    default:
+      return 'Final pricing varies based on site conditions.';
+  }
+}
+
 // ============== Authority Resolution ==============
 
 interface SystemRow {
@@ -178,17 +247,12 @@ interface SystemRow {
   created_at?: string | null;
 }
 
-/**
- * Select the best system record from potentially duplicate records
- * Uses case-insensitive matching and authority-based selection
- */
 function selectBestSystemRecord(
   systems: SystemRow[] | null,
   systemType: string
 ): SystemRow | undefined {
   if (!systems) return undefined;
   
-  // Case-insensitive matching
   const matching = systems.filter(s => 
     s.kind.toLowerCase() === systemType.toLowerCase()
   );
@@ -196,12 +260,10 @@ function selectBestSystemRecord(
   if (matching.length === 0) return undefined;
   if (matching.length === 1) return matching[0];
   
-  // Log warning if duplicates found (shouldn't happen after cleanup)
   console.warn(
     `[capital-timeline] Found ${matching.length} records for "${systemType}". Using authority resolution.`
   );
   
-  // Authority priority with proper tiebreaking
   const authorityOrder: Record<string, number> = {
     'permit_verified': 4,
     'inspection': 3,
@@ -213,17 +275,14 @@ function selectBestSystemRecord(
     const bestAuth = authorityOrder[best.install_source || 'heuristic'] || 0;
     const currentAuth = authorityOrder[current.install_source || 'heuristic'] || 0;
     
-    // 1. Higher authority wins
     if (currentAuth > bestAuth) return current;
     if (currentAuth < bestAuth) return best;
     
-    // 2. Same authority: higher confidence wins
     const bestConf = best.confidence || 0;
     const currentConf = current.confidence || 0;
     if (currentConf > bestConf) return current;
     if (currentConf < bestConf) return best;
     
-    // 3. Same authority + confidence: newer record wins
     const bestDate = new Date(best.created_at || 0).getTime();
     const currentDate = new Date(current.created_at || 0).getTime();
     return currentDate > bestDate ? current : best;
@@ -240,17 +299,6 @@ interface PermitRecord {
   issue_date?: string;
 }
 
-/**
- * resolveInstallAuthority - THE POLICY ENGINE
- * 
- * Decides which data source wins for a given system.
- * This is the ONLY place where precedence is determined.
- * 
- * Priority:
- * 1. User overrides (owner_reported, inspection) if NOT heuristic
- * 2. Permit data if available
- * 3. Heuristic fallback from yearBuilt
- */
 function resolveInstallAuthority(
   systemType: 'hvac' | 'roof' | 'water_heater',
   userSystem: SystemRow | undefined,
@@ -288,7 +336,6 @@ function resolveInstallAuthority(
   }
   
   // Priority 3: Heuristic fallback
-  // Use different heuristics based on system type and home age
   let inferredYear: number;
   let rationale: string;
   
@@ -348,11 +395,74 @@ function formatSystemLabel(systemType: 'hvac' | 'roof' | 'water_heater'): string
   }
 }
 
-// ============== Weighted Exposure Logic ==============
+// ============== ATTOM Material Fallback ==============
 
 /**
- * Calculate weighted capital exposure
+ * Attempt to resolve roof material from ATTOM enrichment data.
+ * 
+ * This is a READ-THROUGH CACHE — it never writes back to systems.material.
+ * Explicitly transitional: the medium-term fix is for the onboarding pipeline
+ * to write ATTOM-derived material to systems.material at property setup time.
  */
+async function resolveRoofMaterialFromAttom(
+  supabase: ReturnType<typeof createClient>,
+  home: { address_id?: string | null; property_id?: string | null },
+  yearBuilt: number
+): Promise<{ material: string; materialSource: string } | null> {
+  // Only attempt if we have an address_id to query enrichment_snapshots
+  if (!home.address_id) {
+    console.log('[capital-timeline] No address_id for ATTOM fallback — skipping');
+    return null;
+  }
+
+  try {
+    const { data: snapshot } = await supabase
+      .from('enrichment_snapshots')
+      .select('payload')
+      .eq('address_id', home.address_id)
+      .eq('provider', 'attom')
+      .order('retrieved_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!snapshot?.payload) return null;
+
+    // Extract roofcover from ATTOM payload
+    // ATTOM structures: payload.property[0].building.summary.roofcover
+    // or payload.property[0].building.construction.roofcover
+    const payload = snapshot.payload as Record<string, unknown>;
+    let roofcover: string | null = null;
+
+    try {
+      const property = (payload as any)?.property?.[0];
+      roofcover = property?.building?.summary?.roofcover
+        || property?.building?.construction?.roofcover
+        || null;
+    } catch {
+      // Payload structure varies
+    }
+
+    if (!roofcover) return null;
+
+    // Normalize with false-positive brake (QA FIX #2)
+    const { material, downgraded } = normalizeRoofMaterial(roofcover, yearBuilt);
+
+    if (material === 'unknown') return null;
+
+    console.log(`[capital-timeline] ATTOM roof material resolved: ${roofcover} → ${material}${downgraded ? ' (downgraded)' : ''}`);
+
+    return {
+      material,
+      materialSource: downgraded ? 'inferred' : 'attom',
+    };
+  } catch (err) {
+    console.warn('[capital-timeline] ATTOM fallback query failed:', err);
+    return null;
+  }
+}
+
+// ============== Weighted Exposure Logic ==============
+
 function calculateWeightedExposure(
   system: SystemTimelineEntry,
   horizonCutoff: number
@@ -380,9 +490,6 @@ function calculateWeightedExposure(
   return { low: 0, high: 0 };
 }
 
-/**
- * Calculate capital outlook with weighted exposure
- */
 function calculateCapitalOutlook(
   systems: SystemTimelineEntry[],
   currentYear: number
@@ -418,14 +525,17 @@ function calculateCapitalOutlook(
 
 /**
  * Build a SystemTimelineEntry from resolved authority + calculated lifecycle
+ * Now includes earned confidence metadata (v3)
  */
 function buildTimelineEntry(
   systemType: 'hvac' | 'roof' | 'water_heater',
   resolvedInstall: ResolvedInstallInput,
-  lifecycle: LifecycleOutput
+  lifecycle: LifecycleOutput,
+  climate: ResolvedClimateContext,
+  materialSource?: string
 ): SystemTimelineEntry {
   const dataQuality = dataQualityFromConfidence(resolvedInstall.confidenceScore);
-  const confidenceLevel = dataQuality; // Same mapping
+  const confidenceLevel = dataQuality;
   
   return {
     systemId: systemType,
@@ -444,13 +554,15 @@ function buildTimelineEntry(
     capitalCost: {
       low: lifecycle.capitalCost.low,
       high: lifecycle.capitalCost.high,
+      typicalLow: lifecycle.capitalCost.typicalLow,
+      typicalHigh: lifecycle.capitalCost.typicalHigh,
       currency: 'USD',
       costDrivers: lifecycle.capitalCost.costDrivers,
     },
     lifespanDrivers: lifecycle.lifespanDrivers,
     maintenanceEffect: lifecycle.maintenanceEffect,
     disclosureNote: lifecycle.disclosureNote,
-    // Pre-formatted labels for UI
+    // Pre-formatted labels
     installedLine: formatInstalledLine(
       resolvedInstall.installYear,
       resolvedInstall.installSource,
@@ -458,6 +570,14 @@ function buildTimelineEntry(
     ),
     confidenceScore: resolvedInstall.confidenceScore,
     confidenceLevel,
+    // Earned confidence fields (v3)
+    materialType: lifecycle.materialType,
+    materialSource: materialSource || (lifecycle.materialType ? 'inferred' : undefined),
+    climateZone: lifecycle.climateZone,
+    climateConfidence: lifecycle.climateConfidence,
+    costConfidence: lifecycle.costConfidence,
+    costAttributionLine: formatCostAttributionLine(systemType, lifecycle.materialType, climate),
+    costDisclaimer: formatCostDisclaimer(systemType),
   };
 }
 
@@ -508,22 +628,40 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('home_id', homeId);
 
+    // Resolve roof material: systems.material → ATTOM fallback → 'unknown'
+    const roofSystem = selectBestSystemRecord(systems, 'roof');
+    let roofMaterial = roofSystem?.material || 'unknown';
+    let roofMaterialSource: string | undefined = roofSystem?.material ? 'owner_reported' : undefined;
+
+    // ATTOM fallback for roof material (transitional — read-through cache)
+    if (roofMaterial === 'unknown') {
+      const attomResult = await resolveRoofMaterialFromAttom(
+        supabase,
+        { address_id: home.address_id, property_id: home.property_id },
+        home.year_built || 2000
+      );
+      if (attomResult) {
+        roofMaterial = attomResult.material;
+        roofMaterialSource = attomResult.materialSource;
+      }
+    }
+
     // Build property context
     const propertyContext: PropertyContext = {
       yearBuilt: home.year_built || 2000,
       state: home.state || 'FL',
       city: home.city,
-      roofMaterial: selectBestSystemRecord(systems, 'roof')?.material || 'unknown',
+      roofMaterial: roofMaterial as PropertyContext['roofMaterial'],
       waterHeaterType: selectBestSystemRecord(systems, 'water_heater')?.material || 'unknown',
     };
 
-    const regionContext = getRegionContext(propertyContext.state, propertyContext.city);
+    // Use new climate classification (replaces getRegionContext)
+    const climateContext = classifyClimate(propertyContext.state, propertyContext.city);
 
     // Single system detail request
     if (action === 'system-detail' && systemType) {
       const userSystem = selectBestSystemRecord(systems, systemType);
       
-      // Step A: Resolve authority (POLICY)
       const resolvedInstall = resolveInstallAuthority(
         systemType,
         userSystem,
@@ -531,16 +669,24 @@ Deno.serve(async (req) => {
         propertyContext.yearBuilt
       );
       
-      // Step B: Calculate lifecycle (MATH)
-      const lifecycle = calculateSystemLifecycle(
-        systemType,
-        resolvedInstall,
-        propertyContext,
-        regionContext
-      );
+      // For roof, use the dedicated calculator with resolved material
+      let lifecycle: LifecycleOutput;
+      let entryMaterialSource: string | undefined;
       
-      // Step C: Build entry with formatted output
-      const entry = buildTimelineEntry(systemType, resolvedInstall, lifecycle);
+      if (systemType === 'roof') {
+        const { calculateRoofLifecycle: calcRoof } = await import('../_shared/systemInference.ts');
+        lifecycle = calcRoof(resolvedInstall, propertyContext, climateContext, roofMaterial, roofMaterialSource);
+        entryMaterialSource = roofMaterialSource;
+      } else {
+        lifecycle = calculateSystemLifecycle(
+          systemType,
+          resolvedInstall,
+          propertyContext,
+          climateContext
+        );
+      }
+      
+      const entry = buildTimelineEntry(systemType, resolvedInstall, lifecycle, climateContext, entryMaterialSource);
       
       return new Response(
         JSON.stringify(entry),
@@ -554,10 +700,8 @@ Deno.serve(async (req) => {
     const limitingFactors: string[] = [];
 
     for (const sysType of systemTypes) {
-      // Find user-provided system data (case-insensitive with authority resolution)
       const userSystem = selectBestSystemRecord(systems, sysType);
       
-      // Step A: Resolve authority (POLICY)
       const resolvedInstall = resolveInstallAuthority(
         sysType,
         userSystem,
@@ -565,19 +709,25 @@ Deno.serve(async (req) => {
         propertyContext.yearBuilt
       );
       
-      // Step B: Calculate lifecycle (MATH)
-      const lifecycle = calculateSystemLifecycle(
-        sysType,
-        resolvedInstall,
-        propertyContext,
-        regionContext
-      );
+      // For roof, use dedicated calculator with resolved material
+      let lifecycle: LifecycleOutput;
+      let entryMaterialSource: string | undefined;
       
-      // Step C: Build entry with formatted output
-      const entry = buildTimelineEntry(sysType, resolvedInstall, lifecycle);
+      if (sysType === 'roof') {
+        lifecycle = calculateRoofLifecycle(resolvedInstall, propertyContext, climateContext, roofMaterial, roofMaterialSource);
+        entryMaterialSource = roofMaterialSource;
+      } else {
+        lifecycle = calculateSystemLifecycle(
+          sysType,
+          resolvedInstall,
+          propertyContext,
+          climateContext
+        );
+      }
+      
+      const entry = buildTimelineEntry(sysType, resolvedInstall, lifecycle, climateContext, entryMaterialSource);
       timelineEntries.push(entry);
       
-      // Track limiting factors
       if (entry.dataQuality === 'low') {
         limitingFactors.push(`${entry.systemLabel} install date is estimated`);
       }
@@ -611,16 +761,25 @@ Deno.serve(async (req) => {
       },
     };
 
+    // Telemetry logging (QA FIX #5)
     console.log('[capital-timeline] Generated timeline for', homeId, {
       systemCount: timelineEntries.length,
       completeness: completenessPercent,
       outlook3yr: capitalOutlook.horizons[0],
-      // Log authority resolution results
+      climateZone: climateContext.climateZone,
+      climateConfidence: climateContext.climateConfidence,
+      hvacDutyCycle: climateContext.dutyCycle.hvac,
+      // Per-system telemetry with earned confidence fields
       sources: timelineEntries.map(e => ({ 
         system: e.systemId, 
         source: e.installSource, 
         year: e.installYear,
-        confidence: e.confidenceScore 
+        confidence: e.confidenceScore,
+        materialType: e.materialType,
+        materialSource: e.materialSource,
+        climateZone: e.climateZone,
+        climateConfidence: e.climateConfidence,
+        costConfidence: e.costConfidence,
       }))
     });
 

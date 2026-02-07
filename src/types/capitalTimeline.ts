@@ -72,6 +72,15 @@ export interface SystemTimelineEntry {
   // Event acknowledgment hooks
   lastEventAt?: string;  // ISO timestamp of last user-confirmed event
   eventShiftYears?: number;  // How much the window shifted after last event
+
+  // Earned confidence fields (v3)
+  materialType?: string;
+  materialSource?: string;
+  climateZone?: string;
+  climateConfidence?: string;
+  costConfidence?: string;
+  costAttributionLine?: string;
+  costDisclaimer?: string;
 }
 
 /**
@@ -99,6 +108,10 @@ export interface CapitalCostRange {
   low: number;
   /** High-end expected cost */
   high: number;
+  /** Tightened anchor low (confidence-gated) */
+  typicalLow?: number;
+  /** Tightened anchor high (confidence-gated) */
+  typicalHigh?: number;
   currency: 'USD';
   /** What drives cost variability */
   costDrivers: string[];

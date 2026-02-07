@@ -1,5 +1,5 @@
-import { useRef, useEffect } from "react";
-import { ArrowLeft, CheckCircle2, AlertTriangle, AlertCircle } from "lucide-react";
+import { useRef } from "react";
+import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DockedChatInput } from "@/components/mobile/DockedChatInput";
@@ -13,34 +13,13 @@ import {
 } from "@/lib/mobileCopy";
 import { trackMobileEvent, MOBILE_EVENTS } from "@/lib/analytics/mobileEvents";
 
-// ============== Cost Premium Constants ==============
-// Imported conceptually from systemConfigs.ts
-const COST_PREMIUMS = {
-  planned: 1.0,
-  typical: 1.2,
-} as const;
-
-// Emergency premiums by system type
-const EMERGENCY_PREMIUMS: Record<CapitalSystemType, number> = {
-  hvac: 0.60,
-  roof: 0.50,
-  water_heater: 0.60,
-};
-
-// Base replacement cost ranges by system type
-const REPLACEMENT_COSTS: Record<CapitalSystemType, { min: number; max: number }> = {
-  hvac: { min: 6000, max: 12000 },
-  roof: { min: 8000, max: 25000 },
-  water_heater: { min: 1200, max: 3500 },
-};
-
 // ============== Types ==============
 
 interface CostTierDisplay {
   label: string;
   range: { low: number; high: number };
   definition: string;
-  tier: 'planned' | 'typical' | 'emergency';
+  tier: 'planned' | 'emergency';
 }
 
 interface TimingWindow {
@@ -58,35 +37,48 @@ interface SystemPlanViewProps {
   onChatExpand?: () => void;
 }
 
+// ============== Emergency Multipliers (system-specific) ==============
+
+const EMERGENCY_MULTIPLIERS: Record<CapitalSystemType, number> = {
+  hvac: 1.50,
+  roof: 1.40,
+  water_heater: 1.25,
+};
+
 // ============== Helper Functions ==============
 
-function getCostTiers(systemType: CapitalSystemType): CostTierDisplay[] {
-  const base = REPLACEMENT_COSTS[systemType] ?? REPLACEMENT_COSTS.hvac;
-  const emergencyPremium = EMERGENCY_PREMIUMS[systemType] ?? 0.60;
-  
+/**
+ * Derive cost tiers from timeline data (no hardcoded constants).
+ * Uses typicalLow/typicalHigh for the "Planned" tier when available.
+ * QA FIX #3: Only two tiers — "Planned" and "Emergency". No "Typical".
+ */
+function getCostTiers(system: SystemTimelineEntry): CostTierDisplay[] {
+  const cost = system.capitalCost;
+  const hasTypicalBand = cost.typicalLow != null && cost.typicalHigh != null;
+
+  // "Planned" tier: uses tightened band when available
+  const plannedRange = hasTypicalBand
+    ? { low: cost.typicalLow!, high: cost.typicalHigh! }
+    : { low: cost.low, high: cost.high };
+
+  // Emergency tier: full range with system-appropriate premium
+  const emergencyMultiplier = EMERGENCY_MULTIPLIERS[system.systemId] ?? 1.40;
+  const emergencyRange = {
+    low: Math.round(cost.low * emergencyMultiplier),
+    high: Math.round(cost.high * emergencyMultiplier),
+  };
+
   return [
     {
       label: PLAN_COPY.costTiers.planned.label,
       tier: 'planned',
-      range: { low: base.min, high: base.max },
+      range: plannedRange,
       definition: PLAN_COPY.costTiers.planned.definition,
-    },
-    {
-      label: PLAN_COPY.costTiers.typical.label,
-      tier: 'typical',
-      range: { 
-        low: Math.round(base.min * COST_PREMIUMS.typical), 
-        high: Math.round(base.max * COST_PREMIUMS.typical) 
-      },
-      definition: PLAN_COPY.costTiers.typical.definition,
     },
     {
       label: PLAN_COPY.costTiers.emergency.label,
       tier: 'emergency',
-      range: { 
-        low: Math.round(base.min * (1 + emergencyPremium)), 
-        high: Math.round(base.max * (1 + emergencyPremium)) 
-      },
+      range: emergencyRange,
       definition: PLAN_COPY.costTiers.emergency.definition,
     },
   ];
@@ -140,6 +132,10 @@ function getSeasonalNote(systemType: CapitalSystemType): string | null {
   return null;
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // ============== Sub-Components ==============
 
 function StatusIndicator({ status }: { status: 'best' | 'caution' | 'highRisk' }) {
@@ -189,8 +185,8 @@ function TimingRow({ window }: { window: TimingWindow }) {
  * SystemPlanView - Single-screen vertical narrative for system planning
  * 
  * Sections (fixed order):
- * A. System Header
- * B. Cost Reality (three tiers)
+ * A. System Header (with material when known)
+ * B. Cost Reality (two tiers: Planned + Emergency)
  * C. Timing Outlook (three states)
  * D. Confidence & Evidence
  * E. Action Footer
@@ -202,7 +198,6 @@ export function SystemPlanView({
   onAddMaintenance,
   onChatExpand,
 }: SystemPlanViewProps) {
-  // Ref for scroll management (Rule 1: Content visibility)
   const costSectionRef = useRef<HTMLDivElement>(null);
   const currentYear = new Date().getFullYear();
   const installYear = system.installYear;
@@ -219,15 +214,20 @@ export function SystemPlanView({
   const statusKey = getPlanningStatus(remainingYears, age, expectedLifespan);
   const status = PLANNING_STATUS[statusKey];
   
-  // Get display info
-  const displayName = system.systemLabel || getSystemDisplayName(system.systemId);
+  // Show material in header when known (e.g., "Roof — Tile")
+  const baseName = system.systemLabel || getSystemDisplayName(system.systemId);
+  const materialSuffix = system.materialType && system.materialType !== 'unknown'
+    ? ` — ${capitalize(system.materialType)}`
+    : '';
+  const displayName = baseName + materialSuffix;
+  
   const sourceLabel = getInstallSourceLabel(system.installSource);
   const installContext = installYear 
     ? `Installed ${installYear} · ${sourceLabel}`
     : sourceLabel;
   
-  // Get cost tiers
-  const costTiers = getCostTiers(system.systemId);
+  // Get cost tiers from timeline data (no hardcoded constants)
+  const costTiers = getCostTiers(system);
   
   // Get timing windows
   const timingWindows = getTimingWindows(system);
@@ -292,6 +292,16 @@ export function SystemPlanView({
             {costTiers.map((tier) => (
               <CostTierRow key={tier.tier} tier={tier} />
             ))}
+            {/* Attribution line (server-generated, confidence-gated) */}
+            {system.costAttributionLine && (
+              <p className="text-xs text-muted-foreground mt-3">
+                {system.costAttributionLine}
+              </p>
+            )}
+            {/* Defensive disclaimer (always shown) */}
+            <p className="text-xs text-muted-foreground mt-1">
+              {system.costDisclaimer || 'Final pricing varies based on site conditions.'}
+            </p>
           </CardContent>
         </Card>
         

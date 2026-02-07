@@ -182,10 +182,7 @@ export const PLAN_COPY = {
       label: 'Planned replacement',
       definition: 'Scheduled in advance with flexibility',
     },
-    typical: {
-      label: 'Typical replacement',
-      definition: 'Shorter window, limited flexibility',
-    },
+    // "typical" tier removed — QA FIX #3: avoid "Planned" vs "Typical" UI confusion
     emergency: {
       label: 'Emergency replacement',
       definition: 'Post-failure, high urgency',
