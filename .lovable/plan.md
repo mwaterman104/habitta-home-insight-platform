@@ -1,221 +1,445 @@
 
 
-# Home Report Tab -- Hardened Implementation Plan
+# Earned Confidence: Material-Aware, Climate-Gated, Confidence-Bounded Intelligence
 
 ## Summary
 
-Add "Report" as a permanent, first-class navigation surface at `/report`. This is a read-only document rendered as an interface -- structured, printable, and valuable from day one even when sparse. It aggregates data from `homes`, `home_assets`, `home_events`, and `systems` with explicit deduplication and resolution rules to prevent the five implementation traps identified in the QA review.
+Transform Habitta's lifecycle intelligence from generic national ranges to material-specific, climate-adjusted, confidence-gated estimates. This directly addresses the trust critique: "The ranges feel generic where reality is highly specific."
 
-## Navigation Changes
+Four backend files change. One frontend type file changes. One frontend component changes. No database schema changes.
 
-### Mobile Bottom Bar
-Add "Report" as a 4th item. New order: **Home Pulse | Chat | Report | Settings**.
+All 6 QA findings from the review are addressed inline.
 
-File: `src/components/BottomNavigation.tsx`
-- Add `FileText` import from lucide-react
-- Insert `{ title: "Report", url: "/report", icon: FileText }` at position 3 (between Chat and Settings)
+---
 
-### Desktop Left Sidebar
-Replace the current "Reports" item (which points to `/validation`, an internal admin tool) with a user-facing "Report" item pointing to `/report`.
+## What Changes (Overview)
 
-File: `src/components/dashboard-v3/LeftColumn.tsx`
-- In `bottomItems`, change the first entry from `{ title: "Reports", path: "/validation", ... }` to `{ title: "Report", path: "/report", ... }`
+| Change | Purpose | QA Fix |
+|--------|---------|--------|
+| Replace `RegionContext` with `ResolvedClimateContext` | Multi-zone climate with confidence gating | QA #6 (naming) |
+| Add `climateConfidence` to gate copy tone | Prevent overconfident climate claims | QA #1 (implicit), from stress test |
+| Add `costConfidence` with corrected derivation rules | Gate band tightness to data quality | QA #1 (cost confidence rules) |
+| ATTOM material fallback via `systems.material` column | Leverage owned signal without fragile joins | QA #2 (ATTOM false positives) |
+| HVAC duty cycle with cold-state heating adjustment | Model heating-heavy winters correctly | QA #4 (freeze state duty) |
+| Telemetry logging per system | Track confidence levels for future calibration | QA #5 (telemetry blind spot) |
+| Remove "Typical" from UI vocabulary | Keep "Planned" as action-framed label | QA #3 (semantics) |
 
-### Route
-File: `src/pages/AppRoutes.tsx`
-- Add a new protected route: `/report` rendering `HomeReportPage` (standalone, using `DashboardV3Layout` wrapper like Systems Hub and Home Profile)
+---
 
-## Data Hook: `src/hooks/useHomeReport.ts`
+## File 1: `supabase/functions/_shared/systemInference.ts`
 
-A single hook that fetches and assembles all report data. Uses TanStack `useQuery` for caching.
-
-### Four Parallel Queries
-
-1. **Property**: `homes` table, single row by `home_id` (from `useUserHome` context)
-2. **Assets**: `home_assets` where `home_id = X` and `status != 'removed'`
-3. **Events**: `home_events` where `home_id = X`, ordered by `created_at desc`, **limit 200** (client-side cap to prevent unbounded growth; documented as a future pagination point)
-4. **Legacy systems**: `systems` where `home_id = X` (supplemental for core systems not yet in `home_assets`)
-
-### Hardening Rule 1: Asset Deduplication
-
-The `systems` table tracks core lifecycle systems (HVAC, roof, water heater) using a `kind` field. The `home_assets` table may also have entries for those same systems discovered via chat. To prevent showing duplicate rows:
+### A. New Types (replace `RegionContext`)
 
 ```text
-const assetKinds = new Set(homeAssets.map(a => a.kind));
-const supplementalSystems = legacySystems.filter(s => !assetKinds.has(s.kind));
-```
+type ConfidenceLevel = 'high' | 'medium' | 'low';
+type ClimateZoneType = 'high_heat' | 'coastal' | 'freeze_thaw' | 'moderate';
+type HvacDutyCycle = 'low' | 'moderate' | 'high' | 'extreme';
 
-`home_assets` always wins. `systems` is fallback-only for items not yet discovered into the VIN layer. Supplemental systems are displayed with a label like "Estimated from public data".
-
-### Hardening Rule 2: Issue Resolution Logic
-
-An issue is considered **resolved** if any of the following exist in the event chain:
-- A `status_change` event with `status = 'resolved'` and `related_event_id = issue.id`
-- A `repair_completed` event with `related_event_id = issue.id`
-
-This is computed client-side by building a lookup map: `Map<event_id, related_events[]>`. Each `issue_reported` event is checked against this map. Documented in code comments as the canonical resolution rule.
-
-### Hardening Rule 3: Deferred Recommendation Guardrails
-
-A recommendation is considered "deferred" only if:
-1. `event_type = 'recommendation'`
-2. No linked `user_decision` event exists (via `related_event_id`)
-3. The associated asset (if any) still has `status = 'active'` (filters out zombie recommendations for replaced/removed assets)
-
-### Hardening Rule 4: Event Cap
-
-The events query is capped at 200 rows (`limit(200)`). This prevents unbounded reads as the ledger grows. A code comment marks this as a future materialized-view or pagination candidate.
-
-### Return Shape
-
-The hook returns a structured object with pre-categorized data:
-
-```text
-{
-  property: { address, yearBuilt, squareFeet, ownershipSince }
-  assets: { coreSystems: [...], appliances: [...] }   // deduplicated
-  openIssues: [...]                                    // with linked recommendations
-  resolvedHistory: [...]                               // repairs + resolved issues
-  replacements: [...]
-  deferredRecommendations: [...]                       // zombie-filtered
-  coverage: { assetCount, issueCount, repairCount, avgConfidence, verifiedPct, estimatedPct }
-  loading, error
+// QA FIX #6: Named "ResolvedClimateContext" to distinguish from frontend's display-only climateZone.ts
+interface ResolvedClimateContext {
+  climateZone: ClimateZoneType;
+  climateMultiplier: number;           // 0.80-1.0
+  climateConfidence: ConfidenceLevel;  // Gates attribution copy tone
+  dutyCycle: { hvac: HvacDutyCycle };
+  lifespanModifiers: {
+    hvac: number;
+    roof: number;
+    water_heater: number;
+  };
 }
 ```
 
-## Page: `src/pages/HomeReportPage.tsx`
+### B. `classifyClimate()` replaces `getRegionContext()`
 
-Wraps content in `DashboardV3Layout`. Renders all seven sections in fixed order. Shows the global framing header and "Download PDF" action (right-aligned, quiet).
+Aligned with frontend's `deriveClimateZone()` but adds confidence and duty cycle. The existing `getRegionContext()` is kept as a deprecated shim that constructs a minimal `ResolvedClimateContext`.
 
-## Report Section Components
+Climate multipliers and lifespan adjustments by zone:
 
-All in `src/components/report/`. Each follows the document-first principle: if printed tomorrow, it still makes sense.
+| Zone | Multiplier | Climate Conf. | HVAC adj | Roof adj | WH adj |
+|------|-----------|---------------|----------|----------|--------|
+| coastal (FL + city match) | 0.80 | high | -3 | -5 | -2 |
+| high_heat (FL, AZ, TX) | 0.82 | medium | -2 | -3 | -1 |
+| freeze_thaw (MN, WI, MI...) | 0.85 | medium | -1 | -4 | 0 |
+| moderate (everything else) | 1.0 | low | 0 | 0 | 0 |
 
-### 1. `ReportHeader.tsx`
-- Title: "Home Report"
-- Subtitle: address + build year
-- Description: "A running record of the systems, appliances, issues, and work associated with this property."
-- Actions: "Download PDF" button (right-aligned, secondary variant, `FileDown` icon)
+Climate confidence rules:
+- **high**: Explicit coastal city match (Miami Beach, Key West, Fort Lauderdale, etc.) in FL
+- **medium**: State-level classification (FL, AZ, TX, freeze states)
+- **low**: Fallback / moderate zone
 
-### 2. `PropertyOverviewSection.tsx`
-- Data: `homes` table (address, year_built, square_feet, created_at)
-- Always visible. Unknown fields show "Not available"
-- No inference, no estimation
+HVAC duty cycle (QA FIX #4 -- cold-state heating):
+- **extreme**: FL + coastal cities
+- **high**: FL (rest), AZ, TX, AND freeze states with gas furnace assumption (heating-heavy winters destroy heat exchangers)
+- **moderate**: Other freeze states, default
+- **low**: CA (non-desert), Pacific Northwest
 
-### 3. `AssetInventorySection.tsx`
-- Split into "Core Systems" and "Appliances" sub-sections
-- Core Systems: `home_assets` where `category = 'system'` PLUS deduplicated `systems` fallback
-- Appliances: `home_assets` where `category = 'appliance'`
-- Each item shows: kind (display name), manufacturer, install date/estimate, confidence label
-- Confidence labels: `< 50` = "Estimated", `50-74` = "Chat-reported", `75-89` = "Photo-verified", `>= 90` = "Verified"
-- Empty state: "No appliances documented yet"
-
-### 4. `OpenIssuesSection.tsx`
-- Only renders if there are open issues (hidden entirely otherwise)
-- Each issue shows: asset name, title, reported date, severity, status, linked recommendation (if any), cost estimate
-- Linked recommendation found by scanning events where `related_event_id = issue.id` and `event_type = 'recommendation'`
-
-### 5. `ResolvedHistorySection.tsx`
-- Shows `repair_completed` and `maintenance_performed` events, plus issues determined resolved by the resolution logic
-- Grouped by asset (not timeline) -- humans think in objects
-- Each entry shows: asset, title, diagnosed date, resolved date, outcome, cost
-- Empty state: "No resolved issues yet"
-
-### 6. `ReplacementsSection.tsx`
-- Shows `replacement` events with old/new asset context
-- Each entry shows: asset kind, old install date, replacement date, source
-- Empty state: "No replacements recorded"
-
-### 7. `DeferredRecommendationsSection.tsx`
-- Shows recommendations with no linked decision and active assets only
-- Each shows: asset, recommendation path, urgency, date noted
-- Neutral tone -- no warnings, no red banners, just facts
-- Empty state: "No deferred recommendations"
-
-### 8. `CoverageSummarySection.tsx`
-- Derived metrics: assets documented, issues logged, repairs recorded, average confidence
-- Additionally shows: % verified assets, % estimated assets (addresses the QA feedback that avg confidence alone is weak)
-- Footer text: "Some records are estimated or inferred. Confidence increases as systems are verified through photos, permits, or professional work."
-
-## PDF Export: `src/lib/reportPdfGenerator.ts`
-
-Uses the same HTML-to-Blob approach proven in `src/components/validation/PDFReportGenerator.tsx`:
-1. Generate a self-contained HTML string with inline CSS
-2. Create a Blob of type `text/html`
-3. Trigger download as `home-report-[address]-[date].html`
-
-The generator accepts the same structured data returned by `useHomeReport`, ensuring the PDF and screen render from identical data (no drift). Section order and language match the on-screen report exactly. No UI chrome in the export.
-
-## Empty-State Language (Doctrine Compliance)
-
-The report never uses "incomplete", "missing", or "you should add". Instead:
-- "Not yet documented"
-- "Estimated from public data"
-- "Will update over time"
-- "As you chat with Habitta, this report builds itself."
-
-Day-1 experience with no events:
+### C. HVAC Cost Bands by System Type
 
 ```text
-Home Report
-123 Palm Ave -- Built 1989
-
-This report tracks the systems, appliances, and work
-associated with your home over time.
-
-Current coverage:
-  Home details: Available
-  Core systems: Partial
-  Appliances: Not yet documented
-  Issues & repairs: None yet
-
-As you chat with Habitta, this report will automatically
-build itself.
+const HVAC_COSTS: Record<string, { min: number; max: number }> = {
+  split_standard:       { min: 7000, max: 14000 },
+  split_high_efficiency: { min: 12000, max: 22000 },
+  heat_pump:            { min: 9000, max: 18000 },
+  package_unit:         { min: 8000, max: 16000 },
+  unknown:              { min: 9000, max: 14000 },
+};
 ```
 
-## Files Created
+### D. `deriveCostConfidence()` (QA FIX #1 -- corrected rules)
 
-| File | Purpose |
-|------|---------|
-| `src/pages/HomeReportPage.tsx` | Page container with DashboardV3Layout |
-| `src/hooks/useHomeReport.ts` | Data fetching + dedup + resolution logic |
-| `src/components/report/ReportHeader.tsx` | Title, address, PDF action |
-| `src/components/report/PropertyOverviewSection.tsx` | Address, year, sqft |
-| `src/components/report/AssetInventorySection.tsx` | Core systems + appliances (deduplicated) |
-| `src/components/report/OpenIssuesSection.tsx` | Active issues with linked recommendations |
-| `src/components/report/ResolvedHistorySection.tsx` | Repairs + maintenance, grouped by asset |
-| `src/components/report/ReplacementsSection.tsx` | Major replacements |
-| `src/components/report/DeferredRecommendationsSection.tsx` | Unacted recommendations (zombie-filtered) |
-| `src/components/report/CoverageSummarySection.tsx` | Confidence + coverage metrics |
-| `src/lib/reportPdfGenerator.ts` | HTML export from same data source |
+```text
+function deriveCostConfidence(
+  materialSource: string | null,
+  installSource: string,
+  climateConfidence: ConfidenceLevel
+): ConfidenceLevel {
+  // High: Permit-verified material OR ATTOM + strong climate signal
+  if (materialSource === 'permit') return 'high';
+  if (materialSource === 'attom' && climateConfidence === 'high') return 'high';
 
-## Files Modified
+  // Medium: ATTOM or owner-reported material, OR climate medium
+  if (materialSource === 'attom' || materialSource === 'owner_reported') return 'medium';
+  if (climateConfidence === 'medium') return 'medium';
 
-| File | Change |
-|------|--------|
-| `src/pages/AppRoutes.tsx` | Add `/report` protected route |
-| `src/components/BottomNavigation.tsx` | Add "Report" as 4th nav item |
-| `src/components/dashboard-v3/LeftColumn.tsx` | Replace "Reports" (admin) with "Report" (user-facing) |
+  // Low: everything else
+  return 'low';
+}
+```
 
-## No Database Changes
+This removes the contradictory `hasPermit` check from the original plan. `materialSource === 'permit'` alone is sufficient for high confidence.
 
-This is a pure read surface. No migrations, no new tables, no RLS changes. All data sources (`homes`, `home_assets`, `home_events`, `systems`) already exist with appropriate RLS.
+### E. `deriveTypicalBand()` -- Confidence-Gated Band Compression
+
+```text
+function deriveTypicalBand(
+  low: number,
+  high: number,
+  confidence: ConfidenceLevel
+): { typicalLow: number; typicalHigh: number } {
+  const range = high - low;
+  const factors = {
+    high:   [0.25, 0.40],   // Tight: 15% of range
+    medium: [0.40, 0.55],   // Medium: 15% of range
+    low:    [0.60, 0.70],   // Wide: still anchored but honest
+  }[confidence];
+  return {
+    typicalLow: Math.round(low + range * factors[0]),
+    typicalHigh: Math.round(low + range * factors[1]),
+  };
+}
+```
+
+### F. HVAC Emergency Multiplier (Duty-Cycle-Aware)
+
+```text
+function hvacEmergencyMultiplier(duty: HvacDutyCycle): number {
+  return { low: 1.20, moderate: 1.35, high: 1.50, extreme: 1.65 }[duty];
+}
+```
+
+### G. ATTOM Material False Positive Brake (QA FIX #2)
+
+Add `normalizeRoofMaterial()` with a safety valve:
+
+```text
+function normalizeRoofMaterial(
+  raw: string,
+  yearBuilt: number
+): { material: 'asphalt' | 'tile' | 'metal' | 'unknown'; downgraded: boolean } {
+  const lower = raw.toLowerCase();
+  let material: 'asphalt' | 'tile' | 'metal' | 'unknown' = 'unknown';
+
+  if (lower.includes('tile') || lower.includes('concrete')) material = 'tile';
+  else if (lower.includes('metal') || lower.includes('standing seam')) material = 'metal';
+  else if (lower.includes('shingle') || lower.includes('asphalt') || lower.includes('composition')) material = 'asphalt';
+
+  // Safety brake: tile or metal on pre-1970 homes is suspicious
+  // (may be ATTOM carrying stale/wrong data for older properties)
+  const downgraded = (material === 'tile' || material === 'metal') && yearBuilt < 1970;
+
+  return { material, downgraded };
+}
+```
+
+When `downgraded === true`, `materialSource` is set to `'inferred'` instead of `'attom'`, which automatically softens cost confidence via `deriveCostConfidence()`.
+
+### H. Updated Calculator Functions
+
+All three calculator functions (`calculateHVACLifecycle`, `calculateRoofLifecycle`, `calculateWaterHeaterLifecycle`) accept `ResolvedClimateContext` instead of `RegionContext`:
+
+- **HVAC**: Uses duty-cycle-adjusted lifespan (floor at 60% of base), type-specific cost bands, duty-cycle emergency multiplier
+- **Roof**: Uses zone-aware lifespan modifiers instead of binary `isHotHumid ? -3 : 0`
+- **Water heater**: Applies zone-specific lifespan modifier (coastal: -2 years)
+
+The `calculateSystemLifecycle()` entry point accepts `ResolvedClimateContext`. A backward-compat shim wraps old `RegionContext` calls.
+
+### I. `LifecycleOutput` Extended
+
+```text
+interface LifecycleOutput {
+  // ...existing fields...
+  materialType?: string;
+  climateZone?: ClimateZoneType;
+  climateConfidence?: ConfidenceLevel;
+  costConfidence?: ConfidenceLevel;
+}
+```
+
+---
+
+## File 2: `supabase/functions/capital-timeline/index.ts`
+
+### A. Extended `SystemTimelineEntry` (Internal Type)
+
+Add to the edge function's internal type:
+```text
+materialType?: string;
+materialSource?: string;
+climateZone?: string;
+climateConfidence?: string;
+costConfidence?: string;
+costAttributionLine?: string;
+costDisclaimer?: string;
+capitalCost: {
+  low: number;
+  high: number;
+  typicalLow?: number;
+  typicalHigh?: number;
+  currency: 'USD';
+  costDrivers: string[];
+};
+```
+
+### B. ATTOM Material Fallback
+
+The `enrichment_snapshots` table uses `address_id` from the validation pipeline's `addresses` table, but `homes` links through `property_id` to a separate `properties` table. There is no reliable FK join between these two pipelines.
+
+Instead of adding a fragile cross-pipeline query, the ATTOM fallback works as follows:
+
+1. Check `systems.material` first (authoritative if populated)
+2. If null, query `enrichment_snapshots` using `homes.address_id` (when populated)
+3. If `homes.address_id` is also null (most current records), fall through to `'unknown'` with appropriate confidence
+
+This is explicitly transitional. The medium-term fix is for the onboarding/enrichment pipeline to write ATTOM-derived material to `systems.material` at property setup time. A code comment marks this as the future path.
+
+When ATTOM data is found:
+- Run through `normalizeRoofMaterial()` with false-positive brake
+- If `downgraded`, set `materialSource = 'inferred'`
+- Otherwise set `materialSource = 'attom'`
+
+### C. `formatCostAttributionLine()` -- Confidence-Gated Copy
+
+Server-side only. No UI copy invention allowed.
+
+| Climate Conf. | Material Known | Output |
+|---------------|---------------|--------|
+| high | yes | "Estimates reflect your [material] [system], coastal exposure, and regional labor costs." |
+| medium | yes | "Estimates reflect a [material] [system] and regional climate usage." |
+| medium | no | "Estimates adjusted for regional climate usage." |
+| low | any | "Estimates based on typical conditions for homes in your area." |
+
+For HVAC specifically, duty cycle gates a variant:
+- extreme: "HVAC estimates reflect heavy year-round usage in your climate."
+- high: "HVAC estimates adjusted for above-average seasonal usage."
+- moderate/low: "HVAC estimates based on typical usage for your area."
+
+### D. `formatCostDisclaimer()` -- System-Specific Defensive Copy
+
+Non-negotiable one-liner per system type:
+- Roof: "Final pricing varies with roof complexity and access."
+- HVAC: "Final pricing varies with equipment efficiency, ductwork condition, and access."
+- Water heater: "Final pricing varies with fuel type and installation requirements."
+
+### E. Updated `buildTimelineEntry()`
+
+Populates all new fields from the lifecycle output:
+```text
+materialType, materialSource, climateZone, climateConfidence,
+costConfidence, costAttributionLine, costDisclaimer,
+capitalCost: { ...existing, typicalLow, typicalHigh }
+```
+
+### F. Replace `getRegionContext()` with `classifyClimate()`
+
+Update the main handler (line 520) to use the new climate classification.
+
+### G. Telemetry Logging (QA FIX #5)
+
+Extend the existing `console.log` block (lines 614-625) to include per-system:
+```text
+sources: timelineEntries.map(e => ({
+  system: e.systemId,
+  source: e.installSource,
+  year: e.installYear,
+  confidence: e.confidenceScore,
+  // NEW telemetry fields
+  materialType: e.materialType,
+  materialSource: e.materialSource,
+  climateZone: e.climateZone,
+  climateConfidence: e.climateConfidence,
+  costConfidence: e.costConfidence,
+}))
+```
+
+This enables future analysis of where confidence breaks, what percentage of roofs come from ATTOM vs unknown, and where users later override assumptions.
+
+---
+
+## File 3: `src/types/capitalTimeline.ts`
+
+Add new optional fields to frontend types for backward-compatible consumption:
+
+```text
+// In SystemTimelineEntry:
+materialType?: string;
+materialSource?: string;
+climateZone?: string;
+climateConfidence?: string;
+costConfidence?: string;
+costAttributionLine?: string;
+costDisclaimer?: string;
+
+// In CapitalCostRange:
+typicalLow?: number;
+typicalHigh?: number;
+```
+
+All optional -- the UI gracefully falls back if the backend hasn't been deployed with these fields yet.
+
+---
+
+## File 4: `src/components/system/SystemPlanView.tsx`
+
+### A. Delete Hardcoded Constants
+
+Remove entirely:
+- `COST_PREMIUMS` (lines 18-21)
+- `EMERGENCY_PREMIUMS` (lines 24-28)
+- `REPLACEMENT_COSTS` (lines 31-35)
+
+### B. Rewrite `getCostTiers()` to Use Timeline Data
+
+```text
+function getCostTiers(system: SystemTimelineEntry): CostTierDisplay[] {
+  const cost = system.capitalCost;
+  const hasTypicalBand = cost.typicalLow != null && cost.typicalHigh != null;
+
+  // "Planned" tier: uses tightened band when available (QA FIX #3: never call this "Typical" in UI)
+  const plannedRange = hasTypicalBand
+    ? { low: cost.typicalLow!, high: cost.typicalHigh! }
+    : { low: cost.low, high: cost.high };
+
+  // Emergency tier: full range with system-appropriate premium from backend
+  const emergencyMultiplier = system.systemId === 'hvac' ? 1.50
+    : system.systemId === 'roof' ? 1.40
+    : 1.25;
+  const emergencyRange = {
+    low: Math.round(cost.low * emergencyMultiplier),
+    high: Math.round(cost.high * emergencyMultiplier),
+  };
+
+  return [
+    {
+      label: PLAN_COPY.costTiers.planned.label,    // "Planned replacement"
+      tier: 'planned',
+      range: plannedRange,
+      definition: PLAN_COPY.costTiers.planned.definition,
+    },
+    {
+      label: PLAN_COPY.costTiers.emergency.label,   // "Emergency replacement"
+      tier: 'emergency',
+      range: emergencyRange,
+      definition: PLAN_COPY.costTiers.emergency.definition,
+    },
+  ];
+}
+```
+
+Note: The "Typical" tier is removed from the UI (QA FIX #3). Users see two tiers: Planned (anchored) and Emergency (worst case). This avoids the "Planned vs Typical" confusion. The word "typical" is only used internally for `typicalLow/typicalHigh` band math.
+
+### C. Show Material in System Header
+
+If `system.materialType` is present and not 'unknown':
+```text
+// "Roof -- Tile" instead of just "Roof"
+const materialSuffix = system.materialType && system.materialType !== 'unknown'
+  ? ` -- ${capitalize(system.materialType)}`
+  : '';
+const displayName = (system.systemLabel || getSystemDisplayName(system.systemId)) + materialSuffix;
+```
+
+### D. Render Attribution and Disclaimer
+
+Below the cost tiers card, add two quiet lines:
+1. `costAttributionLine` (if present): "Estimates reflect your tile roof, coastal exposure, and regional labor costs."
+2. `costDisclaimer` (always): "Final pricing varies with roof complexity and access."
+
+Both rendered as `text-xs text-muted-foreground` -- calm, not alarmist.
+
+---
+
+## File 5: `src/lib/mobileCopy.ts`
+
+Remove the "Typical" cost tier from `PLAN_COPY.costTiers`:
+```text
+costTiers: {
+  planned: {
+    label: 'Planned replacement',
+    definition: 'Scheduled in advance with flexibility',
+  },
+  // "typical" tier removed -- QA FIX #3: avoid "Planned" vs "Typical" confusion
+  emergency: {
+    label: 'Emergency replacement',
+    definition: 'Post-failure, high urgency',
+  },
+},
+```
+
+---
+
+## Callers of `getRegionContext()` That Need Migration
+
+Three edge functions currently import `getRegionContext()`:
+
+| Function | Action |
+|----------|--------|
+| `capital-timeline/index.ts` | Migrate to `classifyClimate()` (primary target) |
+| `ai-home-assistant/index.ts` | Keep deprecated shim for now; it passes `RegionContext` to `calculateSystemLifecycle()` which will accept both via shim |
+| `intelligence-engine/index.ts` | Keep deprecated shim; uses legacy `inferRoofTimeline()` / `inferWaterHeaterTimeline()` which already accept `RegionContext` |
+
+Only `capital-timeline` migrates in this pass. The deprecated `getRegionContext()` function stays exported as a shim that constructs a minimal `ResolvedClimateContext` from the binary `isHotHumid` flag, ensuring zero breakage in the other two callers.
+
+---
+
+## What This Does NOT Change
+
+- No database schema changes
+- No new tables or columns
+- Frontend `climateZone.ts` remains unchanged (display-only, no confidence concept)
+- AI home assistant and chat unaffected
+- Home Report tab unaffected
+- `SYSTEM_CONFIGS.replacementCostRange` in `systemConfigs.ts` remains as a fallback for non-lifecycle surfaces
+
+---
 
 ## Implementation Order
 
-1. **Data hook** (`useHomeReport.ts`) -- all dedup, resolution, and filtering logic lives here
-2. **Section components** -- all 8 report sections, each self-contained
-3. **Page container** (`HomeReportPage.tsx`) -- assembles sections
-4. **Navigation** -- route + bottom nav + sidebar updates
-5. **PDF export** -- generator function + download trigger
+1. **`systemInference.ts`** -- Foundation: new types, climate classification, cost confidence, band compression, HVAC costs, ATTOM safety brake, updated calculators, deprecated shim
+2. **`capital-timeline/index.ts`** -- Orchestrator: ATTOM fallback, attribution copy, disclaimer, new entry fields, telemetry, climate migration
+3. **`src/types/capitalTimeline.ts`** -- Frontend types (backward-compatible optional fields)
+4. **`src/lib/mobileCopy.ts`** -- Remove "Typical" tier copy
+5. **`src/components/system/SystemPlanView.tsx`** -- Consume real data, remove hardcoded constants, show material + attribution + disclaimer
 
-## QA Checklist (All Five Traps Addressed)
+---
 
-| Trap | Fix | Where |
-|------|-----|-------|
-| Asset duplication (systems + home_assets) | Deduplicate by `kind`; `home_assets` wins | `useHomeReport.ts` |
-| Event status resolution | Explicit rule: resolved = linked `repair_completed` or `status_change` to resolved | `useHomeReport.ts` |
-| Zombie deferred recommendations | Filter by `asset.status = 'active'` | `useHomeReport.ts` |
-| Unbounded event query | Cap at 200 rows; documented pagination point | `useHomeReport.ts` |
-| PDF/screen drift | Single data source feeds both screen and PDF render | `reportPdfGenerator.ts` |
+## QA Checklist (All 6 Fixes Addressed)
+
+| # | Issue | Fix | Where |
+|---|-------|-----|-------|
+| 1 | Cost confidence rules inconsistent | Cleaned: `permit` alone = high; `attom` + high climate = high | `deriveCostConfidence()` |
+| 2 | ATTOM roof false positives | Safety brake: tile/metal on pre-1970 homes downgrades to 'inferred' | `normalizeRoofMaterial()` |
+| 3 | "Planned" vs "Typical" UI confusion | Remove "Typical" tier from UI entirely; word only used internally | `SystemPlanView.tsx`, `mobileCopy.ts` |
+| 4 | Freeze-state HVAC duty underweighted | Freeze states with gas furnace = 'high' duty (heating-heavy) | `classifyClimate()` |
+| 5 | Missing telemetry | Log `materialType`, `materialSource`, `climateZone`, `climateConfidence`, `costConfidence` per system | `capital-timeline` console.log |
+| 6 | Naming confusion (ClimateContext vs climateZone.ts) | Backend type renamed to `ResolvedClimateContext` | `systemInference.ts` |
 
