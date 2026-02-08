@@ -4,6 +4,7 @@ import { useHomeReport } from '@/hooks/useHomeReport';
 import { ReportHeader } from '@/components/report/ReportHeader';
 import { PropertyOverviewSection } from '@/components/report/PropertyOverviewSection';
 import { AssetInventorySection } from '@/components/report/AssetInventorySection';
+import { CapitalOutlookSection } from '@/components/report/CapitalOutlookSection';
 import { OpenIssuesSection } from '@/components/report/OpenIssuesSection';
 import { ResolvedHistorySection } from '@/components/report/ResolvedHistorySection';
 import { ReplacementsSection } from '@/components/report/ReplacementsSection';
@@ -94,6 +95,10 @@ export default function HomeReportPage() {
                       • Issues & repairs:{' '}
                       <span className="text-foreground">None yet</span>
                     </li>
+                    <li>
+                      • Capital outlook:{' '}
+                      <span className="text-foreground">Not yet available</span>
+                    </li>
                   </ul>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -110,6 +115,8 @@ export default function HomeReportPage() {
               coreSystems={report.assets.coreSystems}
               appliances={report.assets.appliances}
             />
+
+            <CapitalOutlookSection systems={report.capitalOutlook} />
 
             <OpenIssuesSection issues={report.openIssues} />
 
