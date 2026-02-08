@@ -1578,6 +1578,51 @@ export type Database = {
           },
         ]
       }
+      home_chat_sessions: {
+        Row: {
+          created_at: string
+          home_id: string
+          id: string
+          message_count: number
+          messages: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          home_id: string
+          id?: string
+          message_count?: number
+          messages?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          home_id?: string
+          id?: string
+          message_count?: number
+          messages?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_chat_sessions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_chat_sessions_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       home_events: {
         Row: {
           asset_id: string | null

@@ -1983,7 +1983,7 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
                 nowActions: actions.nowActions || [],
                 planActions: actions.planActions || [],
                 precisionCTA: actions.precisionCTA || null,
-                closingIntent: 'explore_costs_or_remind',
+                closingIntent: 'explore_costs',
               };
             } else {
               // mid_life / early_life: minimal status note only

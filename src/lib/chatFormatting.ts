@@ -318,7 +318,7 @@ function buildPostConfirmationAdvisoryMessage(advisory: PostConfirmationAdvisory
 
   // Closing question
   const closingQuestions: Record<string, string> = {
-    explore_costs_or_remind: 'Would you like to explore replacement costs, or set a reminder to revisit this?',
+    explore_costs: 'Would you like to explore replacement costs or plan next steps?',
   };
   if (advisory.closingIntent && closingQuestions[advisory.closingIntent]) {
     parts.push(closingQuestions[advisory.closingIntent]);

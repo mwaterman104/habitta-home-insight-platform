@@ -19,6 +19,13 @@ const categoryIcons: Record<string, React.ComponentType<any>> = {
   Safety: Home,
   Plumbing: Wrench,
   Electrical: Zap,
+  // System kind mappings from home_events
+  hvac: Thermometer,
+  roof: Paintbrush,
+  water_heater: Wrench,
+  electrical_panel: Zap,
+  plumbing: Wrench,
+  exterior: Paintbrush,
 };
 
 interface HomeActivityLogProps {

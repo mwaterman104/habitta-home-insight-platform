@@ -84,34 +84,17 @@ export default function AppTopbar() {
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="relative">
+            <Button variant="ghost" size="sm">
               <Bell className="h-4 w-4" />
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs">
-                3
-              </Badge>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <div className="flex flex-col gap-1">
-                <p className="font-medium">HVAC Filter Due</p>
-                <p className="text-sm text-muted-foreground">Change your air filter this week</p>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <div className="flex flex-col gap-1">
-                <p className="font-medium">Kitchen Renovation Update</p>
-                <p className="text-sm text-muted-foreground">Materials have arrived</p>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <div className="flex flex-col gap-1">
-                <p className="font-medium">Property Value Alert</p>
-                <p className="text-sm text-muted-foreground">Your home value increased 3.2%</p>
-              </div>
-            </DropdownMenuItem>
+            <div className="px-2 py-6 text-center">
+              <p className="text-sm text-muted-foreground">No notifications yet.</p>
+              <p className="text-xs text-muted-foreground mt-1">Habitta will notify you when something needs attention.</p>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
