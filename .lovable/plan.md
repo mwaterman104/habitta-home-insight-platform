@@ -1,191 +1,271 @@
 
-# Credibility Sprint: Implementation Plan
+
+# Future-in-the-Record: Capital Timeline in Home Report
 
 ## Objective
 
-Fix every place where Habitta implies permanence, memory, or proactivity without delivering it. Five fixes, ordered by risk. No new features.
+Upgrade the Home Report from a backward-looking inventory into a forward-looking intelligence artifact by embedding the capital lifecycle data that already exists in the system.
+
+After this ships, the Home Report answers: **What do I own, what's happened, and what's coming next -- and how confident are we?**
+
+No new calculations. No new edge functions. No new promises. Strictly surfaces existing intelligence in a durable, portable form.
 
 ---
 
-## Fix 1: Delete Dead `HomeDocuments.tsx` (Zero Risk)
+## Architecture
 
-Delete `src/components/HomeProfile/HomeDocuments.tsx`. It contains hardcoded mock records (`Property_Deed.pdf`, `Deck_Permit_2022.pdf`) as default props, violating the project's guardrail against fake data on evidentiary surfaces. It is not imported anywhere -- `HomeProfilePage.tsx` uses `SupportingRecords.tsx` instead, which correctly defaults to an empty array.
-
-One file deleted. Zero runtime impact.
-
----
-
-## Fix 2: Kill Fake Notification Content (Zero Risk)
-
-### `src/components/AppTopbar.tsx`
-
-Remove the `<Badge>3</Badge>` overlay on the bell icon (line 89). Replace the three hardcoded `DropdownMenuItem` blocks (lines 97-114: "HVAC Filter Due", "Kitchen Renovation Update", "Property Value Alert") with an honest empty state:
+The capital-timeline edge function already computes replacement windows, lifecycle stages, and confidence for each system. The report currently ignores all of it. This plan threads that data through three layers:
 
 ```text
-Notifications
----
-No notifications yet.
-Habitta will notify you when something needs attention.
+                    capital-timeline
+                     edge function
+                          |
+                          v
+useHomeReport.ts --> normalizeTimelineForReport() --> ReportCapitalSystem[]
+       |                                                     |
+       v                                                     v
+HomeReportPage.tsx                              CapitalOutlookSection.tsx
+       |                                                     |
+       v                                                     v
+reportPdfGenerator.ts -----> Capital Outlook HTML section in export
 ```
 
-### `src/components/dashboard-v3/TopHeader.tsx`
+---
 
-Replace the two hardcoded notification items (lines 130-141: "HVAC Filter Due", "Property Value Alert") with the same honest empty state. Remove the `hasNotifications` red dot logic -- always render the bell without a badge until a real notification system exists.
+## New Types
+
+Added to `useHomeReport.ts`. The normalizer converts raw `SystemTimelineEntry` fields into report-safe shapes. Raw edge function output never leaks into UI.
+
+### `ReportCapitalSystem`
+
+| Field | Type | Source |
+|-------|------|--------|
+| `systemKey` | `string` | `SystemTimelineEntry.systemId` |
+| `systemLabel` | `string` | `SystemTimelineEntry.systemLabel` |
+| `installYear` | `number or null` | `SystemTimelineEntry.installYear` |
+| `installSource` | `string` | `SystemTimelineEntry.installSource` |
+| `installSourceLabel` | `string` | Via `getInstallSourceLabel()` from `mobileCopy.ts` |
+| `lifecycleStage` | enum | `'late_life' / 'planning_window' / 'mid_life' / 'early_life'` |
+| `lifecycleStageLabel` | `string` | Human-readable: "Late-life", "Planning window", "Mid-life", "Early-life" |
+| `replacementWindow` | `object or null` | `{ earlyYear, likelyYear, lateYear }` -- null if too low confidence |
+| `windowDisplay` | `string` | e.g. "2024--2026" or "Timing uncertain -- more information needed" |
+| `planningGuidance` | `string` | Deterministic from lifecycle stage |
+| `climateNote` | `string` | From `SystemTimelineEntry.climateZone` or fallback to property-level climate |
+| `confidenceLabel` | `string` | "High" / "Moderate" / "Low" |
+| `confidenceDetail` | `string` | e.g. "Moderate (owner-reported install year)" |
+
+The `lifecycleStage` field is a typed union (not free text), with a separate `lifecycleStageLabel` for display. This prevents copy drift and keeps the report machine-readable for future use.
 
 ---
 
-## Fix 3: Defuse the "Set a Reminder" Promise (Zero Risk)
+## Step 1: Extend `useHomeReport.ts` -- Data Layer
 
-### `supabase/functions/ai-home-assistant/index.ts` (line 1986)
+### Add timeline fetch
 
-Change `closingIntent` from `'explore_costs_or_remind'` to `'explore_costs'`.
-
-### `src/lib/chatFormatting.ts` (lines 320-322)
-
-Update the `closingQuestions` map:
-- Remove `explore_costs_or_remind`
-- Add `explore_costs` with text: `'Would you like to explore replacement costs or plan next steps?'`
-
-"Plan" instead of "discuss" -- reinforces Habitta's role as an active advisor, not a passive conversation partner.
-
----
-
-## Fix 4: Wire Home Activity Log to Real Data (Low Risk)
-
-### `src/pages/HomeProfilePage.tsx`
-
-Add a query to fetch activity-relevant events from `home_events` for the current `home.id`:
+Import `useCapitalTimeline` and call it alongside the existing asset/event/system queries:
 
 ```text
-const { data: homeEvents } = await supabase
-  .from('home_events')
-  .select('id, event_type, title, description, metadata, created_at')
-  .eq('home_id', home.id)
-  .in('event_type', [
-    'system_discovered', 'issue_reported', 'repair_completed',
-    'maintenance_performed', 'replacement', 'status_change'
-  ])
-  .order('created_at', { ascending: false })
-  .limit(20);
+const { timeline, loading: timelineLoading, error: timelineError } = useCapitalTimeline({
+  homeId: homeId ?? undefined,
+  enabled: !!homeId,
+});
 ```
 
-Map results to the `ActivityItem` interface:
-- `id` from event `id`
-- `date` from `created_at`
-- `title` from event `title`
-- `category` derived from `metadata.system_type` or `metadata.kind` (HVAC maps to Thermometer icon, Roof to Home, Water Heater to Wrench, etc.)
-- `notes` from `description`
-- `contractor` from `metadata.contractor` if present
+Timeline errors are **non-fatal**: if the edge function fails, the report still renders -- the Capital Outlook section shows an honest empty state.
 
-Pass mapped activities to `<HomeActivityLog activities={mappedActivities} />` instead of the hardcoded empty array.
+### Add `normalizeTimelineForReport()` function
 
-### `src/components/HomeProfile/HomeActivityLog.tsx`
+A pure function that maps each `SystemTimelineEntry` to a `ReportCapitalSystem`:
 
-Add category mappings for system kinds from `home_events` (`water_heater` maps to Plumbing icon, `hvac` to Thermometer, `roof` to Home/Exterior). The empty state remains for genuinely empty histories.
+**Lifecycle stage derivation** -- Reuses the same `deriveStatusLevel()` thresholds from `mobileCopy.ts`:
+- `aging` maps to `'late_life'` / "Late-life"
+- `elevated` maps to `'planning_window'` / "Planning window"
+- `planning_window` maps to `'mid_life'` / "Mid-life"
+- `stable` maps to `'early_life'` / "Early-life"
 
-This is read-only. The "Log activity" button remains non-functional (new feature, not trust repair).
+**Window display logic**:
+- If `dataQuality === 'low'` AND `windowUncertainty === 'wide'`: show "Timing uncertain -- more information needed"
+- Otherwise: show `"earlyYear--lateYear"` (the full probabilistic range, never a single year)
+
+**Planning guidance** -- Deterministic from lifecycle stage:
+- Late-life: "Begin replacement planning"
+- Planning window: "This is a reasonable window to start researching options"
+- Mid-life: "Routine monitoring sufficient"
+- Early-life: "No action needed at this time"
+
+**Climate note** -- From `SystemTimelineEntry.climateZone`:
+- `high_heat` maps to "High heat and humidity"
+- `coastal` maps to "Coastal salt air and humidity"
+- `freeze_thaw` maps to "Freeze-thaw cycling"
+- `moderate` or undefined maps to "Typical conditions"
+
+**Confidence** -- From `SystemTimelineEntry.dataQuality`:
+- `high` maps to "High"
+- `medium` maps to "Moderate"
+- `low` maps to "Low"
+- Combined with source: e.g. "Moderate (owner-reported install year)"
+
+**Install source** -- Uses existing `getInstallSourceLabel()` from `mobileCopy.ts`
+
+### Update `HomeReportData` interface
+
+Add `capitalOutlook: ReportCapitalSystem[]`. The `loading` state includes `timelineLoading`. Error aggregation includes `timelineError` but as non-fatal (only blocks if all other queries also fail).
+
+### Snapshot contract (docstring)
+
+A comment on the normalizer clarifying: "The capital outlook reflects lifecycle intelligence as of report generation time, not real-time recalculation."
 
 ---
 
-## Fix 5: Persist Chat History to Database (Medium Risk)
+## Step 2: Create `CapitalOutlookSection.tsx` -- UI Layer
 
-### Database Migration
+New file: `src/components/report/CapitalOutlookSection.tsx`
 
-The existing `chat_sessions` table is coupled to `projects` via a NOT NULL FK and RLS policies that check `projects.user_id`. This is a different domain (workspace renovation projects vs home advisor chat).
+Pure presentational component. No internal fetching. No side effects.
 
-Create a new `home_chat_sessions` table purpose-built for the home advisor:
+### Props
 
-```sql
-CREATE TABLE public.home_chat_sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  home_id UUID NOT NULL REFERENCES public.homes(id) ON DELETE CASCADE,
-  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
-  message_count INT NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (user_id, home_id)
-);
-
--- RLS
-ALTER TABLE public.home_chat_sessions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own home chat sessions"
-  ON public.home_chat_sessions FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own home chat sessions"
-  ON public.home_chat_sessions FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own home chat sessions"
-  ON public.home_chat_sessions FOR UPDATE
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own home chat sessions"
-  ON public.home_chat_sessions FOR DELETE
-  USING (auth.uid() = user_id);
-
--- Auto-update timestamp
-CREATE TRIGGER home_chat_sessions_updated_at
-  BEFORE UPDATE ON public.home_chat_sessions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```text
+interface CapitalOutlookSectionProps {
+  systems: ReportCapitalSystem[];
+}
 ```
 
-The `message_count` column enables the "only write if changed" guardrail without needing a hash.
+### Structure
 
-### `src/hooks/useAIHomeAssistant.ts` (Full Persistence Rewrite)
+1. **Section header**: "Capital Outlook" (uses `heading-h3 text-foreground`)
 
-Replace all `sessionStorage` logic with Supabase reads/writes:
+2. **Subtitle**: "Forward-looking planning based on system age, climate, and typical lifespans."
 
-1. **On mount** (when `propertyId` is available and user is authenticated):
-   - Query `home_chat_sessions` for `user_id + home_id = propertyId`
-   - If found, hydrate `messages` state from the JSONB column
-   - Set `isRestoring = false` when complete (whether found or not)
+3. **Disclaimer** (always visible, non-dismissable): "Projections are estimates, not guarantees. They update as new information is added."
 
-2. **On new message** (after appending to local state):
-   - Debounced upsert (500ms) of the full messages array to the row
-   - Only write if `messages.length !== lastPersistedCount` (the guardrail against unnecessary writes during streaming)
-   - Fire-and-forget with error logging -- local state is always authoritative
+4. **Per-system cards** (one per `ReportCapitalSystem`):
+   - System name (bold) + install source badge (muted)
+   - Install year or "Install year not documented"
+   - Lifecycle stage as text label (no color coding that implies urgency -- `text-muted-foreground` for all stages)
+   - Projected window display (range or "Timing uncertain")
+   - Planning guidance (one-line, non-actionable)
+   - Climate context (short clause)
+   - Confidence line: "Confidence: Moderate (owner-reported install year)"
 
-3. **On `clearConversation`**:
-   - Delete the `home_chat_sessions` row for this `home_id`
-   - Reset `lastPersistedCount` to 0
+5. **Summary table** (rendered if 2+ systems):
 
-4. **Property switch**:
-   - Clear local state
-   - `isRestoring = true` triggers re-hydration for the new home
+   | System | Status | Projected Window | Confidence |
+   |--------|--------|------------------|------------|
 
-5. **Cap**: Truncate to 200 messages on write (oldest removed) to prevent unbounded JSONB growth
+   Column header says "Projected Window" (not "Likely Window") to match the fact that we show `earlyYear--lateYear`, not just `likelyYear`.
 
-### `src/components/dashboard-v3/ChatConsole.tsx` (lines 192-204)
+6. **Empty state** (zero systems with timeline data): Section header always renders. Body shows: "No lifecycle projections available yet. As system details are added, capital planning estimates will appear here."
 
-Remove the `sessionStorage` check for `hasStoredMessages`. Replace with a check against `messages.length` after `isRestoring` completes. This prevents the greeting from firing before database hydration finishes.
+### No CTAs. No buttons. No reminders. No cost estimates.
 
-The key guardrail: the baseline opening message must NOT fire until `isRestoring === false` AND `messages.length === 0`. The existing code at line 244-245 already checks `isRestoring` -- we just need to remove the parallel `sessionStorage` check that now creates a stale-data race.
+### Visual patterns
 
----
-
-## Implementation Order
-
-| Step | Fix | Files | Risk |
-|------|-----|-------|------|
-| 1 | Delete `HomeDocuments.tsx` | 1 deleted | Zero |
-| 2 | Kill fake notifications | 2 edited | Zero |
-| 3 | Defuse reminder promise | 2 edited | Zero |
-| 4 | Wire activity log | 2 edited | Low |
-| 5 | Persist chat history | 1 migration + 2 edited | Medium |
+Follows existing report component conventions (`AssetInventorySection`, `CoverageSummarySection`):
+- `bg-card rounded-lg border border-border p-4`
+- `heading-h3` for section title
+- `text-label text-muted-foreground uppercase tracking-wide` for subsection labels
+- `text-sm` for content, `text-xs text-muted-foreground` for metadata
 
 ---
 
-## What This Sprint Does NOT Include
+## Step 3: Wire into `HomeReportPage.tsx` -- Layout
 
-- No new features (reminders, notifications, document upload)
-- No prompt changes
-- No engagement cadence wiring
-- No contractor loop changes
-- No Home Report changes
+### Import and render
 
-## Governing Principle
+Insert between Asset Inventory and Open Issues:
 
-> Nothing Habitta presents should imply permanence, memory, or proactivity unless it is fully real end-to-end.
+```text
+<AssetInventorySection ... />
+<CapitalOutlookSection systems={report.capitalOutlook} />
+<OpenIssuesSection ... />
+```
+
+This creates the narrative: **What you have** (assets) then **What's coming** (outlook) then **What's happened** (issues/history).
+
+### Update Day-1 framing
+
+Add one line to the empty-state coverage list:
+- "Capital outlook: Not yet available"
+
+---
+
+## Step 4: Extend `reportPdfGenerator.ts` -- Export Layer
+
+### Updated section order
+
+```text
+${propertySection}
+${assetSection}
+${capitalOutlookSection}    <-- NEW
+${issuesSection}
+${resolvedSection}
+${replacementsSection}
+${deferredSection}
+${coverageSection}
+```
+
+### New `capitalOutlookSection` builder
+
+Uses the same `ReportCapitalSystem[]` data. Renders:
+
+1. Section header with `.section-title` styling (left border, serif font)
+2. Disclaimer in `.meta` style
+3. Per-system entries as `.card` elements (matching existing card patterns)
+4. Summary table using `.data-table` styling
+
+Empty state: Same honest message as the UI component.
+
+No new CSS classes needed -- reuses existing `.section`, `.section-title`, `.card`, `.data-table`, `.meta`, `.empty` classes already defined in the HTML template.
+
+---
+
+## Confidence and Honesty Rules (enforced in the normalizer)
+
+These are non-negotiable and implemented in `normalizeTimelineForReport()`:
+
+1. Never show a single year -- always show a range (`earlyYear--lateYear`)
+2. Never show cost estimates in the report (costs are excluded from `ReportCapitalSystem`)
+3. Never imply urgency with language (all planning guidance is matter-of-fact)
+4. Always state install source when known
+5. If lifecycle data is missing, say so plainly: "Lifecycle projection unavailable. Add an install year to enable planning estimates."
+6. Low-confidence systems with wide uncertainty show "Timing uncertain" instead of a numeric range
+
+---
+
+## Files Changed
+
+| File | Change | Risk |
+|------|--------|------|
+| `src/hooks/useHomeReport.ts` | Add `ReportCapitalSystem` type, `useCapitalTimeline` query, `normalizeTimelineForReport()`, extend return type | Low |
+| `src/components/report/CapitalOutlookSection.tsx` | New file -- pure presentational component | Zero |
+| `src/pages/HomeReportPage.tsx` | Import + render new section, update Day-1 empty state | Zero |
+| `src/lib/reportPdfGenerator.ts` | Add capital outlook HTML section in correct position | Low |
+
+No edge function changes. No database changes. No new dependencies.
+
+---
+
+## What This Does NOT Include
+
+- No cost estimates in the report (costs belong in interactive planning, not a static document)
+- No reminder CTAs or action buttons
+- No new lifecycle calculations (the report consumes existing edge function output)
+- No changes to the capital-timeline edge function
+- No notification hooks
+- No engagement cadence references
+
+---
+
+## Testing Checklist
+
+1. Report renders with no capital timeline data -- honest empty state in Capital Outlook section
+2. Report renders with mixed-confidence systems -- appropriate window display per confidence level
+3. Late-life systems show planning guidance, not panic language
+4. Low-confidence systems show "Timing uncertain" instead of narrow ranges
+5. System with permit-verified install year but inferred climate shows appropriate mixed confidence
+6. HTML export includes Capital Outlook section in correct position between Assets and Issues
+7. Print view renders Capital Outlook cleanly
+8. Day-1 empty state includes capital outlook coverage line
+9. Timeline fetch failure does not block report rendering (non-fatal error handling)
+
