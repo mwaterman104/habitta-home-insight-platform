@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserHome } from '@/hooks/useUserHome';
+import { useCapitalTimeline } from '@/hooks/useCapitalTimeline';
+import type { SystemTimelineEntry } from '@/types/capitalTimeline';
+import { getInstallSourceLabel, deriveStatusLevel } from '@/lib/mobileCopy';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +70,121 @@ export interface ReportCoverage {
   estimatedPct: number;
 }
 
+// ─── Capital Outlook Types ──────────────────────────────────────────────────
+
+export type ReportLifecycleStage = 'late_life' | 'planning_window' | 'mid_life' | 'early_life';
+
+const LIFECYCLE_STAGE_LABELS: Record<ReportLifecycleStage, string> = {
+  late_life: 'Late-life',
+  planning_window: 'Planning window',
+  mid_life: 'Mid-life',
+  early_life: 'Early-life',
+};
+
+const PLANNING_GUIDANCE: Record<ReportLifecycleStage, string> = {
+  late_life: 'Begin replacement planning',
+  planning_window: 'This is a reasonable window to start researching options',
+  mid_life: 'Routine monitoring sufficient',
+  early_life: 'No action needed at this time',
+};
+
+const CLIMATE_NOTE_MAP: Record<string, string> = {
+  high_heat: 'High heat and humidity',
+  coastal: 'Coastal salt air and humidity',
+  freeze_thaw: 'Freeze-thaw cycling',
+  moderate: 'Typical conditions',
+};
+
+const CONFIDENCE_LABEL_MAP: Record<string, string> = {
+  high: 'High',
+  medium: 'Moderate',
+  low: 'Low',
+};
+
+export interface ReportCapitalSystem {
+  systemKey: string;
+  systemLabel: string;
+  installYear: number | null;
+  installSource: string;
+  installSourceLabel: string;
+  lifecycleStage: ReportLifecycleStage;
+  lifecycleStageLabel: string;
+  replacementWindow: { earlyYear: number; likelyYear: number; lateYear: number } | null;
+  windowDisplay: string;
+  planningGuidance: string;
+  climateNote: string;
+  confidenceLabel: string;
+  confidenceDetail: string;
+}
+
+/**
+ * normalizeTimelineForReport
+ *
+ * Maps SystemTimelineEntry[] to ReportCapitalSystem[].
+ * The capital outlook reflects lifecycle intelligence as of report generation time,
+ * not real-time recalculation. Raw edge function output never leaks into UI.
+ */
+function normalizeTimelineForReport(systems: SystemTimelineEntry[]): ReportCapitalSystem[] {
+  const currentYear = new Date().getFullYear();
+
+  return systems.map((s) => {
+    // Lifecycle stage derivation — reuses mobileCopy thresholds
+    const expectedLifespan = s.replacementWindow
+      ? s.replacementWindow.likelyYear - (s.installYear ?? currentYear)
+      : 20; // fallback
+    const age = s.installYear ? currentYear - s.installYear : null;
+    const lifecyclePercent = age !== null && expectedLifespan > 0
+      ? (age / expectedLifespan) * 100
+      : 0;
+
+    const statusLevel = deriveStatusLevel(lifecyclePercent, age, expectedLifespan);
+
+    const lifecycleStage: ReportLifecycleStage =
+      statusLevel === 'aging' ? 'late_life'
+      : statusLevel === 'elevated' ? 'planning_window'
+      : statusLevel === 'planning_window' ? 'mid_life'
+      : 'early_life';
+
+    // Window display — suppress narrow ranges for low confidence
+    const showWindow = !(s.dataQuality === 'low' && s.windowUncertainty === 'wide');
+    const replacementWindow = showWindow && s.replacementWindow
+      ? { earlyYear: s.replacementWindow.earlyYear, likelyYear: s.replacementWindow.likelyYear, lateYear: s.replacementWindow.lateYear }
+      : null;
+    const windowDisplay = replacementWindow
+      ? `${replacementWindow.earlyYear}–${replacementWindow.lateYear}`
+      : 'Timing uncertain — more information needed';
+
+    // Climate note
+    const climateNote = CLIMATE_NOTE_MAP[s.climateZone ?? ''] ?? CLIMATE_NOTE_MAP.moderate;
+
+    // Confidence
+    const confidenceLabel = CONFIDENCE_LABEL_MAP[s.dataQuality] ?? 'Low';
+    const sourceLabel = getInstallSourceLabel(s.installSource);
+    const installDetail = s.installYear
+      ? `${sourceLabel.toLowerCase()} install year`
+      : 'no install year documented';
+    const confidenceDetail = `${confidenceLabel} (${installDetail})`;
+
+    return {
+      systemKey: s.systemId,
+      systemLabel: s.systemLabel,
+      installYear: s.installYear,
+      installSource: s.installSource,
+      installSourceLabel: sourceLabel,
+      lifecycleStage,
+      lifecycleStageLabel: LIFECYCLE_STAGE_LABELS[lifecycleStage],
+      replacementWindow,
+      windowDisplay,
+      planningGuidance: PLANNING_GUIDANCE[lifecycleStage],
+      climateNote,
+      confidenceLabel,
+      confidenceDetail,
+    };
+  });
+}
+
+// ─── Report Data Interface ──────────────────────────────────────────────────
+
 export interface HomeReportData {
   property: ReportProperty | null;
   assets: {
@@ -77,6 +195,7 @@ export interface HomeReportData {
   resolvedHistory: ReportResolvedItem[];
   replacements: ReportEvent[];
   deferredRecommendations: ReportEvent[];
+  capitalOutlook: ReportCapitalSystem[];
   coverage: ReportCoverage;
   loading: boolean;
   error: string | null;
@@ -123,6 +242,12 @@ function systemKeyToDisplayName(key: string): string {
 export function useHomeReport(): HomeReportData {
   const { userHome } = useUserHome();
   const homeId = userHome?.id ?? null;
+
+  // Query 5: Capital timeline (non-fatal — failures don't block report)
+  const { timeline, loading: timelineLoading } = useCapitalTimeline({
+    homeId: homeId ?? undefined,
+    enabled: !!homeId,
+  });
 
   // Query 1: Property data (from homes via UserHomeContext — already available)
   const property: ReportProperty | null = userHome
@@ -384,9 +509,13 @@ export function useHomeReport(): HomeReportData {
       allAssets.length > 0 ? Math.round((estimatedCount / allAssets.length) * 100) : 0,
   };
 
+  // ─── Capital Outlook (non-fatal) ────────────────────────────────────────────
+
+  const capitalOutlook = normalizeTimelineForReport(timeline?.systems ?? []);
+
   // ─── Loading / Error ──────────────────────────────────────────────────────
 
-  const loading = assetsLoading || eventsLoading || systemsLoading;
+  const loading = assetsLoading || eventsLoading || systemsLoading || timelineLoading;
   const errorMsg = assetsError?.message || eventsError?.message || systemsError?.message || null;
 
   return {
@@ -396,6 +525,7 @@ export function useHomeReport(): HomeReportData {
     resolvedHistory,
     replacements,
     deferredRecommendations,
+    capitalOutlook,
     coverage,
     loading,
     error: errorMsg,

@@ -1,4 +1,4 @@
-import type { HomeReportData } from '@/hooks/useHomeReport';
+import type { HomeReportData, ReportCapitalSystem } from '@/hooks/useHomeReport';
 import { getConfidenceLabel } from '@/hooks/useHomeReport';
 import { format, parseISO } from 'date-fns';
 
@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns';
  * The output is a printable, styled HTML file with no UI chrome.
  */
 export function generateHomeReportHtml(report: HomeReportData): string {
-  const { property, assets, openIssues, resolvedHistory, replacements, deferredRecommendations, coverage } = report;
+  const { property, assets, openIssues, resolvedHistory, replacements, deferredRecommendations, capitalOutlook, coverage } = report;
 
   const fullAddress = property
     ? `${property.address}, ${property.city}, ${property.state} ${property.zipCode}`
@@ -77,6 +77,10 @@ export function generateHomeReportHtml(report: HomeReportData): string {
           : '<p class="empty">No appliances documented yet.</p>'
       }
     </div>`;
+
+  // ─── Capital Outlook section ──────────────────────────────────────────────
+
+  const capitalOutlookSection = buildCapitalOutlookHtml(capitalOutlook);
 
   const issuesSection =
     openIssues.length > 0
@@ -241,6 +245,7 @@ export function generateHomeReportHtml(report: HomeReportData): string {
 
   ${propertySection}
   ${assetSection}
+  ${capitalOutlookSection}
   ${issuesSection}
   ${resolvedSection}
   ${replacementsSection}
@@ -253,4 +258,80 @@ export function generateHomeReportHtml(report: HomeReportData): string {
   </div>
 </body>
 </html>`;
+}
+
+// ─── Capital Outlook HTML builder ───────────────────────────────────────────
+
+function buildCapitalOutlookHtml(systems: ReportCapitalSystem[]): string {
+  const disclaimer = `<p class="meta" style="margin-bottom:12px;">Projections are estimates, not guarantees. They update as new information is added.</p>`;
+
+  if (systems.length === 0) {
+    return `
+    <div class="section">
+      <div class="section-title">Capital Outlook</div>
+      <p class="meta" style="margin-bottom:8px;">Forward-looking planning based on system age, climate, and typical lifespans.</p>
+      ${disclaimer}
+      <p class="empty">No lifecycle projections available yet. As system details are added, capital planning estimates will appear here.</p>
+    </div>`;
+  }
+
+  const systemCards = systems
+    .map(
+      (s) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div class="card-title">${s.systemLabel}</div>
+          <span class="badge">${s.installSourceLabel}</span>
+        </div>
+        <div class="meta" style="margin-top:4px;">
+          Installed: ${s.installYear ?? 'Install year not documented'} · ${s.lifecycleStageLabel}
+        </div>
+        <div style="font-size:13px;margin-top:6px;">
+          <div>Projected window: ${s.windowDisplay}</div>
+          <div>${s.planningGuidance}</div>
+          <div class="meta">Climate: ${s.climateNote}</div>
+        </div>
+        <div class="meta" style="margin-top:6px;padding-top:6px;border-top:1px solid #eee;">
+          Confidence: ${s.confidenceDetail}
+        </div>
+      </div>`
+    )
+    .join('');
+
+  const summaryTable =
+    systems.length >= 2
+      ? `
+      <table class="data-table" style="margin-top:16px;">
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>Status</th>
+            <th>Projected Window</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${systems
+            .map(
+              (s) => `
+            <tr>
+              <td>${s.systemLabel}</td>
+              <td>${s.lifecycleStageLabel}</td>
+              <td>${s.windowDisplay}</td>
+              <td>${s.confidenceLabel}</td>
+            </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>`
+      : '';
+
+  return `
+    <div class="section">
+      <div class="section-title">Capital Outlook</div>
+      <p class="meta" style="margin-bottom:8px;">Forward-looking planning based on system age, climate, and typical lifespans.</p>
+      ${disclaimer}
+      ${systemCards}
+      ${summaryTable}
+    </div>`;
 }
