@@ -28,6 +28,22 @@ export interface ContractorRecommendation {
   phone?: string;
 }
 
+export interface PostConfirmationAdvisoryData {
+  tier: 'late_life' | 'planning_window' | 'mid_life' | 'early_life';
+  systemKey: string;
+  systemLabel: string;
+  age: number | null;
+  expectedLifespan: number;
+  remainingYears: number;
+  climateLabel: string;
+  advisoryConfident: boolean;
+  nowActions?: string[];
+  planActions?: string[];
+  precisionCTA?: string | null;
+  closingIntent?: string;
+  statusNote?: string;  // For mid_life/early_life tiers
+}
+
 export interface SystemUpdateData {
   success: boolean;
   systemKey: string;
@@ -36,6 +52,7 @@ export interface SystemUpdateData {
   confidenceLevel?: string;
   message?: string;
   reason?: string;
+  postConfirmationAdvisory?: PostConfirmationAdvisoryData;
 }
 
 export interface ReplacementTradeoffData {
@@ -223,16 +240,91 @@ function buildSystemUpdateConfirmation(data: SystemUpdateData): string {
   // Determine action from installedLine
   const isOriginal = data.installedLine?.toLowerCase().includes('original');
   
+  let confirmation: string;
   if (year && !isOriginal) {
-    return `I've saved that the ${systemName} was installed in ${year} (owner-reported). You'll see it reflected in your system timeline.`;
+    confirmation = `I've saved that the ${systemName} was installed in ${year} (owner-reported). You'll see it reflected in your system timeline.`;
+  } else if (isOriginal) {
+    confirmation = `I've saved that the ${systemName} is original to the house (owner-reported). You'll see it reflected in your system timeline.`;
+  } else {
+    // Fallback to server message if we can't parse specifics
+    confirmation = data.message || `I've updated your ${systemName} information. You'll see it reflected in your system timeline.`;
   }
   
-  if (isOriginal) {
-    return `I've saved that the ${systemName} is original to the house (owner-reported). You'll see it reflected in your system timeline.`;
+  // Append post-confirmation advisory if present (Refinement #2: prose lives here, not in handler)
+  if (data.postConfirmationAdvisory) {
+    const advisory = buildPostConfirmationAdvisoryMessage(data.postConfirmationAdvisory);
+    if (advisory) {
+      confirmation += '\n\n' + advisory;
+    }
   }
   
-  // Fallback to server message if we can't parse specifics
-  return data.message || `I've updated your ${systemName} information. You'll see it reflected in your system timeline.`;
+  return confirmation;
+}
+
+/**
+ * Build post-confirmation advisory prose from structured facts.
+ * 
+ * SEPARATION OF CONCERNS: The handler (ai-home-assistant) emits structured data.
+ * This function owns ALL narrative text. Copy can evolve independently of logic.
+ * 
+ * Confidence gating (Refinement #3): advisoryConfident gates tone, not content.
+ */
+function buildPostConfirmationAdvisoryMessage(advisory: PostConfirmationAdvisoryData): string {
+  const parts: string[] = [];
+
+  // Causal anchor: "Because this install date moves the system past..."
+  if (advisory.tier === 'late_life' || advisory.tier === 'planning_window') {
+    parts.push('Because this install date moves the system into its ' +
+      (advisory.tier === 'late_life' ? 'late-life window' : 'planning window') +
+      ", here's what matters next.");
+  }
+
+  // Status line (confidence-gated tone)
+  if (advisory.tier === 'late_life') {
+    if (advisory.advisoryConfident) {
+      parts.push(`At ~${advisory.age} years old in ${advisory.climateLabel}, your ${advisory.systemLabel.toLowerCase()} is operating beyond the typical reliable window. It may continue to run, but failure risk increases at this stage.`);
+    } else {
+      parts.push(`Based on the information available, your ${advisory.systemLabel.toLowerCase()} at ~${advisory.age} years old may be approaching the end of its typical service life.`);
+    }
+  } else if (advisory.tier === 'planning_window') {
+    if (advisory.advisoryConfident) {
+      parts.push(`At ~${advisory.age} years old, your ${advisory.systemLabel.toLowerCase()} is entering its replacement planning window for ${advisory.climateLabel} conditions.`);
+    } else {
+      parts.push(`Based on the information available, your ${advisory.systemLabel.toLowerCase()} at ~${advisory.age} years old is approaching its typical planning window.`);
+    }
+  } else {
+    // mid_life or early_life — lightweight status note only
+    parts.push(advisory.statusNote ||
+      `At ~${advisory.age} years old, your ${advisory.systemLabel.toLowerCase()} is well within its expected service life. Routine monitoring is sufficient.`);
+    return parts.join('\n\n');
+  }
+
+  // Now actions
+  if (advisory.nowActions?.length) {
+    parts.push('**Now (low effort):**');
+    parts.push(advisory.nowActions.map(a => `- ${a}`).join('\n'));
+  }
+
+  // Plan actions
+  if (advisory.planActions?.length) {
+    parts.push('**Plan ahead:**');
+    parts.push(advisory.planActions.map(a => `- ${a}`).join('\n'));
+  }
+
+  // Precision CTA
+  if (advisory.precisionCTA) {
+    parts.push(`For more precision, you can ${advisory.precisionCTA.toLowerCase()}.`);
+  }
+
+  // Closing question
+  const closingQuestions: Record<string, string> = {
+    explore_costs_or_remind: 'Would you like to explore replacement costs, or set a reminder to revisit this?',
+  };
+  if (advisory.closingIntent && closingQuestions[advisory.closingIntent]) {
+    parts.push(closingQuestions[advisory.closingIntent]);
+  }
+
+  return parts.join('\n\n');
 }
 
 /**
@@ -244,19 +336,35 @@ function extractSystemUpdateData(content: string): {
   cleanedContent: string;
   humanReadableMessage?: string;
 } {
-  // Use a more precise pattern that matches balanced braces
-  const jsonPattern = /\{[^{}]*"type"\s*:\s*"system_update"[^{}]*\}/g;
+  // Use balanced-brace extraction to handle nested postConfirmationAdvisory objects
+  const typeMarker = '"type":"system_update"';
+  const typeMarkerAlt = '"type": "system_update"';
   
   let cleanedContent = content;
   let systemUpdate: SystemUpdateData | undefined;
   let humanReadableMessage: string | undefined;
   
-  const matches = content.match(jsonPattern);
-  if (matches) {
-    for (const match of matches) {
-      if (!match) continue;
+  let searchContent = content;
+  
+  while (searchContent.includes(typeMarker) || searchContent.includes(typeMarkerAlt)) {
+    const markerIndex = Math.min(
+      searchContent.includes(typeMarker) ? searchContent.indexOf(typeMarker) : Infinity,
+      searchContent.includes(typeMarkerAlt) ? searchContent.indexOf(typeMarkerAlt) : Infinity
+    );
+    
+    if (markerIndex === Infinity) break;
+    
+    // Find the opening brace before this marker
+    let braceStart = markerIndex;
+    while (braceStart > 0 && searchContent[braceStart] !== '{') {
+      braceStart--;
+    }
+    
+    // Find balanced closing brace (handles nested postConfirmationAdvisory)
+    const jsonStr = extractBalancedJson(searchContent, braceStart);
+    if (jsonStr) {
       try {
-        const data = JSON.parse(match);
+        const data = JSON.parse(jsonStr);
         if (data.type === 'system_update') {
           systemUpdate = {
             success: data.success,
@@ -266,22 +374,26 @@ function extractSystemUpdateData(content: string): {
             confidenceLevel: data.confidenceLevel,
             message: data.message,
             reason: data.reason,
+            // Pull advisory facts from tool result (Refinement #2)
+            postConfirmationAdvisory: data.postConfirmationAdvisory,
           };
           
-          // Build human-readable confirmation
+          // Build human-readable confirmation (includes advisory prose if present)
           humanReadableMessage = buildSystemUpdateConfirmation(systemUpdate);
           
           // Remove the JSON block from content
-          cleanedContent = cleanedContent.replace(match, '');
+          cleanedContent = cleanedContent.replace(jsonStr, '');
         }
       } catch (e) {
         console.warn('Failed to parse system update JSON:', e);
-        // Safely remove the match
-        if (match) {
-          cleanedContent = cleanedContent.replace(match, '');
+        if (jsonStr) {
+          cleanedContent = cleanedContent.replace(jsonStr, '');
         }
       }
     }
+    
+    // Move past this occurrence
+    searchContent = searchContent.substring(markerIndex + 10);
   }
   
   return { systemUpdate, cleanedContent, humanReadableMessage };

@@ -598,7 +598,8 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
       lng: home.longitude,
       city: home.city,
       state: home.state,
-      zipCode: home.zip_code
+      zipCode: home.zip_code,
+      yearBuilt: home.year_built,  // Needed for post-confirmation lifecycle re-computation
     } : null,
     // HOME RECORD context
     homeAssets: homeAssets || [],
@@ -1817,7 +1818,204 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
         const result = await response.json();
         console.log('[update_system_info] Success:', result);
         
-        // HARDENING FIX #4: Structured response envelope
+        // ============================================================
+        // POST-CONFIRMATION ADVISORY GATE
+        // Rule: When a system install year is confirmed and crosses a
+        // planning threshold, immediately re-evaluate and emit advisory.
+        // The handler emits structured facts; chatFormatting.ts owns prose.
+        // ============================================================
+        
+        const CAPITAL_SYSTEMS = ['hvac', 'roof', 'water_heater'];
+        const shouldEmitAdvisory = 
+          !result.alreadyRecorded &&
+          parsedArgs.install_year != null &&
+          CAPITAL_SYSTEMS.includes(parsedArgs.system_type);
+        
+        let postConfirmationAdvisory: any = undefined;
+        
+        if (shouldEmitAdvisory) {
+          try {
+            const currentYear = new Date().getFullYear();
+            const installYear = parsedArgs.install_year;
+            const systemType = parsedArgs.system_type as 'hvac' | 'roof' | 'water_heater';
+            
+            // Build inputs for the pure calculator (same path as enrichSystemWithLifecycle)
+            const propertyCtx: LifecyclePropertyContext = {
+              yearBuilt: context.homeLocation?.yearBuilt || 2000,
+              state: context.homeLocation?.state || 'FL',
+              city: context.homeLocation?.city,
+            };
+            const region = getRegionContext(propertyCtx.state, propertyCtx.city);
+            const resolvedInstall: ResolvedInstallInput = {
+              installYear: installYear,
+              installSource: 'owner_reported',
+              confidenceScore: 0.7,
+              replacementStatus: parsedArgs.replacement_status || 'unknown',
+              rationale: 'User confirmed via chat',
+            };
+            
+            const lifecycle: LifecycleOutput = calculateSystemLifecycle(systemType, resolvedInstall, propertyCtx, region);
+            
+            // Derive advisory tier from calculator output (Refinement #1: no re-derivation)
+            const age = installYear ? currentYear - installYear : null;
+            const likelyYear = lifecycle.replacementWindow.likelyYear;
+            const earlyYear = lifecycle.replacementWindow.earlyYear;
+            const remainingYears = likelyYear - currentYear;
+            const baseInstall = installYear || propertyCtx.yearBuilt;
+            const expectedLifespan = likelyYear - baseInstall;
+            const earlyThreshold = earlyYear - baseInstall;
+            const lifespanRatio = age !== null && expectedLifespan > 0 ? age / expectedLifespan : 0;
+            
+            // Deterministic tiers aligned with enrichSystemWithLifecycle() stage logic
+            type AdvisoryTier = 'late_life' | 'planning_window' | 'mid_life' | 'early_life';
+            let advisoryTier: AdvisoryTier;
+            if (age !== null && age >= expectedLifespan) {
+              advisoryTier = 'late_life';
+            } else if (age !== null && age >= earlyThreshold) {
+              advisoryTier = 'planning_window';
+            } else if (age !== null && age >= earlyThreshold * 0.5) {
+              advisoryTier = 'mid_life';
+            } else {
+              advisoryTier = 'early_life';
+            }
+            
+            // Confidence gating (Refinement #3)
+            // Use the resolved climate context when available for climate confidence check
+            const resolvedClimate = lifecycle.climateConfidence;
+            const advisoryConfident =
+              resolvedInstall.confidenceScore >= 0.7 &&
+              (resolvedClimate ? resolvedClimate !== 'low' : region.isHotHumid);
+            
+            // Climate label (calm, matter-of-fact)
+            const climateLabels: Record<string, string> = {
+              coastal: 'coastal salt air and humidity',
+              high_heat: 'high heat and humidity',
+              freeze_thaw: 'freeze-thaw cycling',
+              moderate: 'typical conditions',
+            };
+            const climateZone = lifecycle.climateZone || (region.isHotHumid ? 'high_heat' : 'moderate');
+            const climateLabel = climateLabels[climateZone] || 'typical conditions';
+            
+            // System-specific action content (deterministic, per plan)
+            const ADVISORY_ACTIONS: Record<string, Record<string, any>> = {
+              water_heater: {
+                late_life: {
+                  nowActions: [
+                    'Visually inspect the base and fittings for moisture or corrosion',
+                    'Consider a preventive flush if it hasn\'t been done in the last year',
+                  ],
+                  planActions: [
+                    'Begin replacement planning within the next 6–12 months',
+                    'Decide whether to stay with a standard tank or consider a heat-pump unit',
+                  ],
+                  precisionCTA: 'Upload a photo of the manufacturer label so I can confirm capacity, efficiency, and exact model type',
+                },
+                planning_window: {
+                  nowActions: [
+                    'Visually inspect the base and fittings for moisture or corrosion',
+                  ],
+                  planActions: [
+                    'This is a reasonable window to start researching replacement options',
+                    'Consider whether a standard tank or heat-pump unit fits your needs',
+                  ],
+                  precisionCTA: 'Upload a photo of the manufacturer label so I can confirm capacity, efficiency, and exact model type',
+                },
+              },
+              hvac: {
+                late_life: {
+                  nowActions: [
+                    'Schedule a professional efficiency check',
+                    'Replace air filter if overdue',
+                  ],
+                  planActions: [
+                    'Begin replacement planning within the next 12 months',
+                    'Research SEER ratings appropriate for your climate',
+                  ],
+                  precisionCTA: 'Upload a photo of the unit\'s data plate for exact model and efficiency details',
+                },
+                planning_window: {
+                  nowActions: [
+                    'Schedule a professional efficiency check',
+                  ],
+                  planActions: [
+                    'This is a reasonable window to start researching replacement options',
+                    'Research SEER ratings appropriate for your climate',
+                  ],
+                  precisionCTA: 'Upload a photo of the unit\'s data plate for exact model and efficiency details',
+                },
+              },
+              roof: {
+                late_life: {
+                  nowActions: [
+                    'Inspect for missing or curling shingles from ground level',
+                    'Check attic for signs of moisture or daylight',
+                  ],
+                  planActions: [
+                    'Get a professional roof assessment within the next year',
+                    'Begin budgeting for replacement',
+                  ],
+                  precisionCTA: null,
+                },
+                planning_window: {
+                  nowActions: [
+                    'Inspect for missing or curling shingles from ground level',
+                  ],
+                  planActions: [
+                    'This is a reasonable window to start researching replacement options',
+                    'Consider getting a professional roof assessment',
+                  ],
+                  precisionCTA: null,
+                },
+              },
+            };
+            
+            if (advisoryTier === 'late_life' || advisoryTier === 'planning_window') {
+              const actions = ADVISORY_ACTIONS[systemType]?.[advisoryTier] || {};
+              postConfirmationAdvisory = {
+                tier: advisoryTier,
+                systemKey: systemType,
+                systemLabel: lifecycle.systemLabel,
+                age,
+                expectedLifespan,
+                remainingYears,
+                climateLabel,
+                advisoryConfident,
+                nowActions: actions.nowActions || [],
+                planActions: actions.planActions || [],
+                precisionCTA: actions.precisionCTA || null,
+                closingIntent: 'explore_costs_or_remind',
+              };
+            } else {
+              // mid_life / early_life: minimal status note only
+              postConfirmationAdvisory = {
+                tier: advisoryTier,
+                systemKey: systemType,
+                systemLabel: lifecycle.systemLabel,
+                age,
+                expectedLifespan,
+                remainingYears,
+                climateLabel,
+                advisoryConfident,
+                statusNote: `At ~${age} years old, your ${lifecycle.systemLabel.toLowerCase()} is well within its expected service life. Routine monitoring is sufficient.`,
+              };
+            }
+            
+            console.log('[update_system_info] Post-confirmation advisory:', {
+              tier: advisoryTier,
+              system: systemType,
+              age,
+              expectedLifespan,
+              remainingYears,
+              lifespanRatio: lifespanRatio.toFixed(2),
+              advisoryConfident,
+            });
+          } catch (advisoryError) {
+            // Advisory is non-blocking: if it fails, the update still succeeds
+            console.error('[update_system_info] Advisory computation failed (non-blocking):', advisoryError);
+          }
+        }
+        
+        // HARDENING FIX #4: Structured response envelope (extended with advisory)
         return JSON.stringify({
           type: 'system_update',
           success: true,
@@ -1828,6 +2026,8 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
           message: result.alreadyRecorded 
             ? `That's already recorded. Your ${parsedArgs.system_type} shows as ${result.installedLine}.`
             : result.message,
+          // Structured advisory for post-confirmation formatting (chatFormatting.ts owns the prose)
+          postConfirmationAdvisory,
         });
       } catch (error) {
         console.error('[update_system_info] Error:', error);
