@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAttomProperty } from '@/hooks/useAttomProperty';
 import { SimpleRefreshButton } from '@/components/SimpleRefreshButton';
 import { DashboardV3Layout } from '@/layouts/DashboardV3Layout';
+import { useQuery } from '@tanstack/react-query';
 
 // Home Profile Components
 import { HomeProfileContextHeader, HomeHealthStatus } from '@/components/HomeProfile/HomeProfileContextHeader';
@@ -38,6 +39,47 @@ interface HomeData {
   created_at: string;
   lat?: number;
   lng?: number;
+}
+
+/**
+ * HomeActivityLogWithData - Queries home_events and maps to ActivityItem format.
+ * Read-only. Honest empty state when no events exist.
+ */
+function HomeActivityLogWithData({ homeId }: { homeId: string }) {
+  const { data: homeEvents } = useQuery({
+    queryKey: ['home-activity-events', homeId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('home_events')
+        .select('id, event_type, title, description, metadata, created_at')
+        .eq('home_id', homeId)
+        .in('event_type', [
+          'system_discovered', 'issue_reported', 'repair_completed',
+          'maintenance_performed', 'replacement', 'status_change'
+        ])
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!homeId,
+  });
+
+  const mappedActivities = (homeEvents || []).map((event) => {
+    const meta = (event.metadata as Record<string, any>) || {};
+    // Derive category from system_type or kind in metadata
+    const category = meta.system_type || meta.kind || meta.category || 'Home';
+    return {
+      id: event.id,
+      date: event.created_at,
+      title: event.title,
+      category,
+      notes: event.description || undefined,
+      contractor: meta.contractor || undefined,
+    };
+  });
+
+  return <HomeActivityLog activities={mappedActivities} />;
 }
 
 const HomeProfilePage = () => {
@@ -202,8 +244,8 @@ const HomeProfilePage = () => {
           {/* Supporting Records - Empty state, no mock data */}
           <SupportingRecords documents={[]} />
 
-          {/* Home Activity Log - Empty state, no mock data */}
-          <HomeActivityLog activities={[]} />
+          {/* Home Activity Log - Wired to real home_events data */}
+          <HomeActivityLogWithData homeId={home.id} />
         </div>
       </div>
     </DashboardV3Layout>

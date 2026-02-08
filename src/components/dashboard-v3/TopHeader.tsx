@@ -17,7 +17,7 @@ interface TopHeaderProps {
   address: string;
   healthStatus: 'healthy' | 'attention' | 'critical';
   onAddressClick?: () => void;
-  hasNotifications?: boolean;
+  
   /** Mobile condensed mode: smaller height, tighter truncation, hide date */
   condensed?: boolean;
   /** Callback for hamburger menu tap (mobile only) */
@@ -34,7 +34,7 @@ export function TopHeader({
   address, 
   healthStatus, 
   onAddressClick,
-  hasNotifications = false,
+  
   condensed = false,
   onMenuOpen
 }: TopHeaderProps) {
@@ -117,28 +117,17 @@ export function TopHeader({
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon">
               <Bell className="h-5 w-5" />
-              {hasNotifications && (
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <div className="flex flex-col gap-1">
-                <p className="font-medium">HVAC Filter Due</p>
-                <p className="text-sm text-muted-foreground">Change your air filter this week</p>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <div className="flex flex-col gap-1">
-                <p className="font-medium">Property Value Alert</p>
-                <p className="text-sm text-muted-foreground">Your home value increased 3.2%</p>
-              </div>
-            </DropdownMenuItem>
+            <div className="px-2 py-6 text-center">
+              <p className="text-sm text-muted-foreground">No notifications yet.</p>
+              <p className="text-xs text-muted-foreground mt-1">Habitta will notify you when something needs attention.</p>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 

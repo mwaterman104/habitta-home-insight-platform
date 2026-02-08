@@ -189,18 +189,9 @@ export function ChatConsole({
   useEffect(() => {
     if (!propertyId) return;
     
-    // Check property-specific flag AND existing messages
+    // Check property-specific flag — database restoration handles message presence
     const flagSet = wasBaselineOpeningShown(propertyId);
-    const hasStoredMessages = (() => {
-      try {
-        const stored = sessionStorage.getItem(`habitta_chat_messages_${propertyId}`);
-        return stored !== null && JSON.parse(stored).length > 0;
-      } catch {
-        return false;
-      }
-    })();
-    
-    setHasShownBaselineOpening(flagSet || hasStoredMessages);
+    setHasShownBaselineOpening(flagSet);
   }, [propertyId]);
   const [isFirstUserVisit] = useState(() => isFirstVisit());
   // Artifact controls

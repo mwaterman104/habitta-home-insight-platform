@@ -8,11 +8,13 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import type { AdvisorState, RiskLevel } from '@/types/advisorState';
 import type { ChatMode, BaselineSource, VisibleBaselineSystem } from '@/types/chatMode';
 import type { ChatArtifact } from '@/types/chatArtifact';
 
-const CHAT_MESSAGES_KEY = 'habitta_chat_messages_v2';
+const MAX_PERSISTED_MESSAGES = 200;
+const PERSIST_DEBOUNCE_MS = 500;
 
 export interface ChatMessage {
   id: string;
@@ -58,6 +60,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     visibleBaseline,
   } = options;
   
+  const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,75 +68,111 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
   
   // Track previous propertyId to detect switches
   const prevPropertyIdRef = useRef(propertyId);
+  // Track last persisted count to avoid unnecessary writes
+  const lastPersistedCountRef = useRef(0);
+  // Debounce timer for persistence
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restore messages from sessionStorage when propertyId becomes available
+  // Restore messages from database when propertyId becomes available
   useEffect(() => {
-    if (!propertyId) {
+    if (!propertyId || !user) {
       setIsRestoring(false);
       return;
     }
     
-    try {
-      const stored = sessionStorage.getItem(`${CHAT_MESSAGES_KEY}_${propertyId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
+    let cancelled = false;
+    
+    const restore = async () => {
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('home_chat_sessions')
+          .select('messages, message_count')
+          .eq('user_id', user.id)
+          .eq('home_id', propertyId)
+          .maybeSingle();
+        
+        if (cancelled) return;
+        
+        if (fetchError) {
+          console.error('Failed to restore chat history:', fetchError);
+        } else if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(data.messages as unknown as ChatMessage[]);
+          lastPersistedCountRef.current = data.message_count || data.messages.length;
+        }
+      } catch (e) {
+        console.error('Failed to restore chat history:', e);
+      } finally {
+        if (!cancelled) {
+          setIsRestoring(false);
         }
       }
-    } catch (e) {
-      console.error('Failed to restore chat history:', e);
-    } finally {
-      setIsRestoring(false);
-    }
-  }, [propertyId]);
+    };
+    
+    restore();
+    
+    return () => { cancelled = true; };
+  }, [propertyId, user]);
 
   // Clear messages when property changes (prevents cross-property pollution)
   useEffect(() => {
     if (prevPropertyIdRef.current && propertyId && prevPropertyIdRef.current !== propertyId) {
       setMessages([]);
+      lastPersistedCountRef.current = 0;
       setIsRestoring(true); // Will re-trigger restoration for new property
     }
     prevPropertyIdRef.current = propertyId;
   }, [propertyId]);
 
-  // Persist messages to sessionStorage
+  // Persist messages to database (debounced, fire-and-forget)
   useEffect(() => {
-    if (!propertyId || isRestoring) return;
+    if (!propertyId || !user || isRestoring) return;
     
-    try {
-      if (messages.length > 0) {
-        const serialized = JSON.stringify(messages);
-        
-        // Safety check: ~4MB limit
-        if (serialized.length > 4_000_000) {
-          console.warn('Chat history too large, truncating');
-          sessionStorage.setItem(
-            `${CHAT_MESSAGES_KEY}_${propertyId}`,
-            JSON.stringify(messages.slice(-50))
-          );
-          return;
-        }
-        
-        sessionStorage.setItem(`${CHAT_MESSAGES_KEY}_${propertyId}`, serialized);
-      } else {
-        // Explicitly clear on empty (handles clearConversation)
-        sessionStorage.removeItem(`${CHAT_MESSAGES_KEY}_${propertyId}`);
-      }
-    } catch (e) {
-      if (e instanceof Error && e.name === 'QuotaExceededError') {
-        // Fallback: keep only last 50 messages
-        try {
-          sessionStorage.setItem(
-            `${CHAT_MESSAGES_KEY}_${propertyId}`,
-            JSON.stringify(messages.slice(-50))
-          );
-        } catch {
-          // Silent failure
-        }
-      }
+    // Only write if message count actually changed
+    if (messages.length === lastPersistedCountRef.current) return;
+    
+    // Clear existing timer
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
     }
-  }, [messages, propertyId, isRestoring]);
+    
+    persistTimerRef.current = setTimeout(async () => {
+      try {
+        // Cap at MAX_PERSISTED_MESSAGES (truncate oldest)
+        const messagesToPersist = messages.length > MAX_PERSISTED_MESSAGES
+          ? messages.slice(-MAX_PERSISTED_MESSAGES)
+          : messages;
+        
+        if (messagesToPersist.length > 0) {
+          const { error: upsertError } = await supabase
+            .from('home_chat_sessions')
+            .upsert({
+              user_id: user.id,
+              home_id: propertyId,
+              messages: messagesToPersist as any,
+              message_count: messagesToPersist.length,
+            }, {
+              onConflict: 'user_id,home_id',
+            });
+          
+          if (upsertError) {
+            console.error('Failed to persist chat history:', upsertError);
+          } else {
+            lastPersistedCountRef.current = messagesToPersist.length;
+          }
+        } else {
+          // Empty messages = conversation cleared, handled by clearConversation
+        }
+      } catch (e) {
+        console.error('Failed to persist chat history:', e);
+      }
+    }, PERSIST_DEBOUNCE_MS);
+    
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, [messages, propertyId, user, isRestoring]);
 
   const sendMessage = async (message: string): Promise<AssistantResponse | undefined> => {
     if (!propertyId || !message.trim()) return undefined;
@@ -238,10 +277,24 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     injectMessage(content, artifact);
   }, [injectMessage]);
 
-  const clearConversation = useCallback(() => {
-    setMessages([]); // useEffect will handle storage removal
+  const clearConversation = useCallback(async () => {
+    setMessages([]);
+    lastPersistedCountRef.current = 0;
     setError(null);
-  }, []);
+    
+    // Delete from database (fire-and-forget)
+    if (propertyId && user) {
+      try {
+        await supabase
+          .from('home_chat_sessions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('home_id', propertyId);
+      } catch (e) {
+        console.error('Failed to delete chat session:', e);
+      }
+    }
+  }, [propertyId, user]);
 
   const sendSuggestion = async (suggestion: string) => {
     await sendMessage(suggestion);
