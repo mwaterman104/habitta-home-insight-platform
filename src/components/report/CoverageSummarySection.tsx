@@ -36,7 +36,7 @@ export function CoverageSummarySection({
           <Metric label="Assets documented" value={coverage.assetCount} />
           <Metric label="Issues logged" value={coverage.issueCount} />
           <Metric label="Repairs recorded" value={coverage.repairCount} />
-          <Metric label="Overall confidence" value={confidenceLabel} />
+          <Metric label="Record confidence" value={confidenceLabel} />
         </div>
 
         <div className="flex gap-4 justify-center text-xs text-muted-foreground border-t border-border pt-3">
@@ -45,7 +45,7 @@ export function CoverageSummarySection({
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Some records are estimated or inferred. Confidence increases as
+          Based on all documented assets and systems. Confidence increases as
           systems are verified through photos, permits, or professional work.
         </p>
       </div>

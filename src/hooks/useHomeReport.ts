@@ -111,6 +111,8 @@ export interface ReportCapitalSystem {
   lifecycleStageLabel: string;
   replacementWindow: { earlyYear: number; likelyYear: number; lateYear: number } | null;
   windowDisplay: string;
+  /** True when the entire replacement window is in the past */
+  windowIsOverdue: boolean;
   planningGuidance: string;
   climateNote: string;
   confidenceLabel: string;
@@ -150,9 +152,27 @@ function normalizeTimelineForReport(systems: SystemTimelineEntry[]): ReportCapit
     const replacementWindow = showWindow && s.replacementWindow
       ? { earlyYear: s.replacementWindow.earlyYear, likelyYear: s.replacementWindow.likelyYear, lateYear: s.replacementWindow.lateYear }
       : null;
+
+    // Fix 1: Detect overdue windows (entire range in the past)
+    const windowIsOverdue = replacementWindow !== null && replacementWindow.lateYear < currentYear;
     const windowDisplay = replacementWindow
-      ? `${replacementWindow.earlyYear}–${replacementWindow.lateYear}`
+      ? windowIsOverdue
+        ? `Past typical window (${replacementWindow.earlyYear}–${replacementWindow.lateYear})`
+        : `${replacementWindow.earlyYear}–${replacementWindow.lateYear}`
       : 'Timing uncertain — more information needed';
+
+    // Fix 2: Soften lifecycle label for estimated installs
+    const baseLifecycleLabel = LIFECYCLE_STAGE_LABELS[lifecycleStage];
+    const isEstimatedSource = s.installSource !== 'permit' && s.dataQuality !== 'high';
+    const lifecycleStageLabel = isEstimatedSource
+      ? `${baseLifecycleLabel} (estimated)`
+      : baseLifecycleLabel;
+
+    // Fix 4: Temporal override for overdue guidance
+    const basePlanningGuidance = PLANNING_GUIDANCE[lifecycleStage];
+    const planningGuidance = windowIsOverdue
+      ? 'Replacement planning is recommended'
+      : basePlanningGuidance;
 
     // Climate note
     const climateNote = CLIMATE_NOTE_MAP[s.climateZone ?? ''] ?? CLIMATE_NOTE_MAP.moderate;
@@ -172,10 +192,11 @@ function normalizeTimelineForReport(systems: SystemTimelineEntry[]): ReportCapit
       installSource: s.installSource,
       installSourceLabel: sourceLabel,
       lifecycleStage,
-      lifecycleStageLabel: LIFECYCLE_STAGE_LABELS[lifecycleStage],
+      lifecycleStageLabel,
       replacementWindow,
       windowDisplay,
-      planningGuidance: PLANNING_GUIDANCE[lifecycleStage],
+      windowIsOverdue,
+      planningGuidance,
       climateNote,
       confidenceLabel,
       confidenceDetail,

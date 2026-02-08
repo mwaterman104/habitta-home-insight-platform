@@ -193,10 +193,10 @@ export function generateHomeReportHtml(report: HomeReportData): string {
         <div class="metric"><div class="metric-value">${coverage.assetCount}</div><div class="metric-label">Assets documented</div></div>
         <div class="metric"><div class="metric-value">${coverage.issueCount}</div><div class="metric-label">Issues logged</div></div>
         <div class="metric"><div class="metric-value">${coverage.repairCount}</div><div class="metric-label">Repairs recorded</div></div>
-        <div class="metric"><div class="metric-value">${confidenceLabel}</div><div class="metric-label">Overall confidence</div></div>
+        <div class="metric"><div class="metric-value">${confidenceLabel}</div><div class="metric-label">Record confidence</div></div>
       </div>
       <p class="meta" style="text-align:center;margin-top:12px;">${coverage.verifiedPct}% verified · ${coverage.estimatedPct}% estimated</p>
-      <p class="disclaimer">Some records are estimated or inferred. Confidence increases as systems are verified through photos, permits, or professional work.</p>
+      <p class="disclaimer">Based on all documented assets and systems. Confidence increases as systems are verified through photos, permits, or professional work.</p>
     </div>`;
 
   // ─── Full document ────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ function buildCapitalOutlookHtml(systems: ReportCapitalSystem[]): string {
           Installed: ${s.installYear ?? 'Install year not documented'} · ${s.lifecycleStageLabel}
         </div>
         <div style="font-size:13px;margin-top:6px;">
-          <div>Projected window: ${s.windowDisplay}</div>
+          <div>${s.windowIsOverdue ? 'Typical window' : 'Projected window'}: ${s.windowDisplay}</div>
           <div>${s.planningGuidance}</div>
           <div class="meta">Climate: ${s.climateNote}</div>
         </div>
@@ -306,7 +306,7 @@ function buildCapitalOutlookHtml(systems: ReportCapitalSystem[]): string {
           <tr>
             <th>System</th>
             <th>Status</th>
-            <th>Projected Window</th>
+            <th>Typical Window</th>
             <th>Confidence</th>
           </tr>
         </thead>

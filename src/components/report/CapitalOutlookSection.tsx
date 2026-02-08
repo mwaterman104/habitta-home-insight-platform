@@ -63,7 +63,9 @@ function SystemCard({ system }: { system: ReportCapitalSystem }) {
         </div>
 
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Projected window</span>
+          <span className="text-muted-foreground">
+            {system.windowIsOverdue ? 'Typical window' : 'Projected window'}
+          </span>
           <span className="text-foreground">{system.windowDisplay}</span>
         </div>
 
@@ -93,7 +95,7 @@ function SummaryTable({ systems }: { systems: ReportCapitalSystem[] }) {
           <tr className="border-b border-border bg-muted/30">
             <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">System</th>
             <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">Status</th>
-            <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">Projected Window</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">Typical Window</th>
             <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">Confidence</th>
           </tr>
         </thead>
