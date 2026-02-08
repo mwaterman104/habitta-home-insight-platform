@@ -1,271 +1,119 @@
 
 
-# Future-in-the-Record: Capital Timeline in Home Report
+# Capital Outlook: Doctrine Compliance Repairs
 
-## Objective
+## Context
 
-Upgrade the Home Report from a backward-looking inventory into a forward-looking intelligence artifact by embedding the capital lifecycle data that already exists in the system.
+The Capital Outlook section is structurally sound and correctly placed. These five fixes address credibility leaks where the presentation contradicts the report's own honesty rules. All changes are in the normalizer and presentation layers — no new data, no new calculations, no new features.
 
-After this ships, the Home Report answers: **What do I own, what's happened, and what's coming next -- and how confident are we?**
+## Fix 1: Handle Past Replacement Windows
 
-No new calculations. No new edge functions. No new promises. Strictly surfaces existing intelligence in a durable, portable form.
+**Problem**: A system with `lateYear: 2023` displays "Projected window: 2019-2023" in 2026. This frames a missed window as a forward-looking projection — a temporal contradiction.
 
----
+**File**: `src/hooks/useHomeReport.ts` (normalizer)
 
-## Architecture
+Add a new field `windowIsOverdue: boolean` to `ReportCapitalSystem`. In `normalizeTimelineForReport()`, after computing the replacement window, check if `replacementWindow.lateYear < currentYear`. When true:
 
-The capital-timeline edge function already computes replacement windows, lifecycle stages, and confidence for each system. The report currently ignores all of it. This plan threads that data through three layers:
+- Set `windowIsOverdue = true`
+- Change `windowDisplay` from `"2019-2023"` to `"Past typical window (2019-2023)"`
 
-```text
-                    capital-timeline
-                     edge function
-                          |
-                          v
-useHomeReport.ts --> normalizeTimelineForReport() --> ReportCapitalSystem[]
-       |                                                     |
-       v                                                     v
-HomeReportPage.tsx                              CapitalOutlookSection.tsx
-       |                                                     |
-       v                                                     v
-reportPdfGenerator.ts -----> Capital Outlook HTML section in export
-```
+**File**: `src/components/report/CapitalOutlookSection.tsx`
+
+In `SystemCard`, change the label from static `"Projected window"` to dynamic:
+- If `system.windowIsOverdue`: show `"Typical window"` (the display value itself already says "Past typical window...")
+- Otherwise: show `"Projected window"`
+
+**File**: `src/lib/reportPdfGenerator.ts`
+
+Same label logic in the HTML card builder.
 
 ---
 
-## New Types
+## Fix 2: Soften Lifecycle Labels for Estimated Installs
 
-Added to `useHomeReport.ts`. The normalizer converts raw `SystemTimelineEntry` fields into report-safe shapes. Raw edge function output never leaks into UI.
+**Problem**: "Early-life" displayed alongside "Confidence: Moderate (estimated install year)" overstates certainty. The lifecycle stage reads as authoritative when the underlying data is inferred.
 
-### `ReportCapitalSystem`
+**File**: `src/hooks/useHomeReport.ts` (normalizer)
 
-| Field | Type | Source |
-|-------|------|--------|
-| `systemKey` | `string` | `SystemTimelineEntry.systemId` |
-| `systemLabel` | `string` | `SystemTimelineEntry.systemLabel` |
-| `installYear` | `number or null` | `SystemTimelineEntry.installYear` |
-| `installSource` | `string` | `SystemTimelineEntry.installSource` |
-| `installSourceLabel` | `string` | Via `getInstallSourceLabel()` from `mobileCopy.ts` |
-| `lifecycleStage` | enum | `'late_life' / 'planning_window' / 'mid_life' / 'early_life'` |
-| `lifecycleStageLabel` | `string` | Human-readable: "Late-life", "Planning window", "Mid-life", "Early-life" |
-| `replacementWindow` | `object or null` | `{ earlyYear, likelyYear, lateYear }` -- null if too low confidence |
-| `windowDisplay` | `string` | e.g. "2024--2026" or "Timing uncertain -- more information needed" |
-| `planningGuidance` | `string` | Deterministic from lifecycle stage |
-| `climateNote` | `string` | From `SystemTimelineEntry.climateZone` or fallback to property-level climate |
-| `confidenceLabel` | `string` | "High" / "Moderate" / "Low" |
-| `confidenceDetail` | `string` | e.g. "Moderate (owner-reported install year)" |
+When deriving `lifecycleStageLabel`, check if install source is not `permit` AND confidence is not `high`. When both conditions are true, append `" (estimated)"` to the label:
 
-The `lifecycleStage` field is a typed union (not free text), with a separate `lifecycleStageLabel` for display. This prevents copy drift and keeps the report machine-readable for future use.
+- `"Early-life"` becomes `"Early-life (estimated)"`
+- `"Mid-life (estimated)"`
+- `"Late-life (estimated)"`
+- `"Planning window (estimated)"`
+
+The typed `lifecycleStage` enum stays unchanged (machine-readable). Only `lifecycleStageLabel` (display string) is affected.
 
 ---
 
-## Step 1: Extend `useHomeReport.ts` -- Data Layer
+## Fix 3: Rename "Projected Window" Column
 
-### Add timeline fetch
+**Problem**: The summary table header says "Projected Window" but shows `earlyYear-lateYear` ranges, which may be entirely in the past. "Projected" implies forward-looking relevance.
 
-Import `useCapitalTimeline` and call it alongside the existing asset/event/system queries:
+**File**: `src/components/report/CapitalOutlookSection.tsx`
 
-```text
-const { timeline, loading: timelineLoading, error: timelineError } = useCapitalTimeline({
-  homeId: homeId ?? undefined,
-  enabled: !!homeId,
-});
-```
+Rename the table column header from `"Projected Window"` to `"Typical Window"`.
 
-Timeline errors are **non-fatal**: if the edge function fails, the report still renders -- the Capital Outlook section shows an honest empty state.
+**File**: `src/lib/reportPdfGenerator.ts`
 
-### Add `normalizeTimelineForReport()` function
-
-A pure function that maps each `SystemTimelineEntry` to a `ReportCapitalSystem`:
-
-**Lifecycle stage derivation** -- Reuses the same `deriveStatusLevel()` thresholds from `mobileCopy.ts`:
-- `aging` maps to `'late_life'` / "Late-life"
-- `elevated` maps to `'planning_window'` / "Planning window"
-- `planning_window` maps to `'mid_life'` / "Mid-life"
-- `stable` maps to `'early_life'` / "Early-life"
-
-**Window display logic**:
-- If `dataQuality === 'low'` AND `windowUncertainty === 'wide'`: show "Timing uncertain -- more information needed"
-- Otherwise: show `"earlyYear--lateYear"` (the full probabilistic range, never a single year)
-
-**Planning guidance** -- Deterministic from lifecycle stage:
-- Late-life: "Begin replacement planning"
-- Planning window: "This is a reasonable window to start researching options"
-- Mid-life: "Routine monitoring sufficient"
-- Early-life: "No action needed at this time"
-
-**Climate note** -- From `SystemTimelineEntry.climateZone`:
-- `high_heat` maps to "High heat and humidity"
-- `coastal` maps to "Coastal salt air and humidity"
-- `freeze_thaw` maps to "Freeze-thaw cycling"
-- `moderate` or undefined maps to "Typical conditions"
-
-**Confidence** -- From `SystemTimelineEntry.dataQuality`:
-- `high` maps to "High"
-- `medium` maps to "Moderate"
-- `low` maps to "Low"
-- Combined with source: e.g. "Moderate (owner-reported install year)"
-
-**Install source** -- Uses existing `getInstallSourceLabel()` from `mobileCopy.ts`
-
-### Update `HomeReportData` interface
-
-Add `capitalOutlook: ReportCapitalSystem[]`. The `loading` state includes `timelineLoading`. Error aggregation includes `timelineError` but as non-fatal (only blocks if all other queries also fail).
-
-### Snapshot contract (docstring)
-
-A comment on the normalizer clarifying: "The capital outlook reflects lifecycle intelligence as of report generation time, not real-time recalculation."
+Same rename in the HTML summary table header.
 
 ---
 
-## Step 2: Create `CapitalOutlookSection.tsx` -- UI Layer
+## Fix 4: Temporal Planning Guidance for Overdue Systems
 
-New file: `src/components/report/CapitalOutlookSection.tsx`
+**Problem**: A system past its entire replacement window shows "Begin replacement planning" — this is too calm for a system operating years beyond its projected end-of-life.
 
-Pure presentational component. No internal fetching. No side effects.
+**File**: `src/hooks/useHomeReport.ts` (normalizer)
 
-### Props
+After computing `planningGuidance` from the static `PLANNING_GUIDANCE` map, add a temporal override:
 
-```text
-interface CapitalOutlookSectionProps {
-  systems: ReportCapitalSystem[];
-}
-```
+- If `windowIsOverdue` is true (from Fix 1), replace the guidance with `"Replacement planning is recommended"`
 
-### Structure
-
-1. **Section header**: "Capital Outlook" (uses `heading-h3 text-foreground`)
-
-2. **Subtitle**: "Forward-looking planning based on system age, climate, and typical lifespans."
-
-3. **Disclaimer** (always visible, non-dismissable): "Projections are estimates, not guarantees. They update as new information is added."
-
-4. **Per-system cards** (one per `ReportCapitalSystem`):
-   - System name (bold) + install source badge (muted)
-   - Install year or "Install year not documented"
-   - Lifecycle stage as text label (no color coding that implies urgency -- `text-muted-foreground` for all stages)
-   - Projected window display (range or "Timing uncertain")
-   - Planning guidance (one-line, non-actionable)
-   - Climate context (short clause)
-   - Confidence line: "Confidence: Moderate (owner-reported install year)"
-
-5. **Summary table** (rendered if 2+ systems):
-
-   | System | Status | Projected Window | Confidence |
-   |--------|--------|------------------|------------|
-
-   Column header says "Projected Window" (not "Likely Window") to match the fact that we show `earlyYear--lateYear`, not just `likelyYear`.
-
-6. **Empty state** (zero systems with timeline data): Section header always renders. Body shows: "No lifecycle projections available yet. As system details are added, capital planning estimates will appear here."
-
-### No CTAs. No buttons. No reminders. No cost estimates.
-
-### Visual patterns
-
-Follows existing report component conventions (`AssetInventorySection`, `CoverageSummarySection`):
-- `bg-card rounded-lg border border-border p-4`
-- `heading-h3` for section title
-- `text-label text-muted-foreground uppercase tracking-wide` for subsection labels
-- `text-sm` for content, `text-xs text-muted-foreground` for metadata
+This preserves the matter-of-fact tone (no panic) while acknowledging reality. The static map is not changed — the override is applied post-lookup.
 
 ---
 
-## Step 3: Wire into `HomeReportPage.tsx` -- Layout
+## Fix 5: Clarify Overall Confidence Framing
 
-### Import and render
+**Problem**: The Coverage Summary shows "Overall confidence: Low" while individual capital systems show "High" or "Moderate". Users may perceive a contradiction. The overall metric includes all assets (appliances, supplementals) while capital confidence is per-system.
 
-Insert between Asset Inventory and Open Issues:
+**File**: `src/components/report/CoverageSummarySection.tsx`
 
-```text
-<AssetInventorySection ... />
-<CapitalOutlookSection systems={report.capitalOutlook} />
-<OpenIssuesSection ... />
-```
+Change the metric label from `"Overall confidence"` to `"Record confidence"`.
 
-This creates the narrative: **What you have** (assets) then **What's coming** (outlook) then **What's happened** (issues/history).
+Add a clarifying line below the verified/estimated percentages:
+`"Based on all documented assets and systems."`
 
-### Update Day-1 framing
+**File**: `src/lib/reportPdfGenerator.ts`
 
-Add one line to the empty-state coverage list:
-- "Capital outlook: Not yet available"
-
----
-
-## Step 4: Extend `reportPdfGenerator.ts` -- Export Layer
-
-### Updated section order
-
-```text
-${propertySection}
-${assetSection}
-${capitalOutlookSection}    <-- NEW
-${issuesSection}
-${resolvedSection}
-${replacementsSection}
-${deferredSection}
-${coverageSection}
-```
-
-### New `capitalOutlookSection` builder
-
-Uses the same `ReportCapitalSystem[]` data. Renders:
-
-1. Section header with `.section-title` styling (left border, serif font)
-2. Disclaimer in `.meta` style
-3. Per-system entries as `.card` elements (matching existing card patterns)
-4. Summary table using `.data-table` styling
-
-Empty state: Same honest message as the UI component.
-
-No new CSS classes needed -- reuses existing `.section`, `.section-title`, `.card`, `.data-table`, `.meta`, `.empty` classes already defined in the HTML template.
-
----
-
-## Confidence and Honesty Rules (enforced in the normalizer)
-
-These are non-negotiable and implemented in `normalizeTimelineForReport()`:
-
-1. Never show a single year -- always show a range (`earlyYear--lateYear`)
-2. Never show cost estimates in the report (costs are excluded from `ReportCapitalSystem`)
-3. Never imply urgency with language (all planning guidance is matter-of-fact)
-4. Always state install source when known
-5. If lifecycle data is missing, say so plainly: "Lifecycle projection unavailable. Add an install year to enable planning estimates."
-6. Low-confidence systems with wide uncertainty show "Timing uncertain" instead of a numeric range
+Same label change in the HTML coverage section: `"Overall confidence"` becomes `"Record confidence"`. Add the clarifying note in the `.disclaimer` block.
 
 ---
 
 ## Files Changed
 
-| File | Change | Risk |
-|------|--------|------|
-| `src/hooks/useHomeReport.ts` | Add `ReportCapitalSystem` type, `useCapitalTimeline` query, `normalizeTimelineForReport()`, extend return type | Low |
-| `src/components/report/CapitalOutlookSection.tsx` | New file -- pure presentational component | Zero |
-| `src/pages/HomeReportPage.tsx` | Import + render new section, update Day-1 empty state | Zero |
-| `src/lib/reportPdfGenerator.ts` | Add capital outlook HTML section in correct position | Low |
+| File | Changes | Risk |
+|------|---------|------|
+| `src/hooks/useHomeReport.ts` | Add `windowIsOverdue` field, overdue window display, estimated lifecycle label suffix, overdue guidance override | Low |
+| `src/components/report/CapitalOutlookSection.tsx` | Dynamic window label, table column rename | Zero |
+| `src/lib/reportPdfGenerator.ts` | Dynamic window label, table column rename, confidence label rename | Zero |
+| `src/components/report/CoverageSummarySection.tsx` | Confidence label rename, clarifying note | Zero |
 
-No edge function changes. No database changes. No new dependencies.
-
----
-
-## What This Does NOT Include
-
-- No cost estimates in the report (costs belong in interactive planning, not a static document)
-- No reminder CTAs or action buttons
-- No new lifecycle calculations (the report consumes existing edge function output)
-- No changes to the capital-timeline edge function
-- No notification hooks
-- No engagement cadence references
+No new files. No new dependencies. No data layer changes.
 
 ---
 
 ## Testing Checklist
 
-1. Report renders with no capital timeline data -- honest empty state in Capital Outlook section
-2. Report renders with mixed-confidence systems -- appropriate window display per confidence level
-3. Late-life systems show planning guidance, not panic language
-4. Low-confidence systems show "Timing uncertain" instead of narrow ranges
-5. System with permit-verified install year but inferred climate shows appropriate mixed confidence
-6. HTML export includes Capital Outlook section in correct position between Assets and Issues
-7. Print view renders Capital Outlook cleanly
-8. Day-1 empty state includes capital outlook coverage line
-9. Timeline fetch failure does not block report rendering (non-fatal error handling)
+1. System with `lateYear < currentYear` shows "Past typical window (2019-2023)", not "Projected window: 2019-2023"
+2. System with `lateYear >= currentYear` still shows "Projected window: 2025-2028"
+3. Estimated-source system shows "Early-life (estimated)", not bare "Early-life"
+4. Permit-verified system shows bare "Late-life" without "(estimated)" suffix
+5. Summary table header reads "Typical Window"
+6. Overdue system shows "Replacement planning is recommended" guidance
+7. Non-overdue late-life system still shows "Begin replacement planning"
+8. Coverage section shows "Record confidence" with clarifying note
+9. HTML export reflects all five fixes with parity to UI
+10. No new calculations, no new data fetching, no new promises introduced
 
