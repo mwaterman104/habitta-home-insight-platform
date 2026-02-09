@@ -1480,8 +1480,85 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
   }
 
   switch (name) {
-    case 'schedule_maintenance':
-      return `I'll help you schedule ${parsedArgs.task} for your ${parsedArgs.system}. This is ${parsedArgs.urgency} priority${parsedArgs.estimated_cost ? ` with an estimated cost of $${parsedArgs.estimated_cost}` : ''}. I recommend scheduling this within ${parsedArgs.urgency === 'high' ? '1-2 weeks' : parsedArgs.urgency === 'medium' ? '1-2 months' : '3-6 months'}.`;
+    case 'schedule_maintenance': {
+      const homeId = context?.homeId;
+      const userId = context?.userId;
+      const task = parsedArgs.task || 'maintenance';
+      const system = parsedArgs.system || 'system';
+      const urgency = parsedArgs.urgency || 'medium';
+      const costNote = parsedArgs.estimated_cost
+        ? ` (estimated cost: $${parsedArgs.estimated_cost})`
+        : '';
+      const timeframe = urgency === 'high' ? '1-2 weeks'
+        : urgency === 'medium' ? '1-2 months' : '3-6 months';
+
+      // If no home context, return helpful text without claiming a write
+      if (!homeId || !userId) {
+        return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. Once your home is set up, I can record this to your home history.`;
+      }
+
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        if (!supabaseUrl || !supabaseServiceKey) throw new Error('Missing config');
+
+        const { createClient: createServiceClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const serviceSupabase = createServiceClient(supabaseUrl, supabaseServiceKey);
+
+        const systemKind = system.toLowerCase().replace(/\s+/g, '_');
+        const severityMap: Record<string, string> = {
+          low: 'minor', medium: 'moderate', high: 'major'
+        };
+        const severity = severityMap[urgency] || 'minor';
+
+        // IDEMPOTENCY: Check for existing pending event with same title + system
+        const { data: existing } = await serviceSupabase
+          .from('home_events')
+          .select('id')
+          .eq('home_id', homeId)
+          .eq('event_type', 'recommendation')
+          .eq('title', task)
+          .eq('status', 'open')
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          return `"${task}" is already on your home record as a pending maintenance item. I recommend scheduling it within ${timeframe}${costNote}. Would you like help finding a contractor?`;
+        }
+
+        // INSERT to home_events (append-only ledger)
+        const { data: newEvent, error: eventError } = await serviceSupabase
+          .from('home_events')
+          .insert({
+            home_id: homeId,
+            user_id: userId,
+            event_type: 'recommendation',
+            title: task,
+            description: `Scheduled maintenance: ${task}${costNote}`,
+            severity,
+            status: 'open',
+            source: 'ai_assistant',
+            metadata: {
+              system_kind: systemKind,
+              urgency,
+              estimated_cost: parsedArgs.estimated_cost || null,
+              recommended_timeframe: timeframe,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (eventError) {
+          console.error('[schedule_maintenance] Insert failed:', eventError);
+          return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. I wasn't able to save this to your home record right now, but you can ask me again later.`;
+        }
+
+        console.log(`[schedule_maintenance] Event recorded: ${newEvent.id}`);
+        return `I've added "${task}" to your home record as a pending maintenance item${costNote}. I recommend scheduling this within ${timeframe}. Would you like help finding a contractor?`;
+      } catch (e) {
+        console.error('[schedule_maintenance] Error:', e);
+        return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. I wasn't able to save this right now, but the recommendation stands.`;
+      }
+    }
       
     case 'get_contractor_recommendations': {
       const location = context?.homeLocation;
