@@ -78,9 +78,13 @@ export function HomeStatusSummary({
 
   return (
     <div className="space-y-4 px-1">
-      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-        Home Status
-      </h2>
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          Home Status
+        </h2>
+        {/* TODO: Wire to actual data refresh timestamp when available */}
+        <p className="text-xs text-muted-foreground/60 mt-0.5">Updated today</p>
+      </div>
       
       {/* Now */}
       <div className="space-y-1">

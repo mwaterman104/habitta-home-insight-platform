@@ -32,9 +32,18 @@ export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsL
   const currentYear = new Date().getFullYear();
 
   // Get status with aging guardrail
+  // Status dot color mapping
+  const dotColorMap: Record<string, string> = {
+    stable: 'bg-slate-300',
+    watch: 'bg-amber-400',
+    plan: 'bg-orange-500',
+    aging: 'bg-orange-500',
+  };
+
   const getStatusInfo = (system: SystemTimelineEntry): { 
     label: string; 
     showChevron: boolean;
+    dotColor: string;
   } => {
     const installYear = system.installYear;
     const age = installYear ? currentYear - installYear : null;
@@ -62,15 +71,16 @@ export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsL
     
     // Only show chevron for non-stable systems (they're actionable)
     const showChevron = statusKey !== 'stable';
+    const dotColor = dotColorMap[statusKey] || 'bg-slate-300';
     
-    return { label, showChevron };
+    return { label, showChevron, dotColor };
   };
 
   return (
     <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
       {visibleSystems.map((system, index) => {
         const displayName = system.systemLabel || getSystemDisplayName(system.systemId);
-        const { label, showChevron } = getStatusInfo(system);
+        const { label, showChevron, dotColor } = getStatusInfo(system);
         const isLast = index === visibleSystems.length - 1 && hiddenCount <= 0;
 
         return (
@@ -81,7 +91,8 @@ export function SecondarySystemsList({ systems, onSystemTap }: SecondarySystemsL
               !isLast ? 'border-b border-border/30' : ''
             }`}
           >
-            <span className="text-sm text-foreground">
+            <span className="text-sm text-foreground flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} aria-hidden="true" />
               {displayName} <span className="text-muted-foreground">· {label}</span>
             </span>
             {showChevron && (

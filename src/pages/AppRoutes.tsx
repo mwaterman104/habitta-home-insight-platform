@@ -6,7 +6,7 @@ import { AuthenticatedLayout } from "@/layouts/AuthenticatedLayout";
 import AuthPage from "./AuthPage";
 import AddHomePage from "./AddHomePage";
 import HomeIntelligenceDashboard from "./HomeIntelligenceDashboard";
-import Dashboard from "./Dashboard";
+
 import DashboardV3 from "./DashboardV3";
 import SystemPage from "./SystemPage";
 import SystemsHub from "./SystemsHub";
