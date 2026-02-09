@@ -15,6 +15,7 @@ import {
   HOME_OUTLOOK_COPY,
   ASSESSMENT_QUALITY_LABELS,
   ASSESSMENT_QUALITY_PREFIX,
+  HOME_OUTLOOK_CLARIFIER,
 } from "@/lib/mobileCopy";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import { useEffect, useState } from "react";
@@ -146,6 +147,9 @@ export function MobileDashboardView({
             </p>
             <p className="text-sm text-muted-foreground">
               {HOME_OUTLOOK_COPY.subtext}
+            </p>
+            <p className="text-xs text-muted-foreground/60">
+              {HOME_OUTLOOK_CLARIFIER}
             </p>
           </div>
 

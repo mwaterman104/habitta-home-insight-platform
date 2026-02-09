@@ -57,6 +57,34 @@ const CRITICAL_WEIGHT_THRESHOLD = 0.6;
 /** Threshold for "inside X years" micro-summary */
 const INSIDE_YEARS_THRESHOLD = 5;
 
+/** Threshold for planning-critical tier classification */
+export const PLANNING_TIER_THRESHOLD = 0.8;
+
+// ============== Planning Tier ==============
+
+export type SystemPlanningTier = 'planning-critical' | 'routine-replacement';
+export type LateLifeState = 'planning-critical-late' | 'routine-late' | 'not-late';
+
+/** Locked code-to-copy mapping for tier labels */
+export const PLANNING_TIER_LABELS: Record<SystemPlanningTier, string> = {
+  'planning-critical': 'major system',
+  'routine-replacement': 'routine replacement',
+};
+
+/** Derive planning tier from criticality weight */
+export function getSystemPlanningTier(systemId: string): SystemPlanningTier {
+  const weight = CRITICALITY_WEIGHTS[systemId] ?? 0.3;
+  return weight >= PLANNING_TIER_THRESHOLD ? 'planning-critical' : 'routine-replacement';
+}
+
+/** Centralized late-life state helper */
+export function getLateLifeState(system: SystemTimelineEntry): LateLifeState {
+  const remaining = getRemainingYearsForSystem(system);
+  if (remaining === null || remaining > 0) return 'not-late';
+  const tier = getSystemPlanningTier(system.systemId);
+  return tier === 'planning-critical' ? 'planning-critical-late' : 'routine-late';
+}
+
 // ============== Types ==============
 
 export interface HomeOutlookResult {
@@ -195,8 +223,8 @@ export function computeHomeOutlook(
   // Stable systems = eligible minus those inside 5 years
   const stableSystemsCount = eligibleCount - systemsInside5Years;
 
-  // Micro-summary
-  const microSummary = buildMicroSummary(systemsInside5Years, stableSystemsCount);
+  // Micro-summary (tier-aware)
+  const microSummary = buildMicroSummary(systems);
 
   return {
     displayYears,
@@ -239,13 +267,44 @@ function computeAssessmentQuality(
 
 // ============== Micro-Summary ==============
 
-function buildMicroSummary(inside5: number, stable: number): string {
-  const parts: string[] = [];
+function buildMicroSummary(systems: SystemTimelineEntry[]): string {
+  let majorInside5 = 0;
+  let routineDue = 0;
+  let stable = 0;
 
-  if (inside5 > 0) {
-    parts.push(`${inside5} system${inside5 === 1 ? '' : 's'} inside 5 yrs`);
+  for (const system of systems) {
+    const remaining = getRemainingYearsForSystem(system);
+    if (remaining === null) continue;
+
+    const tier = getSystemPlanningTier(system.systemId);
+
+    if (remaining <= 0) {
+      if (tier === 'planning-critical') {
+        majorInside5++;
+      } else {
+        routineDue++;
+      }
+    } else if (remaining <= INSIDE_YEARS_THRESHOLD) {
+      if (tier === 'planning-critical') {
+        majorInside5++;
+      } else {
+        // Routine systems inside 5 yrs but not yet at end-of-life: count as stable
+        stable++;
+      }
+    } else {
+      stable++;
+    }
   }
 
+  // Stable ordering: major first, routine second, stable third
+  const parts: string[] = [];
+
+  if (majorInside5 > 0) {
+    parts.push(`${majorInside5} ${PLANNING_TIER_LABELS['planning-critical']}${majorInside5 === 1 ? '' : 's'} inside 5 yrs`);
+  }
+  if (routineDue > 0) {
+    parts.push(`${routineDue} ${PLANNING_TIER_LABELS['routine-replacement']}${routineDue === 1 ? '' : 's'} due`);
+  }
   if (stable > 0) {
     parts.push(`${stable} stable`);
   }

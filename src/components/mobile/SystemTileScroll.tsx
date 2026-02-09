@@ -15,9 +15,14 @@
 
 import { useNavigate } from 'react-router-dom';
 import { LifecycleRing } from './LifecycleRing';
-import { getLifecyclePercent, getRemainingYearsForSystem } from '@/services/homeOutlook';
-import { getSystemDisplayName } from '@/lib/mobileCopy';
-import { ASSESSMENT_QUALITY_LABELS } from '@/lib/mobileCopy';
+import { getLifecyclePercent, getRemainingYearsForSystem, getSystemPlanningTier } from '@/services/homeOutlook';
+import {
+  getSystemDisplayName,
+  ASSESSMENT_QUALITY_LABELS,
+  ASSESSMENT_QUALITY_PREFIX,
+  LATE_LIFE_COPY,
+  REPLACEMENT_WINDOW_PREFIX,
+} from '@/lib/mobileCopy';
 import { trackMobileEvent, MOBILE_EVENTS } from '@/lib/analytics/mobileEvents';
 import type { SystemTimelineEntry } from '@/types/capitalTimeline';
 
@@ -46,6 +51,12 @@ export function SystemTileScroll({ systems }: SystemTileScrollProps) {
           const qualityLabel = ASSESSMENT_QUALITY_LABELS[system.dataQuality] ?? 'Low';
           const window = system.replacementWindow;
 
+          const isLateLife = remainingYears !== null && remainingYears <= 0;
+          const tier = getSystemPlanningTier(system.systemId);
+          const lateLifeCopy = tier === 'planning-critical'
+            ? LATE_LIFE_COPY.planningCritical
+            : LATE_LIFE_COPY.routineReplacement;
+
           return (
             <button
               key={system.systemId}
@@ -53,9 +64,13 @@ export function SystemTileScroll({ systems }: SystemTileScrollProps) {
               className="snap-start shrink-0 w-[160px] rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50 active:bg-muted/70"
             >
               <div className="flex flex-col items-center gap-2">
-                <LifecycleRing percentConsumed={percent} size={56}>
+                <LifecycleRing
+                  percentConsumed={percent}
+                  size={56}
+                  aria-label={isLateLife ? lateLifeCopy.primary : undefined}
+                >
                   <span className="text-xs font-semibold text-foreground">
-                    {remainingYears !== null ? `~${remainingYears}` : '—'}
+                    {remainingYears === null ? '—' : isLateLife ? '—' : `~${remainingYears}`}
                   </span>
                 </LifecycleRing>
 
@@ -63,16 +78,27 @@ export function SystemTileScroll({ systems }: SystemTileScrollProps) {
                   <p className="text-sm font-medium text-foreground truncate">
                     {getSystemDisplayName(system.systemId)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {remainingYears !== null ? `~${remainingYears} yrs remaining` : 'Age unknown'}
-                  </p>
+                  {isLateLife ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {lateLifeCopy.primary}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        {lateLifeCopy.secondary}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {remainingYears !== null ? `~${remainingYears} yrs remaining` : 'Age unknown'}
+                    </p>
+                  )}
                   {window && (
                     <p className="text-xs text-muted-foreground">
-                      {window.earlyYear}–{window.lateYear}
+                      {REPLACEMENT_WINDOW_PREFIX}: {window.earlyYear}–{window.lateYear}
                     </p>
                   )}
                   <p className="text-[11px] text-muted-foreground/70">
-                    {qualityLabel} confidence
+                    {ASSESSMENT_QUALITY_PREFIX}: {qualityLabel}
                   </p>
                 </div>
               </div>

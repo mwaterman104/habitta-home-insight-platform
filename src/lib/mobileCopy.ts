@@ -241,3 +241,20 @@ export const ASSESSMENT_QUALITY_PREFIX = 'Assessment quality';
 
 /** Locked separator for micro-summary (Adjustment 3) */
 export const MICRO_SUMMARY_SEPARATOR = ' · ';
+
+// ============== Tier-Aware Late-Life Copy ==============
+
+export const LATE_LIFE_COPY = {
+  routineReplacement: {
+    primary: 'At end of expected life',
+    secondary: 'Typically replaced as needed',
+  },
+  planningCritical: {
+    primary: 'Inside planning window',
+    secondary: 'Replacement likely soon',
+  },
+} as const;
+
+export const HOME_OUTLOOK_CLARIFIER = 'Reflects planning-critical systems only';
+
+export const REPLACEMENT_WINDOW_PREFIX = 'Replacement window';
