@@ -75,6 +75,37 @@ export default function SystemPlanPage() {
     return timeline.systems.find(s => s.systemId === systemKey) ?? null;
   })();
   
+  // Build baseline systems for chat context
+  // MUST be above all early returns to satisfy React hooks rules
+  const baselineSystems: BaselineSystem[] = useMemo(() => {
+    if (!timeline?.systems) return [];
+    const currentYear = new Date().getFullYear();
+    return timeline.systems.map(sys => {
+      const likelyYear = sys.replacementWindow?.likelyYear;
+      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
+      
+      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
+      if (sys.dataQuality === 'low') {
+        state = 'baseline_incomplete';
+      } else if (remainingYears !== undefined && remainingYears <= 1) {
+        state = 'elevated';
+      } else if (remainingYears !== undefined && remainingYears <= 3) {
+        state = 'planning_window';
+      }
+      
+      return {
+        key: sys.systemId,
+        displayName: sys.systemLabel,
+        state,
+        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
+        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
+        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
+        installYear: sys.installYear,
+        installSource: sys.installSource,
+      };
+    });
+  }, [timeline]);
+  
   const handleBack = () => {
     navigate(-1);
   };
@@ -230,36 +261,6 @@ export default function SystemPlanPage() {
   
   // Generate priming message for this system
   const primingMessage = CHAT_PRIMING.systemPlan(displayName, system.installYear);
-  
-  // Build baseline systems for chat context
-  const baselineSystems: BaselineSystem[] = useMemo(() => {
-    if (!timeline?.systems) return [];
-    const currentYear = new Date().getFullYear();
-    return timeline.systems.map(sys => {
-      const likelyYear = sys.replacementWindow?.likelyYear;
-      const remainingYears = likelyYear ? likelyYear - currentYear : undefined;
-      
-      let state: 'stable' | 'planning_window' | 'elevated' | 'baseline_incomplete' = 'stable';
-      if (sys.dataQuality === 'low') {
-        state = 'baseline_incomplete';
-      } else if (remainingYears !== undefined && remainingYears <= 1) {
-        state = 'elevated';
-      } else if (remainingYears !== undefined && remainingYears <= 3) {
-        state = 'planning_window';
-      }
-      
-      return {
-        key: sys.systemId,
-        displayName: sys.systemLabel,
-        state,
-        confidence: sys.dataQuality === 'high' ? 0.9 : sys.dataQuality === 'medium' ? 0.6 : 0.3,
-        monthsRemaining: remainingYears !== undefined ? remainingYears * 12 : undefined,
-        ageYears: sys.installYear ? currentYear - sys.installYear : undefined,
-        installYear: sys.installYear,
-        installSource: sys.installSource,
-      };
-    });
-  }, [timeline]);
   
   return (
     <>
