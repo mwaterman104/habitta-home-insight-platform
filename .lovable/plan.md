@@ -1,119 +1,138 @@
 
 
-# Capital Outlook: Doctrine Compliance Repairs
+# Mobile Dashboard Tightening + Dead Code Unification
 
-## Context
+## Overview
 
-The Capital Outlook section is structurally sound and correctly placed. These five fixes address credibility leaks where the presentation contradicts the report's own honesty rules. All changes are in the normalizer and presentation layers — no new data, no new calculations, no new features.
+Two goals: (1) remove the redundant dashboard implementations that create confusion and maintenance burden, and (2) tighten the canonical `MobileDashboardView` to feel polished and native.
 
-## Fix 1: Handle Past Replacement Windows
-
-**Problem**: A system with `lateYear: 2023` displays "Projected window: 2019-2023" in 2026. This frames a missed window as a forward-looking projection — a temporal contradiction.
-
-**File**: `src/hooks/useHomeReport.ts` (normalizer)
-
-Add a new field `windowIsOverdue: boolean` to `ReportCapitalSystem`. In `normalizeTimelineForReport()`, after computing the replacement window, check if `replacementWindow.lateYear < currentYear`. When true:
-
-- Set `windowIsOverdue = true`
-- Change `windowDisplay` from `"2019-2023"` to `"Past typical window (2019-2023)"`
-
-**File**: `src/components/report/CapitalOutlookSection.tsx`
-
-In `SystemCard`, change the label from static `"Projected window"` to dynamic:
-- If `system.windowIsOverdue`: show `"Typical window"` (the display value itself already says "Past typical window...")
-- Otherwise: show `"Projected window"`
-
-**File**: `src/lib/reportPdfGenerator.ts`
-
-Same label logic in the HTML card builder.
+All user feedback has been incorporated. No scope changes — just sharper execution.
 
 ---
 
-## Fix 2: Soften Lifecycle Labels for Estimated Installs
+## Part 1: Dead Code Removal
 
-**Problem**: "Early-life" displayed alongside "Confidence: Moderate (estimated install year)" overstates certainty. The lifecycle stage reads as authoritative when the underlying data is inferred.
+Three files serve the same purpose as `DashboardV3` but are never reached by users:
 
-**File**: `src/hooks/useHomeReport.ts` (normalizer)
+| File | Status | Action |
+|------|--------|--------|
+| `src/pages/Dashboard.tsx` | Imported in AppRoutes line 9 but mounted on zero routes | Delete, remove import |
+| `src/pages/HomePulsePage.tsx` | Only imported by the dead `Dashboard.tsx` | Delete |
+| `client/pages/Dashboard.tsx` | Legacy `client/` directory, not part of `src/` app | Delete |
 
-When deriving `lifecycleStageLabel`, check if install source is not `permit` AND confidence is not `high`. When both conditions are true, append `" (estimated)"` to the label:
+**Verification completed**:
+- Global search confirms no other file imports `HomePulsePage` or the dead `Dashboard`
+- No test directories exist (no Playwright/snapshot risk)
+- No string-based route references to these files
+- `DashboardV3` at `/dashboard` is the sole canonical dashboard
 
-- `"Early-life"` becomes `"Early-life (estimated)"`
-- `"Mid-life (estimated)"`
-- `"Late-life (estimated)"`
-- `"Planning window (estimated)"`
-
-The typed `lifecycleStage` enum stays unchanged (machine-readable). Only `lifecycleStageLabel` (display string) is affected.
-
----
-
-## Fix 3: Rename "Projected Window" Column
-
-**Problem**: The summary table header says "Projected Window" but shows `earlyYear-lateYear` ranges, which may be entirely in the past. "Projected" implies forward-looking relevance.
-
-**File**: `src/components/report/CapitalOutlookSection.tsx`
-
-Rename the table column header from `"Projected Window"` to `"Typical Window"`.
-
-**File**: `src/lib/reportPdfGenerator.ts`
-
-Same rename in the HTML summary table header.
+**In `src/pages/AppRoutes.tsx`**: Remove the `Dashboard` import (line 9). No route references it.
 
 ---
 
-## Fix 4: Temporal Planning Guidance for Overdue Systems
+## Part 2: MobileDashboardView Visual Polish
 
-**Problem**: A system past its entire replacement window shows "Begin replacement planning" — this is too calm for a system operating years beyond its projected end-of-life.
+All changes stay within existing component files. No new files, no new dependencies.
 
-**File**: `src/hooks/useHomeReport.ts` (normalizer)
+### 2a. Staggered Fade-In Entrance
 
-After computing `planningGuidance` from the static `PLANNING_GUIDANCE` map, add a temporal override:
+**File**: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`
 
-- If `windowIsOverdue` is true (from Fix 1), replace the guidance with `"Replacement planning is recommended"`
+Wrap each section in a `div` with Tailwind `animate-fade-in` plus staggered inline `animationDelay` styles:
 
-This preserves the matter-of-fact tone (no panic) while acknowledging reality. The static map is not changed — the override is applied post-lookup.
+- Summary: no delay (immediate)
+- Primary card: 75ms delay
+- Secondary list: 150ms delay
+- Chat launcher: 225ms delay
+
+**Reduced-motion guardrail**: Wrap animations in a `prefers-reduced-motion` check. The project already has precedent for this pattern in `VideoBackground.tsx` (line 15). Use the same `window.matchMedia` approach — when reduced motion is preferred, skip the animation classes entirely (no delays, no fades, just instant render).
+
+### 2b. PrimarySystemFocusCard Status-Aware Border Accent
+
+**File**: `src/components/dashboard-v3/mobile/PrimarySystemFocusCard.tsx`
+
+Add a `border-l-[3px]` to the Card based on planning status:
+
+- `stable`: `border-l-slate-300`
+- `watch`: `border-l-amber-400`
+- `plan`: `border-l-orange-500`
+- `aging`: `border-l-orange-500` (softened from orange-600 per feedback — keeps urgency without panic)
+
+For `aging` only: add a subtle warm background tint via `bg-orange-50/40` (dark mode: `dark:bg-orange-950/20`) to pair with the border. This differentiates aging from plan without aggressive color.
+
+### 2c. SecondarySystemsList Status Dot
+
+**File**: `src/components/dashboard-v3/mobile/SecondarySystemsList.tsx`
+
+Add a 6px colored dot (`rounded-full`) before each system name:
+
+- `stable`: `bg-slate-300`
+- `watch`: `bg-amber-400`
+- `plan`: `bg-orange-500`
+- `aging`: `bg-orange-500`
+
+The dots are purely decorative indicators. They have no click handlers, no hover states, no aria roles beyond presentation. If that ever changes, redesign.
+
+### 2d. Data Freshness Indicator
+
+**File**: `src/components/dashboard-v3/mobile/HomeStatusSummary.tsx`
+
+Add a line below the "Home Status" header:
+
+```
+Updated today
+```
+
+Display as `text-xs text-muted-foreground/60`. Use relative phrasing only — never exact timestamps on mobile:
+
+- Same day: "Updated today"
+- Yesterday: "Updated yesterday"
+- Older: "Updated N days ago"
+
+For now, use current render time as baseline. Add a code comment: `// TODO: Wire to actual data refresh timestamp when available`.
+
+### 2e. Empty/Sparse State Improvement
+
+**File**: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`
+
+When `systems` is empty, replace the current minimal state with a first-use framing card:
+
+- Icon: `Home` from lucide-react (already imported in project)
+- Headline: "Your home systems are being analyzed"
+- Subtext: "We're building your capital outlook. This usually takes a few moments."
+- No CTA button, no fake progress bar, no "Set a reminder"
+
+This matches the credibility stewardship doctrine: silence beats speculation.
 
 ---
 
-## Fix 5: Clarify Overall Confidence Framing
+## Technical Details
 
-**Problem**: The Coverage Summary shows "Overall confidence: Low" while individual capital systems show "High" or "Moderate". Users may perceive a contradiction. The overall metric includes all assets (appliances, supplementals) while capital confidence is per-system.
-
-**File**: `src/components/report/CoverageSummarySection.tsx`
-
-Change the metric label from `"Overall confidence"` to `"Record confidence"`.
-
-Add a clarifying line below the verified/estimated percentages:
-`"Based on all documented assets and systems."`
-
-**File**: `src/lib/reportPdfGenerator.ts`
-
-Same label change in the HTML coverage section: `"Overall confidence"` becomes `"Record confidence"`. Add the clarifying note in the `.disclaimer` block.
-
----
-
-## Files Changed
+### Files Changed
 
 | File | Changes | Risk |
 |------|---------|------|
-| `src/hooks/useHomeReport.ts` | Add `windowIsOverdue` field, overdue window display, estimated lifecycle label suffix, overdue guidance override | Low |
-| `src/components/report/CapitalOutlookSection.tsx` | Dynamic window label, table column rename | Zero |
-| `src/lib/reportPdfGenerator.ts` | Dynamic window label, table column rename, confidence label rename | Zero |
-| `src/components/report/CoverageSummarySection.tsx` | Confidence label rename, clarifying note | Zero |
+| `src/pages/Dashboard.tsx` | Delete | Zero |
+| `src/pages/HomePulsePage.tsx` | Delete | Zero |
+| `client/pages/Dashboard.tsx` | Delete | Zero |
+| `src/pages/AppRoutes.tsx` | Remove unused `Dashboard` import (line 9) | Zero |
+| `MobileDashboardView.tsx` | Staggered fade-in with reduced-motion check, improved empty state | Low |
+| `PrimarySystemFocusCard.tsx` | Status-aware left border accent with aging background tint | Zero |
+| `SecondarySystemsList.tsx` | Status dot before system name | Zero |
+| `HomeStatusSummary.tsx` | Relative freshness timestamp | Zero |
 
 No new files. No new dependencies. No data layer changes.
 
----
+### Testing Checklist
 
-## Testing Checklist
-
-1. System with `lateYear < currentYear` shows "Past typical window (2019-2023)", not "Projected window: 2019-2023"
-2. System with `lateYear >= currentYear` still shows "Projected window: 2025-2028"
-3. Estimated-source system shows "Early-life (estimated)", not bare "Early-life"
-4. Permit-verified system shows bare "Late-life" without "(estimated)" suffix
-5. Summary table header reads "Typical Window"
-6. Overdue system shows "Replacement planning is recommended" guidance
-7. Non-overdue late-life system still shows "Begin replacement planning"
-8. Coverage section shows "Record confidence" with clarifying note
-9. HTML export reflects all five fixes with parity to UI
-10. No new calculations, no new data fetching, no new promises introduced
+1. Navigate to `/dashboard` on mobile — sections fade in with staggered timing
+2. Enable "Reduce motion" in OS settings — all animations are skipped, content renders instantly
+3. Primary card shows colored left border matching system status
+4. Aging-status card shows subtle warm background tint
+5. Secondary list items show colored dots before system names
+6. "Updated today" appears below "Home Status" header
+7. Empty state (no systems) shows the first-use framing card, not blank space
+8. Desktop layout at `/dashboard` is completely unaffected
+9. No console errors from removed files (no remaining imports reference them)
+10. All legacy routes (`/home`, `/home/v2`, etc.) still redirect to `/dashboard`
 
