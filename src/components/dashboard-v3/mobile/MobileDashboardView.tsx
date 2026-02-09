@@ -1,27 +1,27 @@
 import { useNavigate } from "react-router-dom";
 import { Home } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { HomeStatusSummary } from "./HomeStatusSummary";
-import { PrimarySystemFocusCard } from "./PrimarySystemFocusCard";
-import { SecondarySystemsList } from "./SecondarySystemsList";
-import { ContextualChatLauncher } from "./ContextualChatLauncher";
+import { LifecycleRing } from "@/components/mobile/LifecycleRing";
+import { SinceLastMonth } from "@/components/mobile/SinceLastMonth";
+import { SystemTileScroll } from "@/components/mobile/SystemTileScroll";
+import { computeHomeOutlook, getLifecyclePercent } from "@/services/homeOutlook";
 import { selectPrimarySystem } from "@/services/priorityScoring";
 import { 
   trackMobileEvent, 
   checkPrimaryFocusChanged,
   MOBILE_EVENTS 
 } from "@/lib/analytics/mobileEvents";
+import {
+  HOME_OUTLOOK_COPY,
+  ASSESSMENT_QUALITY_LABELS,
+  ASSESSMENT_QUALITY_PREFIX,
+} from "@/lib/mobileCopy";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import { useEffect, useState } from "react";
 
 // ============================================================
 // MOBILE RENDER CONTRACT ENFORCEMENT
 // ============================================================
-
-// Governance: Maximum allowed on mobile summary
-const MAX_CARDS_ON_SCREEN = 2;
-const MAX_CTAS_PER_SCREEN = 1;
-const MAX_TEXT_LINES_PER_BLOCK = 3;
 
 // Governance: Components that NEVER render on mobile summary
 // These are documentation-only; actual enforcement is structural
@@ -45,16 +45,17 @@ interface MobileDashboardViewProps {
 }
 
 /**
- * MobileDashboardView - Complete mobile summary view
+ * MobileDashboardView — Home Pulse v1
  * 
- * Mobile Render Contract enforcement:
- * - Sequential, not comparative
- * - One idea at a time
- * - Comparative/dense content gated behind intent
+ * State-of-ownership instrument. Answers:
+ * "How is my home doing overall?"
+ * "How much time do I have?"
+ * "Is anything meaningfully changing?"
  * 
- * Priority Score integration:
- * - Uses selectPrimarySystem() for deterministic selection
- * - Tracks primary focus changes for trust validation
+ * Layout (top → bottom):
+ * 1. Home Outlook Hero (LifecycleRing + ~X years)
+ * 2. Since Last Month (change awareness)
+ * 3. Key Systems Preview (horizontal tile scroll)
  */
 export function MobileDashboardView({
   systems,
@@ -76,43 +77,33 @@ export function MobileDashboardView({
   
   const animClass = prefersReducedMotion ? '' : 'animate-in fade-in duration-300 fill-mode-both';
   
-  // Use Priority Score to select primary system
+  // Priority scoring for tile ordering
   const { primary, scored } = selectPrimarySystem(systems);
-  const primarySystem = primary?.system ?? null;
-  const priorityExplanation = primary?.explanation ?? '';
   
-  // Get secondary systems (all except primary)
-  const secondarySystems = primarySystem 
-    ? systems.filter(s => s.systemId !== primarySystem.systemId)
-    : systems.slice(1);
+  // Home Outlook computation
+  const outlook = computeHomeOutlook(systems);
+  
+  // Compute hero ring percent from weighted average across systems
+  const heroPercent = outlook
+    ? Math.min(100, Math.max(0, 100 - (outlook.rawYears / 15) * 100))
+    : 0;
 
   // Track primary focus changes within session (trust validation)
   useEffect(() => {
-    if (primarySystem) {
-      const changed = checkPrimaryFocusChanged(primarySystem.systemId);
+    if (primary?.system) {
+      const changed = checkPrimaryFocusChanged(primary.system.systemId);
       if (changed) {
         trackMobileEvent(MOBILE_EVENTS.PRIMARY_FOCUS_CHANGED_SESSION, {
-          systemKey: primarySystem.systemId,
+          systemKey: primary.system.systemId,
         });
       }
       
-      // Track impression
       trackMobileEvent(MOBILE_EVENTS.PRIMARY_FOCUS_IMPRESSION, {
-        systemKey: primarySystem.systemId,
-        score: primary?.score,
+        systemKey: primary.system.systemId,
+        score: primary.score,
       });
     }
-  }, [primarySystem?.systemId, primary?.score]);
-
-  // Handle View Plan navigation
-  const handleViewPlan = () => {
-    if (primarySystem) {
-      trackMobileEvent(MOBILE_EVENTS.VIEW_PLAN_OPEN, {
-        systemKey: primarySystem.systemId,
-      });
-      navigate(`/systems/${primarySystem.systemId}/plan`);
-    }
-  };
+  }, [primary?.system?.systemId, primary?.score]);
 
   // Empty state — first-use framing, no fake data
   if (!systems || systems.length === 0) {
@@ -135,46 +126,52 @@ export function MobileDashboardView({
     );
   }
 
+  // Order tiles by priority score
+  const orderedSystems = scored.map(s => s.system);
+
   return (
-    <div className="space-y-4">
-      {/* Now/Next/Later Status Summary */}
+    <div className="space-y-6">
+      {/* ── Home Outlook Hero ── */}
       <div className={animClass}>
-        <HomeStatusSummary 
-          systems={systems} 
-          primarySystem={primarySystem}
-          priorityExplanation={priorityExplanation}
-          secondarySystemsCount={secondarySystems.length}
-        />
+        <div className="flex flex-col items-center text-center space-y-3">
+          <LifecycleRing percentConsumed={heroPercent} size={96}>
+            <span className="text-lg font-bold text-foreground">
+              {outlook ? `~${outlook.displayYears}` : '—'}
+            </span>
+          </LifecycleRing>
+
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">
+              {HOME_OUTLOOK_COPY.label}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {HOME_OUTLOOK_COPY.subtext}
+            </p>
+          </div>
+
+          {outlook && (
+            <div className="space-y-1">
+              {outlook.microSummary && (
+                <p className="text-sm text-muted-foreground">
+                  {outlook.microSummary}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground/70">
+                {ASSESSMENT_QUALITY_PREFIX}: {ASSESSMENT_QUALITY_LABELS[outlook.assessmentQuality]}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-      
-      {/* Primary Focus Card */}
-      {primarySystem && (
-        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
-          <PrimarySystemFocusCard 
-            system={primarySystem} 
-            priorityExplanation={priorityExplanation}
-            onViewPlan={handleViewPlan}
-          />
-        </div>
-      )}
-      
-      {/* Secondary Systems List */}
-      {secondarySystems.length > 0 && (
-        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
-          <SecondarySystemsList 
-            systems={secondarySystems} 
-            onSystemTap={onSystemTap} 
-          />
-        </div>
-      )}
-      
-      {/* Contextual Chat Launcher */}
-      <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '225ms' }}>
-        <ContextualChatLauncher 
-          primarySystem={primarySystem}
-          priorityExplanation={priorityExplanation}
-          onTap={onChatOpen} 
-        />
+
+      {/* ── Since Last Month ── */}
+      <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+        <SinceLastMonth />
+      </div>
+
+      {/* ── Key Systems Preview ── */}
+      <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
+        <SystemTileScroll systems={orderedSystems} />
       </div>
     </div>
   );
