@@ -12,7 +12,7 @@ import { Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SUPPORTED_SYSTEMS } from "@/lib/systemMeta";
-import { CHAT_PRIMING, getSystemDisplayName } from "@/lib/mobileCopy";
+import { CHAT_PRIMING, CHAT_FIRST_TURN, getSystemDisplayName } from "@/lib/mobileCopy";
 
 /**
  * SystemPlanPage - Route handler for /systems/:systemKey/plan
@@ -39,8 +39,9 @@ export default function SystemPlanPage() {
   // Check if system has valid config (using SUPPORTED_SYSTEMS as proxy)
   const hasValidConfig = systemKey ? SUPPORTED_SYSTEMS.includes(systemKey as any) : false;
   
-  // Chat sheet state for docked chat
+  // Chat sheet state
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatIntent, setChatIntent] = useState<'general' | 'planning'>('general');
   
   // Fetch user's home
   const { data: home, isLoading: homeLoading } = useQuery({
@@ -111,13 +112,13 @@ export default function SystemPlanPage() {
   };
   
   const handleStartPlanning = () => {
-    // Navigate to chat with system context
-    navigate('/dashboard', { 
-      state: { 
-        openChat: true, 
-        systemContext: systemKey 
-      } 
-    });
+    setChatIntent('planning');
+    setChatOpen(true);
+  };
+  
+  const handleChatExpand = () => {
+    setChatIntent('general');
+    setChatOpen(true);
   };
   
   const handleAddMaintenance = () => {
@@ -269,7 +270,7 @@ export default function SystemPlanPage() {
         onBack={handleBack}
         onStartPlanning={handleStartPlanning}
         onAddMaintenance={handleAddMaintenance}
-        onChatExpand={() => setChatOpen(true)}
+        onChatExpand={handleChatExpand}
       />
       
       {/* Mobile Chat Sheet */}
@@ -279,8 +280,14 @@ export default function SystemPlanPage() {
         propertyId={home?.id || ''}
         baselineSystems={baselineSystems}
         confidenceLevel="Moderate"
-        focusContext={{ systemKey: systemKey!, trigger: 'plan_view' }}
-        primingMessage={primingMessage}
+        focusContext={{ 
+          systemKey: systemKey!, 
+          trigger: chatIntent === 'planning' ? 'start_planning' : 'plan_view' 
+        }}
+        {...(chatIntent === 'planning'
+          ? { initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(displayName) }
+          : { primingMessage }
+        )}
         chatMode="silent_steward"
         baselineSource="inferred"
       />

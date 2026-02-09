@@ -150,6 +150,22 @@ export const CHAT_QUICK_REPLIES = [
   "Why this system first?",
 ] as const;
 
+// ============== Chat First-Turn Templates ==============
+
+/**
+ * First-turn assistant messages for action-initiated chat.
+ * These are NOT priming — they are the first sentence of a conversation.
+ * No guards, no refs, no context checks. Injected once on open.
+ */
+export const CHAT_FIRST_TURN = {
+  /**
+   * Planning-initiated chat (from "Start planning this replacement")
+   * References on-screen context, asks a constrained question.
+   */
+  systemPlanning: (systemName: string) =>
+    `Let's start planning for your ${systemName}. Based on the cost and timing outlook above, what would you like to focus on first — timing, budget, or contractor options?`,
+} as const;
+
 // ============== Chat Priming Templates ==============
 
 /**
@@ -199,7 +215,7 @@ export const PLAN_COPY = {
     low: 'Low',
   },
   actions: {
-    primary: 'Start planning',
+    primary: 'Start planning this replacement',
     secondary: 'Add maintenance record',
   },
 } as const;

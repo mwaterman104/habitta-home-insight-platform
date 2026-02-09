@@ -25,6 +25,8 @@ interface MobileChatSheetProps {
   onWhyClick?: (systemKey: string) => void;
   /** Contextual priming message to inject on first open */
   primingMessage?: string;
+  /** First-turn assistant message — bypasses all priming logic */
+  initialAssistantMessage?: string;
 }
 
 /**
@@ -52,21 +54,33 @@ export function MobileChatSheet({
   onSystemUpdated,
   onWhyClick = () => {},
   primingMessage,
+  initialAssistantMessage,
 }: MobileChatSheetProps) {
   /**
    * Rule 2: Priming Injection is Per-Context, Not Per-Open
    * Guard against re-injection when user re-opens for same system
+   * Key includes primingMessage to avoid collisions between intents
    */
   const hasPrimedForContext = useRef<string | null>(null);
   
-  // Generate dynamic opening message from priming if available
+  // Generate dynamic opening message
   const effectiveOpeningMessage: AdvisorOpeningMessage | null = (() => {
+    // 1. initialAssistantMessage bypasses all priming logic
+    if (initialAssistantMessage) {
+      return {
+        observation: initialAssistantMessage,
+        implication: "",
+        optionsPreview: "",
+      };
+    }
+    
+    // 2. Explicit opening message takes priority
     if (openingMessage) return openingMessage;
     
-    // If we have a priming message and haven't primed for this context yet
+    // 3. Priming path (legacy/general)
     if (primingMessage && focusContext?.systemKey) {
-      if (hasPrimedForContext.current !== focusContext.systemKey) {
-        // Convert priming message to AdvisorOpeningMessage format
+      const guardKey = focusContext.systemKey + ':' + primingMessage;
+      if (hasPrimedForContext.current !== guardKey) {
         return {
           observation: primingMessage,
           implication: "Tell me what you're seeing or any concerns you have.",
@@ -79,19 +93,13 @@ export function MobileChatSheet({
   
   // Track when we've primed for a context
   useEffect(() => {
-    if (open && primingMessage && focusContext?.systemKey) {
-      if (hasPrimedForContext.current !== focusContext.systemKey) {
-        hasPrimedForContext.current = focusContext.systemKey;
+    if (open && primingMessage && focusContext?.systemKey && !initialAssistantMessage) {
+      const guardKey = focusContext.systemKey + ':' + primingMessage;
+      if (hasPrimedForContext.current !== guardKey) {
+        hasPrimedForContext.current = guardKey;
       }
     }
-  }, [open, primingMessage, focusContext?.systemKey]);
-  
-  // Reset guard when context changes completely (different system)
-  useEffect(() => {
-    if (!open && focusContext?.systemKey) {
-      // Don't reset - we want to remember we primed for this system
-    }
-  }, [open, focusContext?.systemKey]);
+  }, [open, primingMessage, focusContext?.systemKey, initialAssistantMessage]);
   
   return (
     <Drawer open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>

@@ -33,7 +33,7 @@ export function DockedChatInput({
       </div>
       
       <span className="flex-1 text-left text-sm text-muted-foreground">
-        Ask about this {systemLabel.toLowerCase()}...
+        Ask a question about this {systemLabel.toLowerCase()}...
       </span>
       
       <ChevronRight className="h-4 w-4 text-muted-foreground" />
