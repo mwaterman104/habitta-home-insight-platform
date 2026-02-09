@@ -82,7 +82,9 @@ export function TopHeader({
           </Button>
         )}
         
-        <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>Habitta</span>
+        <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>
+          {condensed ? 'Home Pulse' : 'Habitta'}
+        </span>
         
         <button 
           onClick={onAddressClick}

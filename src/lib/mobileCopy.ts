@@ -220,3 +220,24 @@ export const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
 export function getSystemDisplayName(systemKey: string): string {
   return SYSTEM_DISPLAY_NAMES[systemKey] ?? systemKey;
 }
+
+// ============== Home Pulse v1 Copy ==============
+
+export const HOME_OUTLOOK_COPY = {
+  label: 'Home outlook',
+  subtext: 'Until a major system replacement is likely',
+} as const;
+
+export const SINCE_LAST_MONTH_HEADER = 'Since last month';
+export const SINCE_LAST_MONTH_EMPTY = 'No meaningful changes this period';
+
+export const ASSESSMENT_QUALITY_LABELS: Record<string, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+
+export const ASSESSMENT_QUALITY_PREFIX = 'Assessment quality';
+
+/** Locked separator for micro-summary (Adjustment 3) */
+export const MICRO_SUMMARY_SEPARATOR = ' · ';
