@@ -1,105 +1,156 @@
 
-# Harden System Plan Action Footer
+# Fix: Wire `schedule_maintenance` Tool to Home Events Ledger
 
 ## Problem
 
-Two broken engagement paths on the System Plan screen:
+The `schedule_maintenance` tool handler (line 1483) returns a static text string with no side effect. The LLM has no evidence that anything changed, so when the user affirms ("lets do it"), it re-calls the same tool, creating a response loop.
 
-1. **"Start planning"** navigates to the dashboard, breaking context and delivering nothing planning-specific
-2. **"Ask about this system..."** opens chat but can appear blank due to the priming guard having already fired
+## Solution
 
-Root cause: both CTAs rely on priming logic, when "Start planning" should inject the first assistant turn directly.
+Replace the static return with a handler that:
 
----
+1. **Deduplicates** — checks for an existing pending maintenance event with the same title + system before inserting
+2. **Writes** — inserts into `home_events` using the same service-role client pattern as `record_home_event`
+3. **Returns honest confirmation** — different copy depending on whether the write succeeded, was a duplicate, or failed
 
 ## Changes
 
-### 1. `src/lib/mobileCopy.ts` -- Add first-turn planning copy
+### File: `supabase/functions/ai-home-assistant/index.ts`
 
-Add a new `CHAT_FIRST_TURN` constant alongside the existing `CHAT_PRIMING`:
+**Replace lines 1483-1484** (the `schedule_maintenance` case) with a full handler block:
 
-```
-CHAT_FIRST_TURN = {
-  systemPlanning: (systemName: string) =>
-    `Let's start planning for your ${systemName}. Based on the cost and timing outlook above, what would you like to focus on first -- timing, budget, or contractor options?`
+```typescript
+case 'schedule_maintenance': {
+  const homeId = context?.homeId;
+  const userId = context?.userId;
+  const task = parsedArgs.task || 'maintenance';
+  const system = parsedArgs.system || 'system';
+  const urgency = parsedArgs.urgency || 'medium';
+  const costNote = parsedArgs.estimated_cost
+    ? ` (estimated cost: $${parsedArgs.estimated_cost})`
+    : '';
+  const timeframe = urgency === 'high' ? '1-2 weeks'
+    : urgency === 'medium' ? '1-2 months' : '3-6 months';
+
+  // If no home context, return helpful text without claiming a write
+  if (!homeId || !userId) {
+    return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. Once your home is set up, I can record this to your home history.`;
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !supabaseServiceKey) throw new Error('Missing config');
+
+    const { createClient: createServiceClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const serviceSupabase = createServiceClient(supabaseUrl, supabaseServiceKey);
+
+    const systemKind = system.toLowerCase().replace(/\s+/g, '_');
+    const severityMap: Record<string, string> = {
+      low: 'minor', medium: 'moderate', high: 'major'
+    };
+    const severity = severityMap[urgency] || 'minor';
+
+    // IDEMPOTENCY: Check for existing pending event with same title + system
+    const { data: existing } = await serviceSupabase
+      .from('home_events')
+      .select('id')
+      .eq('home_id', homeId)
+      .eq('event_type', 'recommendation')
+      .eq('title', task)
+      .eq('status', 'open')
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return `"${task}" is already on your home record as a pending maintenance item. I recommend scheduling it within ${timeframe}${costNote}. Would you like help finding a contractor?`;
+    }
+
+    // INSERT to home_events (append-only ledger)
+    const { data: newEvent, error: eventError } = await serviceSupabase
+      .from('home_events')
+      .insert({
+        home_id: homeId,
+        user_id: userId,
+        event_type: 'recommendation',
+        title: task,
+        description: `Scheduled maintenance: ${task}${costNote}`,
+        severity,
+        status: 'open',
+        source: 'ai_assistant',
+        metadata: {
+          system_kind: systemKind,
+          urgency,
+          estimated_cost: parsedArgs.estimated_cost || null,
+          recommended_timeframe: timeframe,
+        },
+      })
+      .select('id')
+      .single();
+
+    if (eventError) {
+      console.error('[schedule_maintenance] Insert failed:', eventError);
+      return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. I wasn't able to save this to your home record right now, but you can ask me again later.`;
+    }
+
+    console.log(`[schedule_maintenance] Event recorded: ${newEvent.id}`);
+    return `I've added "${task}" to your home record as a pending maintenance item${costNote}. I recommend scheduling this within ${timeframe}. Would you like help finding a contractor?`;
+  } catch (e) {
+    console.error('[schedule_maintenance] Error:', e);
+    return `I recommend scheduling "${task}" for your ${system} within ${timeframe}${costNote}. I wasn't able to save this right now, but the recommendation stands.`;
+  }
 }
 ```
 
-Update `PLAN_COPY.actions.primary` from `'Start planning'` to `'Start planning this replacement'`.
+### Key Design Decisions
 
-### 2. `src/pages/SystemPlanPage.tsx` -- Rewire Start Planning
+1. **`event_type: 'recommendation'`** — Stays consistent with `record_home_event`'s existing use of this type for AI-generated recommendations. The `metadata.urgency` field distinguishes scheduled maintenance from passive recommendations.
 
-Add a `chatIntent` state: `'general' | 'planning'` (default `'general'`).
+2. **`status: 'open'`** — Matches the existing event status convention (the `record_home_event` handler uses `'open'` as default). The idempotency check queries against this status.
 
-**`handleStartPlanning`**: Instead of navigating away, set `chatIntent = 'planning'` and open the chat sheet. No navigation.
+3. **Idempotency check** — Queries `home_events` for matching `(home_id, event_type, title, status='open')` before inserting. Prevents duplicates from model retries, double-taps, or network hiccups.
 
-**`onChatExpand`** (from docked input): Set `chatIntent = 'general'` and open the chat sheet.
+4. **Honest failure copy** — Three distinct return paths:
+   - Success: "I've added..."
+   - Duplicate: "...is already on your home record"
+   - Failure: "I recommend..." (no false claim of recording)
 
-Pass different props to `MobileChatSheet` based on `chatIntent`:
-- **Planning intent**: Pass an `initialAssistantMessage` using `CHAT_FIRST_TURN.systemPlanning(displayName)`. No `primingMessage`. Focus trigger set to `'start_planning'`.
-- **General intent**: Keep existing `primingMessage` behavior unchanged.
-
-### 3. `src/components/dashboard-v3/mobile/MobileChatSheet.tsx` -- Support `initialAssistantMessage`
-
-Add an `initialAssistantMessage?: string` prop.
-
-When `initialAssistantMessage` is provided:
-- Skip all priming guard logic entirely
-- Convert it directly to an `AdvisorOpeningMessage` with `hasAgentMessage = true`
-- The existing `useEffect` in `ChatConsole` (line 223-229) handles injection via `injectMessage` -- no new injection logic needed
-
-When `initialAssistantMessage` is NOT provided:
-- Existing priming logic runs unchanged
-
-Also update the priming guard key from just `systemKey` to `systemKey + ':' + (primingMessage ?? '')` so that different priming messages for the same system don't collide.
-
-### 4. `src/components/mobile/DockedChatInput.tsx` -- Minor copy tweak
-
-Update placeholder from `"Ask about this {systemLabel}..."` to `"Ask a question about this {systemLabel}..."`.
-
----
+5. **Same infra pattern** — Uses the identical `createClient` + service-role pattern from `record_home_event` (line 2072-2074). No new infrastructure.
 
 ## Files Summary
 
 | File | Changes | Risk |
 |------|---------|------|
-| `src/lib/mobileCopy.ts` | Add `CHAT_FIRST_TURN`, update `PLAN_COPY.actions.primary` | Zero |
-| `src/pages/SystemPlanPage.tsx` | Add `chatIntent` state, rewire `handleStartPlanning` to open chat, pass intent-aware props | Low |
-| `src/components/dashboard-v3/mobile/MobileChatSheet.tsx` | Add `initialAssistantMessage` prop, bypass priming when present, fix guard key | Low |
-| `src/components/mobile/DockedChatInput.tsx` | Minor placeholder copy update | Zero |
+| `supabase/functions/ai-home-assistant/index.ts` | Replace `schedule_maintenance` static return with write + idempotency + honest confirmation | Low |
 
-No backend changes. No math changes. Desktop unaffected.
+No frontend changes. No schema changes. No new tables.
 
----
-
-## How It Works
+## Loop Resolution Proof
 
 ```text
-User taps "Start planning this replacement"
-  --> chatIntent = 'planning'
-  --> chatOpen = true
-  --> MobileChatSheet receives initialAssistantMessage
-  --> Priming logic bypassed
-  --> ChatConsole receives openingMessage + hasAgentMessage=true
-  --> useEffect injects assistant message immediately
-  --> User sees: "Let's start planning for your HVAC System..."
-  --> User responds directly (no blank state possible)
+Before:
+  User: "lets do it"
+  → AI calls schedule_maintenance
+  → Tool returns static text (no write)
+  → AI has no state evidence → repeats tool call → loop
 
-User taps "Ask a question about this HVAC System..."
-  --> chatIntent = 'general'
-  --> chatOpen = true
-  --> MobileChatSheet uses existing primingMessage path
-  --> Chat opens, user speaks first (or priming shows if first time)
+After:
+  User: "lets do it"
+  → AI calls schedule_maintenance
+  → Tool writes home_event, returns "I've added..."
+  → Confirmation is in chat history
+  → User says "lets do it" again
+  → AI calls schedule_maintenance again
+  → Idempotency check finds existing event
+  → Returns "already on your home record"
+  → No duplicate, no loop
 ```
-
----
 
 ## QA Checklist
 
-- Tapping "Start planning this replacement" opens chat with assistant question already visible
-- The question references the system name and on-screen data
-- No blank chat possible from "Start planning"
-- No navigation away from System Plan screen
-- "Ask a question about this system..." still opens chat for user-initiated inquiry
-- Closing and reopening chat behaves consistently (no duplicate messages)
-- Desktop behavior unchanged
+- "Start planning" opens chat with assistant question (existing fix preserved)
+- User affirms and gets unique confirmation, not a repeat
+- Maintenance event recorded in `home_events` table
+- Repeating "lets do it" does NOT create duplicate `home_events`
+- If DB insert fails, user gets honest fallback (no false claim)
+- If no `homeId`/`userId`, user gets recommendation without false write claim
+- No schema migration needed
