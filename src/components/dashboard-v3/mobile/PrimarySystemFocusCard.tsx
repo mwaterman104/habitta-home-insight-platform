@@ -54,8 +54,20 @@ export function PrimarySystemFocusCard({
     ? `Installed ${installYear} · ${sourceLabel}`
     : sourceLabel;
 
+  // Status-aware border accent color
+  const borderColorMap: Record<string, string> = {
+    stable: 'border-l-slate-300',
+    watch: 'border-l-amber-400',
+    plan: 'border-l-orange-500',
+    aging: 'border-l-orange-500',
+  };
+  const borderColor = borderColorMap[statusKey] || 'border-l-slate-300';
+  
+  // Aging gets a subtle warm background tint
+  const agingBg = statusKey === 'aging' ? 'bg-orange-50/40 dark:bg-orange-950/20' : '';
+
   return (
-    <Card className="bg-card border-border shadow-sm">
+    <Card className={`border-border shadow-sm border-l-[3px] ${borderColor} ${agingBg || 'bg-card'}`}>
       <CardContent className="p-4 space-y-3">
         {/* Header: System name + status badge */}
         <div className="flex items-center justify-between">

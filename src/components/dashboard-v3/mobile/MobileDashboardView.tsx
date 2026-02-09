@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { Home } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { HomeStatusSummary } from "./HomeStatusSummary";
 import { PrimarySystemFocusCard } from "./PrimarySystemFocusCard";
 import { SecondarySystemsList } from "./SecondarySystemsList";
@@ -10,7 +12,7 @@ import {
   MOBILE_EVENTS 
 } from "@/lib/analytics/mobileEvents";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 // ============================================================
 // MOBILE RENDER CONTRACT ENFORCEMENT
@@ -62,6 +64,18 @@ export function MobileDashboardView({
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
   
+  // Respect user's motion preferences
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  
+  const animClass = prefersReducedMotion ? '' : 'animate-in fade-in duration-300 fill-mode-both';
+  
   // Use Priority Score to select primary system
   const { primary, scored } = selectPrimarySystem(systems);
   const primarySystem = primary?.system ?? null;
@@ -100,21 +114,23 @@ export function MobileDashboardView({
     }
   };
 
-  // Empty state
+  // Empty state — first-use framing, no fake data
   if (!systems || systems.length === 0) {
     return (
       <div className="space-y-4">
-        <HomeStatusSummary 
-          systems={[]} 
-          primarySystem={null}
-          priorityExplanation=""
-          secondarySystemsCount={0}
-        />
-        <ContextualChatLauncher 
-          primarySystem={null}
-          priorityExplanation=""
-          onTap={onChatOpen} 
-        />
+        <Card className="bg-card border-border">
+          <CardContent className="p-6 text-center space-y-3">
+            <div className="mx-auto p-3 bg-muted rounded-full w-fit">
+              <Home className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <h3 className="font-semibold text-foreground text-lg">
+              Your home systems are being analyzed
+            </h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              We're building your capital outlook. This usually takes a few moments.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -122,36 +138,44 @@ export function MobileDashboardView({
   return (
     <div className="space-y-4">
       {/* Now/Next/Later Status Summary */}
-      <HomeStatusSummary 
-        systems={systems} 
-        primarySystem={primarySystem}
-        priorityExplanation={priorityExplanation}
-        secondarySystemsCount={secondarySystems.length}
-      />
+      <div className={animClass}>
+        <HomeStatusSummary 
+          systems={systems} 
+          primarySystem={primarySystem}
+          priorityExplanation={priorityExplanation}
+          secondarySystemsCount={secondarySystems.length}
+        />
+      </div>
       
       {/* Primary Focus Card */}
       {primarySystem && (
-        <PrimarySystemFocusCard 
-          system={primarySystem} 
-          priorityExplanation={priorityExplanation}
-          onViewPlan={handleViewPlan}
-        />
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+          <PrimarySystemFocusCard 
+            system={primarySystem} 
+            priorityExplanation={priorityExplanation}
+            onViewPlan={handleViewPlan}
+          />
+        </div>
       )}
       
       {/* Secondary Systems List */}
       {secondarySystems.length > 0 && (
-        <SecondarySystemsList 
-          systems={secondarySystems} 
-          onSystemTap={onSystemTap} 
-        />
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
+          <SecondarySystemsList 
+            systems={secondarySystems} 
+            onSystemTap={onSystemTap} 
+          />
+        </div>
       )}
       
       {/* Contextual Chat Launcher */}
-      <ContextualChatLauncher 
-        primarySystem={primarySystem}
-        priorityExplanation={priorityExplanation}
-        onTap={onChatOpen} 
-      />
+      <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '225ms' }}>
+        <ContextualChatLauncher 
+          primarySystem={primarySystem}
+          priorityExplanation={priorityExplanation}
+          onTap={onChatOpen} 
+        />
+      </div>
     </div>
   );
 }
