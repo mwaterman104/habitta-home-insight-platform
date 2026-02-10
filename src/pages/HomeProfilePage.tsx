@@ -21,6 +21,7 @@ import { SystemProvenance } from '@/components/HomeProfile/SystemProvenance';
 import { PermitsHistory } from '@/components/HomeProfile/PermitsHistory';
 import { SupportingRecords } from '@/components/HomeProfile/SupportingRecords';
 import { HomeActivityLog } from '@/components/HomeProfile/HomeActivityLog';
+import { PurchaseContext } from '@/components/HomeProfile/PurchaseContext';
 
 // Hooks
 import { useHomeIntelligence } from '@/hooks/useHomeIntelligence';
