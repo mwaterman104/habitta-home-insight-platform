@@ -59,7 +59,7 @@ serve(async (req) => {
     // 1. Fetch home record
     const { data: home, error: homeError } = await supabase
       .from('homes')
-      .select('id, address, city, state, zip_code, year_built, square_feet')
+      .select('id, address, city, state, zip_code, year_built, square_feet, year_built_effective, build_quality, arch_style, data_match_confidence, fips_code, gross_sqft, rooms_total, ground_floor_sqft')
       .eq('id', home_id)
       .single();
 
