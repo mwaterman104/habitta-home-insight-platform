@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { normalizeAttom } from '../_shared/normalizeAttom.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -335,6 +336,8 @@ serve(async (req) => {
           }
         },
         lastUpdated: property.vintage?.lastModified || new Date().toISOString(),
+        // Canonical normalized profile (Sprint 1)
+        normalizedProfile: normalizeAttom(property),
         // Include raw Attom data for additional details
         _attomData: property
       };

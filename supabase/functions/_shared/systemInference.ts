@@ -56,6 +56,7 @@ export interface PropertyContext {
   city?: string;
   roofMaterial?: 'asphalt' | 'tile' | 'metal' | 'unknown';
   waterHeaterType?: 'tank' | 'tankless' | 'unknown';
+  buildQuality?: 'A' | 'B' | 'C' | 'D';
 }
 
 /**
@@ -465,6 +466,22 @@ export function extractPermitYear(systemType: 'hvac' | 'roof' | 'water_heater', 
   return dateStr ? new Date(dateStr).getFullYear() : null;
 }
 
+// ============== Build Quality Degradation ==============
+
+/**
+ * Build quality degradation factor.
+ * Quality C = 10% lifespan reduction, Quality D = 20%.
+ * A/B = no change. Never tightens ranges — only shortens expected lifespan.
+ */
+function getBuildQualityDegradation(quality?: 'A' | 'B' | 'C' | 'D'): number {
+  if (!quality) return 0;
+  switch (quality) {
+    case 'C': return 0.10;
+    case 'D': return 0.20;
+    default: return 0;
+  }
+}
+
 // ============== Pure Calculator Functions ==============
 
 /**
@@ -484,11 +501,18 @@ export function calculateHVACLifecycle(
   const dutyPenalty: Record<HvacDutyCycle, number> = {
     low: 0, moderate: -1, high: -3, extreme: -5,
   };
-  const adjustedMin = Math.max(
+  let adjustedMin = Math.max(
     baseLifespan.min + dutyPenalty[climate.dutyCycle.hvac] + climate.lifespanModifiers.hvac,
     Math.round(baseLifespan.min * 0.6) // Floor: never reduce below 60%
   );
-  const adjustedMax = baseLifespan.max + climate.lifespanModifiers.hvac;
+  let adjustedMax = baseLifespan.max + climate.lifespanModifiers.hvac;
+
+  // Build quality degradation (Sprint 1): shortens lifespan, never widens ranges
+  const bqDegradation = getBuildQualityDegradation(property.buildQuality);
+  if (bqDegradation > 0) {
+    adjustedMin = Math.round(adjustedMin * (1 - bqDegradation));
+    adjustedMax = Math.round(adjustedMax * (1 - bqDegradation));
+  }
 
   const baseInstall = resolvedInstall.installYear || property.yearBuilt;
   const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
@@ -517,6 +541,14 @@ export function calculateHVACLifecycle(
       description: climate.climateZone === 'freeze_thaw'
         ? 'Long heating seasons accelerate heat exchanger and blower wear'
         : 'Year-round cooling duty accelerates compressor and fan wear'
+    });
+  }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with shorter system lifespan'
     });
   }
   
@@ -565,8 +597,15 @@ export function calculateWaterHeaterLifecycle(
   const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
   
   // Zone-specific lifespan modifier (coastal: -2 years)
-  const adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.water_heater, Math.round(lifespan.min * 0.6));
-  const adjustedMax = lifespan.max + climate.lifespanModifiers.water_heater;
+  let adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.water_heater, Math.round(lifespan.min * 0.6));
+  let adjustedMax = lifespan.max + climate.lifespanModifiers.water_heater;
+
+  // Build quality degradation (Sprint 1)
+  const bqDegradation = getBuildQualityDegradation(property.buildQuality);
+  if (bqDegradation > 0) {
+    adjustedMin = Math.round(adjustedMin * (1 - bqDegradation));
+    adjustedMax = Math.round(adjustedMax * (1 - bqDegradation));
+  }
   
   const replacementWindow: ReplacementWindow = {
     earlyYear: baseInstall + adjustedMin,
@@ -588,6 +627,14 @@ export function calculateWaterHeaterLifecycle(
       impact: 'decrease',
       severity: 'low',
       description: 'Mineral content and humidity can accelerate tank corrosion'
+    });
+  }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with shorter system lifespan'
     });
   }
   
@@ -648,8 +695,15 @@ export function calculateRoofLifecycle(
   const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
   
   // Zone-aware lifespan adjustment (replaces binary isHotHumid ? -3 : 0)
-  const adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.roof, Math.round(lifespan.min * 0.6));
-  const adjustedMax = lifespan.max + climate.lifespanModifiers.roof;
+  let adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.roof, Math.round(lifespan.min * 0.6));
+  let adjustedMax = lifespan.max + climate.lifespanModifiers.roof;
+
+  // Build quality degradation (Sprint 1)
+  const bqDegradation = getBuildQualityDegradation(property.buildQuality);
+  if (bqDegradation > 0) {
+    adjustedMin = Math.round(adjustedMin * (1 - bqDegradation));
+    adjustedMax = Math.round(adjustedMax * (1 - bqDegradation));
+  }
   
   const replacementWindow: ReplacementWindow = {
     earlyYear: baseInstall + adjustedMin,
@@ -704,6 +758,14 @@ export function calculateRoofLifecycle(
       impact: 'decrease',
       severity: 'medium',
       description: 'Repeated freezing and thawing damages underlayment and flashing'
+    });
+  }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with earlier roof degradation'
     });
   }
   

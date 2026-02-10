@@ -647,12 +647,14 @@ Deno.serve(async (req) => {
     }
 
     // Build property context
+    // Sprint 1: Use year_built_effective as primary age anchor
     const propertyContext: PropertyContext = {
-      yearBuilt: home.year_built || 2000,
+      yearBuilt: home.year_built_effective ?? home.year_built ?? 2000,
       state: home.state || 'FL',
       city: home.city,
       roofMaterial: roofMaterial as PropertyContext['roofMaterial'],
       waterHeaterType: selectBestSystemRecord(systems, 'water_heater')?.material || 'unknown',
+      buildQuality: home.build_quality || undefined,
     };
 
     // Use new climate classification (replaces getRegionContext)

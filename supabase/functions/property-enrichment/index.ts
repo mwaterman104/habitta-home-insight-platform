@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeAttom } from '../_shared/normalizeAttom.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,7 +59,7 @@ serve(async (req) => {
     // 1. Fetch home record
     const { data: home, error: homeError } = await supabase
       .from('homes')
-      .select('id, address, city, state, zip_code, year_built, square_feet')
+      .select('id, address, city, state, zip_code, year_built, square_feet, year_built_effective, build_quality, arch_style, data_match_confidence, fips_code, gross_sqft, rooms_total, ground_floor_sqft')
       .eq('id', home_id)
       .single();
 
@@ -66,8 +67,8 @@ serve(async (req) => {
       throw new Error(`Home not found: ${home_id}`);
     }
 
-    // 2. Check if already enriched (skip if we have both year_built AND square_feet)
-    if (home.year_built && home.square_feet) {
+    // 2. Check if already enriched (skip if we have year_built AND square_feet AND year_built_effective)
+    if (home.year_built && home.square_feet && home.year_built_effective !== null) {
       console.log('[property-enrichment] Home already enriched, skipping ATTOM call');
       // Still chain to permit-enrichment
       await chainToPermitEnrichment(supabase, home_id);
@@ -164,6 +165,48 @@ serve(async (req) => {
         updates.folio = folio;
         updates.folio_source = 'attom';
         console.log(`[property-enrichment] Will update folio to: ${folio} (source: attom)`);
+      }
+
+      // Sprint 1: Extract and write-through new ATTOM fields via canonical normalizer
+      const rawProperty = attomData._attomData;
+      if (rawProperty) {
+        const normalized = normalizeAttom(rawProperty);
+        console.log('[property-enrichment] Normalized ATTOM profile:', {
+          effectiveYearBuilt: normalized.effectiveYearBuilt,
+          buildQuality: normalized.buildQuality,
+          archStyle: normalized.archStyle,
+          dataMatchConfidence: normalized.dataMatchConfidence,
+          fipsCode: normalized.fipsCode,
+          grossSqft: normalized.grossSqft,
+          roomsTotal: normalized.roomsTotal,
+          groundFloorSqft: normalized.groundFloorSqft,
+        });
+
+        // Write-through: only write if currently null (never overwrite user data)
+        if (normalized.effectiveYearBuilt && !home.year_built_effective) {
+          updates.year_built_effective = normalized.effectiveYearBuilt;
+        }
+        if (normalized.buildQuality && !home.build_quality) {
+          updates.build_quality = normalized.buildQuality;
+        }
+        if (normalized.archStyle && !home.arch_style) {
+          updates.arch_style = normalized.archStyle;
+        }
+        if (normalized.dataMatchConfidence && !home.data_match_confidence) {
+          updates.data_match_confidence = normalized.dataMatchConfidence;
+        }
+        if (normalized.fipsCode && !home.fips_code) {
+          updates.fips_code = normalized.fipsCode;
+        }
+        if (normalized.grossSqft && !home.gross_sqft) {
+          updates.gross_sqft = normalized.grossSqft;
+        }
+        if (normalized.roomsTotal && !home.rooms_total) {
+          updates.rooms_total = normalized.roomsTotal;
+        }
+        if (normalized.groundFloorSqft && !home.ground_floor_sqft) {
+          updates.ground_floor_sqft = normalized.groundFloorSqft;
+        }
       }
 
       if (Object.keys(updates).length > 0) {
