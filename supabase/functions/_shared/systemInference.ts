@@ -213,9 +213,48 @@ const HOT_STATES = ['FL', 'AZ', 'TX', 'NV'];
  * - dutyCycle (models HVAC usage intensity)
  * - lifespanModifiers (zone-specific adjustments)
  */
+// Known coastal county FIPS codes (first 5 digits) for confidence upgrade
+const COASTAL_FIPS_COUNTIES = new Set([
+  // Florida coastal
+  '12086', // Miami-Dade
+  '12011', // Broward
+  '12099', // Palm Beach
+  '12103', // Pinellas
+  '12057', // Hillsborough
+  '12071', // Lee
+  '12021', // Collier
+  '12115', // Sarasota
+  '12081', // Manatee
+  '12009', // Brevard
+  '12127', // Volusia
+  '12031', // Duval
+  // Texas coastal
+  '48167', // Galveston
+  '48355', // Nueces (Corpus Christi)
+  '48201', // Harris (Houston)
+  // California coastal
+  '06037', // Los Angeles
+  '06073', // San Diego
+  '06075', // San Francisco
+  '06081', // San Mateo
+  '06085', // Santa Clara
+  // Louisiana coastal
+  '22071', // Orleans
+  // South Carolina coastal
+  '45019', // Charleston
+  // North Carolina coastal
+  '37129', // New Hanover
+  // Georgia coastal
+  '13051', // Chatham (Savannah)
+  // New Jersey coastal
+  '34025', // Monmouth
+  '34029', // Ocean
+]);
+
 export function classifyClimate(
   state: string,
-  city?: string
+  city?: string,
+  fipsCode?: string
 ): ResolvedClimateContext {
   const s = state.toUpperCase();
   const c = (city || '').toLowerCase();
