@@ -260,6 +260,9 @@ const HomeProfilePage = () => {
           {/* Supporting Records - Empty state, no mock data */}
           <SupportingRecordsWithChat />
 
+          {/* Purchase Context - Only renders when sale data exists */}
+          <PurchaseContext lastSale={attomData?.normalizedProfile?.lastSale} />
+
           {/* Home Activity Log - Wired to real home_events data */}
           <HomeActivityLogWithChat homeId={home.id} />
         </div>
