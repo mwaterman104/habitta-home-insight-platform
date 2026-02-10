@@ -57,6 +57,9 @@ export interface PropertyContext {
   roofMaterial?: 'asphalt' | 'tile' | 'metal' | 'unknown';
   waterHeaterType?: 'tank' | 'tankless' | 'unknown';
   buildQuality?: 'A' | 'B' | 'C' | 'D';
+  grossSqft?: number;
+  roomsTotal?: number;
+  groundFloorSqft?: number;
 }
 
 /**
