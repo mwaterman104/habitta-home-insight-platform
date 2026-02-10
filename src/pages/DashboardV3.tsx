@@ -136,7 +136,7 @@ export default function DashboardV3() {
     confidence: homeConfidence, 
     recommendations: homeRecommendations, 
     dismissRecommendation 
-  } = useHomeConfidence(userHome?.id, capitalTimeline?.systems || []);
+  } = useHomeConfidence(userHome?.id, capitalTimeline?.systems || [], userHome?.year_built);
 
   // Chat State Machine: Fetch home systems and permits for mode derivation
   const { systems: homeSystems, loading: systemsLoading, refetch: refetchSystems } = useHomeSystems(userHome?.id);

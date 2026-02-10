@@ -276,7 +276,8 @@ export function generateRecommendations(
   homeAssets: HomeAssetRecord[],
   homeEvents: HomeEventRecord[],
   dismissedIds: string[],
-  lastTouchAt: Date | null
+  lastTouchAt: Date | null,
+  yearBuilt?: number | null
 ): Recommendation[] {
   const dismissed = new Set(dismissedIds);
   
@@ -284,7 +285,7 @@ export function generateRecommendations(
   const signalsMap = new Map<string, SystemSignals>();
   for (const kind of KEY_SYSTEMS) {
     const system = systems.find(s => s.systemId === kind);
-    signalsMap.set(kind, deriveSystemSignals(kind, system, homeAssets, homeEvents));
+    signalsMap.set(kind, deriveSystemSignals(kind, system, homeAssets, homeEvents, yearBuilt));
   }
 
   // Four sequential passes

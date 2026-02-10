@@ -40,7 +40,8 @@ interface UseHomeConfidenceReturn {
 
 export function useHomeConfidence(
   homeId: string | undefined,
-  systems: SystemTimelineEntry[]
+  systems: SystemTimelineEntry[],
+  yearBuilt?: number | null
 ): UseHomeConfidenceReturn {
   const [homeAssets, setHomeAssets] = useState<HomeAssetRecord[]>([]);
   const [homeEvents, setHomeEvents] = useState<HomeEventRecord[]>([]);
@@ -124,14 +125,14 @@ export function useHomeConfidence(
   // Compute confidence
   const confidence = useMemo(() => {
     if (!homeId || loading) return null;
-    return computeHomeConfidence(systems, homeAssets, homeEvents, lastTouchAt);
-  }, [systems, homeAssets, homeEvents, lastTouchAt, homeId, loading]);
+    return computeHomeConfidence(systems, homeAssets, homeEvents, lastTouchAt, yearBuilt);
+  }, [systems, homeAssets, homeEvents, lastTouchAt, homeId, loading, yearBuilt]);
 
   // Generate recommendations
   const recommendations = useMemo(() => {
     if (!homeId || loading) return [];
-    return generateRecommendations(systems, homeAssets, homeEvents, dismissedIds, lastTouchAt);
-  }, [systems, homeAssets, homeEvents, dismissedIds, lastTouchAt, homeId, loading]);
+    return generateRecommendations(systems, homeAssets, homeEvents, dismissedIds, lastTouchAt, yearBuilt);
+  }, [systems, homeAssets, homeEvents, dismissedIds, lastTouchAt, homeId, loading, yearBuilt]);
 
   // Dismiss handler
   const dismissRecommendation = useCallback((id: string) => {
