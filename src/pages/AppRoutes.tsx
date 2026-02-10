@@ -29,7 +29,7 @@ import PropertyReportPage from "./PropertyReportPage";
 import LandingPage from "./LandingPage";
 import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 import MobilePhotoCaptureRoute from "./MobilePhotoCaptureRoute";
-import HomeReportPage from "./HomeReportPage";
+// HomeReportPage removed — merged into HomeProfilePage
 import MaintenancePage from "./MaintenancePage";
 
 export function AppRoutes() {
@@ -84,10 +84,10 @@ export function AppRoutes() {
             </ProtectedRoute>
           } />
           
-          {/* Home Report: Read-only document surface */}
+          {/* Report redirects to Home Profile (merged) */}
           <Route path="/report" element={
             <ProtectedRoute>
-              <HomeReportPage />
+              <Navigate to="/home-profile" replace />
             </ProtectedRoute>
           } />
           

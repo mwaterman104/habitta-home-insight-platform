@@ -6,13 +6,21 @@ interface SaleRecord {
   type: string;
 }
 
-interface SaleHistorySectionProps {
-  saleHistory: SaleRecord[];
+interface LastSale {
+  amount: number | null;
+  date: string | null;
+  pricePerSqft: number | null;
 }
 
-export function SaleHistorySection({ saleHistory }: SaleHistorySectionProps) {
-  // Only render if data exists — no empty states
-  if (!saleHistory || saleHistory.length === 0) return null;
+interface SaleHistorySectionProps {
+  saleHistory: SaleRecord[];
+  lastSale?: LastSale | null;
+}
+
+export function SaleHistorySection({ saleHistory, lastSale }: SaleHistorySectionProps) {
+  const hasLastSale = lastSale && lastSale.amount && lastSale.amount > 0 && lastSale.date;
+  // Only render if we have some data
+  if ((!saleHistory || saleHistory.length === 0) && !hasLastSale) return null;
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('en-US', {
@@ -32,6 +40,28 @@ export function SaleHistorySection({ saleHistory }: SaleHistorySectionProps) {
   return (
     <section className="space-y-3">
       <h2 className="heading-h3 text-foreground">Ownership &amp; Purchase History</h2>
+
+      {/* Purchase Context card — last sale summary */}
+      {hasLastSale && (
+        <div className="bg-card rounded-lg border border-border p-4 space-y-2">
+          <div className="flex justify-between items-center py-1">
+            <span className="text-sm text-muted-foreground">Last Sale Price</span>
+            <span className="text-sm font-medium text-foreground">{formatCurrency(lastSale!.amount!)}</span>
+          </div>
+          {lastSale!.pricePerSqft && lastSale!.pricePerSqft > 0 && (
+            <div className="flex justify-between items-center py-1">
+              <span className="text-sm text-muted-foreground">Price per Sq Ft</span>
+              <span className="text-sm font-medium text-foreground">{formatCurrency(lastSale!.pricePerSqft)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center py-1">
+            <span className="text-sm text-muted-foreground">Purchase Date</span>
+            <span className="text-sm font-medium text-foreground">{formatDate(lastSale!.date!)}</span>
+          </div>
+        </div>
+      )}
+
+      {saleHistory.length > 0 && (
       <div className="bg-card rounded-lg border border-border p-4 space-y-0">
         {saleHistory.map((sale, idx) => (
           <div
@@ -52,6 +82,7 @@ export function SaleHistorySection({ saleHistory }: SaleHistorySectionProps) {
           </div>
         ))}
       </div>
+      )}
     </section>
   );
 }

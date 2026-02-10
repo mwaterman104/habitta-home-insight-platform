@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Home, MessageCircle, Settings, FileText, MapPin, Cpu, Wrench } from "lucide-react";
+import { Home, MessageCircle, Settings, MapPin, Cpu, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LeftColumnProps {
@@ -35,7 +35,6 @@ export function LeftColumn({ address, onAddressClick }: LeftColumnProps) {
   ];
 
   const bottomItems = [
-    { title: "Report", path: "/report", icon: FileText },
     { title: "Chat", path: "/dashboard", icon: MessageCircle, action: 'chat' },
     { title: "Settings", path: "/settings", icon: Settings },
   ];

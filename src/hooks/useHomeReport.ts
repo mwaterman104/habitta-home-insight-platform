@@ -5,6 +5,13 @@ import { useCapitalTimeline } from '@/hooks/useCapitalTimeline';
 import type { SystemTimelineEntry } from '@/types/capitalTimeline';
 import { getInstallSourceLabel, deriveStatusLevel } from '@/lib/mobileCopy';
 
+/**
+ * useHomeReport — Read-only, authoritative snapshot of the home record.
+ * This hook does not perform writes or side effects.
+ * It composes data from home_assets, home_events, home_systems,
+ * capital-timeline, and ATTOM into a single report-safe shape.
+ */
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ReportProperty {
@@ -225,6 +232,16 @@ export interface HomeReportData {
   capitalOutlook: ReportCapitalSystem[];
   saleHistory: ReportSaleRecord[];
   coverage: ReportCoverage;
+  /** Raw ATTOM enrichment data (non-fatal, may be null) */
+  attomData: any | null;
+  /** The raw home record from UserHomeContext */
+  home: { id: string; address: string; city: string; state: string; zip_code: string; property_type?: string; year_built?: number; square_feet?: number; bedrooms?: number; bathrooms?: number; lat?: number; lng?: number } | null;
+  /** Home ID shortcut */
+  homeId: string | null;
+  /** Full formatted address */
+  fullAddress: string | null;
+  /** Last sale data from ATTOM normalized profile */
+  lastSale: { amount: number | null; date: string | null; pricePerSqft: number | null } | null;
   loading: boolean;
   error: string | null;
 }
@@ -268,7 +285,7 @@ function systemKeyToDisplayName(key: string): string {
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 export function useHomeReport(): HomeReportData {
-  const { userHome } = useUserHome();
+  const { userHome, fullAddress } = useUserHome();
   const homeId = userHome?.id ?? null;
 
   // Query 5: Capital timeline (non-fatal — failures don't block report)
@@ -579,6 +596,9 @@ export function useHomeReport(): HomeReportData {
   const loading = assetsLoading || eventsLoading || systemsLoading || timelineLoading;
   const errorMsg = assetsError?.message || eventsError?.message || systemsError?.message || null;
 
+  // ─── Last sale (from ATTOM normalized profile) ───────────────────────────
+  const lastSale = attomData?.normalizedProfile?.lastSale ?? null;
+
   return {
     property,
     assets: { coreSystems, appliances },
@@ -589,6 +609,11 @@ export function useHomeReport(): HomeReportData {
     capitalOutlook,
     saleHistory,
     coverage,
+    attomData: attomData ?? null,
+    home: userHome ? { ...userHome, lat: (userHome as any).lat, lng: (userHome as any).lng } : null,
+    homeId,
+    fullAddress: fullAddress ?? null,
+    lastSale,
     loading,
     error: errorMsg,
   };
