@@ -29,6 +29,9 @@ const MAX_BASE_POINTS = KEY_SYSTEMS.length * MAX_POINTS_PER_SYSTEM; // 100
 /** Systems where material is a meaningful distinguishing signal */
 const MATERIAL_APPLICABLE_SYSTEMS: ReadonlySet<string> = new Set(['roof', 'plumbing']);
 
+/** Systems assumed to be original to the home (install year = year_built) unless a permit or explicit user override exists */
+const ORIGINAL_TO_HOME_SYSTEMS: ReadonlySet<string> = new Set(['electrical', 'plumbing']);
+
 // ============== Types ==============
 
 export interface SystemSignals {
@@ -128,7 +131,8 @@ export function deriveSystemSignals(
   systemKind: string,
   system: SystemTimelineEntry | undefined,
   homeAssets: HomeAssetRecord[],
-  homeEvents: HomeEventRecord[]
+  homeEvents: HomeEventRecord[],
+  yearBuilt?: number | null
 ): SystemSignals {
   // Filter assets and events for this system kind
   const systemAssets = homeAssets.filter(a => a.kind === systemKind && a.status === 'active');
@@ -146,7 +150,8 @@ export function deriveSystemSignals(
   const isLateLife = remaining !== null && remaining <= 2;
 
   return {
-    hasInstallYear: system?.installYear != null,
+    hasInstallYear: system?.installYear != null || 
+      (ORIGINAL_TO_HOME_SYSTEMS.has(systemKind) && yearBuilt != null),
     hasMaterial: MATERIAL_APPLICABLE_SYSTEMS.has(systemKind) 
       ? (system?.materialType != null && system.materialType !== 'unknown')
       : false, // Not applicable → always false, but doesn't penalize (handled in scoring)
@@ -322,7 +327,8 @@ export function computeHomeConfidence(
   systems: SystemTimelineEntry[],
   homeAssets: HomeAssetRecord[],
   homeEvents: HomeEventRecord[],
-  lastTouchAt: Date | null
+  lastTouchAt: Date | null,
+  yearBuilt?: number | null
 ): HomeConfidenceResult {
   // Filter to key systems only
   const keySystems = systems.filter(s => (KEY_SYSTEMS as readonly string[]).includes(s.systemId));
@@ -336,7 +342,7 @@ export function computeHomeConfidence(
   // Score each key system (even if not present in data, we still evaluate)
   for (const kind of KEY_SYSTEMS) {
     const system = keySystems.find(s => s.systemId === kind);
-    const signals = deriveSystemSignals(kind, system, homeAssets, homeEvents);
+    const signals = deriveSystemSignals(kind, system, homeAssets, homeEvents, yearBuilt);
     systemSignalsMap.set(kind, signals);
 
     const result = scoreSystem(kind, signals);
