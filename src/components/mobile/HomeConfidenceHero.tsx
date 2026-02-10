@@ -41,7 +41,7 @@ export function HomeConfidenceHero({ confidence }: HomeConfidenceHeroProps) {
   return (
     <div className="flex flex-col items-center text-center space-y-3">
       {/* Confidence Ring with state + score inside */}
-      <LifecycleRing percentConsumed={fillPercent} size={120}>
+      <LifecycleRing percentConsumed={fillPercent} size={120} color={STATE_COLORS[confidence.state]}>
         <div className="flex flex-col items-center gap-0.5">
           <div className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${STATE_DOT_CLASSES[confidence.state]}`} />
