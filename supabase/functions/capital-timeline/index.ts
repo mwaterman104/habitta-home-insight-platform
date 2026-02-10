@@ -744,6 +744,11 @@ Deno.serve(async (req) => {
         );
       }
       
+      // Sprint 3: Apply data match confidence reduction to the resolved install
+      if (confidenceReduction > 0) {
+        resolvedInstall.confidenceScore = Math.max(0, resolvedInstall.confidenceScore - confidenceReduction);
+      }
+
       const entry = buildTimelineEntry(sysType, resolvedInstall, lifecycle, climateContext, entryMaterialSource);
       timelineEntries.push(entry);
       
