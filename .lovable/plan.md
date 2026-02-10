@@ -1,100 +1,257 @@
 
 
-# Right-Column Chat Panel + Auto-Send Questions
+# ATTOM Data Integration: Wiring Unused Signals Into the Intelligence Engine
 
 ## Overview
 
-Two changes to make the contextual chat feel like a peer panel (not a modal) and make it respond immediately when triggered from system CTAs.
+Thread 6 unused ATTOM fields into the data layer, inference engine, and UI in a strict sequence. Each sprint delivers immediate truthfulness improvement.
 
-## Change 1: Inline Chat Panel (No Overlay)
+**Key principle**: Lifecycle inference produces a single best estimate. All range math stays in the existing confidence system. No new confidence engine -- we extend what exists.
 
-**Current**: `ContextualChatPanel` renders as a fixed overlay with a backdrop, blocking all page interaction.
+---
 
-**Target**: Chat panel slides in as a flex sibling inside the layout. System UI stays visible and scrollable.
+## Sprint 1: Foundation (Must Ship First)
 
-### Implementation
+### 1.1 Database Migration
 
-**`src/layouts/DashboardV3Layout.tsx`** -- Desktop layout modification
+Add columns to `homes` table. These are written once during enrichment, read everywhere.
 
-Move `ContextualChatPanel` from outside the flex container to inside it, as a sibling of `<main>`. When `isOpen`, the layout becomes:
-
-```text
-[Left Nav 240px] | [Main Content flex-1 min-w-0] | [Chat Panel 400px]
+```sql
+ALTER TABLE homes ADD COLUMN year_built_effective INTEGER;
+ALTER TABLE homes ADD COLUMN build_quality TEXT;
+ALTER TABLE homes ADD COLUMN arch_style TEXT;
+ALTER TABLE homes ADD COLUMN data_match_confidence TEXT;
+ALTER TABLE homes ADD COLUMN fips_code TEXT;
+ALTER TABLE homes ADD COLUMN gross_sqft INTEGER;
+ALTER TABLE homes ADD COLUMN rooms_total INTEGER;
+ALTER TABLE homes ADD COLUMN ground_floor_sqft INTEGER;
 ```
 
-- Add `min-w-0` to `<main>` to prevent overflow when chat opens
-- The chat panel renders conditionally inside the flex row, not as a fixed overlay
+None of these columns are required -- all nullable, all additive.
 
-**`src/components/chat/ContextualChatPanel.tsx`** -- Remove overlay behavior
+### 1.2 Canonical ATTOM Normalization
 
-- Remove the fixed-position backdrop div entirely
-- Remove `fixed top-0 right-0 z-50` positioning
-- Render as a normal flex column: `w-[400px] shrink-0 border-l bg-card h-full flex flex-col`
-- Keep Escape key handler (closes panel, no focus trapping)
-- Keep the slide-in animation via `animate-in slide-in-from-right`
-- Each section (panel and main content) scrolls independently -- main uses `overflow-y-auto`, chat panel's inner div uses `overflow-hidden` with ChatConsole's own ScrollArea
+**New file: `supabase/functions/_shared/normalizeAttom.ts`**
 
-## Change 2: Auto-Send User Message on CTA Click
+Single normalization function. All ATTOM consumers read through this.
 
-**Current**: Clicking "Ask Habitta" or "View Guide" opens chat with a static assistant greeting. The user must type to get a real AI response.
+```text
+Input:  Raw ATTOM property object (from attom-property response)
+Output: NormalizedAttomProfile
+  - effectiveYearBuilt: number      // yearBuiltEffective ?? yearBuilt
+  - buildQuality: 'A'|'B'|'C'|'D' | null  (from bldgQuality)
+  - archStyle: string | null        (from archStyle)
+  - grossSqft: number | null        (from grossSize)
+  - groundFloorSqft: number | null  (from groundFloorSize)
+  - roomsTotal: number | null       (from roomsTotal)
+  - bathsFull: number | null
+  - bathsHalf: number | null
+  - parking: { type, spaces }
+  - lastSale: { amount, date, pricePerSqft, disclosureType }
+  - dataMatchConfidence: 'high'|'medium'|'low'  (from matchCode)
+  - fipsCode: string | null         (from identifier.fips)
+```
 
-**Target**: The chat auto-sends a contextual question as if the user typed it, triggering an immediate AI response.
+**matchCode mapping** (internal, never shown to user):
+- ExactMatch, StreetMatch -> 'high'
+- CityMatch -> 'medium'
+- Everything else -> 'low'
 
-### Implementation
+### 1.3 Update `attom-property` Edge Function
 
-**`src/contexts/ChatContext.tsx`** -- Add `autoSendMessage` field
+- Import and use `normalizeAttom()` to produce the canonical output
+- Add a top-level `normalizedProfile` key to the transformed response (alongside existing `propertyDetails` and `extendedDetails`)
+- Existing consumers continue working unchanged
 
-- Add `autoSendMessage?: string` to `ChatContextType`
+### 1.4 Extend `extractAttom.ts`
 
-**`src/components/chat/ContextualChatPanel.tsx`** -- Pass `autoSendMessage` to ChatConsole
+Add new fields to `AttomPropertyFacts`:
+- `effectiveYearBuilt`
+- `buildQuality`
+- `archStyle`
+- `grossSqft`
+- `roomsTotal`
+- `groundFloorSqft`
+- `dataMatchConfidence`
+- `fipsCode`
 
-- Pass `chatContext.autoSendMessage` as a new prop to `ChatConsole`
+### 1.5 Write-Through in `property-enrichment`
 
-**`src/components/dashboard-v3/ChatConsole.tsx`** -- Accept and fire auto-send
+This is the critical persistence step. Currently `property-enrichment/index.ts` extracts `yearBuilt`, `squareFeet`, and `folio` from ATTOM and writes them to `homes`. We extend this to also write:
 
-- Add `autoSendMessage?: string` prop
-- Add a `useEffect` with a `useRef` guard (`hasSentAutoMessage`) that:
-  - Fires `sendMessage(autoSendMessage)` once on mount when the prop is set
-  - Resets the guard when `autoSendMessage` value changes (new CTA click replaces context)
-  - Waits for restoration to complete (`!isRestoring`) before sending
-- This goes through the normal `sendMessage` pipeline -- writes to the ledger, triggers tools, produces a real AI response
+- `year_built_effective` (from `_attomData.building.summary.yearBuiltEffective`)
+- `build_quality` (from `_attomData.building.summary.bldgQuality`, normalized to A/B/C/D)
+- `arch_style` (from `_attomData.building.summary.archStyle`)
+- `data_match_confidence` (mapped from `_attomData.address.matchCode`)
+- `fips_code` (from `_attomData.identifier.fips`)
+- `gross_sqft` (from `_attomData.building.size.grossSize`)
+- `rooms_total` (from `_attomData.building.rooms.roomsTotal`)
+- `ground_floor_sqft` (from `_attomData.building.size.groundFloorSize`)
 
-**`src/components/SystemDetailView.tsx`** -- Wire CTAs with auto-send messages
+Same pattern as existing fields: only write if currently null, never overwrite user data.
 
-- Update `handleAskHabitta` to include `autoSendMessage`:
-  ```
-  "What maintenance does my {systemName} need, and when?"
-  ```
-- Update action button clicks to include `autoSendMessage`:
-  - DIY (View Guide): `"What are the recommended maintenance steps for my {systemName}?"`
-  - DIFM (Find Pro): `"Should I handle this myself or hire a professional for my {systemName}?"`
+### 1.6 Wire `effectiveYearBuilt` Into Capital Timeline
 
-**`src/lib/chatContextCopy.ts`** -- Add prompt builder
+**`supabase/functions/capital-timeline/index.ts`** line 651:
 
-- Add `buildSystemAutoMessage(systemKey: string, trigger: string): string` function
-- Centralizes prompt copy so it can be tuned without touching UI components
-- Used by `SystemDetailView` and any future CTA that needs auto-send
+```typescript
+// Before
+yearBuilt: home.year_built || 2000,
 
-### Edge Cases Handled
+// After
+yearBuilt: home.year_built_effective ?? home.year_built ?? 2000,
+```
 
-- **Re-click while open**: `openChat` replaces context, ChatConsole detects new `autoSendMessage` value, fires new send. Appends to same thread.
-- **Double-send prevention**: `useRef` guard keyed on `autoSendMessage` value prevents re-renders from duplicating.
-- **Mobile parity**: `MobileChatSheet` also receives `autoSendMessage` and passes it to its ChatConsole instance. Same behavior.
-- **No auto-send CTAs**: Existing `openChat()` calls without `autoSendMessage` continue to show the static greeting only. No regression.
+This single change fixes the biggest silent trust leak. Every heuristic fallback in `resolveInstallAuthority` now anchors to the effective renovation year. No other inference changes needed -- the fix flows through `PropertyContext.yearBuilt` automatically.
 
-## Files to Modify (5)
+### 1.7 Build Quality as Lifespan Degradation
 
-- `src/contexts/ChatContext.tsx` -- add `autoSendMessage` to interface
-- `src/components/chat/ContextualChatPanel.tsx` -- remove overlay, render as flex column, pass autoSendMessage
-- `src/layouts/DashboardV3Layout.tsx` -- move chat panel inside flex row
-- `src/components/dashboard-v3/ChatConsole.tsx` -- add autoSendMessage prop + useEffect
-- `src/components/SystemDetailView.tsx` -- add autoSendMessage to openChat calls
+**`supabase/functions/_shared/systemInference.ts`**
 
-## Files to Create (0)
+Extend `PropertyContext` with `buildQuality?: 'A'|'B'|'C'|'D'`.
+
+Apply lifespan degradation only (not range widening) inside `calculateHVACLifecycle`, `calculateRoofLifecycle`, and `calculateWaterHeaterLifecycle`:
+- Quality C: expected lifespan -10%
+- Quality D: expected lifespan -20%
+- Quality A/B: no change
+
+Add a `LifespanDriver` when degradation is applied:
+- `{ factor: 'Construction quality', impact: 'decrease', severity: 'low'|'medium', description: '...' }`
+
+**Invariant**: Build quality never widens ranges. It shortens expected lifespan, which shifts the replacement window earlier. Range width remains governed by existing `windowUncertaintyFromConfidence()`.
+
+---
+
+## Sprint 2: Context Enrichment
+
+### 2.1 FIPS-Based Climate Precision
+
+**`supabase/functions/_shared/systemInference.ts`**
+
+Extend `classifyClimate()` signature to accept optional `fipsCode?: string`.
+
+- State-level FIPS prefix (first 2 digits) confirms state classification
+- A hardcoded list of ~30 coastal county FIPS codes upgrades `climateConfidence` from `'medium'` to `'high'` for properties in those counties
+- If FIPS is present but doesn't map cleanly, `climateConfidence` stays `'medium'`
+
+**`supabase/functions/capital-timeline/index.ts`**:
+```typescript
+const climateContext = classifyClimate(propertyContext.state, propertyContext.city, home.fips_code);
+```
+
+### 2.2 Size Data as Advisory Context
+
+Extend `PropertyContext`:
+```typescript
+grossSqft?: number;
+roomsTotal?: number;
+groundFloorSqft?: number;
+```
+
+Use in lifecycle calculators as advisory lifespan drivers only:
+- `grossSqft > 3000` adds driver: "Larger thermal load increases system wear"
+- `groundFloorSqft` vs `grossSqft` ratio infers multi-story (adds driver for zone complexity)
+- These modify language and lifespan drivers, never replacement estimates or confidence bands
+
+### 2.3 Home Profile UI Enrichment
+
+**`src/components/HomeProfile/PropertyDetails.tsx`**
+
+Add rows:
+- "Architectural Style" (from `archStyle`)
+- Build year display: "Built 1960 -- Renovated 2005" when `year_built_effective` differs from `year_built`
+- Build quality shown as human-readable descriptor: "Standard construction" (C/D), "Above-average construction" (A/B)
+
+Extend `PropertyHistory` interface in `src/lib/propertyAPI.ts` with:
+```typescript
+normalizedProfile?: {
+  effectiveYearBuilt: number;
+  buildQuality: string | null;
+  archStyle: string | null;
+  grossSqft: number | null;
+  roomsTotal: number | null;
+  dataMatchConfidence: string;
+  fipsCode: string | null;
+  lastSale?: {
+    amount: number | null;
+    date: string | null;
+    pricePerSqft: number | null;
+  };
+};
+```
+
+### 2.4 Purchase Context Card
+
+**New component: `src/components/HomeProfile/PurchaseContext.tsx`**
+
+Minimal, restrained card:
+- Last sale price
+- Price per sqft at purchase
+- Purchase date
+
+Rules:
+- Only renders when `lastSale.amount > 0` AND `lastSale.date` exists
+- No projections, no arrows, no valuation language
+- No empty states
+
+---
+
+## Sprint 3: Behavioral Confidence Gating
+
+### 3.1 Data Match Confidence Effects
+
+**`supabase/functions/capital-timeline/index.ts`**
+
+Read `home.data_match_confidence` and apply at the orchestration layer:
+- `'low'`: reduce base confidence score by 0.10 (making `windowUncertaintyFromConfidence` naturally widen bands)
+- `'medium'`: reduce by 0.05
+- `'high'`: no change
+
+This uses the existing `windowUncertaintyFromConfidence()` function rather than creating parallel range math. The confidence score reduction propagates naturally through `dataQualityFromConfidence()` and `windowUncertaintyFromConfidence()`.
+
+Add a `limitingFactor` when match confidence is low: "Property data match is approximate"
+
+### 3.2 Sale History in Report
+
+Surface existing `saleHistory` data in the Report/Home Profile under "Ownership and Purchase History". Only renders if data exists. No empty states. No analysis.
+
+---
+
+## Files to Create (2)
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/_shared/normalizeAttom.ts` | Canonical ATTOM normalization |
+| `src/components/HomeProfile/PurchaseContext.tsx` | Purchase context card |
+
+## Files to Modify (~8)
+
+| File | Change |
+|------|--------|
+| `supabase/functions/attom-property/index.ts` | Import normalizeAttom, emit normalizedProfile |
+| `supabase/functions/_shared/extractAttom.ts` | Extend AttomPropertyFacts with new fields |
+| `supabase/functions/property-enrichment/index.ts` | Write-through new columns to homes |
+| `supabase/functions/_shared/systemInference.ts` | Extend PropertyContext, add buildQuality degradation, FIPS in classifyClimate, size drivers |
+| `supabase/functions/capital-timeline/index.ts` | Use year_built_effective, pass buildQuality + fips_code, apply data_match_confidence |
+| `src/lib/propertyAPI.ts` | Extend PropertyHistory with normalizedProfile |
+| `src/components/HomeProfile/PropertyDetails.tsx` | Show arch style, effective year, build quality |
 
 ## What Does NOT Change
 
-- ChatConsole internals (AI engine, message persistence, tool calling)
-- MobileChatSheet structure (bottom drawer on mobile)
-- DashboardV3.tsx (has its own ResizablePanelGroup chat)
-- Any other page's `openChat()` calls without `autoSendMessage`
+- Capital timeline output shape (fields are additive)
+- Authority resolution hierarchy (Permit > Owner > Heuristic)
+- Confidence cap (0.85)
+- Mobile navigation or layout
+- Existing consumers of capital timeline data
+- ChatConsole, AI advisor, or message persistence
+
+## Hard Invariants (Non-Negotiable)
+
+- `_attomData` is never read outside normalization after Sprint 1
+- `effectiveYearBuilt` always resolves to `yearBuiltEffective ?? yearBuilt`
+- Build quality never widens ranges -- it only shortens expected lifespan
+- All range width is governed by existing `windowUncertaintyFromConfidence()` -- no parallel band math
+- `data_match_confidence` is behavioral, never displayed
+- FIPS code is internal plumbing only
+- Sale data is descriptive, not predictive
+
