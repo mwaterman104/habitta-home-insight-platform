@@ -37,6 +37,8 @@ interface LifecycleRingProps {
   percentConsumed: number;
   /** Ring size in pixels */
   size?: number;
+  /** Override fill color (bypasses lifecycle color logic) */
+  color?: string;
   /** Center content (e.g., "~7 years" or "~6 yrs") */
   children?: ReactNode;
 }
@@ -44,10 +46,11 @@ interface LifecycleRingProps {
 export function LifecycleRing({
   percentConsumed,
   size = 96,
+  color,
   children,
 }: LifecycleRingProps) {
   const clamped = Math.max(0, Math.min(100, percentConsumed));
-  const color = getLifecycleColor(clamped);
+  const fillColor = color ?? getLifecycleColor(clamped);
 
   // Ring thickness proportional to size
   const thickness = Math.max(6, Math.round(size * 0.104));
@@ -81,7 +84,7 @@ export function LifecycleRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={color}
+          stroke={fillColor}
           strokeWidth={thickness}
           strokeDasharray={`${fillLength} ${circumference - fillLength}`}
           strokeLinecap="round"
