@@ -336,6 +336,8 @@ serve(async (req) => {
           }
         },
         lastUpdated: property.vintage?.lastModified || new Date().toISOString(),
+        // Canonical normalized profile (Sprint 1)
+        normalizedProfile: normalizeAttom(property),
         // Include raw Attom data for additional details
         _attomData: property
       };

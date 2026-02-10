@@ -67,8 +67,8 @@ serve(async (req) => {
       throw new Error(`Home not found: ${home_id}`);
     }
 
-    // 2. Check if already enriched (skip if we have both year_built AND square_feet)
-    if (home.year_built && home.square_feet) {
+    // 2. Check if already enriched (skip if we have year_built AND square_feet AND year_built_effective)
+    if (home.year_built && home.square_feet && home.year_built_effective !== null) {
       console.log('[property-enrichment] Home already enriched, skipping ATTOM call');
       // Still chain to permit-enrichment
       await chainToPermitEnrichment(supabase, home_id);
