@@ -2548,6 +2548,7 @@ export type Database = {
           recurrence_interval: string | null
           recurring: boolean | null
           status: string | null
+          system_type: string | null
           title: string
           updated_at: string
           user_id: string
@@ -2565,6 +2566,7 @@ export type Database = {
           recurrence_interval?: string | null
           recurring?: boolean | null
           status?: string | null
+          system_type?: string | null
           title: string
           updated_at?: string
           user_id: string
@@ -2582,6 +2584,7 @@ export type Database = {
           recurrence_interval?: string | null
           recurring?: boolean | null
           status?: string | null
+          system_type?: string | null
           title?: string
           updated_at?: string
           user_id?: string

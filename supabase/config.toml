@@ -70,3 +70,6 @@ verify_jwt = false
 # Photo transfer session for QR code flow (auth handled in code)
 [functions.photo-transfer-session]
 verify_jwt = false
+
+[functions.maintenance-alerts]
+verify_jwt = false
