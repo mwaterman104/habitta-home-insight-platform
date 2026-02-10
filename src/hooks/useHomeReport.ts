@@ -324,11 +324,11 @@ export function useHomeReport(): HomeReportData {
         city: userHome.city,
         state: userHome.state,
         zipCode: userHome.zip_code,
-        yearBuilt: userHome.year_built ?? null,
-        squareFeet: userHome.square_feet ?? null,
-        bedrooms: userHome.bedrooms ?? null,
-        bathrooms: userHome.bathrooms ?? null,
-        propertyType: userHome.property_type ?? null,
+        yearBuilt: userHome.year_built ?? attomData?.propertyDetails?.yearBuilt ?? null,
+        squareFeet: userHome.square_feet ?? attomData?.propertyDetails?.sqft ?? null,
+        bedrooms: userHome.bedrooms ?? attomData?.propertyDetails?.bedrooms ?? null,
+        bathrooms: userHome.bathrooms ?? attomData?.propertyDetails?.bathrooms ?? null,
+        propertyType: userHome.property_type ?? attomData?.propertyDetails?.propertyType ?? null,
         ownershipSince: '', // Will be enriched from direct query if needed
       }
     : null;

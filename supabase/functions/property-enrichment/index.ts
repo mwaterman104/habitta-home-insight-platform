@@ -59,7 +59,7 @@ serve(async (req) => {
     // 1. Fetch home record
     const { data: home, error: homeError } = await supabase
       .from('homes')
-      .select('id, address, city, state, zip_code, year_built, square_feet, year_built_effective, build_quality, arch_style, data_match_confidence, fips_code, gross_sqft, rooms_total, ground_floor_sqft')
+      .select('id, address, city, state, zip_code, year_built, square_feet, year_built_effective, build_quality, arch_style, data_match_confidence, fips_code, gross_sqft, rooms_total, ground_floor_sqft, bedrooms, bathrooms, property_type')
       .eq('id', home_id)
       .single();
 
@@ -165,6 +165,29 @@ serve(async (req) => {
         updates.folio = folio;
         updates.folio_source = 'attom';
         console.log(`[property-enrichment] Will update folio to: ${folio} (source: attom)`);
+      }
+
+      // Extract bedrooms, bathrooms, property_type
+      const bedrooms = attomData.propertyDetails?.bedrooms ||
+                       rawProperty?.building?.rooms?.beds || null;
+      const bathsFull = rawProperty?.building?.rooms?.bathsfull || 0;
+      const bathsHalf = rawProperty?.building?.rooms?.bathshalf || 0;
+      const bathrooms = attomData.propertyDetails?.bathrooms ||
+                        (bathsFull || bathsHalf ? bathsFull + bathsHalf * 0.5 : null);
+      const propertyType = attomData.propertyDetails?.propertyType ||
+                           rawProperty?.summary?.proptype || null;
+
+      if (bedrooms && !home.bedrooms) {
+        updates.bedrooms = bedrooms;
+        console.log(`[property-enrichment] Will update bedrooms to: ${bedrooms}`);
+      }
+      if (bathrooms && !home.bathrooms) {
+        updates.bathrooms = bathrooms;
+        console.log(`[property-enrichment] Will update bathrooms to: ${bathrooms}`);
+      }
+      if (propertyType && !home.property_type) {
+        updates.property_type = propertyType;
+        console.log(`[property-enrichment] Will update property_type to: ${propertyType}`);
       }
 
       // Sprint 1: Extract and write-through new ATTOM fields via canonical normalizer
