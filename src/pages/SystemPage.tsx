@@ -10,6 +10,7 @@ import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 import { isValidSystemKey } from "@/lib/systemMeta";
 import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
+import { useChatContext } from "@/contexts/ChatContext";
 
 interface UserHome {
   id: string;
@@ -42,6 +43,7 @@ export default function SystemPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { openChat } = useChatContext();
   
   // Check if this is an appliance UUID vs a system key
   // UUIDs are 36 chars with dashes (e.g., "550e8400-e29b-41d4-a716-446655440000")
@@ -290,6 +292,7 @@ export default function SystemPage() {
           yearBuilt={userHome?.year_built}
           onBack={handleBack}
           onActionComplete={handleActionComplete}
+          onOpenChat={openChat}
           onSystemUpdated={async () => {
             // Refetch prediction after system update
             if (!userHome?.id || !systemKey || !isValidSystemKey(systemKey)) return;
