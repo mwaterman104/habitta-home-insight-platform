@@ -35,6 +35,14 @@ interface MaintenanceTask {
 }
 
 export default function MaintenancePage() {
+  return (
+    <DashboardV3Layout>
+      <MaintenancePageContent />
+    </DashboardV3Layout>
+  );
+}
+
+function MaintenancePageContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -165,91 +173,18 @@ export default function MaintenancePage() {
   // ── Mobile Layout ──
   if (isMobile) {
     return (
-      <DashboardV3Layout>
-        <div className="p-3 space-y-3">
-          {/* Mobile header strip */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-bold">Maintenance</h1>
-              {climateZone && (
-                <p className="text-xs text-muted-foreground">{climateZone.label}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={generateSeasonalPlan} size="sm" variant="outline" disabled={generating}>
-                {generating ? "Generating..." : "Generate Plan"}
-              </Button>
-            </div>
-          </div>
-
-          {/* Generate timeout fallback */}
-          {generating && generateTimeout && (
-            <button 
-              onClick={() => openChat({ type: 'maintenance', trigger: 'generate_plan' })}
-              className="w-full text-sm text-primary hover:underline flex items-center justify-center gap-1 py-2"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              Taking longer than expected — talk to Habitta
-            </button>
-          )}
-
-          {/* Quick stats */}
-          {stats.total > 0 && (
-            <div className="flex gap-4">
-              {stats.overdue > 0 && (
-                <div className="flex items-center gap-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                  <span className="text-xs font-medium text-destructive">{stats.overdue} overdue</span>
-                </div>
-              )}
-              <span className="text-xs text-muted-foreground">{stats.pending} pending</span>
-              <span className="text-xs text-muted-foreground">{stats.completed} done</span>
-            </div>
-          )}
-
-          <MobileMaintenanceView
-            tasks={tasks}
-            loading={loading}
-            onTaskUpdate={handleTaskUpdate}
-            onAddTask={() => setShowAddTask(true)}
-          />
-
-          <AddTaskDialog
-            open={showAddTask}
-            onOpenChange={setShowAddTask}
-            homeId={userHome?.id || ""}
-            onTaskAdded={fetchTasks}
-          />
-        </div>
-      </DashboardV3Layout>
-    );
-  }
-
-  // ── Desktop Layout ──
-  return (
-    <DashboardV3Layout>
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Header */}
+      <div className="p-3 space-y-3">
+        {/* Mobile header strip */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Maintenance</h1>
-            <p className="text-muted-foreground">
-              Region-aware scheduling for your home
-              {climateZone && (
-                <span className="ml-2">
-                  · {climateZone.label}
-                </span>
-              )}
-            </p>
+            <h1 className="text-lg font-bold">Maintenance</h1>
+            {climateZone && (
+              <p className="text-xs text-muted-foreground">{climateZone.label}</p>
+            )}
           </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={generateSeasonalPlan} variant="outline" disabled={generating}>
-              <Calendar className="h-4 w-4 mr-2" />
-              {generating ? "Generating..." : "Generate Seasonal Plan"}
-            </Button>
-            <Button onClick={() => setShowAddTask(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Task
+          <div className="flex items-center gap-2">
+            <Button onClick={generateSeasonalPlan} size="sm" variant="outline" disabled={generating}>
+              {generating ? "Generating..." : "Generate Plan"}
             </Button>
           </div>
         </div>
@@ -265,118 +200,26 @@ export default function MaintenancePage() {
           </button>
         )}
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">Total Tasks</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-2xl font-bold text-accent-foreground">{stats.pending}</div>
-              <p className="text-xs text-muted-foreground">Pending</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-2xl font-bold text-destructive">{stats.overdue}</div>
-              <p className="text-xs text-muted-foreground">Overdue</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-2xl font-bold text-primary">{stats.completed}</div>
-              <p className="text-xs text-muted-foreground">Completed</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4 flex-wrap">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Status:</label>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="border rounded-md px-2 py-1 text-sm bg-background"
-                >
-                  <option value="all">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                </select>
+        {/* Quick stats */}
+        {stats.total > 0 && (
+          <div className="flex gap-4">
+            {stats.overdue > 0 && (
+              <div className="flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-xs font-medium text-destructive">{stats.overdue} overdue</span>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Priority:</label>
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
-                  className="border rounded-md px-2 py-1 text-sm bg-background"
-                >
-                  <option value="all">All</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">System:</label>
-                <select
-                  value={filterSystem}
-                  onChange={(e) => setFilterSystem(e.target.value)}
-                  className="border rounded-md px-2 py-1 text-sm bg-background"
-                >
-                  <option value="all">All Systems</option>
-                  <option value="hvac">HVAC</option>
-                  <option value="roof">Roof</option>
-                  <option value="plumbing">Plumbing</option>
-                  <option value="electrical">Electrical</option>
-                  <option value="water_heater">Water Heater</option>
-                  <option value="exterior">Exterior</option>
-                  <option value="pool">Pool</option>
-                  <option value="safety">Safety</option>
-                </select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            )}
+            <span className="text-xs text-muted-foreground">{stats.pending} pending</span>
+            <span className="text-xs text-muted-foreground">{stats.completed} done</span>
+          </div>
+        )}
 
-        {/* View tabs */}
-        <Tabs value={activeView} onValueChange={(v) => setActiveView(v as "timeline" | "calendar")}>
-          <TabsList>
-            <TabsTrigger value="timeline">
-              <List className="h-4 w-4 mr-2" />
-              Timeline
-            </TabsTrigger>
-            <TabsTrigger value="calendar">
-              <Calendar className="h-4 w-4 mr-2" />
-              Calendar
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="timeline">
-            <MaintenanceTimelineView
-              tasks={tasks}
-              loading={loading}
-              onTaskUpdate={handleTaskUpdate}
-              homeId={userHome?.id}
-            />
-          </TabsContent>
-
-          <TabsContent value="calendar">
-            <MaintenanceCalendarView
-              tasks={tasks}
-              loading={loading}
-              onTaskUpdate={handleTaskUpdate}
-            />
-          </TabsContent>
-        </Tabs>
+        <MobileMaintenanceView
+          tasks={tasks}
+          loading={loading}
+          onTaskUpdate={handleTaskUpdate}
+          onAddTask={() => setShowAddTask(true)}
+        />
 
         <AddTaskDialog
           open={showAddTask}
@@ -385,6 +228,167 @@ export default function MaintenancePage() {
           onTaskAdded={fetchTasks}
         />
       </div>
-    </DashboardV3Layout>
+    );
+  }
+
+  // ── Desktop Layout ──
+  return (
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Maintenance</h1>
+          <p className="text-muted-foreground">
+            Region-aware scheduling for your home
+            {climateZone && (
+              <span className="ml-2">
+                · {climateZone.label}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button onClick={generateSeasonalPlan} variant="outline" disabled={generating}>
+            <Calendar className="h-4 w-4 mr-2" />
+            {generating ? "Generating..." : "Generate Seasonal Plan"}
+          </Button>
+          <Button onClick={() => setShowAddTask(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Task
+          </Button>
+        </div>
+      </div>
+
+      {/* Generate timeout fallback */}
+      {generating && generateTimeout && (
+        <button 
+          onClick={() => openChat({ type: 'maintenance', trigger: 'generate_plan' })}
+          className="w-full text-sm text-primary hover:underline flex items-center justify-center gap-1 py-2"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+          Taking longer than expected — talk to Habitta
+        </button>
+      )}
+
+      {/* Stats strip */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <p className="text-xs text-muted-foreground">Total Tasks</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-2xl font-bold text-accent-foreground">{stats.pending}</div>
+            <p className="text-xs text-muted-foreground">Pending</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-2xl font-bold text-destructive">{stats.overdue}</div>
+            <p className="text-xs text-muted-foreground">Overdue</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-2xl font-bold text-primary">{stats.completed}</div>
+            <p className="text-xs text-muted-foreground">Completed</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-4 flex-wrap">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Status:</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="border rounded-md px-2 py-1 text-sm bg-background"
+              >
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Priority:</label>
+              <select
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="border rounded-md px-2 py-1 text-sm bg-background"
+              >
+                <option value="all">All</option>
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">System:</label>
+              <select
+                value={filterSystem}
+                onChange={(e) => setFilterSystem(e.target.value)}
+                className="border rounded-md px-2 py-1 text-sm bg-background"
+              >
+                <option value="all">All Systems</option>
+                <option value="hvac">HVAC</option>
+                <option value="roof">Roof</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="electrical">Electrical</option>
+                <option value="water_heater">Water Heater</option>
+                <option value="exterior">Exterior</option>
+                <option value="pool">Pool</option>
+                <option value="safety">Safety</option>
+              </select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* View tabs */}
+      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as "timeline" | "calendar")}>
+        <TabsList>
+          <TabsTrigger value="timeline">
+            <List className="h-4 w-4 mr-2" />
+            Timeline
+          </TabsTrigger>
+          <TabsTrigger value="calendar">
+            <Calendar className="h-4 w-4 mr-2" />
+            Calendar
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="timeline">
+          <MaintenanceTimelineView
+            tasks={tasks}
+            loading={loading}
+            onTaskUpdate={handleTaskUpdate}
+            homeId={userHome?.id}
+          />
+        </TabsContent>
+
+        <TabsContent value="calendar">
+          <MaintenanceCalendarView
+            tasks={tasks}
+            loading={loading}
+            onTaskUpdate={handleTaskUpdate}
+          />
+        </TabsContent>
+      </Tabs>
+
+      <AddTaskDialog
+        open={showAddTask}
+        onOpenChange={setShowAddTask}
+        homeId={userHome?.id || ""}
+        onTaskAdded={fetchTasks}
+      />
+    </div>
   );
 }

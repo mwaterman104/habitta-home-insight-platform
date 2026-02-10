@@ -82,12 +82,33 @@ function HomeActivityLogWithData({ homeId, onLogActivity }: { homeId: string; on
   return <HomeActivityLog activities={mappedActivities} onLogActivity={onLogActivity} />;
 }
 
+/** Wrapper components that use useChatContext inside the DashboardV3Layout provider */
+function SystemProvenanceWithChat({ systems, yearBuilt }: { systems: any[]; yearBuilt: number | null }) {
+  const { openChat } = useChatContext();
+  return (
+    <SystemProvenance 
+      systems={systems} 
+      yearBuilt={yearBuilt}
+      onEditSystem={(systemId) => openChat({ type: 'system_edit', systemKey: systemId, trigger: 'edit_confidence' })}
+    />
+  );
+}
+
+function SupportingRecordsWithChat() {
+  const { openChat } = useChatContext();
+  return <SupportingRecords documents={[]} onUploadRecord={() => openChat({ type: 'supporting_record', trigger: 'upload' })} />;
+}
+
+function HomeActivityLogWithChat({ homeId }: { homeId: string }) {
+  const { openChat } = useChatContext();
+  return <HomeActivityLogWithData homeId={homeId} onLogActivity={() => openChat({ type: 'activity_log', trigger: 'log_activity' })} />;
+}
+
 const HomeProfilePage = () => {
   const { homeId } = useParams();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
-  const { openChat } = useChatContext();
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -227,13 +248,7 @@ const HomeProfilePage = () => {
           />
 
           {/* System Sources & Confidence - The trust engine */}
-          <SystemProvenance 
-            systems={systemsData} 
-            yearBuilt={home.year_built}
-            onEditSystem={(systemId) => {
-              openChat({ type: 'system_edit', systemKey: systemId, trigger: 'edit_confidence' });
-            }}
-          />
+          <SystemProvenanceWithChat systems={systemsData} yearBuilt={home.year_built} />
 
           {/* Permits & Construction History */}
           <PermitsHistory
@@ -242,10 +257,10 @@ const HomeProfilePage = () => {
           />
 
           {/* Supporting Records - Empty state, no mock data */}
-          <SupportingRecords documents={[]} onUploadRecord={() => openChat({ type: 'supporting_record', trigger: 'upload' })} />
+          <SupportingRecordsWithChat />
 
           {/* Home Activity Log - Wired to real home_events data */}
-          <HomeActivityLogWithData homeId={home.id} onLogActivity={() => openChat({ type: 'activity_log', trigger: 'log_activity' })} />
+          <HomeActivityLogWithChat homeId={home.id} />
         </div>
       </div>
     </DashboardV3Layout>
