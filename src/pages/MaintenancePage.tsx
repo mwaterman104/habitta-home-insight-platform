@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, List, Plus, Filter, Wrench, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Calendar, List, Plus, Filter, Wrench, AlertTriangle, MessageCircle } from "lucide-react";
 import { MaintenanceTimelineView } from "@/components/maintenance/MaintenanceTimelineView";
 import { MaintenanceCalendarView } from "@/components/maintenance/MaintenanceCalendarView";
 import { MobileMaintenanceView } from "@/components/maintenance/MobileMaintenanceView";
@@ -15,7 +15,8 @@ import { AddTaskDialog } from "@/components/maintenance/AddTaskDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deriveClimateZone } from "@/lib/climateZone";
-import BottomNavigation from "@/components/BottomNavigation";
+import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
+import { useChatContext } from "@/contexts/ChatContext";
 
 interface MaintenanceTask {
   id: string;
@@ -38,10 +39,12 @@ export default function MaintenancePage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { openChat } = useChatContext();
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [userHome, setUserHome] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generateTimeout, setGenerateTimeout] = useState(false);
   const [activeView, setActiveView] = useState<"timeline" | "calendar">("timeline");
   const [showAddTask, setShowAddTask] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
@@ -120,6 +123,11 @@ export default function MaintenancePage() {
   const generateSeasonalPlan = async () => {
     if (!userHome?.id) return;
     setGenerating(true);
+    setGenerateTimeout(false);
+    
+    // Timeout fallback: after 10s, show chat escape hatch
+    const timeoutId = setTimeout(() => setGenerateTimeout(true), 10000);
+    
     try {
       const climateZone = deriveClimateZone(userHome.state, userHome.city, userHome.latitude);
       const { data, error } = await supabase.functions.invoke("seed-maintenance-plan", {
@@ -133,7 +141,9 @@ export default function MaintenancePage() {
     } catch (error: any) {
       toast({ title: "Error generating plan", description: error.message, variant: "destructive" });
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
+      setGenerateTimeout(false);
     }
   };
 
@@ -150,28 +160,37 @@ export default function MaintenancePage() {
   // ── Mobile Layout ──
   if (isMobile) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="sticky top-0 z-30 bg-card border-b px-4 py-3">
+      <DashboardV3Layout>
+        <div className="p-3 space-y-3">
+          {/* Mobile header strip */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 w-8 p-0">
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-lg font-bold">Maintenance</h1>
-                {climateZone && (
-                  <p className="text-xs text-muted-foreground">{climateZone.label}</p>
-                )}
-              </div>
+            <div>
+              <h1 className="text-lg font-bold">Maintenance</h1>
+              {climateZone && (
+                <p className="text-xs text-muted-foreground">{climateZone.label}</p>
+              )}
             </div>
-            <Button onClick={generateSeasonalPlan} size="sm" variant="outline" disabled={generating}>
-              {generating ? "Generating..." : "Generate Plan"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={generateSeasonalPlan} size="sm" variant="outline" disabled={generating}>
+                {generating ? "Generating..." : "Generate Plan"}
+              </Button>
+            </div>
           </div>
+
+          {/* Generate timeout fallback */}
+          {generating && generateTimeout && (
+            <button 
+              onClick={() => openChat({ type: 'maintenance', trigger: 'generate_plan' })}
+              className="w-full text-sm text-primary hover:underline flex items-center justify-center gap-1 py-2"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              Taking longer than expected — talk to Habitta
+            </button>
+          )}
 
           {/* Quick stats */}
           {stats.total > 0 && (
-            <div className="flex gap-4 mt-3">
+            <div className="flex gap-4">
               {stats.overdue > 0 && (
                 <div className="flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
@@ -182,52 +201,41 @@ export default function MaintenancePage() {
               <span className="text-xs text-muted-foreground">{stats.completed} done</span>
             </div>
           )}
-        </header>
 
-        <main className="flex-1 p-3 pb-20">
           <MobileMaintenanceView
             tasks={tasks}
             loading={loading}
             onTaskUpdate={handleTaskUpdate}
             onAddTask={() => setShowAddTask(true)}
           />
-        </main>
 
-        <BottomNavigation />
-
-        <AddTaskDialog
-          open={showAddTask}
-          onOpenChange={setShowAddTask}
-          homeId={userHome?.id || ""}
-          onTaskAdded={fetchTasks}
-        />
-      </div>
+          <AddTaskDialog
+            open={showAddTask}
+            onOpenChange={setShowAddTask}
+            homeId={userHome?.id || ""}
+            onTaskAdded={fetchTasks}
+          />
+        </div>
+      </DashboardV3Layout>
     );
   }
 
   // ── Desktop Layout ──
   return (
-    <div className="min-h-screen bg-background">
+    <DashboardV3Layout>
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="h-8 w-8 p-0">
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">Maintenance</h1>
-                <p className="text-muted-foreground">
-                  Region-aware scheduling for your home
-                  {climateZone && (
-                    <span className="ml-2">
-                      · {climateZone.label}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Maintenance</h1>
+            <p className="text-muted-foreground">
+              Region-aware scheduling for your home
+              {climateZone && (
+                <span className="ml-2">
+                  · {climateZone.label}
+                </span>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={generateSeasonalPlan} variant="outline" disabled={generating}>
@@ -240,6 +248,17 @@ export default function MaintenancePage() {
             </Button>
           </div>
         </div>
+
+        {/* Generate timeout fallback */}
+        {generating && generateTimeout && (
+          <button 
+            onClick={() => openChat({ type: 'maintenance', trigger: 'generate_plan' })}
+            className="w-full text-sm text-primary hover:underline flex items-center justify-center gap-1 py-2"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Taking longer than expected — talk to Habitta
+          </button>
+        )}
 
         {/* Stats strip */}
         <div className="grid grid-cols-4 gap-4">
@@ -361,6 +380,6 @@ export default function MaintenancePage() {
           onTaskAdded={fetchTasks}
         />
       </div>
-    </div>
+    </DashboardV3Layout>
   );
 }

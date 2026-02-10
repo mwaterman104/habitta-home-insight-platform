@@ -13,6 +13,7 @@ interface Document {
 
 interface SupportingRecordsProps {
   documents?: Document[];
+  onUploadRecord?: () => void;
 }
 
 /**
@@ -22,7 +23,8 @@ interface SupportingRecordsProps {
  * Shows empty state when no real documents exist (no fake mock data).
  */
 export const SupportingRecords: React.FC<SupportingRecordsProps> = ({ 
-  documents = []
+  documents = [],
+  onUploadRecord,
 }) => {
   const hasDocuments = documents.length > 0;
 
@@ -62,7 +64,7 @@ export const SupportingRecords: React.FC<SupportingRecordsProps> = ({
             ))}
             
             <div className="pt-4 border-t border-border">
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full" onClick={onUploadRecord}>
                 <Upload className="h-4 w-4 mr-2" />
                 Upload document
               </Button>
@@ -73,7 +75,7 @@ export const SupportingRecords: React.FC<SupportingRecordsProps> = ({
           <div className="text-center py-8 text-muted-foreground">
             <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No records uploaded yet</p>
-            <Button variant="outline" size="sm" className="mt-4">
+            <Button variant="outline" size="sm" className="mt-4" onClick={onUploadRecord}>
               <Upload className="h-4 w-4 mr-2" />
               Add your first record
             </Button>

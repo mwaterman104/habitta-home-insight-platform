@@ -30,6 +30,7 @@ const categoryIcons: Record<string, React.ComponentType<any>> = {
 
 interface HomeActivityLogProps {
   activities?: ActivityItem[];
+  onLogActivity?: () => void;
 }
 
 /**
@@ -43,7 +44,8 @@ interface HomeActivityLogProps {
  * - Subtle framing that connects maintenance to intelligence
  */
 export const HomeActivityLog: React.FC<HomeActivityLogProps> = ({ 
-  activities = []
+  activities = [],
+  onLogActivity,
 }) => {
   const hasActivities = activities.length > 0;
 
@@ -86,7 +88,7 @@ export const HomeActivityLog: React.FC<HomeActivityLogProps> = ({
             })}
             
             <div className="pt-4 border-t border-border">
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={onLogActivity}>
                 <Plus className="h-4 w-4 mr-2" />
                 Log activity
               </Button>
@@ -98,7 +100,7 @@ export const HomeActivityLog: React.FC<HomeActivityLogProps> = ({
             <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No activity logged yet</p>
             <p className="text-sm mt-1">Recording maintenance helps Habitta distinguish wear from neglect.</p>
-            <Button variant="outline" size="sm" className="mt-4">
+            <Button variant="outline" size="sm" className="mt-4" onClick={onLogActivity}>
               <Plus className="h-4 w-4 mr-2" />
               Log your first activity
             </Button>

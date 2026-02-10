@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useChatContext } from "@/contexts/ChatContext";
 import {
   Sidebar,
   SidebarContent,
@@ -30,6 +31,7 @@ export default function AppSidebar() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { openChat } = useChatContext();
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith('/system');
   const collapsed = state === 'collapsed' || isMobile;
@@ -75,7 +77,7 @@ export default function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => navigate("/chatdiy")}>
+            <SidebarMenuButton onClick={() => openChat({ type: 'general', trigger: 'ask_habitta' })}>
               <MessageCircle className="mr-2 h-4 w-4" />
               {!collapsed && <span>Help</span>}
             </SidebarMenuButton>

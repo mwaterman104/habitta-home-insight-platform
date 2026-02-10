@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useChatContext } from "@/contexts/ChatContext";
 import type { HomeForecast } from "@/types/systemPrediction";
 import { 
   ForecastCompleteness, 
@@ -51,6 +52,7 @@ export function HomeHealthCard({
   isHealthyState = false,
 }: HomeHealthCardProps) {
   const navigate = useNavigate();
+  const { openChat } = useChatContext();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // If no forecast provided, render legacy card
@@ -92,15 +94,16 @@ export function HomeHealthCard({
     if (onProtectClick) {
       onProtectClick();
     } else {
-      // Default: navigate to ChatDIY with context
-      const params = new URLSearchParams({
-        topic: 'protection-plan',
-        score: String(currentScore),
-        projected: String(ifLeftUntracked.score24mo),
-        topRisk: silentRisks[0]?.component || 'system-wear',
-        region: financialOutlook.region
+      openChat({ 
+        type: 'system', 
+        trigger: 'maintenance_guidance', 
+        metadata: { 
+          score: currentScore, 
+          projected: ifLeftUntracked.score24mo, 
+          topRisk: silentRisks[0]?.component || 'system-wear', 
+          region: financialOutlook.region 
+        } 
       });
-      navigate(`/chatdiy?${params.toString()}`);
     }
   };
 

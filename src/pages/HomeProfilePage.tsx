@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,7 @@ interface HomeData {
  * HomeActivityLogWithData - Queries home_events and maps to ActivityItem format.
  * Read-only. Honest empty state when no events exist.
  */
-function HomeActivityLogWithData({ homeId }: { homeId: string }) {
+function HomeActivityLogWithData({ homeId, onLogActivity }: { homeId: string; onLogActivity?: () => void }) {
   const { data: homeEvents } = useQuery({
     queryKey: ['home-activity-events', homeId],
     queryFn: async () => {
@@ -67,7 +68,6 @@ function HomeActivityLogWithData({ homeId }: { homeId: string }) {
 
   const mappedActivities = (homeEvents || []).map((event) => {
     const meta = (event.metadata as Record<string, any>) || {};
-    // Derive category from system_type or kind in metadata
     const category = meta.system_type || meta.kind || meta.category || 'Home';
     return {
       id: event.id,
@@ -79,7 +79,7 @@ function HomeActivityLogWithData({ homeId }: { homeId: string }) {
     };
   });
 
-  return <HomeActivityLog activities={mappedActivities} />;
+  return <HomeActivityLog activities={mappedActivities} onLogActivity={onLogActivity} />;
 }
 
 const HomeProfilePage = () => {
@@ -87,6 +87,7 @@ const HomeProfilePage = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const { openChat } = useChatContext();
   const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -230,8 +231,7 @@ const HomeProfilePage = () => {
             systems={systemsData} 
             yearBuilt={home.year_built}
             onEditSystem={(systemId) => {
-              // Future: open edit modal
-              console.log('Edit system:', systemId);
+              openChat({ type: 'system_edit', systemKey: systemId, trigger: 'edit_confidence' });
             }}
           />
 
@@ -242,10 +242,10 @@ const HomeProfilePage = () => {
           />
 
           {/* Supporting Records - Empty state, no mock data */}
-          <SupportingRecords documents={[]} />
+          <SupportingRecords documents={[]} onUploadRecord={() => openChat({ type: 'supporting_record', trigger: 'upload' })} />
 
           {/* Home Activity Log - Wired to real home_events data */}
-          <HomeActivityLogWithData homeId={home.id} />
+          <HomeActivityLogWithData homeId={home.id} onLogActivity={() => openChat({ type: 'activity_log', trigger: 'log_activity' })} />
         </div>
       </div>
     </DashboardV3Layout>
