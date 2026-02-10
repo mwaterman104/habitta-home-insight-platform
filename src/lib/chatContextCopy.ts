@@ -22,3 +22,16 @@ export function getContextualAssistantMessage(context: ChatContextType): string 
 
   return messages[key] || messages['general/ask_habitta'];
 }
+
+/**
+ * Builds a contextual auto-send message for system CTAs.
+ * Centralizes prompt copy so it can be tuned without touching UI components.
+ */
+export function buildSystemAutoMessage(systemName: string, trigger: string): string {
+  const messages: Record<string, string> = {
+    'maintenance_guidance': `What maintenance does my ${systemName} need, and when?`,
+    'view_guide': `What are the recommended maintenance steps for my ${systemName}?`,
+    'find_pro': `Should I handle this myself or hire a professional for my ${systemName}?`,
+  };
+  return messages[trigger] || `What should I know about my ${systemName}?`;
+}

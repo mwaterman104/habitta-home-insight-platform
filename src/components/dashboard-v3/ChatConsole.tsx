@@ -150,6 +150,8 @@ interface ChatConsoleProps {
   verifiedSystemCount?: number;
   /** Total number of systems being tracked */
   totalSystemCount?: number;
+  /** Auto-send message: fires sendMessage() once on mount when set */
+  autoSendMessage?: string;
 }
 
 // ============================================
@@ -177,6 +179,8 @@ export function ChatConsole({
   // NEW: Verification context
   verifiedSystemCount = 0,
   totalSystemCount,
+  // Auto-send
+  autoSendMessage,
 }: ChatConsoleProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -214,6 +218,17 @@ export function ChatConsole({
     baselineSource,
     visibleBaseline,
   });
+
+  // Auto-send message guard (single-fire per unique message value)
+  const hasSentAutoMessage = useRef<string | null>(null);
+
+  // Auto-send: fire once when autoSendMessage is set and restoration is complete
+  useEffect(() => {
+    if (!autoSendMessage || isRestoring) return;
+    if (hasSentAutoMessage.current === autoSendMessage) return;
+    hasSentAutoMessage.current = autoSendMessage;
+    sendMessage(autoSendMessage);
+  }, [autoSendMessage, isRestoring, sendMessage]);
 
   // Get mode-specific behavior
   const modeBehavior = getModeBehavior(chatMode);

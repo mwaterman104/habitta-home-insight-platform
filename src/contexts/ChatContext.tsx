@@ -6,6 +6,8 @@ export interface ChatContextType {
   taskId?: string;
   taskTitle?: string;
   trigger?: string;
+  /** Auto-send message: fires sendMessage() once when chat opens */
+  autoSendMessage?: string;
   metadata?: Record<string, any>;
 }
 
