@@ -10,6 +10,7 @@
 
 import type { HomeConfidenceResult, ConfidenceState } from '@/services/homeConfidence';
 import { HOME_CONFIDENCE_COPY } from '@/lib/mobileCopy';
+import { LifecycleRing } from '@/components/mobile/LifecycleRing';
 
 // ============== State Colors (Locked) ==============
 
@@ -35,31 +36,24 @@ interface HomeConfidenceHeroProps {
 
 export function HomeConfidenceHero({ confidence }: HomeConfidenceHeroProps) {
   const stateLabel = HOME_CONFIDENCE_COPY.states[confidence.state]?.label ?? confidence.state;
-  const fillColor = STATE_COLORS[confidence.state];
   const fillPercent = Math.max(0, Math.min(100, confidence.score));
 
   return (
     <div className="flex flex-col items-center text-center space-y-3">
-      {/* State label + dot */}
-      <div className="flex items-center gap-2">
-        <div className={`w-2.5 h-2.5 rounded-full ${STATE_DOT_CLASSES[confidence.state]}`} />
-        <span className="text-xl font-semibold text-foreground">
-          {stateLabel}
-        </span>
-      </div>
-
-      {/* Confidence index */}
-      <p className="text-sm text-muted-foreground">
-        {HOME_CONFIDENCE_COPY.indexPrefix}: {confidence.score}
-      </p>
-
-      {/* Subtle meter */}
-      <div className="w-full max-w-[200px] h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${fillPercent}%`, backgroundColor: fillColor }}
-        />
-      </div>
+      {/* Confidence Ring with state + score inside */}
+      <LifecycleRing percentConsumed={fillPercent} size={120}>
+        <div className="flex flex-col items-center gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${STATE_DOT_CLASSES[confidence.state]}`} />
+            <span className="text-sm font-semibold text-foreground">
+              {stateLabel}
+            </span>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {confidence.score}
+          </span>
+        </div>
+      </LifecycleRing>
 
       {/* State meaning */}
       <p className="text-sm text-muted-foreground">
