@@ -123,6 +123,8 @@ export default function HomeReportPage() {
 
             <ResolvedHistorySection items={report.resolvedHistory} />
 
+            <SaleHistorySection saleHistory={report.saleHistory} />
+
             <ReplacementsSection items={report.replacements} />
 
             <DeferredRecommendationsSection
