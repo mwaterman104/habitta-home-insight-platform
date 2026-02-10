@@ -1,148 +1,167 @@
 
 
-# Intelligent Maintenance Hub
+# Unified Contextual Chat Surface + Dead CTA Elimination
 
-## What This Is
+## Overview
 
-A new `/maintenance` page that replaces the archived `/maintenance-planner` as a first-class route accessible from both desktop and mobile. It is the central surface for all home maintenance -- connected to your systems, confidence scoring, climate zone, and seasonal cadence. It generates region-aware tasks (NYC fall vs. South Florida fall), integrates with the desktop calendar, and lays the groundwork for email/chat alerts.
+This plan introduces one architectural primitive -- a `ChatContext` React context -- that allows any page or component to invoke a scoped chat panel without navigating away. Every dead CTA, ChatDIY link, and "nothing happens" button is rewired to this surface. The Maintenance page is wrapped in `DashboardV3Layout` for consistent navigation.
 
-## Key Behaviors
+## Execution Order
 
-1. **Region-aware task generation**: The `seed-maintenance-plan` edge function is upgraded to use the home's derived `ClimateZoneType` (high_heat, coastal, freeze_thaw, moderate) to produce fundamentally different seasonal templates -- not just "cold state yes/no" as it does today.
+The work is sequenced to establish the primitive first, then systematically rewire all surfaces.
 
-2. **System-connected**: Tasks are linked to system types (hvac, roof, plumbing, etc.) via a new `system_type` column on `maintenance_tasks`. This connects tasks to the capital timeline, confidence scoring, and priority scoring.
+### Phase 1: Create the Chat Primitive
 
-3. **Confidence integration**: Completing maintenance tasks can flip the `hasMaintenanceRecord` signal in the confidence engine, improving the Home Confidence score. The existing `RiskDeltaDisplay` on completed tasks is preserved.
+**Create `src/contexts/ChatContext.tsx`**
 
-4. **Desktop layout**: Full page at `/maintenance` with the calendar view, timeline view, system health cards, and filters -- upgraded from the current planner but now a primary route, not archived.
-
-5. **Mobile layout**: Responsive mobile view with a card-based timeline (no calendar grid on mobile), swipeable task cards, and a bottom-nav entry point. Tasks can also be surfaced via chat.
-
-6. **Alert foundation (v1)**: A new `maintenance-alerts` edge function that can be invoked on a schedule to check for upcoming/overdue tasks and notify via chat message injection. Email alerting is deferred to v2 (requires Resend integration) but the data layer is built now.
-
-## Architecture
+A React context providing `openChat(context)` and `closeChat()` to any descendant component.
 
 ```text
-homes table (state, city, lat/lng)
-       |
-       v
-deriveClimateZone() --> ClimateZoneType
-       |
-       v
-seed-maintenance-plan (upgraded)
-  - climate-aware seasonal templates
-  - system_type tagging on every task
-  - region-specific cadences
-       |
-       v
-maintenance_tasks table (+ system_type column)
-       |
-       v
-/maintenance page
-  - Desktop: Calendar + Timeline + System Health + Filters
-  - Mobile: Card timeline + Chat integration
-       |
-       v
-Confidence Engine
-  - hasMaintenanceRecord signal updated on task completion
+ChatContextType = {
+  type: 'system' | 'maintenance' | 'activity_log' | 'supporting_record' | 'system_edit' | 'general',
+  systemKey?: string,
+  taskId?: string,
+  taskTitle?: string,
+  trigger?: string,
+  metadata?: Record<string, any>
+}
 ```
 
-## Technical Changes
+Default fallback when called with no context: `{ type: 'general', trigger: 'ask_habitta' }`.
 
-### 1. Database: Add `system_type` column to `maintenance_tasks`
+**Create `src/lib/chatContextCopy.ts`**
 
-Add a nullable `text` column `system_type` to `maintenance_tasks` referencing the system key (hvac, roof, electrical, water_heater, plumbing, etc.). This links tasks to the capital timeline and confidence engine. Backfill existing tasks using the `category` column mapping.
+Maps chat context types to assistant opening messages (same template function pattern as `RECOMMENDATION_CHAT_OPENERS`):
 
-Migration:
-- `ALTER TABLE maintenance_tasks ADD COLUMN system_type text;`
-- Backfill: `UPDATE maintenance_tasks SET system_type = CASE WHEN category = 'hvac' THEN 'hvac' WHEN category = 'plumbing' THEN 'plumbing' WHEN category = 'electrical' THEN 'electrical' WHEN category = 'exterior' THEN 'roof' ELSE NULL END;`
+| Context Type + Trigger | Opening Message |
+|---|---|
+| system / maintenance_guidance | "What do you want to know about your {systemName}? I can walk you through maintenance, explain timing, or help you decide next steps." |
+| system / view_guide | "Here's what you can do for your {systemName} right now. Are you handling this yourself or looking for a pro?" |
+| maintenance / start_task | "Ready to tackle '{taskTitle}'? Are you doing this yourself or looking for a pro?" |
+| maintenance / generate_plan | "I'll help build your seasonal plan. Any systems you want to prioritize?" |
+| activity_log / log_activity | "What maintenance or work was done? I'll add it to your home's permanent record." |
+| supporting_record / upload | "What kind of record do you have? A receipt, inspection report, warranty, or photo?" |
+| system_edit / edit_confidence | "What would you like to update about your {systemName}? I can adjust the install year, source, or notes." |
+| general / ask_habitta | "What can I help you with today?" |
 
-### 2. Edge Function: Upgrade `seed-maintenance-plan`
+**Create `src/components/chat/ContextualChatPanel.tsx`**
 
-Replace the binary `isCold` flag with a full climate zone derivation:
+Desktop right-side slide-out panel wrapping `ChatConsole`. Renders as a fixed-position overlay on the right edge (~400px wide) with a semi-transparent backdrop. Shares the same props pattern as `MobileChatSheet` but rendered inline rather than in a bottom drawer.
 
-- Accept optional `climateZone` parameter, or derive it from home's state/city using the same logic as `deriveClimateZone` (ported to Deno)
-- Create four seasonal template sets:
+### Phase 2: Integrate into Layout
 
-| Climate Zone | Fall Examples | Spring Examples |
-|---|---|---|
-| freeze_thaw (NYC) | Winterize pipes, weatherstrip, furnace tune-up, gutter clean before freeze | AC tune-up, check sump pump, foundation crack inspection |
-| high_heat (S. Florida) | Hurricane shutter check, AC filter (year-round), roof inspection post-storm season | Pool pump service, irrigation check, AC deep service before summer |
-| coastal | Salt air HVAC rinse, exterior corrosion check, window seal inspection | Deck/exterior wash, gutter check, HVAC coil clean |
-| moderate | Standard HVAC tune-up, gutter clean, smoke detector test | Standard spring inspection, filter replacement |
+**Modify `src/layouts/DashboardV3Layout.tsx`**
 
-- Tag every generated task with `system_type` (e.g., "HVAC cooling tune-up" gets `system_type: 'hvac'`)
+- Wrap children in `ChatContextProvider`
+- On desktop: render `ContextualChatPanel` (slide-out from right)
+- On mobile: render `MobileChatSheet` (existing bottom drawer)
+- The provider manages `chatContext` state, builds `initialAssistantMessage` from `chatContextCopy`, and handles open/close lifecycle
 
-### 3. New Page: `/maintenance` (Desktop + Mobile)
+This means any page using `DashboardV3Layout` (Home Profile, Systems Hub, Maintenance, etc.) automatically gets chat capability via `useChatContext()`.
 
-Create `src/pages/MaintenancePage.tsx` as a responsive page:
+### Phase 3: Fix Maintenance Layout (Issue 8)
 
-**Desktop layout:**
-- Header with "Maintenance" title + "Generate Plan" + "Add Task" buttons
-- System health strip (from capital timeline -- which systems need attention)
-- Tabs: Timeline | Calendar (reuses existing `MaintenanceTimelineView` and `MaintenanceCalendarView`)
-- Filters: status, priority, system type (new filter)
-- Upcoming task count badge
+**Modify `src/pages/MaintenancePage.tsx`**
 
-**Mobile layout (detected via `useIsMobile`):**
-- Compact header
-- System filter chips (horizontal scroll)
-- Card-based task list (no calendar grid -- too small for mobile)
-- FAB for "Add Task"
-- Tap task to open detail/complete flow
-- Chat integration: completing a task can trigger a chat message via the existing MobileChatSheet
+- Wrap in `DashboardV3Layout` instead of rendering its own header, back button, and `BottomNavigation`
+- Remove manual `<header>`, `<ChevronLeft>` back button, and `<BottomNavigation />` from both mobile and desktop renders
+- Content becomes a simple scrollable area inside the layout
+- Wire "Generate Seasonal Plan" timeout fallback: if `generating` is true for more than 10 seconds, show a "Taking longer than expected -- talk to Habitta" link that opens chat with `{ type: 'maintenance', trigger: 'generate_plan' }`
+- Wire "Start" button on tasks: after status flip to `in_progress`, optionally open chat with `{ type: 'maintenance', taskId, taskTitle, trigger: 'start_task' }`
 
-### 4. Routing + Navigation
+### Phase 4: Wire Home Profile Dead CTAs (Issues 3, 4, 5)
 
-- Add `/maintenance` route to `AppRoutes.tsx` (standalone, like `/systems`)
-- Add "Maintenance" to `BottomNavigation.tsx` bottom nav (replace "Report" or add as 6th item -- need to check spacing)
-- Desktop: Add to the left column navigation or top header
-- Redirect `/maintenance-planner` to `/maintenance`
+**Modify `src/components/HomeProfile/HomeActivityLog.tsx`**
 
-### 5. Mobile Bottom Nav Update
+- Add `onLogActivity?: () => void` prop
+- Wire both "Log activity" and "Log your first activity" buttons to call `onLogActivity`
 
-Add a "Maintenance" item to bottom nav using the `Wrench` icon. The current 5 items (Home Pulse, Systems, Chat, Report, Settings) become 6. To avoid crowding, replace "Report" with "Maintenance" in the bottom nav since Report is less frequently accessed. Report remains accessible from Settings or the dashboard.
+**Modify `src/components/HomeProfile/SupportingRecords.tsx`**
 
-### 6. Alert Foundation: `maintenance-alerts` Edge Function
+- Add `onUploadRecord?: () => void` prop  
+- Wire "Upload document" and "Add your first record" buttons to call `onUploadRecord`
 
-A new edge function that:
-- Queries `maintenance_tasks` for tasks due within N days or overdue
-- Groups by system type and priority
-- Returns a structured alert payload
-- Can be called from the frontend to inject an assistant message into chat (e.g., "You have 3 maintenance tasks due this week, including an HVAC filter change")
+**Modify `src/components/HomeProfile/SystemProvenance.tsx`**
 
-The chat integration uses the existing `MobileChatSheet` + `initialAssistantMessage` pattern established in the recommendation flow.
+- Already has `onEditSystem` prop -- no structural change needed
+- The parent (`HomeProfilePage`) will pass a real handler
 
-Email alerting (via Resend) is documented as a v2 follow-up -- the data layer and alert logic are identical, only the delivery channel differs.
+**Modify `src/pages/HomeProfilePage.tsx`**
 
-### 7. Confidence Engine Connection
+- Import and use `useChatContext()` 
+- Pass handlers to child components:
+  - `HomeActivityLog`: `onLogActivity={() => openChat({ type: 'activity_log', trigger: 'log_activity' })}`
+  - `SupportingRecords`: `onUploadRecord={() => openChat({ type: 'supporting_record', trigger: 'upload' })}`
+  - `SystemProvenance`: `onEditSystem={(systemId) => openChat({ type: 'system_edit', systemKey: systemId, trigger: 'edit_confidence' })}`
 
-When a task with a valid `system_type` is marked as completed:
-- The `handleTaskUpdate` function triggers a confidence recomputation
-- The `hasMaintenanceRecord` signal for that system flips to true
-- This naturally improves the Home Confidence score
+### Phase 5: Kill ChatDIY (Issue 1)
 
-This uses the existing `homeConfidence.ts` and `deriveSystemSignals` -- no changes needed to the scoring engine itself, only ensuring the maintenance completion event is visible to the signal derivation.
+**Modify `src/components/SystemDetailView.tsx`**
 
-## Files to Create
-- `src/pages/MaintenancePage.tsx` -- main responsive page
-- `src/components/maintenance/MobileMaintenanceView.tsx` -- mobile-specific layout
-- `src/components/maintenance/SystemFilterChips.tsx` -- horizontal system filter
-- `supabase/functions/maintenance-alerts/index.ts` -- alert generator
+- Remove `ChatDIYBanner` import and render (lines 8, 386-390)
+- Remove `getChatdiyTopic()` helper (lines 96-102)
+- Add `onOpenChat?: (context: ChatContextType) => void` prop
+- Replace `onMaintenanceCta` handler: instead of `navigate('/chatdiy?...')`, call `onOpenChat({ type: 'system', systemKey, trigger: 'maintenance_guidance' })`
+- Replace action button `onClick` to call `onOpenChat({ type: 'system', systemKey, trigger: 'view_guide' })` instead of `onActionComplete?.(action.chatdiySlug)`
+- Add an inline "Ask Habitta about this system" button where `ChatDIYBanner` was
 
-## Files to Modify
-- `supabase/functions/seed-maintenance-plan/index.ts` -- climate-aware templates + system_type tagging
-- `src/pages/AppRoutes.tsx` -- add `/maintenance` route, redirect old route
-- `src/components/BottomNavigation.tsx` -- add Maintenance nav item
-- `src/components/maintenance/AddTaskDialog.tsx` -- add system_type field
-- `src/components/maintenance/MaintenanceTimelineView.tsx` -- show system type badge
-- `src/components/maintenance/MaintenanceCalendarView.tsx` -- show system type in task cards
+**Modify `src/components/AppTopbar.tsx`**
+
+- Change the HelpCircle button from `navigate("/chatdiy")` to `openChat({ type: 'general', trigger: 'ask_habitta' })`
+
+**Modify `src/components/AppSidebar.tsx`**
+
+- Change the Help button from `navigate("/chatdiy")` to `openChat({ type: 'general', trigger: 'ask_habitta' })`
+
+**Modify `src/components/HomeHealthCard.tsx`**
+
+- Replace fallback `navigate('/chatdiy?...')` in `handleProtectClick` with `openChat({ type: 'system', trigger: 'maintenance_guidance', metadata: { score, projected, topRisk, region } })`
+
+**Modify `src/pages/AppRoutes.tsx`**
+
+- Replace `/chatdiy` route with a redirect to `/dashboard`
+
+### Phase 6: Cleanup
+
+**Delete `src/components/ChatDIYBanner.tsx`**
+
+Fully replaced by the contextual chat primitive.
+
+**Note on `systemMeta.ts`**
+
+The `chatdiyTopicPrefix` field in `SYSTEM_META` is no longer used for routing. It can remain for now as a semantic identifier but is no longer wired to navigation. A future cleanup pass can remove it.
 
 ## What Is NOT Changed
-- Home Confidence scoring formula (locked)
-- Priority scoring formula (frozen)
-- ChatConsole internals
+
+- ChatConsole internals (the AI conversation engine)
+- MobileChatSheet component structure (reused as-is for mobile via DashboardV3Layout)
+- Confidence scoring formulas
+- Recommendation engine
 - Capital timeline computation
-- Desktop three-column dashboard layout
-- Recommendation engine logic
+- Desktop three-column DashboardV3 layout (DashboardV3 has its own chat, this is for other pages)
+- home_events ledger structure
+- DashboardV3.tsx itself (it has its own chat orchestration already)
+
+## Files to Create (3)
+
+- `src/contexts/ChatContext.tsx`
+- `src/lib/chatContextCopy.ts`
+- `src/components/chat/ContextualChatPanel.tsx`
+
+## Files to Modify (10)
+
+- `src/layouts/DashboardV3Layout.tsx` -- integrate ChatContextProvider + panel
+- `src/pages/MaintenancePage.tsx` -- wrap in DashboardV3Layout, wire chat CTAs
+- `src/pages/HomeProfilePage.tsx` -- wire dead CTAs via useChatContext
+- `src/components/HomeProfile/HomeActivityLog.tsx` -- add onLogActivity prop
+- `src/components/HomeProfile/SupportingRecords.tsx` -- add onUploadRecord prop
+- `src/components/SystemDetailView.tsx` -- remove ChatDIYBanner, wire to chat
+- `src/components/AppTopbar.tsx` -- replace chatdiy navigate
+- `src/components/AppSidebar.tsx` -- replace chatdiy navigate  
+- `src/components/HomeHealthCard.tsx` -- replace chatdiy navigate
+- `src/pages/AppRoutes.tsx` -- redirect /chatdiy to /dashboard
+
+## Files to Delete (1)
+
+- `src/components/ChatDIYBanner.tsx`
 
