@@ -295,16 +295,16 @@ export function useHomeReport(): HomeReportData {
   });
 
   // Query 6: Sale history from ATTOM (non-fatal)
-  const address = userHome?.address ?? '';
+  const attomAddress = fullAddress || '';
   const {
     data: attomData,
     isLoading: attomLoading,
   } = useQuery({
-    queryKey: ['home-report-attom', address],
+    queryKey: ['home-report-attom', attomAddress],
     queryFn: async () => {
-      if (!address) return null;
+      if (!attomAddress) return null;
       const { data, error } = await supabase.functions.invoke('attom-property', {
-        body: { address: address.trim() },
+        body: { address: attomAddress.trim() },
       });
       if (error) {
         console.warn('[home-report] ATTOM fetch failed (non-fatal):', error.message);
@@ -312,7 +312,7 @@ export function useHomeReport(): HomeReportData {
       }
       return data;
     },
-    enabled: !!address,
+    enabled: !!attomAddress,
     staleTime: 1000 * 60 * 30, // 30 min cache
     retry: false,
   });
