@@ -657,8 +657,8 @@ Deno.serve(async (req) => {
       buildQuality: home.build_quality || undefined,
     };
 
-    // Use new climate classification (replaces getRegionContext)
-    const climateContext = classifyClimate(propertyContext.state, propertyContext.city);
+    // Use new climate classification with FIPS precision (Sprint 2)
+    const climateContext = classifyClimate(propertyContext.state, propertyContext.city, home.fips_code || undefined);
 
     // Single system detail request
     if (action === 'system-detail' && systemType) {
