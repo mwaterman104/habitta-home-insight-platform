@@ -1,100 +1,148 @@
 
 
-# Chat-Driven Recommendation Fulfillment
+# Intelligent Maintenance Hub
 
-## Overview
+## What This Is
 
-Recommendation cards become conversation starters instead of navigation links. Tapping a card opens MobileChatSheet with a contextual assistant greeting scoped to the task. The chat handles fulfillment (photo upload, data collection, maintenance logging) through its existing tool pipeline.
+A new `/maintenance` page that replaces the archived `/maintenance-planner` as a first-class route accessible from both desktop and mobile. It is the central surface for all home maintenance -- connected to your systems, confidence scoring, climate zone, and seasonal cadence. It generates region-aware tasks (NYC fall vs. South Florida fall), integrates with the desktop calendar, and lays the groundwork for email/chat alerts.
+
+## Key Behaviors
+
+1. **Region-aware task generation**: The `seed-maintenance-plan` edge function is upgraded to use the home's derived `ClimateZoneType` (high_heat, coastal, freeze_thaw, moderate) to produce fundamentally different seasonal templates -- not just "cold state yes/no" as it does today.
+
+2. **System-connected**: Tasks are linked to system types (hvac, roof, plumbing, etc.) via a new `system_type` column on `maintenance_tasks`. This connects tasks to the capital timeline, confidence scoring, and priority scoring.
+
+3. **Confidence integration**: Completing maintenance tasks can flip the `hasMaintenanceRecord` signal in the confidence engine, improving the Home Confidence score. The existing `RiskDeltaDisplay` on completed tasks is preserved.
+
+4. **Desktop layout**: Full page at `/maintenance` with the calendar view, timeline view, system health cards, and filters -- upgraded from the current planner but now a primary route, not archived.
+
+5. **Mobile layout**: Responsive mobile view with a card-based timeline (no calendar grid on mobile), swipeable task cards, and a bottom-nav entry point. Tasks can also be surfaced via chat.
+
+6. **Alert foundation (v1)**: A new `maintenance-alerts` edge function that can be invoked on a schedule to check for upcoming/overdue tasks and notify via chat message injection. Email alerting is deferred to v2 (requires Resend integration) but the data layer is built now.
 
 ## Architecture
 
 ```text
-RecommendationCards (dumb, emits onAction)
+homes table (state, city, lat/lng)
        |
        v
-MobileDashboardView (passes through onRecommendationAction)
+deriveClimateZone() --> ClimateZoneType
        |
        v
-DashboardV3 (orchestrator)
-  - sets activeRecommendation state
-  - builds initialAssistantMessage from RECOMMENDATION_CHAT_OPENERS
-  - sets focusContext to recommendation's system
-  - opens MobileChatSheet
-  - clears state on close
+seed-maintenance-plan (upgraded)
+  - climate-aware seasonal templates
+  - system_type tagging on every task
+  - region-specific cadences
        |
        v
-MobileChatSheet (already supports initialAssistantMessage + focusContext)
+maintenance_tasks table (+ system_type column)
        |
        v
-ChatConsole (existing photo upload, tool pipeline, AI responses)
+/maintenance page
+  - Desktop: Calendar + Timeline + System Health + Filters
+  - Mobile: Card timeline + Chat integration
+       |
+       v
+Confidence Engine
+  - hasMaintenanceRecord signal updated on task completion
 ```
 
-## Completion Semantics
+## Technical Changes
 
-Recommendations are considered complete when their underlying confidence signal transitions to true. No separate completion state is stored in v1. When the user uploads a photo via chat and the tool persists it, the next confidence recomputation drops the recommendation automatically.
+### 1. Database: Add `system_type` column to `maintenance_tasks`
 
-## Implementation Details
+Add a nullable `text` column `system_type` to `maintenance_tasks` referencing the system key (hvac, roof, electrical, water_heater, plumbing, etc.). This links tasks to the capital timeline and confidence engine. Backfill existing tasks using the `category` column mapping.
 
-### 1. RecommendationCards.tsx
+Migration:
+- `ALTER TABLE maintenance_tasks ADD COLUMN system_type text;`
+- Backfill: `UPDATE maintenance_tasks SET system_type = CASE WHEN category = 'hvac' THEN 'hvac' WHEN category = 'plumbing' THEN 'plumbing' WHEN category = 'electrical' THEN 'electrical' WHEN category = 'exterior' THEN 'roof' ELSE NULL END;`
 
-- Add `onAction: (rec: Recommendation) => void` prop
-- Replace `onClick={() => navigate(rec.route)}` with `onClick={() => onAction(rec)}`
-- Remove `useNavigate` import
-- Keep `onDismiss` unchanged
+### 2. Edge Function: Upgrade `seed-maintenance-plan`
 
-### 2. MobileDashboardView.tsx
+Replace the binary `isCold` flag with a full climate zone derivation:
 
-- Add `onRecommendationAction: (rec: Recommendation) => void` prop to interface
-- Pass it to `RecommendationCards` as `onAction`
+- Accept optional `climateZone` parameter, or derive it from home's state/city using the same logic as `deriveClimateZone` (ported to Deno)
+- Create four seasonal template sets:
 
-### 3. DashboardV3.tsx (mobile section)
+| Climate Zone | Fall Examples | Spring Examples |
+|---|---|---|
+| freeze_thaw (NYC) | Winterize pipes, weatherstrip, furnace tune-up, gutter clean before freeze | AC tune-up, check sump pump, foundation crack inspection |
+| high_heat (S. Florida) | Hurricane shutter check, AC filter (year-round), roof inspection post-storm season | Pool pump service, irrigation check, AC deep service before summer |
+| coastal | Salt air HVAC rinse, exterior corrosion check, window seal inspection | Deck/exterior wash, gutter check, HVAC coil clean |
+| moderate | Standard HVAC tune-up, gutter clean, smoke detector test | Standard spring inspection, filter replacement |
 
-- Add state: `activeRecommendation: Recommendation | null`
-- Add state: `chatLockedForRecommendation: boolean` (prevents tapping another card while chat is open)
-- Handler `handleRecommendationAction(rec)`:
-  - If `chatLockedForRecommendation` is true, return early (one-at-a-time guard)
-  - Set `activeRecommendation` to rec
-  - Set `chatLockedForRecommendation` to true
-  - Open `mobileChatOpen`
-- Pass to MobileChatSheet:
-  - `initialAssistantMessage` built from `RECOMMENDATION_CHAT_OPENERS[rec.actionType](systemName, rec.confidenceDelta)` when `activeRecommendation` is set
-  - `focusContext` set to `{ systemKey: rec.systemId, trigger: 'recommendation' }` when `activeRecommendation` is set
-- On chat close:
-  - Clear `activeRecommendation` to null
-  - Set `chatLockedForRecommendation` to false
-  - Clear `initialAssistantMessage` (one-shot: message is built fresh per open, cleared on close, never replayed)
+- Tag every generated task with `system_type` (e.g., "HVAC cooling tune-up" gets `system_type: 'hvac'`)
 
-### 4. mobileCopy.ts
+### 3. New Page: `/maintenance` (Desktop + Mobile)
 
-Add `RECOMMENDATION_CHAT_OPENERS` -- a map from actionType to template functions:
+Create `src/pages/MaintenancePage.tsx` as a responsive page:
 
-| Action Type | Opening Message |
-|-------------|----------------|
-| upload_photo | "Let's get a photo of your {systemName}. A clear shot of the label or front helps verify the model and condition, and can improve your confidence score by +{delta}." |
-| add_year | "Do you know when your {systemName} was installed? Even a rough range like '5-10 years ago' helps plan more accurately." |
-| upload_doc | "If you have a permit or invoice for your {systemName}, a quick photo of it gives verified data to work with." |
-| add_serial | "Do you have access to the serial or model number on your {systemName}? It's usually on a label or sticker on the unit." |
-| confirm_material | "What material is your {systemName}? Knowing this helps estimate remaining life more accurately." |
-| log_maintenance | "Has your {systemName} been serviced recently? If you remember the last time, I'll add it to your home's record." |
-| acknowledge | "Your {systemName} is in its late-life window. Have you started thinking about replacement timing or budget?" |
-| review_freshness | "It's been a while since your home records were updated. Anything changed recently -- maintenance, repairs, or new equipment?" |
+**Desktop layout:**
+- Header with "Maintenance" title + "Generate Plan" + "Add Task" buttons
+- System health strip (from capital timeline -- which systems need attention)
+- Tabs: Timeline | Calendar (reuses existing `MaintenanceTimelineView` and `MaintenanceCalendarView`)
+- Filters: status, priority, system type (new filter)
+- Upcoming task count badge
 
-Copy guardrail: all templates use "can improve" or "helps increase", never "will increase."
+**Mobile layout (detected via `useIsMobile`):**
+- Compact header
+- System filter chips (horizontal scroll)
+- Card-based task list (no calendar grid -- too small for mobile)
+- FAB for "Add Task"
+- Tap task to open detail/complete flow
+- Chat integration: completing a task can trigger a chat message via the existing MobileChatSheet
 
-### 5. MobileChatSheet.tsx
+### 4. Routing + Navigation
 
-No structural changes. Already supports `initialAssistantMessage` and `focusContext`. The existing one-shot injection via `hasPrimedForContext` ref handles the "inject once per open" behavior correctly -- `initialAssistantMessage` bypasses the priming guard entirely (line 69), and clearing it on close in DashboardV3 prevents replay.
+- Add `/maintenance` route to `AppRoutes.tsx` (standalone, like `/systems`)
+- Add "Maintenance" to `BottomNavigation.tsx` bottom nav (replace "Report" or add as 6th item -- need to check spacing)
+- Desktop: Add to the left column navigation or top header
+- Redirect `/maintenance-planner` to `/maintenance`
 
-### 6. focusContext shape contract
+### 5. Mobile Bottom Nav Update
 
-When opened via recommendation, `focusContext` will use the existing shape: `{ systemKey: string, trigger: string }` with `trigger: 'recommendation'`. This is forward-compatible with future analytics and tool-routing without requiring a new type.
+Add a "Maintenance" item to bottom nav using the `Wrench` icon. The current 5 items (Home Pulse, Systems, Chat, Report, Settings) become 6. To avoid crowding, replace "Report" with "Maintenance" in the bottom nav since Report is less frequently accessed. Report remains accessible from Settings or the dashboard.
+
+### 6. Alert Foundation: `maintenance-alerts` Edge Function
+
+A new edge function that:
+- Queries `maintenance_tasks` for tasks due within N days or overdue
+- Groups by system type and priority
+- Returns a structured alert payload
+- Can be called from the frontend to inject an assistant message into chat (e.g., "You have 3 maintenance tasks due this week, including an HVAC filter change")
+
+The chat integration uses the existing `MobileChatSheet` + `initialAssistantMessage` pattern established in the recommendation flow.
+
+Email alerting (via Resend) is documented as a v2 follow-up -- the data layer and alert logic are identical, only the delivery channel differs.
+
+### 7. Confidence Engine Connection
+
+When a task with a valid `system_type` is marked as completed:
+- The `handleTaskUpdate` function triggers a confidence recomputation
+- The `hasMaintenanceRecord` signal for that system flips to true
+- This naturally improves the Home Confidence score
+
+This uses the existing `homeConfidence.ts` and `deriveSystemSignals` -- no changes needed to the scoring engine itself, only ensuring the maintenance completion event is visible to the signal derivation.
+
+## Files to Create
+- `src/pages/MaintenancePage.tsx` -- main responsive page
+- `src/components/maintenance/MobileMaintenanceView.tsx` -- mobile-specific layout
+- `src/components/maintenance/SystemFilterChips.tsx` -- horizontal system filter
+- `supabase/functions/maintenance-alerts/index.ts` -- alert generator
+
+## Files to Modify
+- `supabase/functions/seed-maintenance-plan/index.ts` -- climate-aware templates + system_type tagging
+- `src/pages/AppRoutes.tsx` -- add `/maintenance` route, redirect old route
+- `src/components/BottomNavigation.tsx` -- add Maintenance nav item
+- `src/components/maintenance/AddTaskDialog.tsx` -- add system_type field
+- `src/components/maintenance/MaintenanceTimelineView.tsx` -- show system type badge
+- `src/components/maintenance/MaintenanceCalendarView.tsx` -- show system type in task cards
 
 ## What Is NOT Changed
-
+- Home Confidence scoring formula (locked)
+- Priority scoring formula (frozen)
 - ChatConsole internals
-- Recommendation scoring or generation logic
-- Desktop layout
-- Dismiss behavior (X button, localStorage)
-- LifecycleRing on system tiles
-- MobileChatSheet component structure
+- Capital timeline computation
+- Desktop three-column dashboard layout
+- Recommendation engine logic
 
