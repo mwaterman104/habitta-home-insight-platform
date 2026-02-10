@@ -655,6 +655,9 @@ Deno.serve(async (req) => {
       roofMaterial: roofMaterial as PropertyContext['roofMaterial'],
       waterHeaterType: selectBestSystemRecord(systems, 'water_heater')?.material || 'unknown',
       buildQuality: home.build_quality || undefined,
+      grossSqft: home.gross_sqft || undefined,
+      roomsTotal: home.rooms_total || undefined,
+      groundFloorSqft: home.ground_floor_sqft || undefined,
     };
 
     // Use new climate classification with FIPS precision (Sprint 2)

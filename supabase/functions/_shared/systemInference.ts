@@ -600,6 +600,23 @@ export function calculateHVACLifecycle(
       description: 'Lower construction quality correlates with shorter system lifespan'
     });
   }
+  // Advisory size drivers (Sprint 2): language only, no estimate changes
+  if (property.grossSqft && property.grossSqft > 3000) {
+    lifespanDrivers.push({
+      factor: 'Larger thermal load',
+      impact: 'decrease',
+      severity: 'low',
+      description: 'Larger homes increase system wear through higher thermal demand'
+    });
+  }
+  if (property.grossSqft && property.groundFloorSqft && property.groundFloorSqft < property.grossSqft * 0.6) {
+    lifespanDrivers.push({
+      factor: 'Multi-story layout',
+      impact: 'decrease',
+      severity: 'low',
+      description: 'Multi-level homes add zone complexity, increasing system cycling'
+    });
+  }
   
   return {
     systemId: 'hvac',
