@@ -30,6 +30,7 @@ import LandingPage from "./LandingPage";
 import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 import MobilePhotoCaptureRoute from "./MobilePhotoCaptureRoute";
 import HomeReportPage from "./HomeReportPage";
+import MaintenancePage from "./MaintenancePage";
 
 export function AppRoutes() {
   return (
@@ -90,6 +91,13 @@ export function AppRoutes() {
             </ProtectedRoute>
           } />
           
+          {/* Intelligent Maintenance Hub */}
+          <Route path="/maintenance" element={
+            <ProtectedRoute>
+              <MaintenancePage />
+            </ProtectedRoute>
+          } />
+          
           {/* Protected routes with unified layout */}
           <Route element={
             <ProtectedRoute>
@@ -108,7 +116,7 @@ export function AppRoutes() {
             
             {/* ARCHIVED: Still accessible but removed from navigation */}
             <Route path="/property-intelligence" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/maintenance-planner" element={<MaintenancePlanner />} />
+            <Route path="/maintenance-planner" element={<Navigate to="/maintenance" replace />} />
             <Route path="/projects" element={<ProjectDashboard />} />
             <Route path="/project/:projectId" element={<ProjectWorkspace />} />
             <Route path="/templates" element={<TemplateSelection />} />
