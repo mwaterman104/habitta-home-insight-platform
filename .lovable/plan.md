@@ -1,167 +1,100 @@
 
 
-# Unified Contextual Chat Surface + Dead CTA Elimination
+# Right-Column Chat Panel + Auto-Send Questions
 
 ## Overview
 
-This plan introduces one architectural primitive -- a `ChatContext` React context -- that allows any page or component to invoke a scoped chat panel without navigating away. Every dead CTA, ChatDIY link, and "nothing happens" button is rewired to this surface. The Maintenance page is wrapped in `DashboardV3Layout` for consistent navigation.
+Two changes to make the contextual chat feel like a peer panel (not a modal) and make it respond immediately when triggered from system CTAs.
 
-## Execution Order
+## Change 1: Inline Chat Panel (No Overlay)
 
-The work is sequenced to establish the primitive first, then systematically rewire all surfaces.
+**Current**: `ContextualChatPanel` renders as a fixed overlay with a backdrop, blocking all page interaction.
 
-### Phase 1: Create the Chat Primitive
+**Target**: Chat panel slides in as a flex sibling inside the layout. System UI stays visible and scrollable.
 
-**Create `src/contexts/ChatContext.tsx`**
+### Implementation
 
-A React context providing `openChat(context)` and `closeChat()` to any descendant component.
+**`src/layouts/DashboardV3Layout.tsx`** -- Desktop layout modification
+
+Move `ContextualChatPanel` from outside the flex container to inside it, as a sibling of `<main>`. When `isOpen`, the layout becomes:
 
 ```text
-ChatContextType = {
-  type: 'system' | 'maintenance' | 'activity_log' | 'supporting_record' | 'system_edit' | 'general',
-  systemKey?: string,
-  taskId?: string,
-  taskTitle?: string,
-  trigger?: string,
-  metadata?: Record<string, any>
-}
+[Left Nav 240px] | [Main Content flex-1 min-w-0] | [Chat Panel 400px]
 ```
 
-Default fallback when called with no context: `{ type: 'general', trigger: 'ask_habitta' }`.
+- Add `min-w-0` to `<main>` to prevent overflow when chat opens
+- The chat panel renders conditionally inside the flex row, not as a fixed overlay
 
-**Create `src/lib/chatContextCopy.ts`**
+**`src/components/chat/ContextualChatPanel.tsx`** -- Remove overlay behavior
 
-Maps chat context types to assistant opening messages (same template function pattern as `RECOMMENDATION_CHAT_OPENERS`):
+- Remove the fixed-position backdrop div entirely
+- Remove `fixed top-0 right-0 z-50` positioning
+- Render as a normal flex column: `w-[400px] shrink-0 border-l bg-card h-full flex flex-col`
+- Keep Escape key handler (closes panel, no focus trapping)
+- Keep the slide-in animation via `animate-in slide-in-from-right`
+- Each section (panel and main content) scrolls independently -- main uses `overflow-y-auto`, chat panel's inner div uses `overflow-hidden` with ChatConsole's own ScrollArea
 
-| Context Type + Trigger | Opening Message |
-|---|---|
-| system / maintenance_guidance | "What do you want to know about your {systemName}? I can walk you through maintenance, explain timing, or help you decide next steps." |
-| system / view_guide | "Here's what you can do for your {systemName} right now. Are you handling this yourself or looking for a pro?" |
-| maintenance / start_task | "Ready to tackle '{taskTitle}'? Are you doing this yourself or looking for a pro?" |
-| maintenance / generate_plan | "I'll help build your seasonal plan. Any systems you want to prioritize?" |
-| activity_log / log_activity | "What maintenance or work was done? I'll add it to your home's permanent record." |
-| supporting_record / upload | "What kind of record do you have? A receipt, inspection report, warranty, or photo?" |
-| system_edit / edit_confidence | "What would you like to update about your {systemName}? I can adjust the install year, source, or notes." |
-| general / ask_habitta | "What can I help you with today?" |
+## Change 2: Auto-Send User Message on CTA Click
 
-**Create `src/components/chat/ContextualChatPanel.tsx`**
+**Current**: Clicking "Ask Habitta" or "View Guide" opens chat with a static assistant greeting. The user must type to get a real AI response.
 
-Desktop right-side slide-out panel wrapping `ChatConsole`. Renders as a fixed-position overlay on the right edge (~400px wide) with a semi-transparent backdrop. Shares the same props pattern as `MobileChatSheet` but rendered inline rather than in a bottom drawer.
+**Target**: The chat auto-sends a contextual question as if the user typed it, triggering an immediate AI response.
 
-### Phase 2: Integrate into Layout
+### Implementation
 
-**Modify `src/layouts/DashboardV3Layout.tsx`**
+**`src/contexts/ChatContext.tsx`** -- Add `autoSendMessage` field
 
-- Wrap children in `ChatContextProvider`
-- On desktop: render `ContextualChatPanel` (slide-out from right)
-- On mobile: render `MobileChatSheet` (existing bottom drawer)
-- The provider manages `chatContext` state, builds `initialAssistantMessage` from `chatContextCopy`, and handles open/close lifecycle
+- Add `autoSendMessage?: string` to `ChatContextType`
 
-This means any page using `DashboardV3Layout` (Home Profile, Systems Hub, Maintenance, etc.) automatically gets chat capability via `useChatContext()`.
+**`src/components/chat/ContextualChatPanel.tsx`** -- Pass `autoSendMessage` to ChatConsole
 
-### Phase 3: Fix Maintenance Layout (Issue 8)
+- Pass `chatContext.autoSendMessage` as a new prop to `ChatConsole`
 
-**Modify `src/pages/MaintenancePage.tsx`**
+**`src/components/dashboard-v3/ChatConsole.tsx`** -- Accept and fire auto-send
 
-- Wrap in `DashboardV3Layout` instead of rendering its own header, back button, and `BottomNavigation`
-- Remove manual `<header>`, `<ChevronLeft>` back button, and `<BottomNavigation />` from both mobile and desktop renders
-- Content becomes a simple scrollable area inside the layout
-- Wire "Generate Seasonal Plan" timeout fallback: if `generating` is true for more than 10 seconds, show a "Taking longer than expected -- talk to Habitta" link that opens chat with `{ type: 'maintenance', trigger: 'generate_plan' }`
-- Wire "Start" button on tasks: after status flip to `in_progress`, optionally open chat with `{ type: 'maintenance', taskId, taskTitle, trigger: 'start_task' }`
+- Add `autoSendMessage?: string` prop
+- Add a `useEffect` with a `useRef` guard (`hasSentAutoMessage`) that:
+  - Fires `sendMessage(autoSendMessage)` once on mount when the prop is set
+  - Resets the guard when `autoSendMessage` value changes (new CTA click replaces context)
+  - Waits for restoration to complete (`!isRestoring`) before sending
+- This goes through the normal `sendMessage` pipeline -- writes to the ledger, triggers tools, produces a real AI response
 
-### Phase 4: Wire Home Profile Dead CTAs (Issues 3, 4, 5)
+**`src/components/SystemDetailView.tsx`** -- Wire CTAs with auto-send messages
 
-**Modify `src/components/HomeProfile/HomeActivityLog.tsx`**
+- Update `handleAskHabitta` to include `autoSendMessage`:
+  ```
+  "What maintenance does my {systemName} need, and when?"
+  ```
+- Update action button clicks to include `autoSendMessage`:
+  - DIY (View Guide): `"What are the recommended maintenance steps for my {systemName}?"`
+  - DIFM (Find Pro): `"Should I handle this myself or hire a professional for my {systemName}?"`
 
-- Add `onLogActivity?: () => void` prop
-- Wire both "Log activity" and "Log your first activity" buttons to call `onLogActivity`
+**`src/lib/chatContextCopy.ts`** -- Add prompt builder
 
-**Modify `src/components/HomeProfile/SupportingRecords.tsx`**
+- Add `buildSystemAutoMessage(systemKey: string, trigger: string): string` function
+- Centralizes prompt copy so it can be tuned without touching UI components
+- Used by `SystemDetailView` and any future CTA that needs auto-send
 
-- Add `onUploadRecord?: () => void` prop  
-- Wire "Upload document" and "Add your first record" buttons to call `onUploadRecord`
+### Edge Cases Handled
 
-**Modify `src/components/HomeProfile/SystemProvenance.tsx`**
+- **Re-click while open**: `openChat` replaces context, ChatConsole detects new `autoSendMessage` value, fires new send. Appends to same thread.
+- **Double-send prevention**: `useRef` guard keyed on `autoSendMessage` value prevents re-renders from duplicating.
+- **Mobile parity**: `MobileChatSheet` also receives `autoSendMessage` and passes it to its ChatConsole instance. Same behavior.
+- **No auto-send CTAs**: Existing `openChat()` calls without `autoSendMessage` continue to show the static greeting only. No regression.
 
-- Already has `onEditSystem` prop -- no structural change needed
-- The parent (`HomeProfilePage`) will pass a real handler
+## Files to Modify (5)
 
-**Modify `src/pages/HomeProfilePage.tsx`**
+- `src/contexts/ChatContext.tsx` -- add `autoSendMessage` to interface
+- `src/components/chat/ContextualChatPanel.tsx` -- remove overlay, render as flex column, pass autoSendMessage
+- `src/layouts/DashboardV3Layout.tsx` -- move chat panel inside flex row
+- `src/components/dashboard-v3/ChatConsole.tsx` -- add autoSendMessage prop + useEffect
+- `src/components/SystemDetailView.tsx` -- add autoSendMessage to openChat calls
 
-- Import and use `useChatContext()` 
-- Pass handlers to child components:
-  - `HomeActivityLog`: `onLogActivity={() => openChat({ type: 'activity_log', trigger: 'log_activity' })}`
-  - `SupportingRecords`: `onUploadRecord={() => openChat({ type: 'supporting_record', trigger: 'upload' })}`
-  - `SystemProvenance`: `onEditSystem={(systemId) => openChat({ type: 'system_edit', systemKey: systemId, trigger: 'edit_confidence' })}`
+## Files to Create (0)
 
-### Phase 5: Kill ChatDIY (Issue 1)
+## What Does NOT Change
 
-**Modify `src/components/SystemDetailView.tsx`**
-
-- Remove `ChatDIYBanner` import and render (lines 8, 386-390)
-- Remove `getChatdiyTopic()` helper (lines 96-102)
-- Add `onOpenChat?: (context: ChatContextType) => void` prop
-- Replace `onMaintenanceCta` handler: instead of `navigate('/chatdiy?...')`, call `onOpenChat({ type: 'system', systemKey, trigger: 'maintenance_guidance' })`
-- Replace action button `onClick` to call `onOpenChat({ type: 'system', systemKey, trigger: 'view_guide' })` instead of `onActionComplete?.(action.chatdiySlug)`
-- Add an inline "Ask Habitta about this system" button where `ChatDIYBanner` was
-
-**Modify `src/components/AppTopbar.tsx`**
-
-- Change the HelpCircle button from `navigate("/chatdiy")` to `openChat({ type: 'general', trigger: 'ask_habitta' })`
-
-**Modify `src/components/AppSidebar.tsx`**
-
-- Change the Help button from `navigate("/chatdiy")` to `openChat({ type: 'general', trigger: 'ask_habitta' })`
-
-**Modify `src/components/HomeHealthCard.tsx`**
-
-- Replace fallback `navigate('/chatdiy?...')` in `handleProtectClick` with `openChat({ type: 'system', trigger: 'maintenance_guidance', metadata: { score, projected, topRisk, region } })`
-
-**Modify `src/pages/AppRoutes.tsx`**
-
-- Replace `/chatdiy` route with a redirect to `/dashboard`
-
-### Phase 6: Cleanup
-
-**Delete `src/components/ChatDIYBanner.tsx`**
-
-Fully replaced by the contextual chat primitive.
-
-**Note on `systemMeta.ts`**
-
-The `chatdiyTopicPrefix` field in `SYSTEM_META` is no longer used for routing. It can remain for now as a semantic identifier but is no longer wired to navigation. A future cleanup pass can remove it.
-
-## What Is NOT Changed
-
-- ChatConsole internals (the AI conversation engine)
-- MobileChatSheet component structure (reused as-is for mobile via DashboardV3Layout)
-- Confidence scoring formulas
-- Recommendation engine
-- Capital timeline computation
-- Desktop three-column DashboardV3 layout (DashboardV3 has its own chat, this is for other pages)
-- home_events ledger structure
-- DashboardV3.tsx itself (it has its own chat orchestration already)
-
-## Files to Create (3)
-
-- `src/contexts/ChatContext.tsx`
-- `src/lib/chatContextCopy.ts`
-- `src/components/chat/ContextualChatPanel.tsx`
-
-## Files to Modify (10)
-
-- `src/layouts/DashboardV3Layout.tsx` -- integrate ChatContextProvider + panel
-- `src/pages/MaintenancePage.tsx` -- wrap in DashboardV3Layout, wire chat CTAs
-- `src/pages/HomeProfilePage.tsx` -- wire dead CTAs via useChatContext
-- `src/components/HomeProfile/HomeActivityLog.tsx` -- add onLogActivity prop
-- `src/components/HomeProfile/SupportingRecords.tsx` -- add onUploadRecord prop
-- `src/components/SystemDetailView.tsx` -- remove ChatDIYBanner, wire to chat
-- `src/components/AppTopbar.tsx` -- replace chatdiy navigate
-- `src/components/AppSidebar.tsx` -- replace chatdiy navigate  
-- `src/components/HomeHealthCard.tsx` -- replace chatdiy navigate
-- `src/pages/AppRoutes.tsx` -- redirect /chatdiy to /dashboard
-
-## Files to Delete (1)
-
-- `src/components/ChatDIYBanner.tsx`
-
+- ChatConsole internals (AI engine, message persistence, tool calling)
+- MobileChatSheet structure (bottom drawer on mobile)
+- DashboardV3.tsx (has its own ResizablePanelGroup chat)
+- Any other page's `openChat()` calls without `autoSendMessage`
