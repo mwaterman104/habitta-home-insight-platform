@@ -293,3 +293,28 @@ export const HOME_CONFIDENCE_COPY = {
 export const RECOMMENDATION_COPY = {
   sectionHeader: 'Recommended',
 } as const;
+
+// ============== Recommendation Chat Openers (v2) ==============
+
+/**
+ * Contextual assistant greetings when a recommendation card opens the chat.
+ * Copy guardrail: use "can improve" / "helps increase", never "will increase."
+ */
+export const RECOMMENDATION_CHAT_OPENERS: Record<string, (systemName: string, delta: number) => string> = {
+  upload_photo: (name, delta) =>
+    `Let's get a photo of your ${name}. A clear shot of the label or front helps verify the model and condition, and can improve your confidence score by +${delta}.`,
+  add_year: (name) =>
+    `Do you know when your ${name} was installed? Even a rough range like "5–10 years ago" helps plan more accurately.`,
+  upload_doc: (name) =>
+    `If you have a permit or invoice for your ${name}, a quick photo of it gives verified data to work with.`,
+  add_serial: (name) =>
+    `Do you have access to the serial or model number on your ${name}? It's usually on a label or sticker on the unit.`,
+  confirm_material: (name) =>
+    `What material is your ${name}? Knowing this helps estimate remaining life more accurately.`,
+  log_maintenance: (name) =>
+    `Has your ${name} been serviced recently? If you remember the last time, I'll add it to your home's record.`,
+  acknowledge: (name) =>
+    `Your ${name} is in its late-life window. Have you started thinking about replacement timing or budget?`,
+  review_freshness: () =>
+    `It's been a while since your home records were updated. Anything changed recently — maintenance, repairs, or new equipment?`,
+};
