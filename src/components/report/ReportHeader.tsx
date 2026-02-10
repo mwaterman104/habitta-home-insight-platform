@@ -5,25 +5,27 @@ import type { ReportProperty } from '@/hooks/useHomeReport';
 interface ReportHeaderProps {
   property: ReportProperty | null;
   onDownloadPdf: () => void;
+  yearBuiltEffective?: number | null;
 }
 
-export function ReportHeader({ property, onDownloadPdf }: ReportHeaderProps) {
+export function ReportHeader({ property, onDownloadPdf, yearBuiltEffective }: ReportHeaderProps) {
   const addressLine = property
     ? `${property.address}, ${property.city}, ${property.state} ${property.zipCode}`
     : '';
-  const yearLine = property?.yearBuilt ? `Built ${property.yearBuilt}` : '';
+  const displayYear = yearBuiltEffective ?? property?.yearBuilt;
+  const yearLine = displayYear ? `Built ${displayYear}` : '';
   const subtitle = [addressLine, yearLine].filter(Boolean).join(' · ');
 
   return (
     <div className="flex items-start justify-between gap-4 print:block">
       <div className="space-y-1">
-        <h1 className="heading-h1 text-foreground">Home Report</h1>
+        <h1 className="heading-h1 text-foreground">Home Record</h1>
         {subtitle && (
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         )}
         <p className="text-sm text-muted-foreground max-w-lg">
-          A running record of the systems, appliances, issues, and work
-          associated with this property. This report updates automatically as
+          A running record of the systems, structure, issues, and work
+          associated with this property. This record updates automatically as
           you use Habitta.
         </p>
       </div>
