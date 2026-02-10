@@ -8,6 +8,7 @@ import { CapitalOutlookSection } from '@/components/report/CapitalOutlookSection
 import { OpenIssuesSection } from '@/components/report/OpenIssuesSection';
 import { ResolvedHistorySection } from '@/components/report/ResolvedHistorySection';
 import { ReplacementsSection } from '@/components/report/ReplacementsSection';
+import { SaleHistorySection } from '@/components/report/SaleHistorySection';
 import { DeferredRecommendationsSection } from '@/components/report/DeferredRecommendationsSection';
 import { CoverageSummarySection } from '@/components/report/CoverageSummarySection';
 import { generateHomeReportHtml } from '@/lib/reportPdfGenerator';
@@ -121,6 +122,8 @@ export default function HomeReportPage() {
             <OpenIssuesSection issues={report.openIssues} />
 
             <ResolvedHistorySection items={report.resolvedHistory} />
+
+            <SaleHistorySection saleHistory={report.saleHistory} />
 
             <ReplacementsSection items={report.replacements} />
 

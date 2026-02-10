@@ -206,6 +206,12 @@ function normalizeTimelineForReport(systems: SystemTimelineEntry[]): ReportCapit
 
 // ─── Report Data Interface ──────────────────────────────────────────────────
 
+export interface ReportSaleRecord {
+  date: string;
+  price: number;
+  type: string;
+}
+
 export interface HomeReportData {
   property: ReportProperty | null;
   assets: {
@@ -217,6 +223,7 @@ export interface HomeReportData {
   replacements: ReportEvent[];
   deferredRecommendations: ReportEvent[];
   capitalOutlook: ReportCapitalSystem[];
+  saleHistory: ReportSaleRecord[];
   coverage: ReportCoverage;
   loading: boolean;
   error: string | null;
@@ -268,6 +275,29 @@ export function useHomeReport(): HomeReportData {
   const { timeline, loading: timelineLoading } = useCapitalTimeline({
     homeId: homeId ?? undefined,
     enabled: !!homeId,
+  });
+
+  // Query 6: Sale history from ATTOM (non-fatal)
+  const address = userHome?.address ?? '';
+  const {
+    data: attomData,
+    isLoading: attomLoading,
+  } = useQuery({
+    queryKey: ['home-report-attom', address],
+    queryFn: async () => {
+      if (!address) return null;
+      const { data, error } = await supabase.functions.invoke('attom-property', {
+        body: { address: address.trim() },
+      });
+      if (error) {
+        console.warn('[home-report] ATTOM fetch failed (non-fatal):', error.message);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!address,
+    staleTime: 1000 * 60 * 30, // 30 min cache
+    retry: false,
   });
 
   // Query 1: Property data (from homes via UserHomeContext — already available)
@@ -534,6 +564,16 @@ export function useHomeReport(): HomeReportData {
 
   const capitalOutlook = normalizeTimelineForReport(timeline?.systems ?? []);
 
+  // ─── Sale History (non-fatal, from ATTOM) ─────────────────────────────────
+
+  const saleHistory: ReportSaleRecord[] = (attomData?.saleHistory ?? [])
+    .filter((s: any) => s.date && s.price > 0)
+    .map((s: any) => ({
+      date: s.date,
+      price: s.price,
+      type: s.type ?? '',
+    }));
+
   // ─── Loading / Error ──────────────────────────────────────────────────────
 
   const loading = assetsLoading || eventsLoading || systemsLoading || timelineLoading;
@@ -547,6 +587,7 @@ export function useHomeReport(): HomeReportData {
     replacements,
     deferredRecommendations,
     capitalOutlook,
+    saleHistory,
     coverage,
     loading,
     error: errorMsg,
