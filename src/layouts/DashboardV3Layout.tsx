@@ -155,6 +155,7 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
             yearBuilt={userHome.year_built ?? undefined}
             focusContext={chatContext.systemKey ? { systemKey: chatContext.systemKey, trigger: chatContext.trigger || '' } : undefined}
             initialAssistantMessage={getContextualAssistantMessage(chatContext)}
+            autoSendMessage={chatContext.autoSendMessage}
           />
         )}
       </div>
@@ -180,16 +181,16 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
         </aside>
         
         {/* Main Content */}
-        <main className="flex-1 min-h-0 overflow-y-auto">
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto">
           {children}
         </main>
+        
+        {/* Desktop contextual chat panel - inline sibling */}
+        <ContextualChatPanel 
+          propertyId={userHome.id}
+          yearBuilt={userHome.year_built ?? undefined}
+        />
       </div>
-      
-      {/* Desktop contextual chat panel */}
-      <ContextualChatPanel 
-        propertyId={userHome.id}
-        yearBuilt={userHome.year_built ?? undefined}
-      />
     </div>
   );
 }

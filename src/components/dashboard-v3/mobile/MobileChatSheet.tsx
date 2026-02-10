@@ -27,6 +27,8 @@ interface MobileChatSheetProps {
   primingMessage?: string;
   /** First-turn assistant message — bypasses all priming logic */
   initialAssistantMessage?: string;
+  /** Auto-send message that triggers immediate AI response */
+  autoSendMessage?: string;
 }
 
 /**
@@ -55,6 +57,7 @@ export function MobileChatSheet({
   onWhyClick = () => {},
   primingMessage,
   initialAssistantMessage,
+  autoSendMessage,
 }: MobileChatSheetProps) {
   /**
    * Rule 2: Priming Injection is Per-Context, Not Per-Open
@@ -125,6 +128,7 @@ export function MobileChatSheet({
             systemsWithLowConfidence={systemsWithLowConfidence}
             onSystemUpdated={onSystemUpdated}
             onWhyClick={onWhyClick}
+            autoSendMessage={autoSendMessage}
           />
         </div>
       </DrawerContent>

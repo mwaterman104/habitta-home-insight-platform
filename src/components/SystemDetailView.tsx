@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock, Pencil } f
 import { useNavigate } from "react-router-dom";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { useChatContext } from "@/contexts/ChatContext";
+import { buildSystemAutoMessage } from "@/lib/chatContextCopy";
 import { LifespanProgressBar } from "@/components/LifespanProgressBar";
 import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
 import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
@@ -95,7 +96,13 @@ export function SystemDetailView({
   };
 
   const handleAskHabitta = () => {
-    openChat({ type: 'system', systemKey: prediction.systemKey, trigger: 'maintenance_guidance' });
+    openChat({ 
+      type: 'system', 
+      systemKey: prediction.systemKey, 
+      trigger: 'maintenance_guidance',
+      autoSendMessage: buildSystemAutoMessage(prediction.header.name, 'maintenance_guidance'),
+      metadata: { systemName: prediction.header.name },
+    });
   };
 
   return (
@@ -331,7 +338,16 @@ export function SystemDetailView({
                 <Button 
                   variant={action.priority === 'high' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => openChat({ type: 'system', systemKey: prediction.systemKey, trigger: 'view_guide' })}
+                  onClick={() => {
+                    const trigger = action.diyOrPro === 'DIY' ? 'view_guide' : 'find_pro';
+                    openChat({ 
+                      type: 'system', 
+                      systemKey: prediction.systemKey, 
+                      trigger,
+                      autoSendMessage: buildSystemAutoMessage(prediction.header.name, trigger),
+                      metadata: { systemName: prediction.header.name },
+                    });
+                  }}
                 >
                   {action.diyOrPro === 'DIY' ? 'View Guide' : 'Find Pro'}
                 </Button>
