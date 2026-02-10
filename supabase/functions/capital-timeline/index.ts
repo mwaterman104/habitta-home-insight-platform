@@ -699,10 +699,24 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Sprint 3: Apply data_match_confidence as confidence reduction
+    // This feeds into windowUncertaintyFromConfidence naturally
+    const dataMatchConfidence: string | null = home.data_match_confidence ?? null;
+    let confidenceReduction = 0;
+    if (dataMatchConfidence === 'low') {
+      confidenceReduction = 0.10;
+    } else if (dataMatchConfidence === 'medium') {
+      confidenceReduction = 0.05;
+    }
+
     // Generate timelines for all systems
     const systemTypes: ('hvac' | 'roof' | 'water_heater')[] = ['hvac', 'roof', 'water_heater'];
     const timelineEntries: SystemTimelineEntry[] = [];
     const limitingFactors: string[] = [];
+
+    if (dataMatchConfidence === 'low') {
+      limitingFactors.push('Property data match is approximate');
+    }
 
     for (const sysType of systemTypes) {
       const userSystem = selectBestSystemRecord(systems, sysType);
