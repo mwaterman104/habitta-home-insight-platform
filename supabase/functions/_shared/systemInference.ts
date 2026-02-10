@@ -262,14 +262,21 @@ export function classifyClimate(
   // Check explicit coastal city match (high confidence)
   const isExplicitCoastal = COASTAL_CITIES.some(cc => c.includes(cc));
   const isCoastalKeyword = COASTAL_KEYWORDS.some(kw => c.includes(kw));
-  const isCoastal = isExplicitCoastal || isCoastalKeyword;
+  
+  // FIPS-based coastal detection: if county FIPS is in the known coastal set
+  const fipsCounty = fipsCode ? fipsCode.substring(0, 5) : null;
+  const isFipsCoastal = fipsCounty ? COASTAL_FIPS_COUNTIES.has(fipsCounty) : false;
+  
+  const isCoastal = isExplicitCoastal || isCoastalKeyword || isFipsCoastal;
 
-  // Coastal FL/TX = highest confidence climate signal
+  // Coastal FL/TX/CA = highest confidence climate signal
+  // FIPS confirmation upgrades confidence from medium to high
   if (isCoastal && (s === 'FL' || s === 'TX' || s === 'CA')) {
+    const coastalConfidence: ConfidenceLevel = (isExplicitCoastal || isFipsCoastal) ? 'high' : 'medium';
     return {
       climateZone: 'coastal',
       climateMultiplier: 0.80,
-      climateConfidence: 'high',
+      climateConfidence: coastalConfidence,
       dutyCycle: { hvac: s === 'FL' ? 'extreme' : 'high' },
       lifespanModifiers: { hvac: -3, roof: -5, water_heater: -2 },
     };
