@@ -206,6 +206,12 @@ function normalizeTimelineForReport(systems: SystemTimelineEntry[]): ReportCapit
 
 // ─── Report Data Interface ──────────────────────────────────────────────────
 
+export interface ReportSaleRecord {
+  date: string;
+  price: number;
+  type: string;
+}
+
 export interface HomeReportData {
   property: ReportProperty | null;
   assets: {
@@ -217,6 +223,7 @@ export interface HomeReportData {
   replacements: ReportEvent[];
   deferredRecommendations: ReportEvent[];
   capitalOutlook: ReportCapitalSystem[];
+  saleHistory: ReportSaleRecord[];
   coverage: ReportCoverage;
   loading: boolean;
   error: string | null;
