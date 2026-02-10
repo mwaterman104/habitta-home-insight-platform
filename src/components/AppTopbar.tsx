@@ -19,12 +19,14 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useChatContext } from "@/contexts/ChatContext";
 import AppSidebar from "@/components/AppSidebar";
 
 export default function AppTopbar() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { openChat } = useChatContext();
 
   const handleSignOut = async () => {
     await signOut();
@@ -74,7 +76,7 @@ export default function AppTopbar() {
           <Button 
             variant="ghost" 
             size="sm"
-            onClick={() => navigate("/chatdiy")}
+            onClick={() => openChat({ type: 'general', trigger: 'ask_habitta' })}
             className="text-muted-foreground hover:text-foreground"
           >
             <HelpCircle className="h-4 w-4" />

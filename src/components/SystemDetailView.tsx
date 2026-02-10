@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SystemPrediction } from "@/types/systemPrediction";
-import { ChatDIYBanner } from "@/components/ChatDIYBanner";
+import type { ChatContextType } from "@/contexts/ChatContext";
 import { LifespanProgressBar } from "@/components/LifespanProgressBar";
 import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
 import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
@@ -26,6 +26,7 @@ interface SystemDetailViewProps {
   onBack: () => void;
   onActionComplete?: (actionSlug: string) => void;
   onSystemUpdated?: () => void;
+  onOpenChat?: (context: ChatContextType) => void;
 }
 
 /**
@@ -41,6 +42,7 @@ export function SystemDetailView({
   onBack,
   onActionComplete,
   onSystemUpdated,
+  onOpenChat,
 }: SystemDetailViewProps) {
   const navigate = useNavigate();
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -93,12 +95,8 @@ export function SystemDetailView({
     }
   };
 
-  // Get ChatDIY topic prefix for this system
-  const getChatdiyTopic = () => {
-    if (isValidSystemKey(prediction.systemKey)) {
-      return `${SYSTEM_META[prediction.systemKey].chatdiyTopicPrefix}-maintenance-checklist`;
-    }
-    return 'general-maintenance';
+  const handleAskHabitta = () => {
+    onOpenChat?.({ type: 'system', systemKey: prediction.systemKey, trigger: 'maintenance_guidance' });
   };
 
   return (
@@ -230,7 +228,7 @@ export function SystemDetailView({
       {prediction.optimization && (
         <SystemOptimizationSection
           optimization={prediction.optimization}
-          onMaintenanceCta={() => navigate(`/chatdiy?topic=${getChatdiyTopic()}`)}
+          onMaintenanceCta={handleAskHabitta}
           onPlanningCta={() => navigate('/planning')}
         />
       )}
@@ -334,7 +332,7 @@ export function SystemDetailView({
                 <Button 
                   variant={action.priority === 'high' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => onActionComplete?.(action.chatdiySlug)}
+                  onClick={() => onOpenChat?.({ type: 'system', systemKey: prediction.systemKey, trigger: 'view_guide' })}
                 >
                   {action.diyOrPro === 'DIY' ? 'View Guide' : 'Find Pro'}
                 </Button>
@@ -383,11 +381,14 @@ export function SystemDetailView({
         </Card>
       )}
 
-      {/* ChatDIY Handoff - uses system-specific topic */}
-      <ChatDIYBanner 
-        topic={prediction.actions[0]?.chatdiySlug || getChatdiyTopic()} 
-        message="Need help with any of these actions?"
-      />
+      {/* Ask Habitta - contextual chat */}
+      <Button 
+        variant="outline" 
+        className="w-full"
+        onClick={handleAskHabitta}
+      >
+        Ask Habitta about this system
+      </Button>
     </div>
   );
 }

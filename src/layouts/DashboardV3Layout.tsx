@@ -6,6 +6,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { TopHeader, LeftColumn } from "@/components/dashboard-v3";
 import BottomNavigation from "@/components/BottomNavigation";
 import { Loader2 } from "lucide-react";
+import { ChatContextProvider, useChatContext } from "@/contexts/ChatContext";
+import { ContextualChatPanel } from "@/components/chat/ContextualChatPanel";
+import { MobileChatSheet } from "@/components/dashboard-v3/mobile";
+import { getContextualAssistantMessage } from "@/lib/chatContextCopy";
 
 interface DashboardV3LayoutProps {
   children: ReactNode;
@@ -32,9 +36,18 @@ interface UserHome {
  * across all authenticated pages using the V3 design system.
  */
 export function DashboardV3Layout({ children }: DashboardV3LayoutProps) {
+  return (
+    <ChatContextProvider>
+      <DashboardV3LayoutInner>{children}</DashboardV3LayoutInner>
+    </ChatContextProvider>
+  );
+}
+
+function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { chatContext, isOpen, closeChat } = useChatContext();
   
   const [userHome, setUserHome] = useState<UserHome>({
     id: '',
@@ -130,6 +143,20 @@ export function DashboardV3Layout({ children }: DashboardV3LayoutProps) {
           {children}
         </main>
         <BottomNavigation />
+        
+        {/* Mobile contextual chat */}
+        {isOpen && chatContext && (
+          <MobileChatSheet
+            open={isOpen}
+            onClose={closeChat}
+            propertyId={userHome.id}
+            baselineSystems={[]}
+            confidenceLevel="Moderate"
+            yearBuilt={userHome.year_built ?? undefined}
+            focusContext={chatContext.systemKey ? { systemKey: chatContext.systemKey, trigger: chatContext.trigger || '' } : undefined}
+            initialAssistantMessage={getContextualAssistantMessage(chatContext)}
+          />
+        )}
       </div>
     );
   }
@@ -157,6 +184,12 @@ export function DashboardV3Layout({ children }: DashboardV3LayoutProps) {
           {children}
         </main>
       </div>
+      
+      {/* Desktop contextual chat panel */}
+      <ContextualChatPanel 
+        propertyId={userHome.id}
+        yearBuilt={userHome.year_built ?? undefined}
+      />
     </div>
   );
 }

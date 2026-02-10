@@ -112,7 +112,7 @@ export function AppRoutes() {
             
             {/* Settings still uses old layout for now */}
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/chatdiy" element={<div className="p-6"><h1 className="text-2xl font-bold">ChatDIY Assistant</h1><p className="text-muted-foreground mt-2">Get help with home maintenance tasks.</p></div>} />
+            <Route path="/chatdiy" element={<Navigate to="/dashboard" replace />} />
             
             {/* ARCHIVED: Still accessible but removed from navigation */}
             <Route path="/property-intelligence" element={<Navigate to="/dashboard" replace />} />
