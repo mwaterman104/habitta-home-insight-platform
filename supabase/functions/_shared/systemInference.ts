@@ -629,6 +629,14 @@ export function calculateWaterHeaterLifecycle(
       description: 'Mineral content and humidity can accelerate tank corrosion'
     });
   }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with shorter system lifespan'
+    });
+  }
   
   return {
     systemId: 'water_heater',
