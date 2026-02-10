@@ -5,6 +5,8 @@
  * Handles both the transformed response from attom-property and raw responses.
  */
 
+import { normalizeAttom, type NormalizedAttomProfile } from './normalizeAttom.ts';
+
 export interface AttomPropertyFacts {
   yearBuilt: number | null;
   squareFeet: number | null;
