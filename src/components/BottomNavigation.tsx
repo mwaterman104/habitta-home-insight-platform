@@ -1,4 +1,4 @@
-import { Home, MessageCircle, FileText, Settings } from "lucide-react";
+import { Home, MessageCircle, FileText, Settings, Layers } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +14,7 @@ type NavItem =
 // Phase 2: Chat replaces Help as core mobile primitive
 const bottomNavItems: NavItem[] = [
   { title: "Home Pulse", url: "/dashboard", icon: Home },
+  { title: "Systems", url: "/systems", icon: Layers },
   { title: "Chat", action: "openChat", icon: MessageCircle },
   { title: "Report", url: "/report", icon: FileText },
   { title: "Settings", url: "/settings", icon: Settings },
@@ -26,11 +27,13 @@ export default function BottomNavigation({ onChatOpen }: BottomNavigationProps) 
   const isActive = (item: NavItem) => {
     if ('url' in item && item.url) {
       if (item.url === '/dashboard') {
-        return location.pathname === item.url || location.pathname.startsWith('/system');
+        return location.pathname === item.url;
+      }
+      if (item.url === '/systems') {
+        return location.pathname === '/systems' || location.pathname.startsWith('/systems/');
       }
       return location.pathname === item.url;
     }
-    // Chat action is never "active" in nav sense
     return false;
   };
 
