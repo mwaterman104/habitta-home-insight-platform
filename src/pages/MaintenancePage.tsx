@@ -108,15 +108,20 @@ export default function MaintenancePage() {
   }, [userHome?.id, fetchTasks]);
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<MaintenanceTask>) => {
-    const { error } = await supabase
-      .from("maintenance_tasks")
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq("id", taskId);
+    try {
+      const { error } = await supabase
+        .from("maintenance_tasks")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", taskId);
 
-    if (error) {
-      toast({ title: "Error updating task", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Task updated", description: `Status changed to ${updates.status || "updated"}.` });
+      if (error) {
+        toast({ title: "Error updating task", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Task updated", description: `Status changed to ${updates.status || "updated"}.` });
+      }
+    } catch (error: any) {
+      console.error("Task update failed:", error);
+      toast({ title: "Error updating task", description: error?.message || "Please try again.", variant: "destructive" });
     }
   };
 
