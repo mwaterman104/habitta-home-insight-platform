@@ -239,6 +239,7 @@ export function getSystemDisplayName(systemKey: string): string {
 
 // ============== Home Pulse v1 Copy ==============
 
+/** @deprecated Kept for SystemTileScroll; hero now uses HOME_CONFIDENCE_COPY */
 export const HOME_OUTLOOK_COPY = {
   label: 'Home outlook',
   subtext: 'Until a major system replacement is likely',
@@ -271,6 +272,24 @@ export const LATE_LIFE_COPY = {
   },
 } as const;
 
+/** @deprecated Replaced by HOME_CONFIDENCE_COPY state meanings */
 export const HOME_OUTLOOK_CLARIFIER = 'Reflects planning-critical systems only';
 
 export const REPLACEMENT_WINDOW_PREFIX = 'Replacement window';
+
+// ============== Home Confidence Copy (v2) ==============
+
+export const HOME_CONFIDENCE_COPY = {
+  label: 'Home Confidence',
+  indexPrefix: 'Confidence index',
+  states: {
+    solid: { label: 'Solid', meaning: 'Most systems are understood and tracked' },
+    developing: { label: 'Developing', meaning: 'Key gaps exist, but nothing critical is hidden' },
+    unclear: { label: 'Unclear', meaning: 'Too many unknowns to plan confidently' },
+    'at-risk': { label: 'At Risk', meaning: 'Major systems lack basic information' },
+  },
+} as const;
+
+export const RECOMMENDATION_COPY = {
+  sectionHeader: 'Recommended',
+} as const;
