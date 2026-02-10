@@ -1938,15 +1938,21 @@ export type Database = {
         Row: {
           address: string
           address_id: string | null
+          arch_style: string | null
           bathrooms: number | null
           bedrooms: number | null
+          build_quality: string | null
           city: string
           confidence: number | null
           created_at: string
+          data_match_confidence: string | null
+          fips_code: string | null
           folio: string | null
           folio_source: string | null
           geo_source: string | null
           geo_updated_at: string | null
+          gross_sqft: number | null
+          ground_floor_sqft: number | null
           id: string
           intervention_threshold: number
           latitude: number | null
@@ -1956,26 +1962,34 @@ export type Database = {
           property_id: string | null
           property_type: string | null
           pulse_status: string | null
+          rooms_total: number | null
           square_feet: number | null
           state: string
           status: string | null
           updated_at: string
           user_id: string
           year_built: number | null
+          year_built_effective: number | null
           zip_code: string
         }
         Insert: {
           address: string
           address_id?: string | null
+          arch_style?: string | null
           bathrooms?: number | null
           bedrooms?: number | null
+          build_quality?: string | null
           city: string
           confidence?: number | null
           created_at?: string
+          data_match_confidence?: string | null
+          fips_code?: string | null
           folio?: string | null
           folio_source?: string | null
           geo_source?: string | null
           geo_updated_at?: string | null
+          gross_sqft?: number | null
+          ground_floor_sqft?: number | null
           id?: string
           intervention_threshold?: number
           latitude?: number | null
@@ -1985,26 +1999,34 @@ export type Database = {
           property_id?: string | null
           property_type?: string | null
           pulse_status?: string | null
+          rooms_total?: number | null
           square_feet?: number | null
           state: string
           status?: string | null
           updated_at?: string
           user_id: string
           year_built?: number | null
+          year_built_effective?: number | null
           zip_code: string
         }
         Update: {
           address?: string
           address_id?: string | null
+          arch_style?: string | null
           bathrooms?: number | null
           bedrooms?: number | null
+          build_quality?: string | null
           city?: string
           confidence?: number | null
           created_at?: string
+          data_match_confidence?: string | null
+          fips_code?: string | null
           folio?: string | null
           folio_source?: string | null
           geo_source?: string | null
           geo_updated_at?: string | null
+          gross_sqft?: number | null
+          ground_floor_sqft?: number | null
           id?: string
           intervention_threshold?: number
           latitude?: number | null
@@ -2014,12 +2036,14 @@ export type Database = {
           property_id?: string | null
           property_type?: string | null
           pulse_status?: string | null
+          rooms_total?: number | null
           square_feet?: number | null
           state?: string
           status?: string | null
           updated_at?: string
           user_id?: string
           year_built?: number | null
+          year_built_effective?: number | null
           zip_code?: string
         }
         Relationships: [
