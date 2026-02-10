@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, Info, Wrench, Clock, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SystemPrediction } from "@/types/systemPrediction";
-import type { ChatContextType } from "@/contexts/ChatContext";
+import { useChatContext } from "@/contexts/ChatContext";
 import { LifespanProgressBar } from "@/components/LifespanProgressBar";
 import { SystemOptimizationSection } from "@/components/SystemOptimizationSection";
 import { CONFIDENCE_HELPER_TEXT } from "@/lib/optimizationCopy";
@@ -26,7 +26,6 @@ interface SystemDetailViewProps {
   onBack: () => void;
   onActionComplete?: (actionSlug: string) => void;
   onSystemUpdated?: () => void;
-  onOpenChat?: (context: ChatContextType) => void;
 }
 
 /**
@@ -42,9 +41,9 @@ export function SystemDetailView({
   onBack,
   onActionComplete,
   onSystemUpdated,
-  onOpenChat,
 }: SystemDetailViewProps) {
   const navigate = useNavigate();
+  const { openChat } = useChatContext();
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [installedLine, setInstalledLine] = useState(prediction.header.installedLine);
   
@@ -96,7 +95,7 @@ export function SystemDetailView({
   };
 
   const handleAskHabitta = () => {
-    onOpenChat?.({ type: 'system', systemKey: prediction.systemKey, trigger: 'maintenance_guidance' });
+    openChat({ type: 'system', systemKey: prediction.systemKey, trigger: 'maintenance_guidance' });
   };
 
   return (
@@ -332,7 +331,7 @@ export function SystemDetailView({
                 <Button 
                   variant={action.priority === 'high' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => onOpenChat?.({ type: 'system', systemKey: prediction.systemKey, trigger: 'view_guide' })}
+                  onClick={() => openChat({ type: 'system', systemKey: prediction.systemKey, trigger: 'view_guide' })}
                 >
                   {action.diyOrPro === 'DIY' ? 'View Guide' : 'Find Pro'}
                 </Button>
