@@ -527,6 +527,14 @@ export function calculateHVACLifecycle(
         : 'Year-round cooling duty accelerates compressor and fan wear'
     });
   }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with shorter system lifespan'
+    });
+  }
   
   return {
     systemId: 'hvac',
