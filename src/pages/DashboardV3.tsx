@@ -8,6 +8,7 @@ import { Home, Plus } from "lucide-react";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
+import { useHomeConfidence } from "@/hooks/useHomeConfidence";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
 import { useInvalidateRiskDeltas } from "@/hooks/useRiskDeltas";
@@ -129,6 +130,13 @@ export default function DashboardV3() {
     homeId: userHome?.id, 
     enabled: !!userHome?.id 
   });
+
+  // Home Confidence computation
+  const { 
+    confidence: homeConfidence, 
+    recommendations: homeRecommendations, 
+    dismissRecommendation 
+  } = useHomeConfidence(userHome?.id, capitalTimeline?.systems || []);
 
   // Chat State Machine: Fetch home systems and permits for mode derivation
   const { systems: homeSystems, loading: systemsLoading, refetch: refetchSystems } = useHomeSystems(userHome?.id);
@@ -500,6 +508,9 @@ export default function DashboardV3() {
             healthStatus={getHealthStatus()}
             onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
             onChatOpen={() => setMobileChatOpen(true)}
+            homeConfidence={homeConfidence}
+            recommendations={homeRecommendations}
+            onDismissRecommendation={dismissRecommendation}
           />
         </main>
         

@@ -1,23 +1,19 @@
 import { useNavigate } from "react-router-dom";
 import { Home } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { LifecycleRing } from "@/components/mobile/LifecycleRing";
+import { HomeConfidenceHero } from "@/components/mobile/HomeConfidenceHero";
+import { RecommendationCards } from "@/components/mobile/RecommendationCards";
 import { SinceLastMonth } from "@/components/mobile/SinceLastMonth";
 import { SystemTileScroll } from "@/components/mobile/SystemTileScroll";
-import { computeHomeOutlook, getLifecyclePercent } from "@/services/homeOutlook";
 import { selectPrimarySystem } from "@/services/priorityScoring";
 import { 
   trackMobileEvent, 
   checkPrimaryFocusChanged,
   MOBILE_EVENTS 
 } from "@/lib/analytics/mobileEvents";
-import {
-  HOME_OUTLOOK_COPY,
-  ASSESSMENT_QUALITY_LABELS,
-  ASSESSMENT_QUALITY_PREFIX,
-  HOME_OUTLOOK_CLARIFIER,
-} from "@/lib/mobileCopy";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { HomeConfidenceResult } from "@/services/homeConfidence";
+import type { Recommendation } from "@/services/recommendationEngine";
 import { useEffect, useState } from "react";
 
 // ============================================================
@@ -25,7 +21,6 @@ import { useEffect, useState } from "react";
 // ============================================================
 
 // Governance: Components that NEVER render on mobile summary
-// These are documentation-only; actual enforcement is structural
 const FORBIDDEN_ON_MOBILE_SUMMARY = [
   'BaselineSurface',
   'SegmentedScale',
@@ -33,7 +28,7 @@ const FORBIDDEN_ON_MOBILE_SUMMARY = [
   'ConfidenceBadge',
   'LifecycleTimeline',
   'CostInsightPanel',
-  'ChatConsole', // Only in sheet after CTA
+  'ChatConsole',
 ];
 
 // ============================================================
@@ -43,26 +38,34 @@ interface MobileDashboardViewProps {
   healthStatus: 'healthy' | 'attention' | 'critical';
   onSystemTap: (systemKey: string) => void;
   onChatOpen: () => void;
+  homeConfidence: HomeConfidenceResult | null;
+  recommendations: Recommendation[];
+  onDismissRecommendation: (id: string) => void;
 }
 
 /**
- * MobileDashboardView — Home Pulse v1
+ * MobileDashboardView — Home Pulse v2
  * 
- * State-of-ownership instrument. Answers:
- * "How is my home doing overall?"
- * "How much time do I have?"
- * "Is anything meaningfully changing?"
+ * State-of-ownership instrument powered by Home Confidence.
+ * Answers:
+ * "How confident am I about my home?"
+ * "What should I do next?"
+ * "How are my systems doing?"
  * 
  * Layout (top → bottom):
- * 1. Home Outlook Hero (LifecycleRing + ~X years)
+ * 1. Home Confidence Hero (state + index + evidence + next gain)
  * 2. Since Last Month (change awareness)
- * 3. Key Systems Preview (horizontal tile scroll)
+ * 3. Recommendations (max 3 actionable cards)
+ * 4. Key Systems Preview (horizontal tile scroll)
  */
 export function MobileDashboardView({
   systems,
   healthStatus,
   onSystemTap,
-  onChatOpen
+  onChatOpen,
+  homeConfidence,
+  recommendations,
+  onDismissRecommendation,
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
   
@@ -80,14 +83,6 @@ export function MobileDashboardView({
   
   // Priority scoring for tile ordering
   const { primary, scored } = selectPrimarySystem(systems);
-  
-  // Home Outlook computation
-  const outlook = computeHomeOutlook(systems);
-  
-  // Compute hero ring percent from weighted average across systems
-  const heroPercent = outlook
-    ? Math.min(100, Math.max(0, 100 - (outlook.rawYears / 15) * 100))
-    : 0;
 
   // Track primary focus changes within session (trust validation)
   useEffect(() => {
@@ -132,46 +127,31 @@ export function MobileDashboardView({
 
   return (
     <div className="space-y-6">
-      {/* ── Home Outlook Hero ── */}
+      {/* ── Home Confidence Hero ── */}
       <div className={animClass}>
-        <div className="flex flex-col items-center text-center space-y-3">
-          <LifecycleRing percentConsumed={heroPercent} size={96}>
-            <span className="text-lg font-bold text-foreground">
-              {outlook ? `~${outlook.displayYears}` : '—'}
-            </span>
-          </LifecycleRing>
-
-          <div className="space-y-1">
-            <p className="text-base font-semibold text-foreground">
-              {HOME_OUTLOOK_COPY.label}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {HOME_OUTLOOK_COPY.subtext}
-            </p>
-            <p className="text-xs text-muted-foreground/60">
-              {HOME_OUTLOOK_CLARIFIER}
-            </p>
+        {homeConfidence ? (
+          <HomeConfidenceHero confidence={homeConfidence} />
+        ) : (
+          <div className="flex flex-col items-center text-center space-y-2">
+            <p className="text-sm text-muted-foreground">Calculating confidence…</p>
           </div>
-
-          {outlook && (
-            <div className="space-y-1">
-              {outlook.microSummary && (
-                <p className="text-sm text-muted-foreground">
-                  {outlook.microSummary}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground/70">
-                {ASSESSMENT_QUALITY_PREFIX}: {ASSESSMENT_QUALITY_LABELS[outlook.assessmentQuality]}
-              </p>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* ── Since Last Month ── */}
       <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
         <SinceLastMonth />
       </div>
+
+      {/* ── Recommendations ── */}
+      {recommendations.length > 0 && (
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '112ms' }}>
+          <RecommendationCards
+            recommendations={recommendations}
+            onDismiss={onDismissRecommendation}
+          />
+        </div>
+      )}
 
       {/* ── Key Systems Preview ── */}
       <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
