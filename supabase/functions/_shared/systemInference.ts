@@ -56,6 +56,7 @@ export interface PropertyContext {
   city?: string;
   roofMaterial?: 'asphalt' | 'tile' | 'metal' | 'unknown';
   waterHeaterType?: 'tank' | 'tankless' | 'unknown';
+  buildQuality?: 'A' | 'B' | 'C' | 'D';
 }
 
 /**
