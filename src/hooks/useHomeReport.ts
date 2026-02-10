@@ -564,6 +564,16 @@ export function useHomeReport(): HomeReportData {
 
   const capitalOutlook = normalizeTimelineForReport(timeline?.systems ?? []);
 
+  // ─── Sale History (non-fatal, from ATTOM) ─────────────────────────────────
+
+  const saleHistory: ReportSaleRecord[] = (attomData?.saleHistory ?? [])
+    .filter((s: any) => s.date && s.price > 0)
+    .map((s: any) => ({
+      date: s.date,
+      price: s.price,
+      type: s.type ?? '',
+    }));
+
   // ─── Loading / Error ──────────────────────────────────────────────────────
 
   const loading = assetsLoading || eventsLoading || systemsLoading || timelineLoading;
@@ -577,6 +587,7 @@ export function useHomeReport(): HomeReportData {
     replacements,
     deferredRecommendations,
     capitalOutlook,
+    saleHistory,
     coverage,
     loading,
     error: errorMsg,
