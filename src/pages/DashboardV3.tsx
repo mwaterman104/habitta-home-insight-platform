@@ -19,6 +19,9 @@ import { useChatMode } from "@/hooks/useChatMode";
 import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
+import type { Recommendation } from "@/services/recommendationEngine";
+import { RECOMMENDATION_CHAT_OPENERS } from "@/lib/mobileCopy";
+import { getSystemDisplayName } from "@/lib/mobileCopy";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import BottomNavigation from "@/components/BottomNavigation";
 
@@ -83,6 +86,10 @@ export default function DashboardV3() {
   
   // Mobile chat sheet state - must be declared before any early returns
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  
+  // Recommendation → chat orchestration
+  const [activeRecommendation, setActiveRecommendation] = useState<Recommendation | null>(null);
+  const [chatLockedForRecommendation, setChatLockedForRecommendation] = useState(false);
   
   // Mobile system drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -378,6 +385,21 @@ export default function DashboardV3() {
     }
   };
 
+  // Recommendation → chat handler (one-at-a-time guard)
+  const handleRecommendationAction = useCallback((rec: Recommendation) => {
+    if (chatLockedForRecommendation) return;
+    setActiveRecommendation(rec);
+    setChatLockedForRecommendation(true);
+    setMobileChatOpen(true);
+  }, [chatLockedForRecommendation]);
+
+  // Close chat and clear recommendation state
+  const handleMobileChatClose = useCallback(() => {
+    setMobileChatOpen(false);
+    setActiveRecommendation(null);
+    setChatLockedForRecommendation(false);
+  }, []);
+
   // Handle chat expansion changes
   const handleChatExpandChange = (expanded: boolean) => {
     if (expanded) {
@@ -511,6 +533,7 @@ export default function DashboardV3() {
             homeConfidence={homeConfidence}
             recommendations={homeRecommendations}
             onDismissRecommendation={dismissRecommendation}
+            onRecommendationAction={handleRecommendationAction}
           />
         </main>
         
@@ -518,13 +541,19 @@ export default function DashboardV3() {
         
         <MobileChatSheet
           open={mobileChatOpen}
-          onClose={() => setMobileChatOpen(false)}
+          onClose={handleMobileChatClose}
           propertyId={userHome.id}
           baselineSystems={mobileBaselineSystems}
           confidenceLevel={confidence > 0.75 ? 'High' : confidence > 0.5 ? 'Moderate' : confidence > 0.25 ? 'Early' : 'Unknown'}
           yearBuilt={userHome.year_built}
           advisorState={advisorState}
-          focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
+          focusContext={
+            activeRecommendation?.systemId
+              ? { systemKey: activeRecommendation.systemId, trigger: 'recommendation' }
+              : focusContext.type === 'SYSTEM'
+                ? { systemKey: focusContext.systemKey, trigger: 'user' }
+                : undefined
+          }
           openingMessage={openingMessage}
           confidence={confidence}
           risk={risk}
@@ -534,6 +563,16 @@ export default function DashboardV3() {
           systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
           onSystemUpdated={handleSystemUpdated}
           onWhyClick={(key) => selectSystem(key)}
+          initialAssistantMessage={
+            activeRecommendation
+              ? (RECOMMENDATION_CHAT_OPENERS[activeRecommendation.actionType] ?? (() => ''))( 
+                  activeRecommendation.systemId
+                    ? getSystemDisplayName(activeRecommendation.systemId)
+                    : 'your home',
+                  activeRecommendation.confidenceDelta
+                )
+              : undefined
+          }
         />
       </div>
     );

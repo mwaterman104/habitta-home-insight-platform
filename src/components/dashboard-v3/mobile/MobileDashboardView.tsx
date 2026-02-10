@@ -41,6 +41,7 @@ interface MobileDashboardViewProps {
   homeConfidence: HomeConfidenceResult | null;
   recommendations: Recommendation[];
   onDismissRecommendation: (id: string) => void;
+  onRecommendationAction: (rec: Recommendation) => void;
 }
 
 /**
@@ -66,6 +67,7 @@ export function MobileDashboardView({
   homeConfidence,
   recommendations,
   onDismissRecommendation,
+  onRecommendationAction,
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
   
@@ -149,6 +151,7 @@ export function MobileDashboardView({
           <RecommendationCards
             recommendations={recommendations}
             onDismiss={onDismissRecommendation}
+            onAction={onRecommendationAction}
           />
         </div>
       )}

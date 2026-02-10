@@ -6,7 +6,6 @@
  * No urgency, no red, no scare language.
  */
 
-import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import type { Recommendation } from '@/services/recommendationEngine';
 import { RECOMMENDATION_COPY } from '@/lib/mobileCopy';
@@ -14,10 +13,10 @@ import { RECOMMENDATION_COPY } from '@/lib/mobileCopy';
 interface RecommendationCardsProps {
   recommendations: Recommendation[];
   onDismiss: (id: string) => void;
+  onAction: (rec: Recommendation) => void;
 }
 
-export function RecommendationCards({ recommendations, onDismiss }: RecommendationCardsProps) {
-  const navigate = useNavigate();
+export function RecommendationCards({ recommendations, onDismiss, onAction }: RecommendationCardsProps) {
 
   if (recommendations.length === 0) return null;
 
@@ -32,7 +31,7 @@ export function RecommendationCards({ recommendations, onDismiss }: Recommendati
           <button
             key={rec.id}
             className="w-full rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50 active:bg-muted/70 relative group"
-            onClick={() => navigate(rec.route)}
+            onClick={() => onAction(rec)}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0 space-y-0.5">
