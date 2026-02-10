@@ -277,6 +277,29 @@ export function useHomeReport(): HomeReportData {
     enabled: !!homeId,
   });
 
+  // Query 6: Sale history from ATTOM (non-fatal)
+  const address = userHome?.address ?? '';
+  const {
+    data: attomData,
+    isLoading: attomLoading,
+  } = useQuery({
+    queryKey: ['home-report-attom', address],
+    queryFn: async () => {
+      if (!address) return null;
+      const { data, error } = await supabase.functions.invoke('attom-property', {
+        body: { address: address.trim() },
+      });
+      if (error) {
+        console.warn('[home-report] ATTOM fetch failed (non-fatal):', error.message);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!address,
+    staleTime: 1000 * 60 * 30, // 30 min cache
+    retry: false,
+  });
+
   // Query 1: Property data (from homes via UserHomeContext — already available)
   const property: ReportProperty | null = userHome
     ? {
