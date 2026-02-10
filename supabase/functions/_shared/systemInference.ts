@@ -466,6 +466,22 @@ export function extractPermitYear(systemType: 'hvac' | 'roof' | 'water_heater', 
   return dateStr ? new Date(dateStr).getFullYear() : null;
 }
 
+// ============== Build Quality Degradation ==============
+
+/**
+ * Build quality degradation factor.
+ * Quality C = 10% lifespan reduction, Quality D = 20%.
+ * A/B = no change. Never tightens ranges — only shortens expected lifespan.
+ */
+function getBuildQualityDegradation(quality?: 'A' | 'B' | 'C' | 'D'): number {
+  if (!quality) return 0;
+  switch (quality) {
+    case 'C': return 0.10;
+    case 'D': return 0.20;
+    default: return 0;
+  }
+}
+
 // ============== Pure Calculator Functions ==============
 
 /**
