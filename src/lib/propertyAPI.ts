@@ -51,6 +51,20 @@ export interface PropertyHistory {
       taxCode: string;
     };
   };
+  normalizedProfile?: {
+    effectiveYearBuilt: number;
+    buildQuality: string | null;
+    archStyle: string | null;
+    grossSqft: number | null;
+    roomsTotal: number | null;
+    dataMatchConfidence: string;
+    fipsCode: string | null;
+    lastSale?: {
+      amount: number | null;
+      date: string | null;
+      pricePerSqft: number | null;
+    };
+  };
   lastUpdated: string;
   _attomData?: any; // Raw Attom API data for additional details
 }

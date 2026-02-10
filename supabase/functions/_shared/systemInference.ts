@@ -57,6 +57,9 @@ export interface PropertyContext {
   roofMaterial?: 'asphalt' | 'tile' | 'metal' | 'unknown';
   waterHeaterType?: 'tank' | 'tankless' | 'unknown';
   buildQuality?: 'A' | 'B' | 'C' | 'D';
+  grossSqft?: number;
+  roomsTotal?: number;
+  groundFloorSqft?: number;
 }
 
 /**
@@ -210,9 +213,48 @@ const HOT_STATES = ['FL', 'AZ', 'TX', 'NV'];
  * - dutyCycle (models HVAC usage intensity)
  * - lifespanModifiers (zone-specific adjustments)
  */
+// Known coastal county FIPS codes (first 5 digits) for confidence upgrade
+const COASTAL_FIPS_COUNTIES = new Set([
+  // Florida coastal
+  '12086', // Miami-Dade
+  '12011', // Broward
+  '12099', // Palm Beach
+  '12103', // Pinellas
+  '12057', // Hillsborough
+  '12071', // Lee
+  '12021', // Collier
+  '12115', // Sarasota
+  '12081', // Manatee
+  '12009', // Brevard
+  '12127', // Volusia
+  '12031', // Duval
+  // Texas coastal
+  '48167', // Galveston
+  '48355', // Nueces (Corpus Christi)
+  '48201', // Harris (Houston)
+  // California coastal
+  '06037', // Los Angeles
+  '06073', // San Diego
+  '06075', // San Francisco
+  '06081', // San Mateo
+  '06085', // Santa Clara
+  // Louisiana coastal
+  '22071', // Orleans
+  // South Carolina coastal
+  '45019', // Charleston
+  // North Carolina coastal
+  '37129', // New Hanover
+  // Georgia coastal
+  '13051', // Chatham (Savannah)
+  // New Jersey coastal
+  '34025', // Monmouth
+  '34029', // Ocean
+]);
+
 export function classifyClimate(
   state: string,
-  city?: string
+  city?: string,
+  fipsCode?: string
 ): ResolvedClimateContext {
   const s = state.toUpperCase();
   const c = (city || '').toLowerCase();
@@ -220,14 +262,21 @@ export function classifyClimate(
   // Check explicit coastal city match (high confidence)
   const isExplicitCoastal = COASTAL_CITIES.some(cc => c.includes(cc));
   const isCoastalKeyword = COASTAL_KEYWORDS.some(kw => c.includes(kw));
-  const isCoastal = isExplicitCoastal || isCoastalKeyword;
+  
+  // FIPS-based coastal detection: if county FIPS is in the known coastal set
+  const fipsCounty = fipsCode ? fipsCode.substring(0, 5) : null;
+  const isFipsCoastal = fipsCounty ? COASTAL_FIPS_COUNTIES.has(fipsCounty) : false;
+  
+  const isCoastal = isExplicitCoastal || isCoastalKeyword || isFipsCoastal;
 
-  // Coastal FL/TX = highest confidence climate signal
+  // Coastal FL/TX/CA = highest confidence climate signal
+  // FIPS confirmation upgrades confidence from medium to high
   if (isCoastal && (s === 'FL' || s === 'TX' || s === 'CA')) {
+    const coastalConfidence: ConfidenceLevel = (isExplicitCoastal || isFipsCoastal) ? 'high' : 'medium';
     return {
       climateZone: 'coastal',
       climateMultiplier: 0.80,
-      climateConfidence: 'high',
+      climateConfidence: coastalConfidence,
       dutyCycle: { hvac: s === 'FL' ? 'extreme' : 'high' },
       lifespanModifiers: { hvac: -3, roof: -5, water_heater: -2 },
     };
@@ -549,6 +598,23 @@ export function calculateHVACLifecycle(
       impact: 'decrease',
       severity: bqDegradation >= 0.20 ? 'medium' : 'low',
       description: 'Lower construction quality correlates with shorter system lifespan'
+    });
+  }
+  // Advisory size drivers (Sprint 2): language only, no estimate changes
+  if (property.grossSqft && property.grossSqft > 3000) {
+    lifespanDrivers.push({
+      factor: 'Larger thermal load',
+      impact: 'decrease',
+      severity: 'low',
+      description: 'Larger homes increase system wear through higher thermal demand'
+    });
+  }
+  if (property.grossSqft && property.groundFloorSqft && property.groundFloorSqft < property.grossSqft * 0.6) {
+    lifespanDrivers.push({
+      factor: 'Multi-story layout',
+      impact: 'decrease',
+      severity: 'low',
+      description: 'Multi-level homes add zone complexity, increasing system cycling'
     });
   }
   
