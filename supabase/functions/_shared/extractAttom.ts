@@ -59,9 +59,15 @@ export function extractAttomFacts(attomData: any): AttomPropertyFacts {
   }
   
   // Handle transformed response from attom-property function
+  // Use normalizeAttom on _attomData if available for new fields
   if (attomData.propertyDetails) {
     const details = attomData.propertyDetails;
     const extended = attomData.extendedDetails || {};
+    
+    // Extract new fields via canonical normalizer if raw data is available
+    const normalized = attomData._attomData 
+      ? normalizeAttom(attomData._attomData)
+      : attomData.normalizedProfile || null;
     
     return {
       yearBuilt: details.yearBuilt || null,
@@ -73,13 +79,22 @@ export function extractAttomFacts(attomData: any): AttomPropertyFacts {
       roofMaterial: extended.building?.roofMaterial || null,
       heatingType: extended.utilities?.heatingType || null,
       coolingType: extended.utilities?.cooling || null,
-      confidence: 0.85, // ATTOM data is generally reliable
+      confidence: 0.85,
+      effectiveYearBuilt: normalized?.effectiveYearBuilt || null,
+      buildQuality: normalized?.buildQuality || null,
+      archStyle: normalized?.archStyle || null,
+      grossSqft: normalized?.grossSqft || null,
+      roomsTotal: normalized?.roomsTotal || null,
+      groundFloorSqft: normalized?.groundFloorSqft || null,
+      dataMatchConfidence: normalized?.dataMatchConfidence || 'low',
+      fipsCode: normalized?.fipsCode || null,
     };
   }
   
   // Handle raw ATTOM API response (property array format)
   if (attomData.property && Array.isArray(attomData.property) && attomData.property.length > 0) {
     const prop = attomData.property[0];
+    const normalized = normalizeAttom(prop);
     
     return {
       yearBuilt: prop.summary?.yearbuilt || prop.building?.summary?.yearBuilt || null,
@@ -92,6 +107,14 @@ export function extractAttomFacts(attomData: any): AttomPropertyFacts {
       heatingType: prop.utilities?.heatingtype || null,
       coolingType: prop.utilities?.coolingtype || null,
       confidence: 0.85,
+      effectiveYearBuilt: normalized.effectiveYearBuilt || null,
+      buildQuality: normalized.buildQuality,
+      archStyle: normalized.archStyle,
+      grossSqft: normalized.grossSqft,
+      roomsTotal: normalized.roomsTotal,
+      groundFloorSqft: normalized.groundFloorSqft,
+      dataMatchConfidence: normalized.dataMatchConfidence,
+      fipsCode: normalized.fipsCode,
     };
   }
   
@@ -100,18 +123,7 @@ export function extractAttomFacts(attomData: any): AttomPropertyFacts {
     return extractAttomFacts({ property: [attomData._attomData] });
   }
   
-  return {
-    yearBuilt: null,
-    squareFeet: null,
-    bedrooms: null,
-    bathrooms: null,
-    propertyType: null,
-    lotSizeSqFt: null,
-    roofMaterial: null,
-    heatingType: null,
-    coolingType: null,
-    confidence: 0,
-  };
+  return emptyFacts;
 }
 
 /**
