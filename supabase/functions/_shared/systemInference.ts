@@ -695,8 +695,15 @@ export function calculateRoofLifecycle(
   const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
   
   // Zone-aware lifespan adjustment (replaces binary isHotHumid ? -3 : 0)
-  const adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.roof, Math.round(lifespan.min * 0.6));
-  const adjustedMax = lifespan.max + climate.lifespanModifiers.roof;
+  let adjustedMin = Math.max(lifespan.min + climate.lifespanModifiers.roof, Math.round(lifespan.min * 0.6));
+  let adjustedMax = lifespan.max + climate.lifespanModifiers.roof;
+
+  // Build quality degradation (Sprint 1)
+  const bqDegradation = getBuildQualityDegradation(property.buildQuality);
+  if (bqDegradation > 0) {
+    adjustedMin = Math.round(adjustedMin * (1 - bqDegradation));
+    adjustedMax = Math.round(adjustedMax * (1 - bqDegradation));
+  }
   
   const replacementWindow: ReplacementWindow = {
     earlyYear: baseInstall + adjustedMin,
