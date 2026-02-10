@@ -16,6 +16,15 @@ export interface AttomPropertyFacts {
   heatingType: string | null;
   coolingType: string | null;
   confidence: number;
+  // Sprint 1 additions
+  effectiveYearBuilt: number | null;
+  buildQuality: 'A' | 'B' | 'C' | 'D' | null;
+  archStyle: string | null;
+  grossSqft: number | null;
+  roomsTotal: number | null;
+  groundFloorSqft: number | null;
+  dataMatchConfidence: 'high' | 'medium' | 'low';
+  fipsCode: string | null;
 }
 
 /**
