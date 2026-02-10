@@ -167,6 +167,48 @@ serve(async (req) => {
         console.log(`[property-enrichment] Will update folio to: ${folio} (source: attom)`);
       }
 
+      // Sprint 1: Extract and write-through new ATTOM fields via canonical normalizer
+      const rawProperty = attomData._attomData;
+      if (rawProperty) {
+        const normalized = normalizeAttom(rawProperty);
+        console.log('[property-enrichment] Normalized ATTOM profile:', {
+          effectiveYearBuilt: normalized.effectiveYearBuilt,
+          buildQuality: normalized.buildQuality,
+          archStyle: normalized.archStyle,
+          dataMatchConfidence: normalized.dataMatchConfidence,
+          fipsCode: normalized.fipsCode,
+          grossSqft: normalized.grossSqft,
+          roomsTotal: normalized.roomsTotal,
+          groundFloorSqft: normalized.groundFloorSqft,
+        });
+
+        // Write-through: only write if currently null (never overwrite user data)
+        if (normalized.effectiveYearBuilt && !home.year_built_effective) {
+          updates.year_built_effective = normalized.effectiveYearBuilt;
+        }
+        if (normalized.buildQuality && !home.build_quality) {
+          updates.build_quality = normalized.buildQuality;
+        }
+        if (normalized.archStyle && !home.arch_style) {
+          updates.arch_style = normalized.archStyle;
+        }
+        if (normalized.dataMatchConfidence && !home.data_match_confidence) {
+          updates.data_match_confidence = normalized.dataMatchConfidence;
+        }
+        if (normalized.fipsCode && !home.fips_code) {
+          updates.fips_code = normalized.fipsCode;
+        }
+        if (normalized.grossSqft && !home.gross_sqft) {
+          updates.gross_sqft = normalized.grossSqft;
+        }
+        if (normalized.roomsTotal && !home.rooms_total) {
+          updates.rooms_total = normalized.roomsTotal;
+        }
+        if (normalized.groundFloorSqft && !home.ground_floor_sqft) {
+          updates.ground_floor_sqft = normalized.groundFloorSqft;
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         console.log(`[property-enrichment] Updating home ${home_id} with:`, updates);
         const { error: updateError } = await supabase
