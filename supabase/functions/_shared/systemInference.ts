@@ -485,11 +485,18 @@ export function calculateHVACLifecycle(
   const dutyPenalty: Record<HvacDutyCycle, number> = {
     low: 0, moderate: -1, high: -3, extreme: -5,
   };
-  const adjustedMin = Math.max(
+  let adjustedMin = Math.max(
     baseLifespan.min + dutyPenalty[climate.dutyCycle.hvac] + climate.lifespanModifiers.hvac,
     Math.round(baseLifespan.min * 0.6) // Floor: never reduce below 60%
   );
-  const adjustedMax = baseLifespan.max + climate.lifespanModifiers.hvac;
+  let adjustedMax = baseLifespan.max + climate.lifespanModifiers.hvac;
+
+  // Build quality degradation (Sprint 1): shortens lifespan, never widens ranges
+  const bqDegradation = getBuildQualityDegradation(property.buildQuality);
+  if (bqDegradation > 0) {
+    adjustedMin = Math.round(adjustedMin * (1 - bqDegradation));
+    adjustedMax = Math.round(adjustedMax * (1 - bqDegradation));
+  }
 
   const baseInstall = resolvedInstall.installYear || property.yearBuilt;
   const uncertainty = windowUncertaintyFromConfidence(resolvedInstall.confidenceScore);
