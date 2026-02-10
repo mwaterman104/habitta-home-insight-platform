@@ -33,19 +33,29 @@ export interface AttomPropertyFacts {
  * Extract normalized property facts from ATTOM response
  */
 export function extractAttomFacts(attomData: any): AttomPropertyFacts {
+  const emptyFacts: AttomPropertyFacts = {
+    yearBuilt: null,
+    squareFeet: null,
+    bedrooms: null,
+    bathrooms: null,
+    propertyType: null,
+    lotSizeSqFt: null,
+    roofMaterial: null,
+    heatingType: null,
+    coolingType: null,
+    confidence: 0,
+    effectiveYearBuilt: null,
+    buildQuality: null,
+    archStyle: null,
+    grossSqft: null,
+    roomsTotal: null,
+    groundFloorSqft: null,
+    dataMatchConfidence: 'low',
+    fipsCode: null,
+  };
+
   if (!attomData) {
-    return {
-      yearBuilt: null,
-      squareFeet: null,
-      bedrooms: null,
-      bathrooms: null,
-      propertyType: null,
-      lotSizeSqFt: null,
-      roofMaterial: null,
-      heatingType: null,
-      coolingType: null,
-      confidence: 0,
-    };
+    return emptyFacts;
   }
   
   // Handle transformed response from attom-property function
