@@ -760,6 +760,14 @@ export function calculateRoofLifecycle(
       description: 'Repeated freezing and thawing damages underlayment and flashing'
     });
   }
+  if (bqDegradation > 0) {
+    lifespanDrivers.push({
+      factor: 'Construction quality',
+      impact: 'decrease',
+      severity: bqDegradation >= 0.20 ? 'medium' : 'low',
+      description: 'Lower construction quality correlates with earlier roof degradation'
+    });
+  }
   
   return {
     systemId: 'roof',
