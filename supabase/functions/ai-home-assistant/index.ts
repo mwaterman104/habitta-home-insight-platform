@@ -547,7 +547,8 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     { data: predictions },
     { data: home },
     { data: homeAssets },
-    { data: openEvents }
+    { data: openEvents },
+    { data: permits }
   ] = await Promise.all([
     // CANONICAL TRUTH: Read from 'systems' table (same as capital-timeline)
     supabase.from('systems').select('*').eq('home_id', propertyId),
@@ -558,11 +559,13 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     // HOME RECORD: Fetch active assets (VIN layer)
     supabase.from('home_assets').select('*').eq('home_id', propertyId).eq('status', 'active'),
     // HOME RECORD: Fetch open events for follow-up linking
-    supabase.from('home_events').select('*').eq('home_id', propertyId).eq('status', 'open').order('created_at', { ascending: false }).limit(5)
+    supabase.from('home_events').select('*').eq('home_id', propertyId).eq('status', 'open').order('created_at', { ascending: false }).limit(5),
+    // PERMITS: Fetch for authority-aware system updates
+    supabase.from('permits').select('*').eq('home_id', propertyId).order('date_issued', { ascending: false }).limit(20)
   ]);
 
   console.log(`[getPropertyContext] Fetched ${rawSystems?.length || 0} systems from canonical 'systems' table for home ${propertyId}`);
-  console.log(`[getPropertyContext] Fetched ${homeAssets?.length || 0} home assets, ${openEvents?.length || 0} open events`);
+  console.log(`[getPropertyContext] Fetched ${homeAssets?.length || 0} home assets, ${openEvents?.length || 0} open events, ${permits?.length || 0} permits`);
 
   // Build property context for lifecycle calculations
   const propertyContext: LifecyclePropertyContext = {
@@ -604,6 +607,8 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     // HOME RECORD context
     homeAssets: homeAssets || [],
     openEvents: openEvents || [],
+    // PERMITS: Include for authority-aware updates
+    permits: permits || [],
   };
 }
 
@@ -990,6 +995,15 @@ FORBIDDEN when referencing verified systems:
     return `- [${e.id}] ${e.title} (${e.severity}, reported ${timeNote})`;
   }).join('\n');
 
+  // Build permit context for authority-aware updates
+  const permitsInfo = (context.permits || []).map((p: any) => {
+    const permitType = p.permit_type || 'unknown type';
+    const issueDate = p.date_issued ? new Date(p.date_issued).getFullYear() : 'unknown date';
+    const systemTag = p.system_tags && p.system_tags.length > 0 ? ` (${p.system_tags.join(', ')})` : '';
+    const descNote = p.description ? `: ${p.description}` : '';
+    return `- ${permitType} issued ${issueDate}${systemTag}${descNote}`;
+  }).join('\n');
+
   // Base personality
   let prompt = `You are Habitta AI, an expert home maintenance advisor. You are a calm, knowledgeable steward — not a pushy assistant.
 
@@ -999,6 +1013,9 @@ ${systemInfo || 'No systems registered yet'}
 
 HOME ASSETS ON FILE:
 ${homeAssetsInfo || 'No assets discovered yet'}
+
+PERMITS ON FILE:
+${permitsInfo || 'No permits discovered yet'}
 
 OPEN ISSUES:
 ${openEventsInfo || 'No open issues'}
@@ -1126,6 +1143,12 @@ When a user tells you about their home systems (installation dates, replacements
 
 NEVER claim to have updated information without actually calling the tool.
 
+AUTHORITY PRECEDENCE (CRITICAL):
+If permits exist for a system, they represent high-authority data. Before accepting a conflicting user claim:
+1. Reference the permit: "I found a permit from [year] for your [system]. This suggests it was replaced then."
+2. Ask for confirmation: "Can you confirm whether that's the replacement you're referring to?"
+3. DO NOT proceed with update_system_info if the claim contradicts permit evidence without explicit user confirmation.
+
 EXAMPLES THAT REQUIRE update_system_info:
 - "The roof was added in 2008" → update_system_info(system_type: 'roof', install_year: 2008, replacement_status: 'replaced')
 - "The AC is original to the house" → update_system_info(system_type: 'hvac', replacement_status: 'original')
@@ -1135,6 +1158,7 @@ EXAMPLES THAT DO NOT CALL THE TOOL (ask clarifying question instead):
 - "I think the roof was replaced sometime in the late 2000s" → Ask for specific year
 - "The AC might be around 10 years old" → Ask for confirmation
 - "I'm not sure when we got the water heater" → Acknowledge uncertainty, do not call tool
+- "The HVAC is original" BUT a permit shows an HVAC installation in 2023 → Ask for confirmation about the 2023 replacement
 
 EVIDENCE ANCHORING RULE (MANDATORY):
 When discussing any system, you MUST:
@@ -1909,6 +1933,7 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
       // HARDENING FIX #3: Intelligible failure state when homeId or userId missing
       const homeId = context?.homeId;
       const userId = context?.userId;
+      const existingPermits = context?.permits || [];
       
       if (!homeId) {
         console.error('[update_system_info] No homeId in context');
@@ -1927,6 +1952,29 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
           success: false,
           reason: 'no_auth',
           message: 'I can\'t save that update because you\'re not signed in. Please sign in and try again.'
+        });
+      }
+
+      // AUTHORITY GUARD: Check for permit-verified data before allowing overwrite
+      const systemKey = parsedArgs.system_type?.toLowerCase() || '';
+      const permitForSystem = existingPermits.find((p: any) => 
+        p.system_tags && p.system_tags.some((tag: string) => 
+          tag.toLowerCase().includes(systemKey)
+        ) && p.date_issued
+      );
+
+      if (permitForSystem && parsedArgs.replacement_status !== 'replaced') {
+        // User is trying to claim system is "original" or "unknown", but permit shows replacement
+        const permitYear = new Date(permitForSystem.date_issued).getFullYear();
+        console.warn('[update_system_info] Authority conflict: permit shows replacement in', permitYear, 'but user claims', parsedArgs.replacement_status);
+        
+        return JSON.stringify({
+          type: 'system_update',
+          success: false,
+          reason: 'authority_conflict',
+          permitYear,
+          permitDescription: permitForSystem.description,
+          message: `I found a permit from ${permitYear} for this system. This suggests the system was replaced then. Before I save conflicting information, can you confirm whether this replaced system is what you're referring to?`
         });
       }
       
