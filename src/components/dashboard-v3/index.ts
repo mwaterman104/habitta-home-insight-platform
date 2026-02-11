@@ -15,6 +15,7 @@ export { SystemWatch } from './SystemWatch';
 
 // V1 Chat Spec: Baseline Surface (Evidence Layer inside ChatConsole)
 export { BaselineSurface } from './BaselineSurface';
+export { HomeSystemsPanel } from './HomeSystemsPanel';
 
 // Context Components
 export { LocalConditions } from './LocalConditions';

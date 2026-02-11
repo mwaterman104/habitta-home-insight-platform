@@ -341,7 +341,7 @@ export default function DashboardV3() {
   // UI mapping to user-facing labels (Stable/Watch/Plan) happens
   // downstream in PrimarySystemCard and SecondarySystemsList.
   // ============================================================
-  const mobileBaselineSystems: BaselineSystem[] = useMemo(() => {
+  const baselineSystems: BaselineSystem[] = useMemo(() => {
     if (!capitalTimeline?.systems) return [];
     const currentYear = new Date().getFullYear();
     return capitalTimeline.systems.map(sys => {
@@ -605,6 +605,8 @@ export default function DashboardV3() {
         handleSystemUpdated={handleSystemUpdated}
         homeSystems={homeSystems}
         yearBuilt={userHome.year_built}
+        baselineSystems={baselineSystems}
+        homeConfidence={homeConfidence}
       />
     </FocusStateProvider>
   );
@@ -645,8 +647,21 @@ function DesktopLayout({
   handleSystemUpdated,
   homeSystems,
   yearBuilt,
+  baselineSystems,
+  homeConfidence,
 }: any) {
   const { setFocus } = useFocusState();
+
+  // Derive confidence level from baseline systems (same logic as MiddleColumn)
+  const confidenceLevel = useMemo<'Unknown' | 'Early' | 'Moderate' | 'High'>(() => {
+    const systems = baselineSystems || [];
+    if (systems.length === 0) return 'Unknown';
+    const avgConfidence = systems.reduce((sum: number, s: any) => sum + s.confidence, 0) / systems.length;
+    if (avgConfidence >= 0.7) return 'High';
+    if (avgConfidence >= 0.5) return 'Moderate';
+    if (avgConfidence >= 0.3) return 'Early';
+    return 'Unknown';
+  }, [baselineSystems]);
 
   // Wrap system focus to also set FocusState for right column
   const onSystemClick = (systemKey: string) => {
@@ -738,6 +753,9 @@ function DesktopLayout({
                   })) || []}
                   maintenanceLoading={tasksLoading}
                   capitalSystems={capitalTimeline?.systems || []}
+                  baselineSystems={baselineSystems}
+                  confidenceLevel={confidenceLevel}
+                  yearBuilt={yearBuilt}
                 />
               </aside>
             </ResizablePanel>
