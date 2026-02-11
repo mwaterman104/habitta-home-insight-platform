@@ -209,6 +209,9 @@ export function ChatConsole({
     state: s.state,
   }));
 
+  // Import focus state hook (single call, used for both continuity and focus setting)
+  const { focus: currentFocus, setFocus, isUserLocked, setFocusData } = useFocusState();
+
   const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
@@ -218,10 +221,9 @@ export function ChatConsole({
     // Epistemic coherence: pass baseline context to AI
     baselineSource,
     visibleBaseline,
+    // Focus continuity: pass current right-column focus to edge function
+    activeFocus: currentFocus,
   });
-
-  // Import focus state hook
-  const { setFocus, isUserLocked, setFocusData } = useFocusState();
 
   // Auto-send message guard (single-fire per unique message value)
   const hasSentAutoMessage = useRef<string | null>(null);
