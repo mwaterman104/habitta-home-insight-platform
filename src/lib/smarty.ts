@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { invokeWithRetry } from "@/lib/supabaseRetry";
 
 export interface AutocompleteOptions {
   search: string;
@@ -15,7 +16,7 @@ export interface AddressPayload {
   include?: string;
 }
 
-// Use public autocomplete function for address suggestions
+// Autocomplete is public (no JWT), no retry needed
 export async function smartyAutocomplete(options: AutocompleteOptions) {
   const { data, error } = await supabase.functions.invoke('smarty-autocomplete', {
     body: options
@@ -30,51 +31,21 @@ export async function smartyAutocomplete(options: AutocompleteOptions) {
 }
 
 export async function smartyStandardizeGeocode(addr: AddressPayload) {
-  const { data, error } = await supabase.functions.invoke('smarty-proxy', {
-    body: { 
-      action: 'standardize_geocode', 
-      payload: addr 
-    }
+  return invokeWithRetry('smarty-proxy', {
+    body: { action: 'standardize_geocode', payload: addr }
   });
-
-  if (error) {
-    console.error('Smarty standardize/geocode error:', error);
-    throw error;
-  }
-
-  return data;
 }
 
 export async function smartyEnrich(addr: AddressPayload) {
-  const { data, error } = await supabase.functions.invoke('smarty-proxy', {
-    body: { 
-      action: 'enrich', 
-      payload: addr 
-    }
+  return invokeWithRetry('smarty-proxy', {
+    body: { action: 'enrich', payload: addr }
   });
-
-  if (error) {
-    console.error('Smarty enrich error:', error);
-    throw error;
-  }
-
-  return data;
 }
 
 export async function smartyFinancialLookup(addr: AddressPayload) {
-  const { data, error } = await supabase.functions.invoke('smarty-proxy', {
-    body: { 
-      action: 'financial_lookup', 
-      payload: addr 
-    }
+  return invokeWithRetry('smarty-proxy', {
+    body: { action: 'financial_lookup', payload: addr }
   });
-
-  if (error) {
-    console.error('Smarty financial lookup error:', error);
-    throw error;
-  }
-
-  return data;
 }
 
 // Compute canonical hash for address deduplication
