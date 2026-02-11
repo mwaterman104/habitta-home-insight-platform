@@ -15,7 +15,18 @@ import {
 } from "@/lib/analytics/mobileEvents";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { HomeConfidenceResult } from "@/services/homeConfidence";
+import { CHAT_FIRST_TURN } from "@/lib/mobileCopy";
 import { useEffect, useState, useCallback } from "react";
+
+// ============================================================
+// MobileChatIntent — carries CTA context to MobileChatSheet
+// ============================================================
+export interface MobileChatIntent {
+  systemKey?: string;
+  systemLabel?: string;
+  initialAssistantMessage?: string;
+  autoSendMessage?: string;
+}
 
 // ============================================================
 // MOBILE RENDER CONTRACT ENFORCEMENT
@@ -37,7 +48,7 @@ interface MobileDashboardViewProps {
   systems: SystemTimelineEntry[];
   healthStatus: 'healthy' | 'attention' | 'critical';
   onSystemTap: (systemKey: string) => void;
-  onChatOpen: () => void;
+  onChatOpen: (intent?: MobileChatIntent) => void;
   homeConfidence: HomeConfidenceResult | null;
   filterActive?: boolean;
   onClearFilter?: () => void;
@@ -98,11 +109,11 @@ export function MobileDashboardView({
 
   // Upload handlers — open chat with upload context
   const handleUploadDoc = useCallback(() => {
-    onChatOpen();
+    onChatOpen({ initialAssistantMessage: CHAT_FIRST_TURN.uploadDoc() });
   }, [onChatOpen]);
 
   const handleUploadPhoto = useCallback(() => {
-    onChatOpen();
+    onChatOpen({ initialAssistantMessage: CHAT_FIRST_TURN.uploadPhoto() });
   }, [onChatOpen]);
 
   // Filtered empty state (badge filter active but no matches)
@@ -173,7 +184,11 @@ export function MobileDashboardView({
         <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '50ms' }}>
           <ChatInsightBanner
             systemLabel={primary!.system.systemLabel}
-            onTap={onChatOpen}
+            onTap={() => onChatOpen({
+              systemKey: primary!.system.systemId,
+              systemLabel: primary!.system.systemLabel,
+              initialAssistantMessage: CHAT_FIRST_TURN.replacementPlanning(primary!.system.systemLabel),
+            })}
           />
         </div>
       )}
@@ -181,7 +196,19 @@ export function MobileDashboardView({
       {/* ── Primary System Card ── */}
       {primary && (
         <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
-          <PrimarySystemCard system={primary.system} onAction={onChatOpen} />
+          <PrimarySystemCard
+            system={primary.system}
+            onAction={() => {
+              const isAtRisk = primaryLateLife !== 'not-late';
+              onChatOpen({
+                systemKey: primary.system.systemId,
+                systemLabel: primary.system.systemLabel,
+                initialAssistantMessage: isAtRisk
+                  ? CHAT_FIRST_TURN.replacementPlanning(primary.system.systemLabel)
+                  : CHAT_FIRST_TURN.logService(primary.system.systemLabel),
+              });
+            }}
+          />
         </div>
       )}
 

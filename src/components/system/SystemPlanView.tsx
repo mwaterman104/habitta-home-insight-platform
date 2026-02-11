@@ -35,8 +35,8 @@ interface SystemPlanViewProps {
   onBack: () => void;
   onStartPlanning: () => void;
   onAddMaintenance: () => void;
-  /** Callback to expand chat sheet */
-  onChatExpand?: () => void;
+  /** Callback to expand chat sheet, with optional reason */
+  onChatExpand?: (reason?: string) => void;
 }
 
 // ============== Emergency Multipliers (system-specific) ==============
@@ -191,11 +191,12 @@ function ContextualChatPrompt({
   confidenceLevel: 'high' | 'moderate' | 'low';
   isLateLife: boolean;
   systemId: string;
-  onTap?: () => void;
+  onTap?: (reason?: string) => void;
 }) {
   const narrative = getSystemNarrative(systemId);
   
   let message: string | null = null;
+  const reason = confidenceLevel !== 'high' ? 'confidence_boost' : 'replacement_planning';
   
   if (confidenceLevel !== 'high' && narrative) {
     message = narrative.confidenceTip;
@@ -208,9 +209,9 @@ function ContextualChatPrompt({
   const handleTap = () => {
     trackMobileEvent(MOBILE_EVENTS.CHAT_PROMPT_TAPPED, {
       systemKey: systemId,
-      reason: confidenceLevel !== 'high' ? 'confidence_boost' : 'replacement_planning',
+      reason,
     });
-    onTap();
+    onTap(reason);
   };
   
   return (

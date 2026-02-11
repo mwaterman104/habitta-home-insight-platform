@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { isValidSystemKey, getSystemLabel as getSystemMetaLabel, SUPPORTED_SYSTEMS } from "@/lib/systemMeta";
 import { CHAT_PRIMING, CHAT_FIRST_TURN, getSystemDisplayName } from "@/lib/mobileCopy";
+// Note: system variable used in handleChatExpand may be null at handler definition time,
+// but is guaranteed non-null when rendered (after null guards)
 
 /**
  * SystemPlanPage - Route handler for /systems/:systemKey/plan
@@ -42,6 +44,7 @@ export default function SystemPlanPage() {
   // Chat sheet state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatIntent, setChatIntent] = useState<'general' | 'planning'>('general');
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>(undefined);
   
   // Fetch user's home
   const { data: home, isLoading: homeLoading } = useQuery({
@@ -113,11 +116,22 @@ export default function SystemPlanPage() {
   
   const handleStartPlanning = () => {
     setChatIntent('planning');
+    setChatInitialMessage(undefined); // uses existing CHAT_FIRST_TURN.systemPlanning
     setChatOpen(true);
   };
   
-  const handleChatExpand = () => {
-    setChatIntent('general');
+  const handleChatExpand = (reason?: string) => {
+    const name = system?.systemLabel || getSystemDisplayName(systemKey || '');
+    if (reason === 'confidence_boost') {
+      setChatIntent('general');
+      setChatInitialMessage(CHAT_FIRST_TURN.confidenceBoost(name));
+    } else if (reason === 'replacement_planning') {
+      setChatIntent('planning');
+      setChatInitialMessage(CHAT_FIRST_TURN.replacementPlanning(name));
+    } else {
+      setChatIntent('general');
+      setChatInitialMessage(undefined);
+    }
     setChatOpen(true);
   };
   
@@ -276,7 +290,7 @@ export default function SystemPlanPage() {
       {/* Mobile Chat Sheet */}
       <MobileChatSheet
         open={chatOpen}
-        onClose={() => setChatOpen(false)}
+        onClose={() => { setChatOpen(false); setChatInitialMessage(undefined); }}
         propertyId={home?.id || ''}
         baselineSystems={baselineSystems}
         confidenceLevel="Moderate"
@@ -284,9 +298,11 @@ export default function SystemPlanPage() {
           systemKey: systemKey!, 
           trigger: chatIntent === 'planning' ? 'start_planning' : 'plan_view' 
         }}
-        {...(chatIntent === 'planning'
-          ? { initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(displayName) }
-          : { primingMessage }
+        {...(chatInitialMessage
+          ? { initialAssistantMessage: chatInitialMessage }
+          : chatIntent === 'planning'
+            ? { initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(displayName) }
+            : { primingMessage }
         )}
         chatMode="silent_steward"
         baselineSource="inferred"
