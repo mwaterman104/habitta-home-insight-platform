@@ -13,6 +13,7 @@ import { SystemPanelEvidence } from "./SystemPanelEvidence";
 import { SystemPanelTimeline } from "./SystemPanelTimeline";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { SystemTab } from "@/types/focusState";
+import { useRef, useState } from "react";
 
 interface SystemPanelProps {
   systemId: string;
@@ -41,14 +42,27 @@ function getConfidenceBadge(system?: SystemTimelineEntry) {
   }
 }
 
-export function SystemPanel({ systemId, system, initialTab = 'overview' }: SystemPanelProps) {
-  const { clearFocus } = useFocusState();
-  const status = getStatusBadge(system);
-  const currentYear = new Date().getFullYear();
-  const age = system?.installYear ? currentYear - system.installYear : undefined;
+// Tab persistence: remembers last-viewed tab per systemId
+const tabMemoryRef = useRef<Map<string, SystemTab>>(new Map());
 
-  return (
-    <div className="space-y-4">
+export function SystemPanel({ systemId, system, initialTab = 'overview' }: SystemPanelProps) {
+   const { clearFocus } = useFocusState();
+   const [activeTab, setActiveTab] = useState<SystemTab>(() => {
+     return tabMemoryRef.current.get(systemId) ?? initialTab;
+   });
+
+   const status = getStatusBadge(system);
+   const currentYear = new Date().getFullYear();
+   const age = system?.installYear ? currentYear - system.installYear : undefined;
+
+   const handleTabChange = (tab: string) => {
+     const newTab = tab as SystemTab;
+     setActiveTab(newTab);
+     tabMemoryRef.current.set(systemId, newTab);
+   };
+
+   return (
+     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1.5">
@@ -70,24 +84,24 @@ export function SystemPanel({ systemId, system, initialTab = 'overview' }: Syste
         </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue={initialTab} className="w-full">
-        <TabsList className="w-full">
-          <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
-          <TabsTrigger value="evidence" className="flex-1">Evidence</TabsTrigger>
-          <TabsTrigger value="timeline" className="flex-1">Timeline</TabsTrigger>
-        </TabsList>
+       {/* Tabs */}
+       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+         <TabsList className="w-full">
+           <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
+           <TabsTrigger value="evidence" className="flex-1">Evidence</TabsTrigger>
+           <TabsTrigger value="timeline" className="flex-1">Timeline</TabsTrigger>
+         </TabsList>
 
-        <TabsContent value="overview">
-          <SystemPanelOverview system={system} />
-        </TabsContent>
-        <TabsContent value="evidence">
-          <SystemPanelEvidence system={system} />
-        </TabsContent>
-        <TabsContent value="timeline">
-          <SystemPanelTimeline system={system} />
-        </TabsContent>
-      </Tabs>
+         <TabsContent value="overview" className="animate-in fade-in duration-150">
+           <SystemPanelOverview system={system} />
+         </TabsContent>
+         <TabsContent value="evidence" className="animate-in fade-in duration-150">
+           <SystemPanelEvidence system={system} />
+         </TabsContent>
+         <TabsContent value="timeline" className="animate-in fade-in duration-150">
+           <SystemPanelTimeline system={system} />
+         </TabsContent>
+       </Tabs>
     </div>
   );
 }
