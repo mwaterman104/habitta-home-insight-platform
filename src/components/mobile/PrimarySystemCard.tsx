@@ -1,9 +1,10 @@
-import { Droplets, Wind, Home, Zap, Wrench, type LucideIcon } from "lucide-react";
+import { Droplets, Wind, Home, Zap, Wrench, ArrowRight, type LucideIcon } from "lucide-react";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import { getRemainingYearsForSystem, getLateLifeState } from "@/services/homeOutlook";
 
 interface PrimarySystemCardProps {
   system: SystemTimelineEntry;
+  onAction?: () => void;
 }
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -65,13 +66,15 @@ function getDescription(system: SystemTimelineEntry): string {
   return parts.length > 0 ? parts.join('; ') + '.' : 'Limited records available.';
 }
 
-export function PrimarySystemCard({ system }: PrimarySystemCardProps) {
+export function PrimarySystemCard({ system, onAction }: PrimarySystemCardProps) {
   const Icon = ICON_MAP[system.systemId] || Wrench;
   const lateLife = getLateLifeState(system);
   const isAtRisk = lateLife !== 'not-late';
   const borderClass = isAtRisk ? 'border-habitta-clay/40' : 'border-habitta-stone/20';
   const qualityDot = QUALITY_DOT_COLORS[system.dataQuality] || 'bg-habitta-stone';
   const qualityLabel = QUALITY_LABELS[system.dataQuality] || 'Unknown';
+
+  const ctaLabel = isAtRisk ? 'Explore replacement planning' : 'Log recent service';
 
   return (
     <section className={`w-full p-5 bg-habitta-ivory border-2 ${borderClass} rounded-sm`}>
@@ -108,6 +111,17 @@ export function PrimarySystemCard({ system }: PrimarySystemCardProps) {
                 <span className={`w-2 h-2 rounded-full ${qualityDot}`} />
               </div>
             </div>
+
+            {/* Contextual CTA */}
+            {onAction && (
+              <button
+                onClick={onAction}
+                className="flex items-center gap-1.5 pt-2 mt-1 text-habitta-slate font-semibold text-meta uppercase tracking-wider transition-colors hover:text-habitta-charcoal"
+              >
+                {ctaLabel}
+                <ArrowRight size={12} strokeWidth={2} />
+              </button>
+            )}
           </div>
         </div>
       </div>

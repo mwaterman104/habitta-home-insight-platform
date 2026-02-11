@@ -5,7 +5,9 @@ import { DataConfidenceBar } from "@/components/mobile/DataConfidenceBar";
 import { PrimarySystemCard } from "@/components/mobile/PrimarySystemCard";
 import { SystemLedger } from "@/components/mobile/SystemLedger";
 import { MissingDocumentation } from "@/components/mobile/MissingDocumentation";
+import { ChatInsightBanner } from "@/components/mobile/ChatInsightBanner";
 import { selectPrimarySystem } from "@/services/priorityScoring";
+import { getLateLifeState } from "@/services/homeOutlook";
 import { 
   trackMobileEvent, 
   checkPrimaryFocusChanged,
@@ -120,8 +122,11 @@ export function MobileDashboardView({
     );
   }
 
+  const primaryLateLife = primary ? getLateLifeState(primary.system) : 'not-late';
+  const showInsightBanner = primary && primaryLateLife !== 'not-late';
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* ── Data Confidence Bar ── */}
       <div className={animClass}>
         {homeConfidence ? (
@@ -133,10 +138,20 @@ export function MobileDashboardView({
         )}
       </div>
 
+      {/* ── Chat Insight Banner (only for late-life primary) ── */}
+      {showInsightBanner && (
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '50ms' }}>
+          <ChatInsightBanner
+            systemLabel={primary!.system.systemLabel}
+            onTap={onChatOpen}
+          />
+        </div>
+      )}
+
       {/* ── Primary System Card ── */}
       {primary && (
         <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
-          <PrimarySystemCard system={primary.system} />
+          <PrimarySystemCard system={primary.system} onAction={onChatOpen} />
         </div>
       )}
 
