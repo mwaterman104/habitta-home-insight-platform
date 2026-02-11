@@ -32,7 +32,8 @@ import BottomNavigation from "@/components/BottomNavigation";
 import { TopHeader } from "@/components/dashboard-v3/TopHeader";
 import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
-import { RightColumn } from "@/components/dashboard-v3/RightColumn";
+import { RightColumnSurface } from "@/components/dashboard-v3/RightColumnSurface";
+import { FocusStateProvider, useFocusState } from "@/contexts/FocusStateContext";
 import { MobileDashboardView } from "@/components/dashboard-v3/mobile";
 import type { MobileChatIntent } from "@/components/dashboard-v3/mobile/MobileDashboardView";
 import { MobileSystemDrawer } from "@/components/mobile";
@@ -376,7 +377,7 @@ export default function DashboardV3() {
     navigate(`/system/${systemKey}`);
   };
 
-  // Handle system click without navigation (just focus)
+  // Handle system click without navigation — set focus state for right column
   const handleSystemFocus = (systemKey: string) => {
     selectSystem(systemKey);
   };
@@ -570,7 +571,89 @@ export default function DashboardV3() {
     );
   }
 
-  // Desktop: Full 3-column layout
+  // Desktop: Full 3-column layout — wrapped in FocusStateProvider
+  return (
+    <FocusStateProvider>
+      <DesktopLayout
+        fullAddress={fullAddress}
+        getHealthStatus={getHealthStatus}
+        handleAddressClick={handleAddressClick}
+        isXlScreen={isXlScreen}
+        forecastLoading={forecastLoading}
+        hvacLoading={hvacLoading}
+        timelineLoading={timelineLoading}
+        userHome={userHome}
+        maintenanceTasks={maintenanceTasks}
+        tasksLoading={tasksLoading}
+        capitalTimeline={capitalTimeline}
+        homeForecast={homeForecast}
+        hvacPrediction={hvacPrediction}
+        maintenanceTimelineData={maintenanceTimelineData}
+        shouldChatBeOpen={shouldChatBeOpen}
+        handleChatExpandChange={handleChatExpandChange}
+        hasAgentMessage={hasAgentMessage}
+        handleSystemFocus={handleSystemFocus}
+        isEnriching={isEnriching}
+        advisorState={advisorState}
+        focusContext={focusContext}
+        openingMessage={openingMessage}
+        confidence={confidence}
+        risk={risk}
+        handleUserReply={handleUserReply}
+        handleTaskComplete={handleTaskComplete}
+        chatModeContext={chatModeContext}
+        handleSystemUpdated={handleSystemUpdated}
+        homeSystems={homeSystems}
+        yearBuilt={userHome.year_built}
+      />
+    </FocusStateProvider>
+  );
+}
+
+/**
+ * DesktopLayout - Inner component consuming FocusStateContext.
+ * Extracted so useFocusState() is called within FocusStateProvider.
+ */
+function DesktopLayout({
+  fullAddress,
+  getHealthStatus,
+  handleAddressClick,
+  isXlScreen,
+  forecastLoading,
+  hvacLoading,
+  timelineLoading,
+  userHome,
+  maintenanceTasks,
+  tasksLoading,
+  capitalTimeline,
+  homeForecast,
+  hvacPrediction,
+  maintenanceTimelineData,
+  shouldChatBeOpen,
+  handleChatExpandChange,
+  hasAgentMessage,
+  handleSystemFocus,
+  isEnriching,
+  advisorState,
+  focusContext,
+  openingMessage,
+  confidence,
+  risk,
+  handleUserReply,
+  handleTaskComplete,
+  chatModeContext,
+  handleSystemUpdated,
+  homeSystems,
+  yearBuilt,
+}: any) {
+  const { setFocus } = useFocusState();
+
+  // Wrap system focus to also set FocusState for right column
+  const onSystemClick = (systemKey: string) => {
+    handleSystemFocus(systemKey);
+    setFocus({ type: 'system', systemId: systemKey }, { push: true });
+  };
+
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       <TopHeader 
@@ -580,7 +663,6 @@ export default function DashboardV3() {
       />
       
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left Column - Navigation + Identity (Fixed 240px) */}
         <aside className="w-60 border-r bg-card shrink-0 hidden lg:flex flex-col">
           <LeftColumn 
             address={fullAddress}
@@ -588,16 +670,14 @@ export default function DashboardV3() {
           />
         </aside>
         
-        {/* Resizable Middle + Right Columns (xl screens) - JavaScript conditional rendering */}
         {isXlScreen ? (
           <ResizablePanelGroup 
             direction="horizontal" 
             className="flex-1 min-h-0"
-            onLayout={(sizes) => {
+            onLayout={(sizes: number[]) => {
               localStorage.setItem('dashboard_right_panel_size', sizes[1].toString());
             }}
           >
-            {/* Middle Column - Primary Canvas */}
             <ResizablePanel 
               defaultSize={60} 
               minSize={55}
@@ -616,7 +696,7 @@ export default function DashboardV3() {
                   onChatExpandChange={handleChatExpandChange}
                   hasAgentMessage={hasAgentMessage}
                   propertyId={userHome.id}
-                  onSystemClick={handleSystemFocus}
+                  onSystemClick={onSystemClick}
                   isEnriching={isEnriching}
                   advisorState={advisorState}
                   focusContext={focusContext.type === 'SYSTEM' ? { systemKey: focusContext.systemKey, trigger: 'user' } : undefined}
@@ -629,29 +709,27 @@ export default function DashboardV3() {
                   systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
                   onSystemUpdated={handleSystemUpdated}
                   homeSystems={homeSystems}
-                  yearBuilt={userHome.year_built}
+                  yearBuilt={yearBuilt}
                 />
               </div>
             </ResizablePanel>
             
-            {/* Drag Handle */}
             <ResizableHandle withHandle />
             
-            {/* Right Column - Context Rail (40% default) */}
             <ResizablePanel 
               defaultSize={parseFloat(localStorage.getItem('dashboard_right_panel_size') || '40')} 
               minSize={30} 
               maxSize={45}
             >
               <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
-                <RightColumn
+                <RightColumnSurface
                   loading={forecastLoading || hvacLoading || timelineLoading}
                   latitude={userHome.latitude}
                   longitude={userHome.longitude}
                   address={userHome.address}
                   city={userHome.city}
                   state={userHome.state}
-                  maintenanceTasks={maintenanceTasks?.map(t => ({
+                  maintenanceTasks={maintenanceTasks?.map((t: any) => ({
                     id: t.id,
                     title: t.title,
                     due_date: t.due_date,
@@ -659,12 +737,12 @@ export default function DashboardV3() {
                     status: t.status || 'pending',
                   })) || []}
                   maintenanceLoading={tasksLoading}
+                  capitalSystems={capitalTimeline?.systems || []}
                 />
               </aside>
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (
-          /* Middle Column only (lg screens without right column) */
           <div className="flex-1 min-h-0 flex flex-col p-6 pb-0 hidden lg:flex">
             <MiddleColumn
               homeForecast={homeForecast}
@@ -678,7 +756,7 @@ export default function DashboardV3() {
               onChatExpandChange={handleChatExpandChange}
               hasAgentMessage={hasAgentMessage}
               propertyId={userHome.id}
-              onSystemClick={handleSystemFocus}
+              onSystemClick={onSystemClick}
               isEnriching={isEnriching}
               isMobile={true}
               advisorState={advisorState}
