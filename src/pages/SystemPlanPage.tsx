@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { SystemPlanView } from "@/components/system/SystemPlanView";
-import { MobileChatSheet } from "@/components/dashboard-v3/mobile";
+// MobileChatSheet replaced by /chat route navigation
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 import { Loader2, AlertTriangle } from "lucide-react";
@@ -41,10 +41,7 @@ export default function SystemPlanPage() {
   // Check if system has valid config (using SUPPORTED_SYSTEMS as proxy)
   const hasValidConfig = systemKey ? SUPPORTED_SYSTEMS.includes(systemKey as any) : false;
   
-  // Chat sheet state
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatIntent, setChatIntent] = useState<'general' | 'planning'>('general');
-  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>(undefined);
+  // Chat state removed — navigates to /chat route instead
   
   // Fetch user's home
   const { data: home, isLoading: homeLoading } = useQuery({
@@ -115,24 +112,29 @@ export default function SystemPlanPage() {
   };
   
   const handleStartPlanning = () => {
-    setChatIntent('planning');
-    setChatInitialMessage(undefined); // uses existing CHAT_FIRST_TURN.systemPlanning
-    setChatOpen(true);
+    const name = system?.systemLabel || getSystemDisplayName(systemKey || '');
+    navigate('/chat', { state: { intent: {
+      systemKey,
+      systemLabel: name,
+      initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(name),
+      focusContext: { systemKey: systemKey!, trigger: 'start_planning' },
+    }}});
   };
   
   const handleChatExpand = (reason?: string) => {
     const name = system?.systemLabel || getSystemDisplayName(systemKey || '');
+    let initialMsg: string | undefined;
     if (reason === 'confidence_boost') {
-      setChatIntent('general');
-      setChatInitialMessage(CHAT_FIRST_TURN.confidenceBoost(name));
+      initialMsg = CHAT_FIRST_TURN.confidenceBoost(name);
     } else if (reason === 'replacement_planning') {
-      setChatIntent('planning');
-      setChatInitialMessage(CHAT_FIRST_TURN.replacementPlanning(name));
-    } else {
-      setChatIntent('general');
-      setChatInitialMessage(undefined);
+      initialMsg = CHAT_FIRST_TURN.replacementPlanning(name);
     }
-    setChatOpen(true);
+    navigate('/chat', { state: { intent: {
+      systemKey,
+      systemLabel: name,
+      initialAssistantMessage: initialMsg,
+      focusContext: { systemKey: systemKey!, trigger: reason || 'plan_view' },
+    }}});
   };
   
   const handleAddMaintenance = () => {
@@ -285,27 +287,6 @@ export default function SystemPlanPage() {
         onStartPlanning={handleStartPlanning}
         onAddMaintenance={handleAddMaintenance}
         onChatExpand={handleChatExpand}
-      />
-      
-      {/* Mobile Chat Sheet */}
-      <MobileChatSheet
-        open={chatOpen}
-        onClose={() => { setChatOpen(false); setChatInitialMessage(undefined); }}
-        propertyId={home?.id || ''}
-        baselineSystems={baselineSystems}
-        confidenceLevel="Moderate"
-        focusContext={{ 
-          systemKey: systemKey!, 
-          trigger: chatIntent === 'planning' ? 'start_planning' : 'plan_view' 
-        }}
-        {...(chatInitialMessage
-          ? { initialAssistantMessage: chatInitialMessage }
-          : chatIntent === 'planning'
-            ? { initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(displayName) }
-            : { primingMessage }
-        )}
-        chatMode="silent_steward"
-        baselineSource="inferred"
       />
     </>
   );

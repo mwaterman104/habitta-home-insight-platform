@@ -31,6 +31,7 @@ import MechanicalIntelligencePage from "./MechanicalIntelligencePage";
 import MobilePhotoCaptureRoute from "./MobilePhotoCaptureRoute";
 // HomeReportPage removed — merged into HomeProfilePage
 import MaintenancePage from "./MaintenancePage";
+import MobileChatPage from "./MobileChatPage";
 
 export function AppRoutes() {
   return (
@@ -46,6 +47,13 @@ export function AppRoutes() {
           <Route path="/onboarding" element={
             <ProtectedRoute>
               <OnboardingFlow />
+            </ProtectedRoute>
+          } />
+          
+          {/* Mobile Chat: Full-page route */}
+          <Route path="/chat" element={
+            <ProtectedRoute>
+              <MobileChatPage />
             </ProtectedRoute>
           } />
           

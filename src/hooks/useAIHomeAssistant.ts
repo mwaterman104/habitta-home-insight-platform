@@ -221,11 +221,25 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
         throw new Error(assistantError.message);
       }
 
+      // Inject domain artifact JSON so extractContractorData() can render ContractorCard
+      let messageContent = data.message;
+      if (data.functionResult && typeof data.functionResult === 'string') {
+        try {
+          const parsed = JSON.parse(data.functionResult);
+          if (
+            (parsed.type === 'contractor_recommendations' && Array.isArray(parsed.contractors)) ||
+            parsed.type === 'home_event_recorded'
+          ) {
+            messageContent = data.functionResult + '\n\n' + data.message;
+          }
+        } catch { /* not JSON, skip */ }
+      }
+
       // Add assistant response to chat
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: data.message,
+        content: messageContent,
         timestamp: new Date().toISOString(),
         functionCall: data.functionCall,
         functionResult: data.functionResult, // Include for UI refresh detection
