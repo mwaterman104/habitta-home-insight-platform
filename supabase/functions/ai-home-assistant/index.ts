@@ -390,6 +390,8 @@ serve(async (req) => {
       isPlanningSession = false,
       interventionId,
       triggerReason,
+      // Focus continuity: current right-column focus from frontend
+      activeFocus,
     } = await req.json();
     
     console.log('[ai-home-assistant] Request:', { 
@@ -422,7 +424,8 @@ serve(async (req) => {
       baselineSource,
       visibleBaseline,
       isPlanningSession,
-      triggerReason
+      triggerReason,
+      activeFocus
     );
     
     return new Response(JSON.stringify(response), {
@@ -612,6 +615,62 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
   };
 }
 
+// ============================================================================
+// FOCUS RESOLUTION (Non-Tool Path)
+// ============================================================================
+
+function detectSystemFromMessageConservative(message: string): string | null {
+  const m = message.toLowerCase();
+
+  // Hard ambiguity guard: if user is comparing systems, don't auto-focus
+  const hasCompare = /\b(vs\.?|versus|compare|between)\b/.test(m);
+
+  const patterns: Array<{ systemId: string; re: RegExp }> = [
+    { systemId: 'water_heater', re: /\b(water heater|hot water tank|no hot water|hot water|tankless)\b/ },
+    { systemId: 'hvac', re: /\b(hvac|air conditioner|air conditioning|furnace|heat pump|a\/c unit)\b/ },
+    { systemId: 'roof', re: /\b(roof|roof leak|leaking roof|shingles|re-?roof)\b/ },
+    { systemId: 'plumbing', re: /\b(plumbing|pipe leak|leaky pipe|clogged? drain|sewer line)\b/ },
+    { systemId: 'electrical_panel', re: /\b(electrical panel|breaker|circuit breaker|panel upgrade)\b/ },
+    { systemId: 'pool', re: /\b(pool pump|pool equipment|pool heater|swimming pool)\b/ },
+    { systemId: 'solar', re: /\b(solar panel|solar system|photovoltaic)\b/ },
+    { systemId: 'irrigation', re: /\b(sprinkler|irrigation|drip system)\b/ },
+  ];
+
+  const matches = patterns.filter(p => p.re.test(m)).map(p => p.systemId);
+  const unique = Array.from(new Set(matches));
+
+  if (unique.length !== 1) return null;
+  if (hasCompare && unique.length > 0) return null;
+
+  return unique[0];
+}
+
+function resolveSystemFocus(args: {
+  userMessage: string;
+  activeFocus: any | null;
+  focusSystem: string | null;
+}): { type: 'system'; systemId: string } | null {
+  const { userMessage, activeFocus, focusSystem } = args;
+
+  // 1) Active system focus wins — stability
+  if (activeFocus?.type === 'system' && activeFocus.systemId) {
+    return { type: 'system', systemId: activeFocus.systemId };
+  }
+
+  // 2) Explicit focusSystem from frontend context
+  if (focusSystem) {
+    return { type: 'system', systemId: focusSystem };
+  }
+
+  // 3) Conservative keyword detection fallback
+  const detected = detectSystemFromMessageConservative(userMessage);
+  if (detected) {
+    return { type: 'system', systemId: detected };
+  }
+
+  return null;
+}
+
 async function generateAIResponse(
   apiKey: string, 
   message: string, 
@@ -622,7 +681,8 @@ async function generateAIResponse(
   baselineSource?: string,
   visibleBaseline?: Array<{ key: string; displayName: string; state: string }>,
   isPlanningSession: boolean = false,
-  triggerReason?: string
+  triggerReason?: string,
+  activeFocus?: any
 ) {
   const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason);
   
@@ -927,10 +987,28 @@ async function generateAIResponse(
     return fallbackResponse;
   }
 
-  return {
+  // Non-tool path: resolve system focus from active context or keyword detection
+  const resolvedFocus = resolveSystemFocus({
+    userMessage: message,
+    activeFocus: activeFocus ?? null,
+    focusSystem: focusSystem ?? null,
+  });
+
+  const nonToolResponse: any = {
     message: aiMessage.content || 'I can help you with your home maintenance questions.',
-    suggestions: generateFollowUpSuggestions(message, context)
+    suggestions: generateFollowUpSuggestions(message, context),
   };
+
+  if (resolvedFocus) {
+    nonToolResponse.focus = resolvedFocus;
+    console.log('[ai-home-assistant] Non-tool focus resolved:', {
+      source: activeFocus?.type === 'system' ? 'activeFocus' : focusSystem ? 'focusSystem' : 'keyword',
+      systemId: resolvedFocus.systemId,
+      messageSnippet: message.slice(0, 60),
+    });
+  }
+
+  return nonToolResponse;
 }
 
 function createSystemPrompt(

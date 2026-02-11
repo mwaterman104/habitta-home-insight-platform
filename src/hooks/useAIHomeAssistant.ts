@@ -48,6 +48,8 @@ interface UseAIHomeAssistantOptions {
   baselineSource?: BaselineSource;
   /** Visible baseline systems for AI context */
   visibleBaseline?: VisibleBaselineSystem[];
+  /** Current right-column focus state (for focus continuity) */
+  activeFocus?: any;
 }
 
 export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssistantOptions = {}) => {
@@ -59,6 +61,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     chatMode = 'observational',
     baselineSource,
     visibleBaseline,
+    activeFocus,
   } = options;
   
   const { user } = useAuth();
@@ -214,6 +217,8 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
             // Epistemic coherence: pass baseline context
             baselineSource,
             visibleBaseline,
+            // Focus continuity: pass current right-column focus
+            activeFocus,
           }
         }
       );
