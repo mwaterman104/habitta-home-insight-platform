@@ -13,7 +13,7 @@ import { SystemPanelEvidence } from "./SystemPanelEvidence";
 import { SystemPanelTimeline } from "./SystemPanelTimeline";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { SystemTab } from "@/types/focusState";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 interface SystemPanelProps {
   systemId: string;
@@ -42,13 +42,13 @@ function getConfidenceBadge(system?: SystemTimelineEntry) {
   }
 }
 
-// Tab persistence: remembers last-viewed tab per systemId
-const tabMemoryRef = useRef<Map<string, SystemTab>>(new Map());
+// Tab persistence: remembers last-viewed tab per systemId (module-level, not a hook)
+const tabMemory = new Map<string, SystemTab>();
 
 export function SystemPanel({ systemId, system, initialTab = 'overview' }: SystemPanelProps) {
    const { clearFocus } = useFocusState();
    const [activeTab, setActiveTab] = useState<SystemTab>(() => {
-     return tabMemoryRef.current.get(systemId) ?? initialTab;
+     return tabMemory.get(systemId) ?? initialTab;
    });
 
    const status = getStatusBadge(system);
@@ -58,7 +58,7 @@ export function SystemPanel({ systemId, system, initialTab = 'overview' }: Syste
    const handleTabChange = (tab: string) => {
      const newTab = tab as SystemTab;
      setActiveTab(newTab);
-     tabMemoryRef.current.set(systemId, newTab);
+     tabMemory.set(systemId, newTab);
    };
 
    return (
