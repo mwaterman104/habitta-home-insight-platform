@@ -1,76 +1,128 @@
 
 
-# Post-Onboarding Welcome Hero Card
+# Fix Contractor Cards + Mobile Chat Full-Page Route
 
 ## Overview
 
-Add a first-visit-only Welcome Hero Card at the top of the mobile dashboard that bridges the emotional gap between onboarding ("You're under watch") and the operational dashboard. Appears once, dismisses permanently.
+Three changes: (1) inject structured tool JSON into message content so ContractorCard renders stars/reviews, (2) add sprinkler/irrigation search mappings to the edge function, (3) replace MobileChatSheet drawer with a dedicated `/chat` route page.
 
-## Changes
+## Part 1: Contractor Card Data Injection
 
-### 1. `src/lib/mobileCopy.ts` -- Add WELCOME_HERO copy
+### File: `src/hooks/useAIHomeAssistant.ts`
 
-New export:
+In `sendMessage()`, between lines 222 and 224, add injection logic before building the assistant message:
 
-```
-WELCOME_HERO: {
-  title: "Your home is under watch.",
-  subtitle: (systemCount: number) => 
-    `We're monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} based on public records and what you've shared.`,
-  reinforcement: "The more records you add, the more precise your forecasts become.",
-  cta: "See what we found",
-  dismiss: "Got it",
+```typescript
+// After line 222 (after assistantError check)
+let messageContent = data.message;
+
+if (data.functionResult && typeof data.functionResult === 'string') {
+  try {
+    const parsed = JSON.parse(data.functionResult);
+    if (
+      (parsed.type === 'contractor_recommendations' && Array.isArray(parsed.contractors)) ||
+      parsed.type === 'home_event_recorded'
+    ) {
+      messageContent = data.functionResult + '\n\n' + data.message;
+    }
+  } catch { /* not JSON, skip */ }
 }
 ```
 
-### 2. `src/components/mobile/WelcomeHeroCard.tsx` (new file)
+Then change line 228 from `content: data.message` to `content: messageContent`.
 
-Exact visual spec from user feedback:
+No other files need changes -- `extractContractorData()` in `chatFormatting.ts` already parses this JSON and `ContractorCard` already renders stars/reviews.
 
-- Container: `rounded-xl p-6 bg-primary/5 border border-primary/15 shadow-sm`
-- Shield icon: 28px, `text-primary`, inside a 40px `bg-primary/10 rounded-full` circle
-- Title: `text-lg font-semibold tracking-tight` -- "Your home is under watch."
-- Subtitle: `text-sm text-muted-foreground leading-relaxed` with bold system count
-- Reinforcement line: separate paragraph, same styling
-- Primary CTA: `Button` variant default, rounded-lg
-- Secondary: text link `text-sm text-muted-foreground hover:underline` -- "Got it"
-- Spacing: 16px icon-to-subtitle, 20px subtitle-to-buttons, 12px between buttons, 24px margin-bottom
-- Animation: fade-in + slide-in-from-top-2 on mount, fade-out + slide-out-to-top-2 on dismiss (300ms), then unmount
-- Props: `systemCount`, `onExplore`, `onDismiss`
-- No gradient. No emoji. No playful tone.
+## Part 2: Sprinkler/Irrigation Search Mappings
 
-### 3. `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` -- Render welcome card
+### File: `supabase/functions/ai-home-assistant/index.ts` (lines 1429-1446)
 
-- New props: `isFirstVisit?: boolean`, `onWelcomeDismiss?: () => void`
-- Import `WelcomeHeroCard`
-- Track local dismissed state via `useState` (initialized from `localStorage.getItem('habitta_welcome_dismissed')`)
-- Render above DataConfidenceBar when `isFirstVisit && !dismissed`
-- `onExplore`: scroll to PrimarySystemCard using a ref (`primarySystemRef`)
-- `onDismiss`: set localStorage flag, call `onWelcomeDismiss`, trigger fade-out animation
-- Add `ref={primarySystemRef}` to the PrimarySystemCard wrapper div
+Add these entries to the `searchQueries` map:
 
-### 4. `src/pages/DashboardV3.tsx` -- Pass first-visit state
+```typescript
+'sprinkler': 'sprinkler system repair service',
+'sprinkler_system': 'sprinkler system repair',
+'irrigation': 'irrigation system repair contractor',
+'irrigation_system': 'irrigation system repair service',
+'landscaping': 'landscape contractor',
+'landscaping_irrigation': 'irrigation and drainage contractor',
+```
 
-- Import `isFirstVisit`, `markFirstVisitComplete` from `chatModeCopy.ts`
-- Pass `isFirstVisit={isFirstVisit()}` to `MobileDashboardView`
-- Pass `onWelcomeDismiss={() => markFirstVisitComplete()}` to synchronize with chat system (single state, no drift)
+## Part 3: Mobile Chat as Full-Page Route
 
-## State Synchronization
+### New file: `src/pages/MobileChatPage.tsx`
 
-Uses `isFirstVisit()` as the primary gate (same as chat system). When hero dismisses, it calls `markFirstVisitComplete()` AND sets `habitta_welcome_dismissed` in localStorage. This means:
+Full-screen chat page that:
+- Reads intent from `location.state` (systemKey, systemLabel, initialAssistantMessage, autoSendMessage, focusContext props)
+- Renders a minimal header with "Ask Habitta" title and a back button (`navigate(-1)` with `/dashboard` fallback)
+- Renders `ChatConsole` full-screen below the header
+- Fetches `userHome` and `capitalTimeline` for baseline systems (same pattern as SystemPlanPage)
+- Derives `chatMode` via `useChatMode`
 
-- Hero dismissed -> first visit marked complete -> chat also knows
-- No divergence between hero and chat first-visit states
+### File: `src/pages/AppRoutes.tsx`
 
-## No auto-open chat
+Add protected route:
+```
+<Route path="/chat" element={<ProtectedRoute><MobileChatPage /></ProtectedRoute>} />
+```
 
-Per user feedback: do NOT auto-open chat. Let the user initiate. The welcome card provides orientation without being pushy.
+### File: `src/pages/DashboardV3.tsx`
+
+Changes to the mobile section (lines 520-616):
+
+- Remove `MobileChatSheet` import and rendering (lines 575-614)
+- Remove `mobileChatOpen` state (line 93) -- keep `mobileChatIntent` for navigation
+- Replace `handleMobileChatOpen` to navigate instead of setting state:
+  ```typescript
+  const handleMobileChatOpen = useCallback((intent?: MobileChatIntent) => {
+    navigate('/chat', { state: { intent: intent || null } });
+  }, [navigate]);
+  ```
+- Remove `handleMobileChatClose` (line 416-421)
+- Remove `MobileChatSheet` rendering block (lines 575-614)
+- Update `BottomNavigation` chat handler: `onChatOpen={() => navigate('/chat')}`
+
+### File: `src/pages/SystemPlanPage.tsx`
+
+Changes:
+- Remove `MobileChatSheet` import and rendering (lines 291-309)
+- Remove `chatOpen`, `chatIntent`, `chatInitialMessage` state (lines 45-47)
+- Replace `handleStartPlanning` and `handleChatExpand` to navigate:
+  ```typescript
+  const handleStartPlanning = () => {
+    navigate('/chat', { state: { intent: {
+      systemKey,
+      systemLabel: system?.systemLabel || getSystemDisplayName(systemKey || ''),
+      initialAssistantMessage: CHAT_FIRST_TURN.systemPlanning(displayName),
+    }}});
+  };
+  ```
+- Similarly for `handleChatExpand` -- navigate with appropriate intent
+
+### File: `src/components/BottomNavigation.tsx`
+
+Update the Chat nav item to navigate directly:
+- Change `onChatOpen` prop to optional
+- When chat is tapped: if `onChatOpen` provided, call it; otherwise `navigate('/chat')`
+- No visual changes
+
+### What does NOT change
+
+- `ChatConsole` component -- used as-is in MobileChatPage
+- `MobileChatSheet.tsx` -- kept for now (unused on mobile dashboard/plan, but no deletion in this pass)
+- `MobileDashboardView.tsx` -- no changes needed, CTAs still call `onChatOpen(intent)` which parent handles
+- Desktop layout -- completely unaffected
+- Chat persistence, extraction logic, ContractorCard rendering
 
 ## Files Summary
 
 | File | Action |
 |------|--------|
-| `src/lib/mobileCopy.ts` | Modify -- add WELCOME_HERO copy |
-| `src/components/mobile/WelcomeHeroCard.tsx` | Create -- welcome hero card component |
-| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- render welcome card, add ref for scroll |
-| `src/pages/DashboardV3.tsx` | Modify -- pass isFirstVisit and onWelcomeDismiss |
+| `src/hooks/useAIHomeAssistant.ts` | Modify -- inject domain artifact JSON |
+| `supabase/functions/ai-home-assistant/index.ts` | Modify -- add search mappings |
+| `src/pages/MobileChatPage.tsx` | Create -- full-page mobile chat |
+| `src/pages/AppRoutes.tsx` | Modify -- add /chat route |
+| `src/pages/DashboardV3.tsx` | Modify -- replace drawer with navigation |
+| `src/pages/SystemPlanPage.tsx` | Modify -- replace drawer with navigation |
+| `src/components/BottomNavigation.tsx` | Modify -- navigate to /chat |
+
