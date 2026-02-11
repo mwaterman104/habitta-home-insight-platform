@@ -815,19 +815,78 @@ async function generateAIResponse(
       name: toolCall.function.name,
       arguments: toolCall.function.arguments
     }, context);
-    
-    // EXECUTION BOUNDARY GUARDRAIL:
-    // When tool_calls are present, the assistant's content is internal reasoning
-    // and MUST NOT be returned to the user. Only the function result is user-facing.
-    // Any content containing execution artifacts is stripped entirely.
-    const sanitizedContent = sanitizePreToolContent(aiMessage.content);
-    
+
+    // Guard: tool_call_id must exist for the follow-up LLM call.
+    // If missing, fall back to returning the raw tool result.
+    if (!toolCall.id) {
+      console.warn('[ai-home-assistant] tool_call_id missing, skipping follow-up call');
+      return {
+        message: typeof functionResult === 'string' ? functionResult : JSON.stringify(functionResult),
+        functionCall: toolCall.function,
+        functionResult,
+      };
+    }
+
+    // ── Two-pass pattern: execute tool, then let the LLM compose a real answer ──
+    const followUpMessages = [
+      ...messages, // original system prompt + history + user message
+      {
+        role: 'assistant',
+        tool_calls: aiMessage.tool_calls,
+        content: aiMessage.content || null,
+      },
+      {
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: typeof functionResult === 'string' ? functionResult : JSON.stringify(functionResult),
+      },
+      {
+        role: 'system',
+        content: 'The tool has already executed successfully. Respond naturally to the user: acknowledge what was recorded AND answer their original question. Do not reference tool names, IDs, or JSON. Speak as a knowledgeable home advisor.',
+      },
+    ];
+
+    try {
+      const followUpResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-3-flash-preview',
+          messages: followUpMessages,
+          max_tokens: 600,
+          temperature: 0.7,
+          // Explicitly NO tools / tool_choice — prevents infinite chaining (max 2 LLM calls)
+        }),
+      });
+
+      if (followUpResponse.ok) {
+        const followUpData = await followUpResponse.json();
+        const followUpContent = followUpData.choices?.[0]?.message?.content;
+
+        if (followUpContent) {
+          return {
+            message: followUpContent,
+            functionCall: toolCall.function,
+            functionResult,
+            suggestions: generateFollowUpSuggestions(message, context),
+          };
+        }
+      } else {
+        console.error('[ai-home-assistant] Follow-up LLM call failed:', followUpResponse.status);
+      }
+    } catch (followUpErr) {
+      console.error('[ai-home-assistant] Follow-up LLM call error:', followUpErr);
+    }
+
+    // Fallback: if the second call failed, return the tool result directly
     return {
-      message: sanitizedContent 
-        ? `${sanitizedContent}\n\n${functionResult}`.trim()
-        : functionResult,
+      message: typeof functionResult === 'string' ? functionResult : JSON.stringify(functionResult),
       functionCall: toolCall.function,
-      functionResult
+      functionResult,
+      suggestions: generateFollowUpSuggestions(message, context),
     };
   }
 
