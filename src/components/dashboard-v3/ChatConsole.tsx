@@ -36,6 +36,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
+import { useFocusState } from "@/contexts/FocusStateContext";
 import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
 import { ChatPhotoUpload } from "./ChatPhotoUpload";
 import { ChatMessageContent } from "@/components/chat";
@@ -219,6 +220,9 @@ export function ChatConsole({
     visibleBaseline,
   });
 
+  // Import focus state hook
+  const { setFocus, isUserLocked } = useFocusState();
+
   // Auto-send message guard (single-fire per unique message value)
   const hasSentAutoMessage = useRef<string | null>(null);
 
@@ -293,6 +297,11 @@ export function ChatConsole({
     onUserReply?.();
     
     const response = await sendMessage(message);
+    
+    // If response contains focus metadata, update focus state (unless user has active lock)
+    if (response?.focus && !isUserLocked) {
+      setFocus(response.focus);
+    }
     
     // HARDENING FIX #4: Check response envelope for system updates, not tool name
     if (response?.functionResult) {

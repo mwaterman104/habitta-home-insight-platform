@@ -867,12 +867,28 @@ async function generateAIResponse(
         const followUpContent = followUpData.choices?.[0]?.message?.content;
 
         if (followUpContent) {
-          return {
+          const response: Record<string, any> = {
             message: followUpContent,
             functionCall: toolCall.function,
             functionResult,
             suggestions: generateFollowUpSuggestions(message, context),
           };
+          
+          // If the tool result contains a system reference, inject focus metadata
+          if (typeof functionResult === 'string') {
+            try {
+              const parsed = JSON.parse(functionResult);
+              if (parsed.systemKey) {
+                response.focus = { type: 'system', systemId: parsed.systemKey };
+              } else if (parsed.type === 'contractor_recommendations' && parsed.service) {
+                response.focus = { type: 'contractor_list', query: parsed.service, systemId: parsed.systemId };
+              }
+            } catch {
+              // Not JSON, skip focus injection
+            }
+          }
+          
+          return response;
         }
       } else {
         console.error('[ai-home-assistant] Follow-up LLM call failed:', followUpResponse.status);
@@ -882,12 +898,28 @@ async function generateAIResponse(
     }
 
     // Fallback: if the second call failed, return the tool result directly
-    return {
+    const fallbackResponse: Record<string, any> = {
       message: typeof functionResult === 'string' ? functionResult : JSON.stringify(functionResult),
       functionCall: toolCall.function,
       functionResult,
       suggestions: generateFollowUpSuggestions(message, context),
     };
+    
+    // Inject focus metadata if available
+    if (typeof functionResult === 'string') {
+      try {
+        const parsed = JSON.parse(functionResult);
+        if (parsed.systemKey) {
+          fallbackResponse.focus = { type: 'system', systemId: parsed.systemKey };
+        } else if (parsed.type === 'contractor_recommendations' && parsed.service) {
+          fallbackResponse.focus = { type: 'contractor_list', query: parsed.service, systemId: parsed.systemId };
+        }
+      } catch {
+        // Not JSON, skip focus injection
+      }
+    }
+    
+    return fallbackResponse;
   }
 
   return {

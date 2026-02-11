@@ -34,6 +34,7 @@ export interface AssistantResponse {
   functionCall?: any;
   functionResult?: string;
   suggestions?: string[];
+  focus?: any; // FocusState metadata from AI response
 }
 
 interface UseAIHomeAssistantOptions {
@@ -248,8 +249,20 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
 
       setMessages(prev => [...prev, assistantMessage]);
       
-      // Return response for callers that need it
-      return data as AssistantResponse;
+      // Return response with focus metadata if present
+      const response: AssistantResponse = {
+        message: data.message,
+        functionCall: data.functionCall,
+        functionResult: data.functionResult,
+        suggestions: data.suggestions,
+      };
+      
+      // Extract focus metadata from AI response
+      if (data.focus) {
+        response.focus = data.focus;
+      }
+      
+      return response;
 
     } catch (err) {
       console.error('Error sending message to AI assistant:', err);
