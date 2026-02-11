@@ -271,10 +271,10 @@ export function ChatConsole({
     }
   }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId, verifiedSystemCount, totalSystemCount]);
 
-  // Reset opening state when focus changes
+  // Reset opening state when focus or opening message changes
   useEffect(() => {
     setHasShownOpening(false);
-  }, [focusContext?.systemKey]);
+  }, [focusContext?.systemKey, openingMessage]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
