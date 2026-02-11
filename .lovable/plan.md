@@ -1,126 +1,154 @@
 
 
-# Dashboard Refinements: Sharpened with Feedback
+# Dashboard-to-Detail Intelligence Bridge (Sharpened)
 
 ## Overview
 
-Five focused changes to the mobile Home Pulse dashboard, incorporating all review feedback on psychology, copy discipline, and visual hierarchy.
+Four implementable items, incorporating all reviewer feedback on filter UX, subtitle placement, empty states, photo upload funneling, forecast tip rendering, icon consistency, and analytics.
 
 ## Changes
 
-### 1. System Ledger: Life-Remaining Mini-Bar + Tappable Rows
+### 1. System Narrative Copy -- `src/lib/systemNarratives.ts` (new file)
 
-**File: `src/components/mobile/SystemLedger.tsx`**
+A pure data module mapping each `CapitalSystemType` to its narrative identity, pro-tip, forecast tip, and confidence nudge.
 
-**Life-Remaining Bar (not "consumed" bar):**
-- Compute `percentRemaining = 100 - percentConsumed` and render as a thin bar (3px tall, ~72px wide) showing life left
-- Color: habitta-olive when remaining > 40%, habitta-slate at 15-40%, habitta-clay below 15%
-- This frames as "life remaining" not "life consumed" -- same math, calmer psychology
+```text
+hvac:
+  subtitle: "The Lungs of Your Home"
+  proTip: "Replacing a clogged air filter can reduce energy costs by up to 15% and prevent a blower motor failure down the road."
+  forecastTip: "HVAC replacements in Florida are best scheduled in spring or fall to avoid peak-season pricing."
+  confidenceTip: "Upload a photo of the manufacturer label so I can pinpoint the exact maintenance schedule for this unit."
 
-**1-year smoothing guardrail:**
-- Do NOT render the bar if:
-  - `system.dataQuality === 'low'` AND `getLateLifeState(system) === 'not-late'`
-- This prevents visualizing uncertain math for low-confidence, non-critical systems
+roof:
+  subtitle: "The Shield"
+  proTip: "Checking your flashings -- the metal seals around chimneys and vents -- once a year can prevent 90% of attic leaks before they stain your ceiling."
+  forecastTip: "Keep an eye out for granule loss in your gutters after heavy rain. It's the first sign your roof's UV protection is thinning."
+  confidenceTip: "Upload a photo of the shingles from the ground so I can assess the wear pattern."
 
-**Tappable rows:**
-- Each row navigates to `/systems/${system.systemId}/plan` on tap
-- Add a `ChevronRight` icon (14px) at the far right in `text-habitta-stone/30` -- lowest visual weight
-- Add `cursor-pointer` and `active:bg-habitta-stone/5` for touch feedback
+water_heater:
+  subtitle: "Your Hot Water Lifeline"
+  proTip: "A 20-minute sediment flush can add up to 3 years of life by clearing mineral buildup from the tank bottom."
+  forecastTip: "Inconsistent water temperature or rumbling sounds may indicate sediment is reducing heating efficiency."
+  confidenceTip: "Upload a photo of the unit label so I can identify the exact model and maintenance needs."
+```
 
-**Visual hierarchy within each row:**
-1. System name (primary)
-2. Replacement window text
-3. Mini-bar (subtle, secondary)
-4. Chevron (barely visible, tertiary)
+Exports: `getSystemNarrative(systemId: string)` returning `{ subtitle, proTip, forecastTip, confidenceTip } | null`.
 
-**Imports needed:** `useNavigate` from react-router-dom, `ChevronRight` from lucide-react, `getRemainingYearsForSystem`, `getLateLifeState` from homeOutlook, `getLifecyclePercent` from homeOutlook
+### 2. Habitta Intel Card -- `src/components/system/HabittaIntelCard.tsx` (new file)
 
-### 2. Missing Documentation: Calm Confidence Boost Labels
+A quiet annotation card for detail pages.
 
-**File: `src/components/mobile/MissingDocumentation.tsx`**
+- Props: `systemId: string`, `isLateLife?: boolean`
+- Imports `getSystemNarrative` from `systemNarratives.ts`
+- Renders `Lightbulb` icon (16px, habitta-slate) + "Habitta Intel" uppercase meta header
+- Body: always shows `proTip`
+- Conditionally appends `forecastTip` when `isLateLife` is true (addresses reviewer Q5 -- forecast tips render only for late-life systems, not buried unused)
+- Background: `bg-habitta-slate/6 border border-habitta-slate/15 rounded-sm`
+- Does not render if `getSystemNarrative` returns null
 
-- Update props to accept `nextGain` with its `delta` value (already available)
-- Photo button: "Upload Photo (+{delta}% confidence)" -- parenthetical framing, not gamified
-- Doc button: "Upload Doc (+2% confidence)" -- fixed estimate for permit/invoice signal
-- Threshold rule: if boost is less than 2%, hide the boost label entirely -- a "+1%" looks trivial
-- When `nextGain` is null, buttons show without boost labels
-- No Duolingo energy. Intelligence framing only.
+### 3. SystemPlanView Enhancements -- `src/components/system/SystemPlanView.tsx` (modify)
 
-### 3. Proactive Chat Insight Banner
+**A. Narrative subtitle in header (reviewer Q2 addressed):**
+- Subtitle renders INSIDE the Intel card header, not under the system name
+- This avoids competing with the confidence badge/status text in Section A
+- The Intel card header becomes: "Your HVAC: The Lungs of Your Home" in muted italic
 
-**New file: `src/components/mobile/ChatInsightBanner.tsx`**
+**B. Habitta Intel card placement:**
+- New Section D between Timing Outlook and Confidence & Evidence
+- Import `HabittaIntelCard` and render with `systemId` and `isLateLife` derived from `remainingYears <= 0`
 
-A single, calm insight snippet that bridges dashboard to chat.
+**C. Contextual Chat Prompt (inline, conditional):**
+- New sub-component `ContextualChatPrompt` rendered as Section F (after Confidence & Evidence, before Action Footer)
+- Uses `MessageCircle` icon (16px -- unified with Intel card per reviewer note)
+- Logic:
+  - If `confidenceLevel !== 'high'`: show `confidenceTip` from narratives (explicitly mentions "upload a photo" -- addresses reviewer Q4)
+  - Else if system is late-life (`remainingYears <= 0`): show replacement planning prompt
+  - Else: nothing renders (silence is the feature)
+- Tappable: calls `onChatExpand`
+- Styled as inline text: `text-meta text-habitta-stone leading-relaxed` with subtle left border accent
+- Fires `chat_prompt_tapped` analytics event on tap (reviewer suggestion)
 
-- Props: `systemLabel: string`, `onTap: () => void`
-- Only one banner, only for the top-priority system, only when in late-life state
-- Never stacked, never multiple
+**D. Analytics events:**
+- Add `INTEL_CARD_VIEWED` and `CHAT_PROMPT_TAPPED` to `mobileEvents.ts`
+- `HabittaIntelCard` fires `INTEL_CARD_VIEWED` on mount (via useEffect)
+- `ContextualChatPrompt` fires `CHAT_PROMPT_TAPPED` on tap
 
-**Copy (tightened per feedback):**
-- "Your {systemLabel} is entering its replacement window. See what a planned replacement looks like."
-- No "emergency" language. No alarm. Steady and directional.
+**Updated section order:**
+A. System Header (unchanged)
+B. Cost Reality (unchanged)
+C. Timing Outlook (unchanged)
+D. Habitta Intel card (new -- includes narrative subtitle as card header)
+E. Confidence & Evidence (unchanged)
+F. Contextual Chat Prompt (new -- inline, conditional)
+G. Action Footer (unchanged)
 
-**Styling:**
-- `bg-habitta-slate/8 border border-habitta-slate/20 rounded-sm p-4`
-- Small message-circle icon (16px, habitta-slate) on the left
-- "Tap to explore" in `text-meta text-habitta-stone/60` below the main copy
+### 4. Chat Context Copy -- `src/lib/chatContextCopy.ts` (modify)
 
-**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
+Add two new triggers to `getContextualAssistantMessage`:
+- `system/confidence_boost`: "I see we're at {confidenceLabel} confidence for your {systemName}. A photo of the manufacturer label would help me pinpoint the exact maintenance schedule."
+- `system/replacement_planning`: "Your {systemName} is in its replacement window. Would you like to walk through what a planned replacement looks like?"
 
-- Import `ChatInsightBanner` and `getLateLifeState`
-- Render between the Data Confidence Bar and Primary System Card
-- Only render when the primary system has `getLateLifeState() !== 'not-late'`
-- Tapping calls `onChatOpen` (wires to chat with system context)
+Add corresponding entries to `buildSystemAutoMessage`:
+- `confidence_boost`: "How can I improve the accuracy of my {systemName} record?"
+- `replacement_planning`: "What does a planned replacement look like for my {systemName}?"
 
-### 4. Primary System Card: Contextual CTA
+Note: `systemName` uses the friendly `systemLabel` from the timeline entry (e.g., "HVAC System"), not the raw key -- addresses reviewer's graceful naming concern.
 
-**File: `src/components/mobile/PrimarySystemCard.tsx`**
+### 5. Critical Badge as Filter
 
-Add a text-style action button at the bottom of the card footer:
+**`src/components/dashboard-v3/TopHeader.tsx` (modify):**
+- New props: `onHealthBadgeClick?: () => void`, `filterActive?: boolean`
+- Wrap the status badge in a `button` element
+- When `filterActive` is true, add `ring-2 ring-habitta-slate/40` to the badge (specific visual indicator per reviewer)
+- Badge only becomes tappable when `onHealthBadgeClick` is provided (desktop remains unchanged)
 
-- For late-life systems: "Explore replacement planning" (ownership language, not AI assistant wording)
-- For healthy systems: "Log recent service" (reflective, not event-scheduling)
-- Styled as: `text-habitta-slate font-semibold text-meta uppercase tracking-wider` with a small arrow icon
-- New prop: `onAction?: () => void` -- parent wires to chat open
+**`src/pages/DashboardV3.tsx` (modify):**
+- New state: `const [systemFilter, setSystemFilter] = useState<'all' | 'attention'>('all')`
+- Reset filter on navigation: add `useEffect` that resets to `'all'` when `location.pathname` changes (addresses reviewer Q1 -- filter resets on return from detail page)
+- `onHealthBadgeClick` toggles filter: `setSystemFilter(prev => prev === 'all' ? 'attention' : 'all')`
+- When filter is `'attention'`, pass only systems where `getLateLifeState(system) !== 'not-late'` to `MobileDashboardView`
+- Pass `filterActive={systemFilter === 'attention'}` to `TopHeader`
 
-**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
+**`src/components/dashboard-v3/mobile/MobileDashboardView.tsx` (modify):**
+- New prop: `filterActive?: boolean`
+- When `filterActive` is true and no systems match, show calm empty state:
+  - "All systems are operating within expected ranges."
+  - Below: a `button` styled as `text-habitta-slate text-meta font-semibold` reading "Show all systems" that calls a new `onClearFilter?: () => void` prop
+  - This addresses reviewer Q3 -- explicit exit from filtered view
 
-- Pass `onAction` to `PrimarySystemCard` that triggers `onChatOpen`
+### 6. Analytics Events -- `src/lib/analytics/mobileEvents.ts` (modify)
 
-### 5. Spacing Discipline
+Add three new events:
+- `INTEL_CARD_VIEWED: 'mobile_intel_card_viewed'`
+- `CHAT_PROMPT_TAPPED: 'mobile_chat_prompt_tapped'`
+- `BADGE_FILTER_TOGGLED: 'mobile_badge_filter_toggled'`
 
-**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
+These enable measurement of adoption before investing in backend sync (items 5-6 deferred).
 
-- Increase the parent container from `space-y-6` to `space-y-7` to absorb the new insight banner without cramping
-- This is the only layout change -- all other spacing stays internal to components
+## Reviewer Feedback Resolution Summary
 
-## Visual Hierarchy Check
-
-The additions (mini-bars, boost labels, chevrons, banner, CTA) are all designed at low visual weight:
-- Mini-bars: 3px tall, muted colors, conditional rendering
-- Boost labels: parenthetical, hidden below 2%
-- Chevrons: 14px, 30% opacity
-- Banner: single instance, slate tones, no bold
-- CTA: text button, no fill, uppercase meta size
-
-## What Does NOT Change
-
-- Scoring engine (homeConfidence.ts)
-- State thresholds
-- Desktop layout
-- Chat infrastructure
-- System detail pages (SystemPlanView)
-- TopHeader / critical badge behavior
-- Capital timeline types
-- LifecycleRing component
+| Concern | Resolution |
+|---------|-----------|
+| Q1: Filter persistence on nav | Reset to 'all' on pathname change via useEffect |
+| Q2: Subtitle visual competition | Moved inside Intel card header, not system header |
+| Q3: Filtered empty state exit | "Show all systems" button below empty message |
+| Q4: Photo upload funnel clarity | confidenceTip copy explicitly says "upload a photo" |
+| Q5: forecastTip not rendered | Rendered in Intel card conditionally for late-life systems |
+| Icon sizing | Unified to 16px for both Intel card and chat prompt |
+| Filter indicator | Specified: `ring-2 ring-habitta-slate/40` on active badge |
+| System name handling | Uses `systemLabel` (friendly) not raw `systemId` |
+| Analytics checkpoint | Three new events to measure feature adoption |
 
 ## Files Summary
 
 | File | Action |
 |------|--------|
-| `src/components/mobile/SystemLedger.tsx` | Modify -- life-remaining mini-bar + tappable rows + chevron |
-| `src/components/mobile/MissingDocumentation.tsx` | Modify -- calm boost labels on buttons |
-| `src/components/mobile/ChatInsightBanner.tsx` | Create -- proactive insight snippet |
-| `src/components/mobile/PrimarySystemCard.tsx` | Modify -- contextual CTA button |
-| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- wire banner + CTA + spacing |
+| `src/lib/systemNarratives.ts` | Create -- narrative copy per system |
+| `src/components/system/HabittaIntelCard.tsx` | Create -- pro-tip card with conditional forecast |
+| `src/components/system/SystemPlanView.tsx` | Modify -- add Intel card, contextual chat prompt |
+| `src/lib/chatContextCopy.ts` | Modify -- add confidence_boost + replacement_planning triggers |
+| `src/components/dashboard-v3/TopHeader.tsx` | Modify -- make badge tappable with ring indicator |
+| `src/pages/DashboardV3.tsx` | Modify -- add filter state with nav-reset |
+| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- accept filter props, show empty state with exit |
+| `src/lib/analytics/mobileEvents.ts` | Modify -- add 3 new tracking events |
 
