@@ -1,8 +1,10 @@
 import { useRef } from "react";
-import { ArrowLeft, AlertCircle } from "lucide-react";
+import { ArrowLeft, AlertCircle, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DockedChatInput } from "@/components/mobile/DockedChatInput";
+import { HabittaIntelCard } from "@/components/system/HabittaIntelCard";
+import { getSystemNarrative } from "@/lib/systemNarratives";
 import type { SystemTimelineEntry, CapitalSystemType } from "@/types/capitalTimeline";
 import { 
   PLANNING_STATUS, 
@@ -179,6 +181,51 @@ function TimingRow({ window }: { window: TimingWindow }) {
   );
 }
 
+/** Contextual chat prompt — inline, conditional, tappable */
+function ContextualChatPrompt({
+  confidenceLevel,
+  isLateLife,
+  systemId,
+  onTap,
+}: {
+  confidenceLevel: 'high' | 'moderate' | 'low';
+  isLateLife: boolean;
+  systemId: string;
+  onTap?: () => void;
+}) {
+  const narrative = getSystemNarrative(systemId);
+  
+  let message: string | null = null;
+  
+  if (confidenceLevel !== 'high' && narrative) {
+    message = narrative.confidenceTip;
+  } else if (isLateLife) {
+    message = "This system is in its replacement window. Tap below to explore what a planned replacement looks like.";
+  }
+  
+  if (!message || !onTap) return null;
+  
+  const handleTap = () => {
+    trackMobileEvent(MOBILE_EVENTS.CHAT_PROMPT_TAPPED, {
+      systemKey: systemId,
+      reason: confidenceLevel !== 'high' ? 'confidence_boost' : 'replacement_planning',
+    });
+    onTap();
+  };
+  
+  return (
+    <button
+      onClick={handleTap}
+      className="w-full text-left flex items-start gap-3 pl-3 border-l-2 border-[hsl(var(--habitta-stone)/0.3)] py-2"
+    >
+      <MessageCircle className="h-4 w-4 text-[hsl(var(--habitta-stone))] shrink-0 mt-0.5" />
+      <p className="text-sm text-[hsl(var(--habitta-stone))] leading-relaxed">
+        {message}
+      </p>
+    </button>
+  );
+}
+
 // ============== Main Component ==============
 
 /**
@@ -324,7 +371,14 @@ export function SystemPlanView({
           </CardContent>
         </Card>
         
-        {/* Section D: Confidence & Evidence */}
+        {/* Section D: Habitta Intel */}
+        <HabittaIntelCard
+          systemId={system.systemId}
+          systemLabel={displayName}
+          isLateLife={remainingYears !== null && remainingYears <= 0}
+        />
+        
+        {/* Section E: Confidence & Evidence */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -348,6 +402,14 @@ export function SystemPlanView({
             )}
           </CardContent>
         </Card>
+        
+        {/* Section F: Contextual Chat Prompt (conditional) */}
+        <ContextualChatPrompt
+          confidenceLevel={confidenceLevel}
+          isLateLife={remainingYears !== null && remainingYears <= 0}
+          systemId={system.systemId}
+          onTap={onChatExpand}
+        />
       </div>
       
       {/* Section E: Action Footer with Docked Chat (sticky) */}

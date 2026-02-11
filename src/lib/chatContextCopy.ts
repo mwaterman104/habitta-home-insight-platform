@@ -17,6 +17,8 @@ export function getContextualAssistantMessage(context: ChatContextType): string 
     'activity_log/log_activity': `What maintenance or work was done? I'll add it to your home's permanent record.`,
     'supporting_record/upload': `What kind of record do you have? A receipt, inspection report, warranty, or photo?`,
     'system_edit/edit_confidence': `What would you like to update about your ${systemName}? I can adjust the install year, source, or notes.`,
+    'system/confidence_boost': `I see we're at ${context.metadata?.confidenceLabel || 'moderate'} confidence for your ${systemName}. A photo of the manufacturer label would help me pinpoint the exact maintenance schedule.`,
+    'system/replacement_planning': `Your ${systemName} is in its replacement window. Would you like to walk through what a planned replacement looks like?`,
     'general/ask_habitta': `What can I help you with today?`,
   };
 
@@ -32,6 +34,8 @@ export function buildSystemAutoMessage(systemName: string, trigger: string): str
     'maintenance_guidance': `What maintenance does my ${systemName} need, and when?`,
     'view_guide': `What are the recommended maintenance steps for my ${systemName}?`,
     'find_pro': `Should I handle this myself or hire a professional for my ${systemName}?`,
+    'confidence_boost': `How can I improve the accuracy of my ${systemName} record?`,
+    'replacement_planning': `What does a planned replacement look like for my ${systemName}?`,
   };
   return messages[trigger] || `What should I know about my ${systemName}?`;
 }

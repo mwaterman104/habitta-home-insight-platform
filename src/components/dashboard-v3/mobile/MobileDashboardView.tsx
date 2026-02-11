@@ -39,6 +39,8 @@ interface MobileDashboardViewProps {
   onSystemTap: (systemKey: string) => void;
   onChatOpen: () => void;
   homeConfidence: HomeConfidenceResult | null;
+  filterActive?: boolean;
+  onClearFilter?: () => void;
 }
 
 /**
@@ -56,6 +58,8 @@ export function MobileDashboardView({
   onSystemTap,
   onChatOpen,
   homeConfidence,
+  filterActive = false,
+  onClearFilter,
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
   
@@ -100,6 +104,32 @@ export function MobileDashboardView({
   const handleUploadPhoto = useCallback(() => {
     onChatOpen();
   }, [onChatOpen]);
+
+  // Filtered empty state (badge filter active but no matches)
+  if (filterActive && systems.length > 0) {
+    const attentionSystems = systems.filter(s => getLateLifeState(s) !== 'not-late');
+    if (attentionSystems.length === 0) {
+      return (
+        <div className="space-y-4">
+          <Card className="bg-card border-border">
+            <CardContent className="p-6 text-center space-y-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                All systems are operating within expected ranges.
+              </p>
+              {onClearFilter && (
+                <button
+                  onClick={onClearFilter}
+                  className="text-sm font-semibold text-[hsl(var(--habitta-slate))]"
+                >
+                  Show all systems
+                </button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+  }
 
   // Empty state
   if (!systems || systems.length === 0) {

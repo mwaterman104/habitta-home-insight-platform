@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import { Home, Plus } from "lucide-react";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
+import { getLateLifeState } from "@/services/homeOutlook";
+import { trackMobileEvent, MOBILE_EVENTS } from "@/lib/analytics/mobileEvents";
 import { useHomeConfidence } from "@/hooks/useHomeConfidence";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
@@ -65,6 +67,7 @@ interface UserHome {
 export default function DashboardV3() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
   
   // JavaScript-based xl breakpoint detection for deterministic conditional rendering
@@ -94,6 +97,13 @@ export default function DashboardV3() {
   // Mobile system drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
   
+  // System filter state (badge toggle)
+  const [systemFilter, setSystemFilter] = useState<'all' | 'attention'>('all');
+  
+  // Reset filter on navigation
+  useEffect(() => {
+    setSystemFilter('all');
+  }, [location.pathname]);
   // HVAC Prediction State
   const [hvacPrediction, setHvacPrediction] = useState<SystemPrediction | null>(null);
   const [hvacLoading, setHvacLoading] = useState(false);
@@ -508,6 +518,14 @@ export default function DashboardV3() {
           healthStatus={getHealthStatus()}
           onAddressClick={handleAddressClick}
           onMenuOpen={() => setDrawerOpen(true)}
+          onHealthBadgeClick={() => {
+            setSystemFilter(prev => {
+              const next = prev === 'all' ? 'attention' : 'all';
+              trackMobileEvent(MOBILE_EVENTS.BADGE_FILTER_TOGGLED, { filter: next });
+              return next;
+            });
+          }}
+          filterActive={systemFilter === 'attention'}
           condensed
         />
         
@@ -526,11 +544,17 @@ export default function DashboardV3() {
         
         <main className="flex-1 p-3 pb-20 space-y-3">
           <MobileDashboardView
-            systems={capitalTimeline?.systems || []}
+            systems={
+              systemFilter === 'attention'
+                ? (capitalTimeline?.systems || []).filter(s => getLateLifeState(s) !== 'not-late')
+                : (capitalTimeline?.systems || [])
+            }
             healthStatus={getHealthStatus()}
             onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
             onChatOpen={() => setMobileChatOpen(true)}
             homeConfidence={homeConfidence}
+            filterActive={systemFilter === 'attention'}
+            onClearFilter={() => setSystemFilter('all')}
           />
         </main>
         

@@ -22,6 +22,10 @@ interface TopHeaderProps {
   condensed?: boolean;
   /** Callback for hamburger menu tap (mobile only) */
   onMenuOpen?: () => void;
+  /** Callback when health badge is tapped (for filtering) */
+  onHealthBadgeClick?: () => void;
+  /** Whether the badge filter is currently active */
+  filterActive?: boolean;
 }
 
 /**
@@ -36,7 +40,9 @@ export function TopHeader({
   onAddressClick,
   
   condensed = false,
-  onMenuOpen
+  onMenuOpen,
+  onHealthBadgeClick,
+  filterActive = false,
 }: TopHeaderProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -46,15 +52,28 @@ export function TopHeader({
     navigate("/auth");
   };
 
+  const activeRing = filterActive ? ' ring-2 ring-[hsl(var(--habitta-slate)/0.4)]' : '';
+  
   const getStatusBadge = () => {
-    switch (healthStatus) {
-      case 'healthy':
-        return <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">healthy</Badge>;
-      case 'attention':
-        return <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">attention</Badge>;
-      case 'critical':
-        return <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">critical</Badge>;
+    const badge = (() => {
+      switch (healthStatus) {
+        case 'healthy':
+          return <Badge variant="outline" className={`text-emerald-600 border-emerald-200 bg-emerald-50${activeRing}`}>healthy</Badge>;
+        case 'attention':
+          return <Badge variant="outline" className={`text-amber-600 border-amber-200 bg-amber-50${activeRing}`}>attention</Badge>;
+        case 'critical':
+          return <Badge variant="outline" className={`text-red-600 border-red-200 bg-red-50${activeRing}`}>critical</Badge>;
+      }
+    })();
+    
+    if (onHealthBadgeClick) {
+      return (
+        <button onClick={onHealthBadgeClick} className="focus:outline-none">
+          {badge}
+        </button>
+      );
     }
+    return badge;
   };
 
   const currentDate = new Date().toLocaleDateString('en-US', { 
