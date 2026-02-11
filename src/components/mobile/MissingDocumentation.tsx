@@ -16,8 +16,8 @@ export function MissingDocumentation({ nextGain, onUploadDoc, onUploadPhoto }: M
 
       <p className="text-habitta-stone text-meta leading-relaxed mb-5">
         {nextGain
-          ? `Providing records strengthens timeline accuracy. Next step: ${nextGain.action.toLowerCase()}.`
-          : 'Upload permits, invoices, or photos to improve data confidence.'}
+          ? `Photos, service records, and date confirmations strengthen your home's record. Next step: ${nextGain.action.toLowerCase()}.`
+          : 'Upload photos or confirm system details to strengthen your home record.'}
       </p>
 
       <div className="grid grid-cols-2 gap-3">

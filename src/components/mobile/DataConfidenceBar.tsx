@@ -1,4 +1,5 @@
 import { Progress } from "@/components/ui/progress";
+import { getSystemDisplayName } from "@/lib/mobileCopy";
 import type { HomeConfidenceResult, ConfidenceState } from "@/services/homeConfidence";
 
 interface DataConfidenceBarProps {
@@ -46,7 +47,11 @@ export function DataConfidenceBar({ confidence }: DataConfidenceBarProps) {
 
       {nextGain && (
         <p className="mt-2.5 text-meta text-habitta-stone leading-relaxed">
-          Requires {nextGain.action.toLowerCase()} for improved timeline accuracy.
+          {nextGain.action.includes('photo')
+            ? `A photo of your ${nextGain.systemKey ? getSystemDisplayName(nextGain.systemKey) : 'system'} would strengthen this record.`
+            : nextGain.action.includes('Confirm when')
+              ? `Confirming when your ${nextGain.systemKey ? getSystemDisplayName(nextGain.systemKey) : 'system'} was installed improves estimate accuracy.`
+              : `Adding details to your ${nextGain.systemKey ? getSystemDisplayName(nextGain.systemKey) : 'system'} record improves estimate accuracy.`}
         </p>
       )}
     </section>
