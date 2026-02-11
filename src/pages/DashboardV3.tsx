@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useHomeSystems } from "@/hooks/useHomeSystems";
 import { usePermitInsights } from "@/hooks/usePermitInsights";
 import { useChatMode } from "@/hooks/useChatMode";
+import { isFirstVisit, markFirstVisitComplete } from "@/lib/chatModeCopy";
 import { toast } from "sonner";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
 import type { RiskLevel } from "@/types/advisorState";
@@ -564,6 +565,8 @@ export default function DashboardV3() {
             homeConfidence={homeConfidence}
             filterActive={systemFilter === 'attention'}
             onClearFilter={() => setSystemFilter('all')}
+            isFirstVisit={isFirstVisit()}
+            onWelcomeDismiss={() => markFirstVisitComplete()}
           />
         </main>
         

@@ -317,6 +317,22 @@ export const RECOMMENDATION_COPY = {
  * Contextual assistant greetings when a recommendation card opens the chat.
  * Copy guardrail: use "can improve" / "helps increase", never "will increase."
  */
+// ============== Welcome Hero Copy ==============
+
+export const WELCOME_HERO = {
+  title: "Your home is under watch.",
+  subtitle: (systemCount: number) =>
+    `We're monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} based on public records and what you've shared.`,
+  /** The count substring to bold in the subtitle */
+  subtitleBoldSegment: (systemCount: number) =>
+    `${systemCount} ${systemCount === 1 ? 'system' : 'systems'}`,
+  reinforcement: "The more records you add, the more precise your forecasts become.",
+  cta: "See what we found",
+  dismiss: "Got it",
+} as const;
+
+// ============== Recommendation Chat Openers (v2) ==============
+
 export const RECOMMENDATION_CHAT_OPENERS: Record<string, (systemName: string, delta: number) => string> = {
   upload_photo: (name, delta) =>
     `Let's get a photo of your ${name}. A clear shot of the label or front helps verify the model and condition, and can improve your confidence score by +${delta}.`,

@@ -6,6 +6,7 @@ import { PrimarySystemCard } from "@/components/mobile/PrimarySystemCard";
 import { SystemLedger } from "@/components/mobile/SystemLedger";
 import { MissingDocumentation } from "@/components/mobile/MissingDocumentation";
 import { ChatInsightBanner } from "@/components/mobile/ChatInsightBanner";
+import { WelcomeHeroCard } from "@/components/mobile/WelcomeHeroCard";
 import { selectPrimarySystem } from "@/services/priorityScoring";
 import { getLateLifeState } from "@/services/homeOutlook";
 import { 
@@ -16,7 +17,7 @@ import {
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { HomeConfidenceResult } from "@/services/homeConfidence";
 import { CHAT_FIRST_TURN } from "@/lib/mobileCopy";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 // ============================================================
 // MobileChatIntent — carries CTA context to MobileChatSheet
@@ -52,6 +53,8 @@ interface MobileDashboardViewProps {
   homeConfidence: HomeConfidenceResult | null;
   filterActive?: boolean;
   onClearFilter?: () => void;
+  isFirstVisit?: boolean;
+  onWelcomeDismiss?: () => void;
 }
 
 /**
@@ -71,8 +74,33 @@ export function MobileDashboardView({
   homeConfidence,
   filterActive = false,
   onClearFilter,
+  isFirstVisit = false,
+  onWelcomeDismiss,
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
+  const primarySystemRef = useRef<HTMLDivElement>(null);
+  
+  // Welcome hero dismissed state
+  const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('habitta_welcome_dismissed') === 'true';
+    } catch { return false; }
+  });
+  const showWelcome = isFirstVisit && !welcomeDismissed;
+  
+  const handleWelcomeDismiss = () => {
+    try { localStorage.setItem('habitta_welcome_dismissed', 'true'); } catch {}
+    setWelcomeDismissed(true);
+    onWelcomeDismiss?.();
+  };
+
+  const handleWelcomeExplore = () => {
+    handleWelcomeDismiss();
+    // Scroll to primary system card after dismiss animation
+    setTimeout(() => {
+      primarySystemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 350);
+  };
   
   // Respect user's motion preferences
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -168,6 +196,15 @@ export function MobileDashboardView({
 
   return (
     <div className="space-y-7">
+      {/* ── Welcome Hero Card (first visit only) ── */}
+      {showWelcome && (
+        <WelcomeHeroCard
+          systemCount={systems.length}
+          onExplore={handleWelcomeExplore}
+          onDismiss={handleWelcomeDismiss}
+        />
+      )}
+
       {/* ── Data Confidence Bar ── */}
       <div className={animClass}>
         {homeConfidence ? (
@@ -195,7 +232,7 @@ export function MobileDashboardView({
 
       {/* ── Primary System Card ── */}
       {primary && (
-        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+        <div ref={primarySystemRef} className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
           <PrimarySystemCard
             system={primary.system}
             onAction={() => {
