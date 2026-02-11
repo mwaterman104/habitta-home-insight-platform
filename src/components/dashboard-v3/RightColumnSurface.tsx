@@ -69,7 +69,7 @@ export function RightColumnSurface({ capitalSystems = [], ...homeOverviewProps }
   };
 
   return (
-    <div key={focus?.type ?? 'home'} className="animate-in fade-in slide-in-from-right-4 duration-200">
+    <div key={focus?.type === 'system' ? `system-${(focus as any)?.systemId}` : focus?.type ?? 'home'} className="animate-in fade-in slide-in-from-right-4 duration-200">
       {renderPanel()}
     </div>
   );
