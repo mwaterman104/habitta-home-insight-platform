@@ -304,11 +304,12 @@ export function ChatConsole({
       if (response.focus.type === 'contractor_list' && response.functionResult) {
         try {
           const result = JSON.parse(response.functionResult);
-          if (result.type === 'contractor_recommendations' && result.items) {
+          const contractors = result.items || result.contractors;
+          if (result.type === 'contractor_recommendations' && Array.isArray(contractors) && contractors.length > 0) {
             // Set contractor data in focus context
             setFocusData?.({
               contractorList: {
-                contractors: result.items,
+                contractors,
                 disclaimer: result.disclaimer || "We found these contractors in your area. These are not endorsements — compare quotes, check reviews, and ask questions before hiring.",
               },
             });
