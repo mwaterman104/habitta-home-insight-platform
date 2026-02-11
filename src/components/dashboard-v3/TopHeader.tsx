@@ -65,8 +65,8 @@ export function TopHeader({
   });
 
   return (
-    <header className={`border-b bg-card flex items-center justify-between shrink-0 ${
-      condensed ? 'h-14 px-3' : 'h-16 px-6'
+    <header className={`border-b flex items-center justify-between shrink-0 ${
+      condensed ? 'h-14 px-3 bg-habitta-ivory' : 'h-16 px-6 bg-card'
     }`}>
       {/* Left: Hamburger (mobile) + Brand + Property Selector */}
       <div className={`flex items-center ${condensed ? 'gap-2' : 'gap-4'}`}>
@@ -83,7 +83,7 @@ export function TopHeader({
         )}
         
         <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>
-          {condensed ? 'Home Pulse' : 'Habitta'}
+          Habitta
         </span>
         
         <button 

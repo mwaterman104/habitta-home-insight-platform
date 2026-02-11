@@ -531,9 +531,6 @@ export default function DashboardV3() {
             onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
             onChatOpen={() => setMobileChatOpen(true)}
             homeConfidence={homeConfidence}
-            recommendations={homeRecommendations}
-            onDismissRecommendation={dismissRecommendation}
-            onRecommendationAction={handleRecommendationAction}
           />
         </main>
         
