@@ -1,104 +1,96 @@
 
 
-# Fix: Tool Call Follow-Up (Record AND Respond)
+# Mobile Dashboard Redesign: Mockup Replication
 
-## Problem
+## Overview
 
-Lines 812-831 of `ai-home-assistant/index.ts` treat a tool call as a terminal state. After executing `record_home_event` (or any tool), the function returns the raw tool result as the message. The user never gets an answer to their question.
+Replace the current "activity feed" mobile dashboard with a **record + confidence surface** that matches the provided mockup. This transforms four existing sections (LifecycleRing hero, SinceLastMonth, RecommendationCards, horizontal SystemTileScroll) into four new ones: Data Confidence Bar, Primary System Card, System Ledger, and Missing Documentation.
 
-## Fix
+## Design Tokens
 
-Replace the tool-call return block (lines 812-831) with a two-pass pattern:
+Add Habitta-specific color and typography tokens to `tailwind.config.ts`:
 
-1. Execute the tool (unchanged)
-2. Build a follow-up messages array that includes:
-   - The original system prompt
-   - The conversation history + user message
-   - The assistant message with its `tool_calls` array (from the first LLM response)
-   - A `tool` role message with matching `tool_call_id` containing the stringified tool result
-3. Make a second LLM call -- same model, same system prompt, **no tools**, `max_tokens: 600`
-4. Return the second call's `content` as the user-facing `message`, with `functionCall` and `functionResult` still attached for UI badges
+- **Colors**: `habitta-ivory` (#F9F7F2), `habitta-charcoal` (#2D2D2D), `habitta-stone` (#8C8A84), `habitta-slate` (#5A7684), `habitta-clay` (#A66D5B), `habitta-olive` (#747D63)
+- **Typography**: `tracking-tightest` (-0.02em), `border-3` (3px)
+- Keep existing `font-sans` (IBM Plex Sans) -- do not add Inter, as it conflicts with the established type system
 
-## Key Constraints
+## New Components (4 files)
 
-- The second call explicitly omits `tools` and `tool_choice` to prevent infinite chaining (max 2 LLM calls)
-- The `tool_call_id` in the follow-up `tool` role message must exactly match the `id` from `aiMessage.tool_calls[0]`
-- A runtime guard ensures `tool_call_id` exists before making the second call; if missing, falls back to current behavior
-- The second call gets a small appended instruction: "The tool has already executed. Respond naturally -- explain what was recorded AND answer the user's question. Do not reference tool names or IDs."
+### 1. `src/components/mobile/DataConfidenceBar.tsx`
+- Accepts `HomeConfidenceResult` (score, state, nextGain)
+- Renders: "Data Confidence" heading, state badge with percentage (e.g., "Low (34%)"), teal Radix Progress bar, helper text from `nextGain` (e.g., "Requires 2 documents for Moderate confidence")
+- Uses `habitta-slate` for progress bar fill, `habitta-ivory` background
+- State badge maps: solid -> olive, developing -> slate, unclear -> clay, at-risk -> stone
 
-## Pseudocode
+### 2. `src/components/mobile/PrimarySystemCard.tsx` (rewrite)
+- Accepts the top-scored `SystemTimelineEntry` from `selectPrimarySystem()`
+- Layout: Icon (left) + content (right) in a bordered card
+- Content hierarchy:
+  - System name (bold, large)
+  - Status line: lifecycle status derived from `getRemainingYearsForSystem()` and `getLateLifeState()` with year range
+  - Description: material/lifecycle context from system data
+  - Muted footer: Source line (`installSource` + year) and Confidence level (`dataQuality`) with colored dot
+- Border color: `habitta-clay/40` for aging/late-life systems, `habitta-stone/20` for stable
+- Icon map: water_heater -> Droplets, hvac -> Wind, roof -> Home, electrical -> Zap, plumbing -> Wrench (all `strokeWidth={1.5}`)
 
-```text
-if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-  const toolCall = aiMessage.tool_calls[0];
-  const functionResult = await handleFunctionCall(...);
+### 3. `src/components/mobile/SystemLedger.tsx` (new)
+- Accepts secondary `SystemTimelineEntry[]` (all scored systems except primary)
+- Table-like layout with header row: "System Ledger" | "Next Service / Confidence"
+- Each row: System name | "Est. {earlyYear}-{lateYear}" + Confidence level + colored dot
+- Consistent `py-4` row height, `border-b border-habitta-stone/10` dividers
+- Confidence dots: olive (high), slate (medium), clay (low)
+- Footer note about estimates being based on available records
 
-  // Guard: tool_call_id must exist for second pass
-  if (!toolCall.id) {
-    // fallback to current behavior
-    return { message: functionResult, functionCall: toolCall.function, functionResult };
-  }
+### 4. `src/components/mobile/MissingDocumentation.tsx` (new)
+- Accepts `nextGain` from `HomeConfidenceResult` and callbacks for upload actions
+- Heading: "Missing Documentation"
+- Helper text: evidence-first framing tied to `nextGain.action`
+- Two buttons: "Upload Doc" (slate) and "Upload Photo" (stone) -- functional, not expressive
+- Buttons trigger chat context with appropriate upload intent (via `useChatContext`)
 
-  // Build follow-up messages
-  const followUpMessages = [
-    ...messages,  // original system + history + user
-    {
-      role: 'assistant',
-      tool_calls: aiMessage.tool_calls,
-      content: aiMessage.content || null,
-    },
-    {
-      role: 'tool',
-      tool_call_id: toolCall.id,
-      content: typeof functionResult === 'string' ? functionResult : JSON.stringify(functionResult),
-    },
-    {
-      role: 'system',
-      content: 'The tool has already executed. Respond naturally to the user: acknowledge what was recorded AND answer their original question. Do not reference tool names or IDs.',
-    }
-  ];
+## Modified Files
 
-  // Second LLM call -- NO tools
-  const followUpResponse = await fetch(API_URL, {
-    method: 'POST',
-    headers: { ... },
-    body: JSON.stringify({
-      model: 'google/gemini-3-flash-preview',
-      messages: followUpMessages,
-      max_tokens: 600,
-      temperature: 0.7,
-      // NO tools, NO tool_choice
-    }),
-  });
+### 5. `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` (rewrite)
+- Remove imports: `HomeConfidenceHero`, `SinceLastMonth`, `RecommendationCards`, `SystemTileScroll`
+- Add imports: `DataConfidenceBar`, `PrimarySystemCard`, `SystemLedger`, `MissingDocumentation`
+- New layout order (top to bottom):
+  1. `DataConfidenceBar` -- from `homeConfidence`
+  2. `PrimarySystemCard` -- from `primary` (via `selectPrimarySystem`)
+  3. `SystemLedger` -- from remaining `scored` systems (index 1+)
+  4. `MissingDocumentation` -- from `homeConfidence.nextGain`
+- Keep: priority scoring logic, reduced-motion support, empty state, analytics tracking
+- Props interface simplified: remove `recommendations`, `onDismissRecommendation`, `onRecommendationAction` (no longer needed)
 
-  const followUpData = await followUpResponse.json();
-  const followUpContent = followUpData.choices?.[0]?.message?.content;
+### 6. `src/components/dashboard-v3/TopHeader.tsx` (update condensed mode)
+- When `condensed=true`: show "Habitta" (not "Home Pulse") with home icon
+- Add "Last Updated" line below the address (muted, smaller text)
+- Use `habitta-ivory` background tone for mobile header
 
-  return {
-    message: followUpContent || functionResult,
-    functionCall: toolCall.function,
-    functionResult,
-    suggestions: generateFollowUpSuggestions(message, context),
-  };
-}
-```
+### 7. `src/pages/DashboardV3.tsx` (minor prop cleanup)
+- Remove `recommendations`, `onDismissRecommendation`, `onRecommendationAction` props from the `MobileDashboardView` call (lines 528-537)
+- The recommendation data and handlers remain in DashboardV3 for potential future use but are no longer passed to the mobile view
 
-## File to Modify
+### 8. `tailwind.config.ts`
+- Add `habitta` color palette under `extend.colors`
+- Add `tracking-tightest` under `extend.letterSpacing`
+- Add `border-3` under `extend.borderWidth`
 
-| File | Lines | Change |
-|------|-------|--------|
-| `supabase/functions/ai-home-assistant/index.ts` | 812-831 | Replace single-turn return with two-pass follow-up pattern |
+## Data Flow (unchanged)
+
+All new components consume pre-computed data from existing services:
+- `selectPrimarySystem()` determines primary vs. secondary systems
+- `HomeConfidenceResult` provides score, state, nextGain
+- `SystemTimelineEntry` provides replacement windows, install source, data quality
+- `getRemainingYearsForSystem()` and `getLateLifeState()` derive lifecycle status
+- No new hooks, no new API calls, no new edge functions
 
 ## What Does NOT Change
 
-- Tool definitions (lines 641-793)
-- `handleFunctionCall` logic (all tool handlers)
-- System prompt construction
-- Non-tool-call response path (lines 834-837)
-- Client-side hooks, message format, or UI components
-- `HomeEventConfirmation` component (still reads `functionResult`)
-- Chat persistence
+- Desktop layout (3-column, unaffected)
+- BottomNavigation component
+- Confidence computation engine (`homeConfidence.ts`)
+- Priority scoring service (`priorityScoring.ts`)
+- Capital timeline types and data contracts
+- Chat integration (MobileChatSheet stays as-is)
+- Existing mobile components remain in codebase (HomeConfidenceHero, SinceLastMonth, etc.) -- just no longer imported by the dashboard
 
-## Future Guard (Not Implemented Now, Noted for Later)
-
-For purely transactional intents ("Mark this as fixed"), a future intent classifier could skip the second LLM call and return a brief acknowledgment directly. This is deferred -- every tool call gets a follow-up for now, which is the safer default.
