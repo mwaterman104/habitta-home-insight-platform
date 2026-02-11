@@ -33,6 +33,7 @@ import { LeftColumn } from "@/components/dashboard-v3/LeftColumn";
 import { MiddleColumn } from "@/components/dashboard-v3/MiddleColumn";
 import { RightColumn } from "@/components/dashboard-v3/RightColumn";
 import { MobileDashboardView, MobileChatSheet } from "@/components/dashboard-v3/mobile";
+import type { MobileChatIntent } from "@/components/dashboard-v3/mobile/MobileDashboardView";
 import { MobileSystemDrawer } from "@/components/mobile";
 import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 // ChatDock is now rendered inside MiddleColumn, not here
@@ -89,6 +90,7 @@ export default function DashboardV3() {
   
   // Mobile chat sheet state - must be declared before any early returns
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileChatIntent, setMobileChatIntent] = useState<MobileChatIntent | null>(null);
   
   // Recommendation → chat orchestration
   const [activeRecommendation, setActiveRecommendation] = useState<Recommendation | null>(null);
@@ -403,9 +405,16 @@ export default function DashboardV3() {
     setMobileChatOpen(true);
   }, [chatLockedForRecommendation]);
 
-  // Close chat and clear recommendation state
+  // Open chat with optional intent context
+  const handleMobileChatOpen = useCallback((intent?: MobileChatIntent) => {
+    setMobileChatIntent(intent || null);
+    setMobileChatOpen(true);
+  }, []);
+
+  // Close chat and clear recommendation + intent state
   const handleMobileChatClose = useCallback(() => {
     setMobileChatOpen(false);
+    setMobileChatIntent(null);
     setActiveRecommendation(null);
     setChatLockedForRecommendation(false);
   }, []);
@@ -551,14 +560,14 @@ export default function DashboardV3() {
             }
             healthStatus={getHealthStatus()}
             onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
-            onChatOpen={() => setMobileChatOpen(true)}
+            onChatOpen={handleMobileChatOpen}
             homeConfidence={homeConfidence}
             filterActive={systemFilter === 'attention'}
             onClearFilter={() => setSystemFilter('all')}
           />
         </main>
         
-        <BottomNavigation onChatOpen={() => setMobileChatOpen(true)} />
+        <BottomNavigation onChatOpen={() => handleMobileChatOpen()} />
         
         <MobileChatSheet
           open={mobileChatOpen}
@@ -569,11 +578,13 @@ export default function DashboardV3() {
           yearBuilt={userHome.year_built}
           advisorState={advisorState}
           focusContext={
-            activeRecommendation?.systemId
-              ? { systemKey: activeRecommendation.systemId, trigger: 'recommendation' }
-              : focusContext.type === 'SYSTEM'
-                ? { systemKey: focusContext.systemKey, trigger: 'user' }
-                : undefined
+            mobileChatIntent?.systemKey
+              ? { systemKey: mobileChatIntent.systemKey, trigger: 'cta_intent' }
+              : activeRecommendation?.systemId
+                ? { systemKey: activeRecommendation.systemId, trigger: 'recommendation' }
+                : focusContext.type === 'SYSTEM'
+                  ? { systemKey: focusContext.systemKey, trigger: 'user' }
+                  : undefined
           }
           openingMessage={openingMessage}
           confidence={confidence}
@@ -585,15 +596,18 @@ export default function DashboardV3() {
           onSystemUpdated={handleSystemUpdated}
           onWhyClick={(key) => selectSystem(key)}
           initialAssistantMessage={
-            activeRecommendation
-              ? (RECOMMENDATION_CHAT_OPENERS[activeRecommendation.actionType] ?? (() => ''))( 
-                  activeRecommendation.systemId
-                    ? getSystemDisplayName(activeRecommendation.systemId)
-                    : 'your home',
-                  activeRecommendation.confidenceDelta
-                )
-              : undefined
+            mobileChatIntent?.initialAssistantMessage
+              ? mobileChatIntent.initialAssistantMessage
+              : activeRecommendation
+                ? (RECOMMENDATION_CHAT_OPENERS[activeRecommendation.actionType] ?? (() => ''))( 
+                    activeRecommendation.systemId
+                      ? getSystemDisplayName(activeRecommendation.systemId)
+                      : 'your home',
+                    activeRecommendation.confidenceDelta
+                  )
+                : undefined
           }
+          autoSendMessage={mobileChatIntent?.autoSendMessage}
         />
       </div>
     );

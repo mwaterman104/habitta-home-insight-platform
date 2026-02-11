@@ -158,12 +158,29 @@ export const CHAT_QUICK_REPLIES = [
  * No guards, no refs, no context checks. Injected once on open.
  */
 export const CHAT_FIRST_TURN = {
-  /**
-   * Planning-initiated chat (from "Start planning this replacement")
-   * References on-screen context, asks a constrained question.
-   */
+  /** Planning-initiated chat (from "Start planning this replacement") */
   systemPlanning: (systemName: string) =>
     `Let's start planning for your ${systemName}. Based on the cost and timing outlook above, what would you like to focus on first — timing, budget, or contractor options?`,
+
+  /** Replacement planning CTA (from banner or at-risk card action) */
+  replacementPlanning: (systemName: string) =>
+    `Your ${systemName} is entering its replacement window. Would you like to focus on timing, budget, or finding a contractor?`,
+
+  /** Log service CTA (from healthy card action) */
+  logService: (systemName: string) =>
+    `What maintenance or service was done on your ${systemName}? I'll add it to your home's permanent record.`,
+
+  /** Upload photo CTA */
+  uploadPhoto: () =>
+    `Upload a photo of the system label or the area of concern, and I'll analyze what I see.`,
+
+  /** Upload document CTA */
+  uploadDoc: () =>
+    `What kind of document do you have? A receipt, inspection report, warranty, or permit?`,
+
+  /** Confidence boost CTA (from contextual chat prompt) */
+  confidenceBoost: (systemName: string) =>
+    `I see we're working with limited data on your ${systemName}. A photo of the manufacturer label would help me pinpoint the exact maintenance schedule.`,
 } as const;
 
 // ============== Chat Priming Templates ==============
