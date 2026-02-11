@@ -9,7 +9,10 @@
 import { useFocusState } from "@/contexts/FocusStateContext";
 import { HomeOverviewPanel, type HomeOverviewPanelProps } from "./panels/HomeOverviewPanel";
 import { SystemPanel } from "./panels/SystemPanel";
+import { ContractorListPanel } from "./panels/ContractorListPanel";
+import { ContractorDetailPanel } from "./panels/ContractorDetailPanel";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { ContractorRecommendation } from "@/lib/chatFormatting";
 
 interface RightColumnSurfaceProps extends HomeOverviewPanelProps {
   /** Capital timeline systems for SystemPanel lookup */
@@ -17,7 +20,7 @@ interface RightColumnSurfaceProps extends HomeOverviewPanelProps {
 }
 
 export function RightColumnSurface({ capitalSystems = [], ...homeOverviewProps }: RightColumnSurfaceProps) {
-  const { focus } = useFocusState();
+  const { focus, focusData } = useFocusState();
 
   const renderPanel = () => {
     if (!focus) {
@@ -35,9 +38,26 @@ export function RightColumnSurface({ capitalSystems = [], ...homeOverviewProps }
           />
         );
       }
-      // Phase 3: contractor panels
-      case 'contractor_list':
-      case 'contractor_detail':
+      case 'contractor_list': {
+        const listData = focusData?.contractorList || {};
+        return (
+          <ContractorListPanel
+            query={focus.query}
+            systemId={focus.systemId}
+            contractors={listData.contractors}
+            disclaimer={listData.disclaimer}
+          />
+        );
+      }
+      case 'contractor_detail': {
+        const detailData = focusData?.contractorDetail || {};
+        return (
+          <ContractorDetailPanel
+            contractorId={focus.contractorId}
+            contractor={detailData.contractor}
+          />
+        );
+      }
       // Future panels
       case 'maintenance':
       case 'capital_plan':

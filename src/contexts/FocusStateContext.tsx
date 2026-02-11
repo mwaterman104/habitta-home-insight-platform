@@ -21,6 +21,16 @@ interface FocusStateValue {
   goBack: () => void;
   clearFocus: () => void;
   isUserLocked: boolean;
+  focusData?: {
+    contractorList?: {
+      contractors?: any[];
+      disclaimer?: string;
+    };
+    contractorDetail?: {
+      contractor?: any;
+    };
+  };
+  setFocusData?: (data: FocusStateValue['focusData']) => void;
 }
 
 const FocusStateContext = createContext<FocusStateValue | null>(null);
@@ -28,6 +38,7 @@ const FocusStateContext = createContext<FocusStateValue | null>(null);
 export function FocusStateProvider({ children }: { children: ReactNode }) {
   const [focusStack, setFocusStack] = useState<FocusState[]>([null]);
   const [isUserLocked, setIsUserLocked] = useState(false);
+  const [focusData, setFocusData] = useState<FocusStateValue['focusData']>();
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup lock timer on unmount
@@ -82,7 +93,7 @@ export function FocusStateProvider({ children }: { children: ReactNode }) {
   const focus = focusStack[focusStack.length - 1] ?? null;
 
   return (
-    <FocusStateContext.Provider value={{ focus, focusStack, setFocus, goBack, clearFocus, isUserLocked }}>
+    <FocusStateContext.Provider value={{ focus, focusStack, setFocus, goBack, clearFocus, isUserLocked, focusData, setFocusData }}>
       {children}
     </FocusStateContext.Provider>
   );
@@ -104,5 +115,7 @@ export function useFocusState(): FocusStateValue {
     goBack: () => {},
     clearFocus: () => {},
     isUserLocked: false,
+    focusData: undefined,
+    setFocusData: () => {},
   };
 }

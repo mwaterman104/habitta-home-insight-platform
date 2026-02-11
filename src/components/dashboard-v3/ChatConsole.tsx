@@ -221,7 +221,7 @@ export function ChatConsole({
   });
 
   // Import focus state hook
-  const { setFocus, isUserLocked } = useFocusState();
+  const { setFocus, isUserLocked, setFocusData } = useFocusState();
 
   // Auto-send message guard (single-fire per unique message value)
   const hasSentAutoMessage = useRef<string | null>(null);
@@ -300,7 +300,28 @@ export function ChatConsole({
     
     // If response contains focus metadata, update focus state (unless user has active lock)
     if (response?.focus && !isUserLocked) {
-      setFocus(response.focus);
+      // Extract and attach contractor data if present
+      if (response.focus.type === 'contractor_list' && response.functionResult) {
+        try {
+          const result = JSON.parse(response.functionResult);
+          if (result.type === 'contractor_recommendations' && result.items) {
+            // Set contractor data in focus context
+            setFocusData?.({
+              contractorList: {
+                contractors: result.items,
+                disclaimer: result.disclaimer || "We found these contractors in your area. These are not endorsements — compare quotes, check reviews, and ask questions before hiring.",
+              },
+            });
+            // Push contractor_list focus to right column
+            setFocus(response.focus, { push: true });
+          }
+        } catch {
+          // Not JSON, proceed with focus only
+          setFocus(response.focus);
+        }
+      } else {
+        setFocus(response.focus);
+      }
     }
     
     // HARDENING FIX #4: Check response envelope for system updates, not tool name
