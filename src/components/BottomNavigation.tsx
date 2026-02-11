@@ -39,7 +39,11 @@ export default function BottomNavigation({ onChatOpen }: BottomNavigationProps) 
 
   const handleNavClick = (item: NavItem) => {
     if ('action' in item && item.action === 'openChat') {
-      onChatOpen?.();
+      if (onChatOpen) {
+        onChatOpen();
+      } else {
+        navigate('/chat');
+      }
     } else if ('url' in item && item.url) {
       navigate(item.url);
     }

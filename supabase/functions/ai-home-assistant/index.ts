@@ -1443,6 +1443,13 @@ async function searchLocalContractors(
     'oven': 'oven range repair technician',
     'dishwasher': 'dishwasher repair technician',
     'garbage_disposal': 'plumber garbage disposal',
+    // Irrigation / landscaping mappings
+    'sprinkler': 'sprinkler system repair service',
+    'sprinkler_system': 'sprinkler system repair',
+    'irrigation': 'irrigation system repair contractor',
+    'irrigation_system': 'irrigation system repair service',
+    'landscaping': 'landscape contractor',
+    'landscaping_irrigation': 'irrigation and drainage contractor',
   };
 
   const query = searchQueries[serviceType.toLowerCase()] || `${serviceType} contractor`;
