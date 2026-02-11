@@ -16,7 +16,7 @@
 
 import type { SystemTimelineEntry } from '@/types/capitalTimeline';
 import { getSystemDisplayName } from '@/lib/mobileCopy';
-import { getRemainingYearsForSystem } from './homeOutlook';
+
 
 // ============== Constants (Locked) ==============
 
@@ -40,11 +40,10 @@ export interface SystemSignals {
   hasSerial: boolean;
   hasPhoto: boolean;
   hasPermitOrInvoice: boolean;
+  hasOwnerConfirmation: boolean;
   hasMaintenanceRecord: boolean;
   hasProfessionalService: boolean;
   hasMaintenanceNotes: boolean;
-  hasReplacementAcknowledged: boolean;
-  hasPlannedReplacement: boolean;
 }
 
 export type ConfidenceState = 'solid' | 'developing' | 'unclear' | 'at-risk';
@@ -93,16 +92,15 @@ export interface HomeEventRecord {
 // ============== Signal Point Values ==============
 
 const SIGNAL_POINTS: Record<keyof SystemSignals, number> = {
-  hasInstallYear: 5,
+  hasInstallYear: 6,
   hasMaterial: 3,
-  hasSerial: 2,
-  hasPhoto: 2,
-  hasPermitOrInvoice: 4,
+  hasSerial: 1,
+  hasPhoto: 4,
+  hasPermitOrInvoice: 2,
+  hasOwnerConfirmation: 3,
   hasMaintenanceRecord: 2,
-  hasProfessionalService: 2,
+  hasProfessionalService: 1,
   hasMaintenanceNotes: 1,
-  hasReplacementAcknowledged: 2,
-  hasPlannedReplacement: 2,
 };
 
 // ============== State Mapping ==============
@@ -146,33 +144,27 @@ export function deriveSystemSignals(
   });
 
   const maintenanceEvents = systemEvents.filter(e => e.event_type === 'maintenance');
-  const remaining = system ? getRemainingYearsForSystem(system) : null;
-  const isLateLife = remaining !== null && remaining <= 2;
 
   return {
     hasInstallYear: system?.installYear != null || 
       (ORIGINAL_TO_HOME_SYSTEMS.has(systemKind) && yearBuilt != null),
     hasMaterial: MATERIAL_APPLICABLE_SYSTEMS.has(systemKind) 
       ? (system?.materialType != null && system.materialType !== 'unknown')
-      : false, // Not applicable → always false, but doesn't penalize (handled in scoring)
+      : false,
     hasSerial: systemAssets.some(a => a.serial != null && a.serial.length > 0),
     hasPhoto: systemAssets.some(a => {
       const meta = a.metadata as Record<string, unknown>;
       return meta?.photo_url != null || meta?.has_photo === true;
     }),
     hasPermitOrInvoice: system?.installSource === 'permit',
+    hasOwnerConfirmation: system?.installSource != null && 
+      system.installSource !== 'inferred' && system.installSource !== 'unknown',
     hasMaintenanceRecord: maintenanceEvents.length > 0,
     hasProfessionalService: maintenanceEvents.some(e => {
       return e.source === 'professional' || 
         (e.metadata as Record<string, unknown>)?.professional === true;
     }),
     hasMaintenanceNotes: maintenanceEvents.some(e => e.description != null && e.description.length > 0),
-    hasReplacementAcknowledged: isLateLife
-      ? (system?.installSource != null && system.installSource !== 'unknown')
-      : false, // Only scored for late-life systems
-    hasPlannedReplacement: isLateLife
-      ? systemEvents.some(e => e.event_type === 'recommendation' && e.status === 'open')
-      : false, // Only scored for late-life systems
   };
 }
 
@@ -199,14 +191,13 @@ function scoreSystem(
   if (signals.hasPhoto) documentation += SIGNAL_POINTS.hasPhoto;
   if (signals.hasPermitOrInvoice) documentation += SIGNAL_POINTS.hasPermitOrInvoice;
 
+  // Owner confirmation (documentation-adjacent)
+  if (signals.hasOwnerConfirmation) documentation += SIGNAL_POINTS.hasOwnerConfirmation;
+
   // Maintenance signals
   if (signals.hasMaintenanceRecord) maintenance += SIGNAL_POINTS.hasMaintenanceRecord;
   if (signals.hasProfessionalService) maintenance += SIGNAL_POINTS.hasProfessionalService;
   if (signals.hasMaintenanceNotes) maintenance += SIGNAL_POINTS.hasMaintenanceNotes;
-
-  // Planning signals (late-life only — signals are already false if not late-life)
-  if (signals.hasReplacementAcknowledged) planning += SIGNAL_POINTS.hasReplacementAcknowledged;
-  if (signals.hasPlannedReplacement) planning += SIGNAL_POINTS.hasPlannedReplacement;
 
   const total = Math.min(MAX_POINTS_PER_SYSTEM, documentation + maintenance + planning);
   return { total, documentation, maintenance, planning };
@@ -237,11 +228,11 @@ function buildEvidenceChips(
   let replacementsAcknowledged = 0;
 
   for (const [kind, signals] of systemSignalsMap) {
-    const docSignals = [signals.hasInstallYear, signals.hasPermitOrInvoice];
+    const docSignals = [signals.hasInstallYear, signals.hasOwnerConfirmation];
     if (MATERIAL_APPLICABLE_SYSTEMS.has(kind)) docSignals.push(signals.hasMaterial);
     if (docSignals.every(Boolean)) fullyDocumented++;
     if (signals.hasProfessionalService || signals.hasMaintenanceRecord) serviceConfirmed++;
-    if (signals.hasReplacementAcknowledged) replacementsAcknowledged++;
+    if (signals.hasOwnerConfirmation) replacementsAcknowledged++;
   }
 
   if (fullyDocumented > 0) {
@@ -251,7 +242,7 @@ function buildEvidenceChips(
     chips.push(`${serviceConfirmed} service${serviceConfirmed === 1 ? '' : 's'} confirmed`);
   }
   if (replacementsAcknowledged > 0) {
-    chips.push(`${replacementsAcknowledged} replacement${replacementsAcknowledged === 1 ? '' : 's'} acknowledged`);
+    chips.push(`${replacementsAcknowledged} system${replacementsAcknowledged === 1 ? '' : 's'} confirmed`);
   }
 
   return chips.slice(0, 3);
@@ -280,25 +271,25 @@ function findNextGain(
     const weight = tierWeight(kind);
     const displayName = getSystemDisplayName(kind);
 
+    if (!signals.hasPhoto) {
+      candidates.push({
+        action: `Upload a photo of your ${displayName}`,
+        delta: SIGNAL_POINTS.hasPhoto,
+        systemKey: kind,
+        priority: SIGNAL_POINTS.hasPhoto * weight * 1.2, // Boost photos as most accessible
+      });
+    }
     if (!signals.hasInstallYear) {
       candidates.push({
-        action: `Add ${displayName} install year`,
+        action: `Confirm when your ${displayName} was installed`,
         delta: SIGNAL_POINTS.hasInstallYear,
         systemKey: kind,
         priority: SIGNAL_POINTS.hasInstallYear * weight,
       });
     }
-    if (!signals.hasPermitOrInvoice) {
-      candidates.push({
-        action: `Upload ${displayName} permit or invoice`,
-        delta: SIGNAL_POINTS.hasPermitOrInvoice,
-        systemKey: kind,
-        priority: SIGNAL_POINTS.hasPermitOrInvoice * weight,
-      });
-    }
     if (MATERIAL_APPLICABLE_SYSTEMS.has(kind) && !signals.hasMaterial) {
       candidates.push({
-        action: `Confirm ${displayName} material`,
+        action: `Confirm your ${displayName} material type`,
         delta: SIGNAL_POINTS.hasMaterial,
         systemKey: kind,
         priority: SIGNAL_POINTS.hasMaterial * weight,
@@ -306,7 +297,7 @@ function findNextGain(
     }
     if (!signals.hasMaintenanceRecord) {
       candidates.push({
-        action: `Log ${displayName} service`,
+        action: `Log a ${displayName} service visit`,
         delta: SIGNAL_POINTS.hasMaintenanceRecord,
         systemKey: kind,
         priority: SIGNAL_POINTS.hasMaintenanceRecord * weight,

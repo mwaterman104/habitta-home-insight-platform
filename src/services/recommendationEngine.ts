@@ -50,16 +50,15 @@ const SYSTEM_TIER_WEIGHT: Record<string, number> = {
 };
 
 const SIGNAL_DELTAS: Record<string, number> = {
-  hasInstallYear: 5,
+  hasInstallYear: 6,
   hasMaterial: 3,
-  hasSerial: 2,
-  hasPhoto: 2,
-  hasPermitOrInvoice: 4,
+  hasSerial: 1,
+  hasPhoto: 4,
+  hasPermitOrInvoice: 2,
+  hasOwnerConfirmation: 3,
   hasMaintenanceRecord: 2,
-  hasProfessionalService: 2,
+  hasProfessionalService: 1,
   hasMaintenanceNotes: 1,
-  hasReplacementAcknowledged: 2,
-  hasPlannedReplacement: 2,
 };
 
 // ============== Action Routing ==============
@@ -206,21 +205,21 @@ function passPlanning(
     if (remaining === null || remaining > 2) continue; // Only late-life
 
     const signals = signalsMap.get(kind);
-    if (!signals || signals.hasReplacementAcknowledged) continue;
+    if (!signals || signals.hasOwnerConfirmation) continue;
 
-    const id = `planning:${kind}:hasReplacementAcknowledged`;
+    const id = `planning:${kind}:hasOwnerConfirmation`;
     if (dismissedIds.has(id)) continue;
 
     const tierWeight = SYSTEM_TIER_WEIGHT[kind] ?? 0.7;
     const uncertainty = getUncertaintyMultiplier(signals);
     const displayName = getSystemDisplayName(kind);
-    const delta = SIGNAL_DELTAS.hasReplacementAcknowledged;
+    const delta = SIGNAL_DELTAS.hasOwnerConfirmation;
 
     recs.push({
       id,
       type: 'planning',
       systemId: kind,
-      title: `Acknowledge ${displayName} replacement window`,
+      title: `Confirm ${displayName} details`,
       rationale: RATIONALE.acknowledge(displayName.toLowerCase()),
       confidenceDelta: delta,
       priorityScore: delta * tierWeight * uncertainty,
