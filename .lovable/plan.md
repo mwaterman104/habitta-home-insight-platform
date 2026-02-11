@@ -1,154 +1,120 @@
 
 
-# Dashboard-to-Detail Intelligence Bridge (Sharpened)
+# Fix: Every CTA Must Open Chat With Intent
 
-## Overview
+## Problem
 
-Four implementable items, incorporating all reviewer feedback on filter UX, subtitle placement, empty states, photo upload funneling, forecast tip rendering, icon consistency, and analytics.
+Every CTA that opens the chat (ChatInsightBanner, PrimarySystemCard action, MissingDocumentation uploads, ContextualChatPrompt) calls a bare `onChatOpen()` which just does `setMobileChatOpen(true)`. The chat opens blank -- no message, no system context, no dialog started.
 
-## Changes
+Habitta's moat is that it *already knows* what the user wants. A blank chat after tapping "Explore replacement planning" breaks that contract.
 
-### 1. System Narrative Copy -- `src/lib/systemNarratives.ts` (new file)
+## Root Cause
 
-A pure data module mapping each `CapitalSystemType` to its narrative identity, pro-tip, forecast tip, and confidence nudge.
+`MobileDashboardView` receives `onChatOpen: () => void` -- a function with no parameters. Every CTA calls it identically. No context reaches the `MobileChatSheet`.
+
+## Solution
+
+Replace the bare `onChatOpen()` with a context-carrying function that sets both the chat open state AND the initial message/system context.
+
+### Architecture Change
+
+Introduce a `MobileChatIntent` type that carries the CTA's intent to the chat sheet:
 
 ```text
-hvac:
-  subtitle: "The Lungs of Your Home"
-  proTip: "Replacing a clogged air filter can reduce energy costs by up to 15% and prevent a blower motor failure down the road."
-  forecastTip: "HVAC replacements in Florida are best scheduled in spring or fall to avoid peak-season pricing."
-  confidenceTip: "Upload a photo of the manufacturer label so I can pinpoint the exact maintenance schedule for this unit."
-
-roof:
-  subtitle: "The Shield"
-  proTip: "Checking your flashings -- the metal seals around chimneys and vents -- once a year can prevent 90% of attic leaks before they stain your ceiling."
-  forecastTip: "Keep an eye out for granule loss in your gutters after heavy rain. It's the first sign your roof's UV protection is thinning."
-  confidenceTip: "Upload a photo of the shingles from the ground so I can assess the wear pattern."
-
-water_heater:
-  subtitle: "Your Hot Water Lifeline"
-  proTip: "A 20-minute sediment flush can add up to 3 years of life by clearing mineral buildup from the tank bottom."
-  forecastTip: "Inconsistent water temperature or rumbling sounds may indicate sediment is reducing heating efficiency."
-  confidenceTip: "Upload a photo of the unit label so I can identify the exact model and maintenance needs."
+type MobileChatIntent = {
+  systemKey?: string;
+  systemLabel?: string;
+  initialAssistantMessage?: string;
+  autoSendMessage?: string;
+}
 ```
 
-Exports: `getSystemNarrative(systemId: string)` returning `{ subtitle, proTip, forecastTip, confidenceTip } | null`.
+---
 
-### 2. Habitta Intel Card -- `src/components/system/HabittaIntelCard.tsx` (new file)
+## File Changes
 
-A quiet annotation card for detail pages.
+### 1. `src/lib/mobileCopy.ts` -- Add first-turn messages for each CTA
 
-- Props: `systemId: string`, `isLateLife?: boolean`
-- Imports `getSystemNarrative` from `systemNarratives.ts`
-- Renders `Lightbulb` icon (16px, habitta-slate) + "Habitta Intel" uppercase meta header
-- Body: always shows `proTip`
-- Conditionally appends `forecastTip` when `isLateLife` is true (addresses reviewer Q5 -- forecast tips render only for late-life systems, not buried unused)
-- Background: `bg-habitta-slate/6 border border-habitta-slate/15 rounded-sm`
-- Does not render if `getSystemNarrative` returns null
+Extend `CHAT_FIRST_TURN` with new entries:
 
-### 3. SystemPlanView Enhancements -- `src/components/system/SystemPlanView.tsx` (modify)
+- `replacementPlanning(systemName)`: "Your {systemName} is entering its replacement window. Would you like to focus on timing, budget, or finding a contractor?"
+- `logService(systemName)`: "What maintenance or service was done on your {systemName}? I'll add it to your home's permanent record."
+- `uploadPhoto()`: "Upload a photo of the system label or the area of concern, and I'll analyze what I see."
+- `uploadDoc()`: "What kind of document do you have? A receipt, inspection report, warranty, or permit?"
+- `confidenceBoost(systemName)`: "I see we're working with limited data on your {systemName}. A photo of the manufacturer label would help me pinpoint the exact maintenance schedule."
 
-**A. Narrative subtitle in header (reviewer Q2 addressed):**
-- Subtitle renders INSIDE the Intel card header, not under the system name
-- This avoids competing with the confidence badge/status text in Section A
-- The Intel card header becomes: "Your HVAC: The Lungs of Your Home" in muted italic
+### 2. `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` -- Pass context with each CTA
 
-**B. Habitta Intel card placement:**
-- New Section D between Timing Outlook and Confidence & Evidence
-- Import `HabittaIntelCard` and render with `systemId` and `isLateLife` derived from `remainingYears <= 0`
+Change prop signature:
+- `onChatOpen: () => void` becomes `onChatOpen: (intent?: MobileChatIntent) => void`
 
-**C. Contextual Chat Prompt (inline, conditional):**
-- New sub-component `ContextualChatPrompt` rendered as Section F (after Confidence & Evidence, before Action Footer)
-- Uses `MessageCircle` icon (16px -- unified with Intel card per reviewer note)
-- Logic:
-  - If `confidenceLevel !== 'high'`: show `confidenceTip` from narratives (explicitly mentions "upload a photo" -- addresses reviewer Q4)
-  - Else if system is late-life (`remainingYears <= 0`): show replacement planning prompt
-  - Else: nothing renders (silence is the feature)
-- Tappable: calls `onChatExpand`
-- Styled as inline text: `text-meta text-habitta-stone leading-relaxed` with subtle left border accent
-- Fires `chat_prompt_tapped` analytics event on tap (reviewer suggestion)
+Update each CTA call site:
 
-**D. Analytics events:**
-- Add `INTEL_CARD_VIEWED` and `CHAT_PROMPT_TAPPED` to `mobileEvents.ts`
-- `HabittaIntelCard` fires `INTEL_CARD_VIEWED` on mount (via useEffect)
-- `ContextualChatPrompt` fires `CHAT_PROMPT_TAPPED` on tap
+- **ChatInsightBanner**: `onTap={() => onChatOpen({ systemKey: primary.system.systemId, systemLabel: primary.system.systemLabel, initialAssistantMessage: CHAT_FIRST_TURN.replacementPlanning(primary.system.systemLabel) })}`
+- **PrimarySystemCard**: `onAction={() => onChatOpen({ systemKey: primary.system.systemId, systemLabel: primary.system.systemLabel, initialAssistantMessage: isAtRisk ? CHAT_FIRST_TURN.replacementPlanning(...) : CHAT_FIRST_TURN.logService(...) })}`
+- **MissingDocumentation upload photo**: `onChatOpen({ initialAssistantMessage: CHAT_FIRST_TURN.uploadPhoto() })`
+- **MissingDocumentation upload doc**: `onChatOpen({ initialAssistantMessage: CHAT_FIRST_TURN.uploadDoc() })`
 
-**Updated section order:**
-A. System Header (unchanged)
-B. Cost Reality (unchanged)
-C. Timing Outlook (unchanged)
-D. Habitta Intel card (new -- includes narrative subtitle as card header)
-E. Confidence & Evidence (unchanged)
-F. Contextual Chat Prompt (new -- inline, conditional)
-G. Action Footer (unchanged)
+### 3. `src/pages/DashboardV3.tsx` -- Store intent and pass to MobileChatSheet
 
-### 4. Chat Context Copy -- `src/lib/chatContextCopy.ts` (modify)
+- Add state: `const [mobileChatIntent, setMobileChatIntent] = useState<MobileChatIntent | null>(null)`
+- Update chat open handler: `const handleMobileChatOpen = (intent?) => { setMobileChatIntent(intent || null); setMobileChatOpen(true); }`
+- Pass to `MobileDashboardView`: `onChatOpen={handleMobileChatOpen}`
+- Pass to `BottomNavigation`: `onChatOpen={() => handleMobileChatOpen()}` (no intent = general chat)
+- Wire intent into `MobileChatSheet` props:
+  - `initialAssistantMessage`: from `mobileChatIntent?.initialAssistantMessage` (falls back to existing recommendation logic)
+  - `focusContext`: from `mobileChatIntent?.systemKey` when present
+  - `autoSendMessage`: from `mobileChatIntent?.autoSendMessage` when present
+- Clear intent on chat close: add `setMobileChatIntent(null)` to `handleMobileChatClose`
 
-Add two new triggers to `getContextualAssistantMessage`:
-- `system/confidence_boost`: "I see we're at {confidenceLabel} confidence for your {systemName}. A photo of the manufacturer label would help me pinpoint the exact maintenance schedule."
-- `system/replacement_planning`: "Your {systemName} is in its replacement window. Would you like to walk through what a planned replacement looks like?"
+### 4. `src/pages/SystemPlanPage.tsx` -- Fix ContextualChatPrompt intent
 
-Add corresponding entries to `buildSystemAutoMessage`:
-- `confidence_boost`: "How can I improve the accuracy of my {systemName} record?"
-- `replacement_planning`: "What does a planned replacement look like for my {systemName}?"
+Currently `onChatExpand` always sets `chatIntent='general'`. Instead:
 
-Note: `systemName` uses the friendly `systemLabel` from the timeline entry (e.g., "HVAC System"), not the raw key -- addresses reviewer's graceful naming concern.
+- Add a new handler: `handleContextualPromptTap(reason: 'confidence_boost' | 'replacement_planning')`
+- When `reason === 'confidence_boost'`: set initialAssistantMessage to `CHAT_FIRST_TURN.confidenceBoost(displayName)`
+- When `reason === 'replacement_planning'`: set initialAssistantMessage to `CHAT_FIRST_TURN.replacementPlanning(displayName)`
+- Update `SystemPlanView` to pass the prompt reason through `onChatExpand`
 
-### 5. Critical Badge as Filter
+### 5. `src/components/system/SystemPlanView.tsx` -- Pass prompt reason to parent
 
-**`src/components/dashboard-v3/TopHeader.tsx` (modify):**
-- New props: `onHealthBadgeClick?: () => void`, `filterActive?: boolean`
-- Wrap the status badge in a `button` element
-- When `filterActive` is true, add `ring-2 ring-habitta-slate/40` to the badge (specific visual indicator per reviewer)
-- Badge only becomes tappable when `onHealthBadgeClick` is provided (desktop remains unchanged)
+Change `onChatExpand?: () => void` to `onChatExpand?: (reason?: string) => void`
 
-**`src/pages/DashboardV3.tsx` (modify):**
-- New state: `const [systemFilter, setSystemFilter] = useState<'all' | 'attention'>('all')`
-- Reset filter on navigation: add `useEffect` that resets to `'all'` when `location.pathname` changes (addresses reviewer Q1 -- filter resets on return from detail page)
-- `onHealthBadgeClick` toggles filter: `setSystemFilter(prev => prev === 'all' ? 'attention' : 'all')`
-- When filter is `'attention'`, pass only systems where `getLateLifeState(system) !== 'not-late'` to `MobileDashboardView`
-- Pass `filterActive={systemFilter === 'attention'}` to `TopHeader`
+In `ContextualChatPrompt`, call `onTap` with the reason:
+- `onTap(confidenceLevel !== 'high' ? 'confidence_boost' : 'replacement_planning')`
 
-**`src/components/dashboard-v3/mobile/MobileDashboardView.tsx` (modify):**
-- New prop: `filterActive?: boolean`
-- When `filterActive` is true and no systems match, show calm empty state:
-  - "All systems are operating within expected ranges."
-  - Below: a `button` styled as `text-habitta-slate text-meta font-semibold` reading "Show all systems" that calls a new `onClearFilter?: () => void` prop
-  - This addresses reviewer Q3 -- explicit exit from filtered view
+---
 
-### 6. Analytics Events -- `src/lib/analytics/mobileEvents.ts` (modify)
+## CTA-to-Chat Intent Map
 
-Add three new events:
-- `INTEL_CARD_VIEWED: 'mobile_intel_card_viewed'`
-- `CHAT_PROMPT_TAPPED: 'mobile_chat_prompt_tapped'`
-- `BADGE_FILTER_TOGGLED: 'mobile_badge_filter_toggled'`
+| CTA | Location | Initial Message |
+|-----|----------|----------------|
+| ChatInsightBanner tap | Dashboard | "Your {system} is entering its replacement window..." |
+| PrimarySystemCard action (at-risk) | Dashboard | "Your {system} is entering its replacement window..." |
+| PrimarySystemCard action (healthy) | Dashboard | "What maintenance or service was done on your {system}?..." |
+| Upload Photo button | Dashboard | "Upload a photo of the system label..." |
+| Upload Doc button | Dashboard | "What kind of document do you have?..." |
+| ContextualChatPrompt (low confidence) | System Plan | "I see we're working with limited data on your {system}..." |
+| ContextualChatPrompt (late-life) | System Plan | "Your {system} is entering its replacement window..." |
+| "Start planning" button | System Plan | Already works (existing `CHAT_FIRST_TURN.systemPlanning`) |
+| Docked chat input | System Plan | Passive inquiry -- no change needed |
+| Bottom nav chat button | Dashboard | General chat -- no change needed |
 
-These enable measurement of adoption before investing in backend sync (items 5-6 deferred).
+## What Does NOT Change
 
-## Reviewer Feedback Resolution Summary
-
-| Concern | Resolution |
-|---------|-----------|
-| Q1: Filter persistence on nav | Reset to 'all' on pathname change via useEffect |
-| Q2: Subtitle visual competition | Moved inside Intel card header, not system header |
-| Q3: Filtered empty state exit | "Show all systems" button below empty message |
-| Q4: Photo upload funnel clarity | confidenceTip copy explicitly says "upload a photo" |
-| Q5: forecastTip not rendered | Rendered in Intel card conditionally for late-life systems |
-| Icon sizing | Unified to 16px for both Intel card and chat prompt |
-| Filter indicator | Specified: `ring-2 ring-habitta-slate/40` on active badge |
-| System name handling | Uses `systemLabel` (friendly) not raw `systemId` |
-| Analytics checkpoint | Three new events to measure feature adoption |
+- MobileChatSheet component (already accepts `initialAssistantMessage`, `focusContext`, `autoSendMessage`)
+- ChatConsole internals
+- Desktop ContextualChatPanel (uses ChatContext provider, separate flow)
+- Chat persistence or AI edge function
+- Scoring engine
 
 ## Files Summary
 
 | File | Action |
 |------|--------|
-| `src/lib/systemNarratives.ts` | Create -- narrative copy per system |
-| `src/components/system/HabittaIntelCard.tsx` | Create -- pro-tip card with conditional forecast |
-| `src/components/system/SystemPlanView.tsx` | Modify -- add Intel card, contextual chat prompt |
-| `src/lib/chatContextCopy.ts` | Modify -- add confidence_boost + replacement_planning triggers |
-| `src/components/dashboard-v3/TopHeader.tsx` | Modify -- make badge tappable with ring indicator |
-| `src/pages/DashboardV3.tsx` | Modify -- add filter state with nav-reset |
-| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- accept filter props, show empty state with exit |
-| `src/lib/analytics/mobileEvents.ts` | Modify -- add 3 new tracking events |
+| `src/lib/mobileCopy.ts` | Modify -- add first-turn messages for each CTA intent |
+| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- pass intent context with each CTA |
+| `src/pages/DashboardV3.tsx` | Modify -- store intent state, wire to MobileChatSheet |
+| `src/pages/SystemPlanPage.tsx` | Modify -- handle contextual prompt intent |
+| `src/components/system/SystemPlanView.tsx` | Modify -- pass prompt reason through onChatExpand |
 
