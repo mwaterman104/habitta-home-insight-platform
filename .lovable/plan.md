@@ -1,96 +1,112 @@
 
 
-# Mobile Dashboard Redesign: Mockup Replication
+# Fix Data Confidence: Realistic Scoring and Copy
 
-## Overview
+## Two Problems
 
-Replace the current "activity feed" mobile dashboard with a **record + confidence surface** that matches the provided mockup. This transforms four existing sections (LifecycleRing hero, SinceLastMonth, RecommendationCards, horizontal SystemTileScroll) into four new ones: Data Confidence Bar, Primary System Card, System Ledger, and Missing Documentation.
+### 1. Score is too low for confirmed systems (scoring model issue)
+A home with 3 owner-confirmed systems and 2 inferred systems scores ~25-34%. That feels wrong because the model demands evidence most homeowners can't provide (permits, serials, professional service records). The denominator (100 pts across 5 systems) penalizes every system equally for missing signals that are rare in practice.
 
-## Design Tokens
+### 2. NextGain text suggests unrealistic actions
+"Upload Roof permit or invoice" is the top suggestion because it's worth 4 pts. Most homeowners don't have permits or invoices on hand. Photos and date confirmations are far more accessible.
 
-Add Habitta-specific color and typography tokens to `tailwind.config.ts`:
+## Changes
 
-- **Colors**: `habitta-ivory` (#F9F7F2), `habitta-charcoal` (#2D2D2D), `habitta-stone` (#8C8A84), `habitta-slate` (#5A7684), `habitta-clay` (#A66D5B), `habitta-olive` (#747D63)
-- **Typography**: `tracking-tightest` (-0.02em), `border-3` (3px)
-- Keep existing `font-sans` (IBM Plex Sans) -- do not add Inter, as it conflicts with the established type system
+### File 1: `src/services/homeConfidence.ts` — Rebalance signal weights
 
-## New Components (4 files)
+**Reweight signals to reflect real-world accessibility:**
 
-### 1. `src/components/mobile/DataConfidenceBar.tsx`
-- Accepts `HomeConfidenceResult` (score, state, nextGain)
-- Renders: "Data Confidence" heading, state badge with percentage (e.g., "Low (34%)"), teal Radix Progress bar, helper text from `nextGain` (e.g., "Requires 2 documents for Moderate confidence")
-- Uses `habitta-slate` for progress bar fill, `habitta-ivory` background
-- State badge maps: solid -> olive, developing -> slate, unclear -> clay, at-risk -> stone
+| Signal | Current | Proposed | Rationale |
+|--------|---------|----------|-----------|
+| hasInstallYear | 5 | 6 | Most achievable, should be worth more |
+| hasMaterial | 3 | 3 | No change (only roof/plumbing) |
+| hasSerial | 2 | 1 | Nice-to-have, not critical |
+| hasPhoto | 2 | 4 | Accessible and valuable (OCR potential) |
+| hasPermitOrInvoice | 4 | 2 | Rare for most homeowners |
+| hasMaintenanceRecord | 2 | 2 | No change |
+| hasProfessionalService | 2 | 1 | Subset of maintenance, shouldn't double-weight |
+| hasMaintenanceNotes | 1 | 1 | No change |
 
-### 2. `src/components/mobile/PrimarySystemCard.tsx` (rewrite)
-- Accepts the top-scored `SystemTimelineEntry` from `selectPrimarySystem()`
-- Layout: Icon (left) + content (right) in a bordered card
-- Content hierarchy:
-  - System name (bold, large)
-  - Status line: lifecycle status derived from `getRemainingYearsForSystem()` and `getLateLifeState()` with year range
-  - Description: material/lifecycle context from system data
-  - Muted footer: Source line (`installSource` + year) and Confidence level (`dataQuality`) with colored dot
-- Border color: `habitta-clay/40` for aging/late-life systems, `habitta-stone/20` for stable
-- Icon map: water_heater -> Droplets, hvac -> Wind, roof -> Home, electrical -> Zap, plumbing -> Wrench (all `strokeWidth={1.5}`)
+Max per system stays 20. The rebalance shifts value toward actions homeowners can actually take (photos, confirming dates) and away from documents they likely don't have (permits, serials).
 
-### 3. `src/components/mobile/SystemLedger.tsx` (new)
-- Accepts secondary `SystemTimelineEntry[]` (all scored systems except primary)
-- Table-like layout with header row: "System Ledger" | "Next Service / Confidence"
-- Each row: System name | "Est. {earlyYear}-{lateYear}" + Confidence level + colored dot
-- Consistent `py-4` row height, `border-b border-habitta-stone/10` dividers
-- Confidence dots: olive (high), slate (medium), clay (low)
-- Footer note about estimates being based on available records
+**Add a new signal: `hasOwnerConfirmation`**
+- Worth 3 points
+- True when `installSource` is `owner_reported`, `permit`, or `inspection` (anything beyond `heuristic`/`unknown`)
+- This directly rewards the user for confirming their system info during onboarding
+- Replace `hasReplacementAcknowledged` (2 pts, only late-life) with this more broadly applicable signal
 
-### 4. `src/components/mobile/MissingDocumentation.tsx` (new)
-- Accepts `nextGain` from `HomeConfidenceResult` and callbacks for upload actions
-- Heading: "Missing Documentation"
-- Helper text: evidence-first framing tied to `nextGain.action`
-- Two buttons: "Upload Doc" (slate) and "Upload Photo" (stone) -- functional, not expressive
-- Buttons trigger chat context with appropriate upload intent (via `useChatContext`)
+Updated signal point map:
+- hasInstallYear: 6
+- hasMaterial: 3
+- hasSerial: 1
+- hasPhoto: 4
+- hasPermitOrInvoice: 2
+- hasOwnerConfirmation: 3 (NEW — replaces hasReplacementAcknowledged)
+- hasMaintenanceRecord: 2
+- hasProfessionalService: 1
+- hasMaintenanceNotes: 1
+- hasPlannedReplacement: 0 (removed -- too niche to justify points)
 
-## Modified Files
+Total possible per system = 6+3+1+4+2+3+2+1+1 = 23, clamped to 20. This means a system can hit 20 without needing every signal.
 
-### 5. `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` (rewrite)
-- Remove imports: `HomeConfidenceHero`, `SinceLastMonth`, `RecommendationCards`, `SystemTileScroll`
-- Add imports: `DataConfidenceBar`, `PrimarySystemCard`, `SystemLedger`, `MissingDocumentation`
-- New layout order (top to bottom):
-  1. `DataConfidenceBar` -- from `homeConfidence`
-  2. `PrimarySystemCard` -- from `primary` (via `selectPrimarySystem`)
-  3. `SystemLedger` -- from remaining `scored` systems (index 1+)
-  4. `MissingDocumentation` -- from `homeConfidence.nextGain`
-- Keep: priority scoring logic, reduced-motion support, empty state, analytics tracking
-- Props interface simplified: remove `recommendations`, `onDismissRecommendation`, `onRecommendationAction` (no longer needed)
+**Projected score for current profile:**
+- HVAC: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
+- Water Heater: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
+- Roof: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
+- Electrical: hasInstallYear (6, via yearBuilt) = 6
+- Plumbing: hasInstallYear (6, via yearBuilt) = 6
+- Total: 39/100 = 39%, minus freshness
+- With a single photo upload: 43%
 
-### 6. `src/components/dashboard-v3/TopHeader.tsx` (update condensed mode)
-- When `condensed=true`: show "Habitta" (not "Home Pulse") with home icon
-- Add "Last Updated" line below the address (muted, smaller text)
-- Use `habitta-ivory` background tone for mobile header
+This puts a confirmed-but-undocumented home solidly in the "developing" range after one or two photos, which feels right.
 
-### 7. `src/pages/DashboardV3.tsx` (minor prop cleanup)
-- Remove `recommendations`, `onDismissRecommendation`, `onRecommendationAction` props from the `MobileDashboardView` call (lines 528-537)
-- The recommendation data and handlers remain in DashboardV3 for potential future use but are no longer passed to the mobile view
+### File 2: `src/services/homeConfidence.ts` — Fix nextGain suggestions
 
-### 8. `tailwind.config.ts`
-- Add `habitta` color palette under `extend.colors`
-- Add `tracking-tightest` under `extend.letterSpacing`
-- Add `border-3` under `extend.borderWidth`
+Replace the `findNextGain` function's candidate list to prioritize realistic actions:
 
-## Data Flow (unchanged)
+1. **Photo upload** (4 pts, highest priority) -- "Upload a photo of your [System]"
+2. **Confirm install year** (6 pts, but only if missing) -- "Confirm when your [System] was installed"
+3. **Confirm material** (3 pts, roof/plumbing only) -- "Confirm your [System] material type"
+4. **Log a service record** (2 pts) -- "Log a [System] service visit"
 
-All new components consume pre-computed data from existing services:
-- `selectPrimarySystem()` determines primary vs. secondary systems
-- `HomeConfidenceResult` provides score, state, nextGain
-- `SystemTimelineEntry` provides replacement windows, install source, data quality
-- `getRemainingYearsForSystem()` and `getLateLifeState()` derive lifecycle status
-- No new hooks, no new API calls, no new edge functions
+Remove "Upload permit or invoice" from the candidate list entirely. If a user happens to have one, it can be captured via the chat or upload flow, but it should never be the *suggested* next step.
+
+### File 3: `src/components/mobile/DataConfidenceBar.tsx` — Rework copy
+
+Replace the current template string:
+```
+"Requires {nextGain.action.toLowerCase()} for improved timeline accuracy."
+```
+
+With copy that:
+- Acknowledges what the user has already done
+- Suggests something realistic and specific
+- Doesn't sound like a to-do list
+
+New copy logic:
+- If `nextGain` exists and involves a photo: "A photo of your {system} would strengthen this record."
+- If `nextGain` exists and involves confirming a date: "Confirming when your {system} was installed improves estimate accuracy."
+- If `nextGain` exists (generic fallback): "Adding details to your {system} record improves estimate accuracy."
+- If `nextGain` is null (everything done): No subtext shown.
+
+### File 4: `src/components/mobile/MissingDocumentation.tsx` — Update helper text
+
+Replace the current generic copy with something that frames documentation as strengthening the record, not filling a checklist:
+- "Providing records strengthens timeline accuracy. Next step: {nextGain action}."
+- When nextGain is null: "Upload permits, invoices, or photos to improve data confidence."
 
 ## What Does NOT Change
+- State thresholds (solid/developing/unclear/at-risk boundaries)
+- Freshness decay logic
+- KEY_SYSTEMS list
+- Evidence chips logic
+- Desktop layout
+- UI component structure (just copy changes)
 
-- Desktop layout (3-column, unaffected)
-- BottomNavigation component
-- Confidence computation engine (`homeConfidence.ts`)
-- Priority scoring service (`priorityScoring.ts`)
-- Capital timeline types and data contracts
-- Chat integration (MobileChatSheet stays as-is)
-- Existing mobile components remain in codebase (HomeConfidenceHero, SinceLastMonth, etc.) -- just no longer imported by the dashboard
+## Files Modified
 
+| File | Change |
+|------|--------|
+| `src/services/homeConfidence.ts` | Rebalance signal weights, add `hasOwnerConfirmation`, update `findNextGain` candidates |
+| `src/components/mobile/DataConfidenceBar.tsx` | Rework subtext copy to be realistic and context-aware |
+| `src/components/mobile/MissingDocumentation.tsx` | Update helper text framing |
