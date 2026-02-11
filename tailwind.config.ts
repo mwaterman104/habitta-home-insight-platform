@@ -38,7 +38,21 @@ const config: Config = {
         'kpi': ['1.25rem', { lineHeight: '1.5rem', fontWeight: '600' }],     // 20px
         'kpi-lg': ['1.5rem', { lineHeight: '1.75rem', fontWeight: '600' }],  // 24px
       },
+      letterSpacing: {
+        tightest: '-0.02em',
+      },
+      borderWidth: {
+        '3': '3px',
+      },
       colors: {
+        habitta: {
+          ivory: '#F9F7F2',
+          charcoal: '#2D2D2D',
+          stone: '#8C8A84',
+          slate: '#5A7684',
+          clay: '#A66D5B',
+          olive: '#747D63',
+        },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",

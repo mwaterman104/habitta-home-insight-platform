@@ -1,10 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { Home } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { HomeConfidenceHero } from "@/components/mobile/HomeConfidenceHero";
-import { RecommendationCards } from "@/components/mobile/RecommendationCards";
-import { SinceLastMonth } from "@/components/mobile/SinceLastMonth";
-import { SystemTileScroll } from "@/components/mobile/SystemTileScroll";
+import { DataConfidenceBar } from "@/components/mobile/DataConfidenceBar";
+import { PrimarySystemCard } from "@/components/mobile/PrimarySystemCard";
+import { SystemLedger } from "@/components/mobile/SystemLedger";
+import { MissingDocumentation } from "@/components/mobile/MissingDocumentation";
 import { selectPrimarySystem } from "@/services/priorityScoring";
 import { 
   trackMobileEvent, 
@@ -13,14 +13,12 @@ import {
 } from "@/lib/analytics/mobileEvents";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 import type { HomeConfidenceResult } from "@/services/homeConfidence";
-import type { Recommendation } from "@/services/recommendationEngine";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 // ============================================================
 // MOBILE RENDER CONTRACT ENFORCEMENT
 // ============================================================
 
-// Governance: Components that NEVER render on mobile summary
 const FORBIDDEN_ON_MOBILE_SUMMARY = [
   'BaselineSurface',
   'SegmentedScale',
@@ -39,25 +37,16 @@ interface MobileDashboardViewProps {
   onSystemTap: (systemKey: string) => void;
   onChatOpen: () => void;
   homeConfidence: HomeConfidenceResult | null;
-  recommendations: Recommendation[];
-  onDismissRecommendation: (id: string) => void;
-  onRecommendationAction: (rec: Recommendation) => void;
 }
 
 /**
- * MobileDashboardView — Home Pulse v2
- * 
- * State-of-ownership instrument powered by Home Confidence.
- * Answers:
- * "How confident am I about my home?"
- * "What should I do next?"
- * "How are my systems doing?"
+ * MobileDashboardView — Record + Confidence Surface
  * 
  * Layout (top → bottom):
- * 1. Home Confidence Hero (state + index + evidence + next gain)
- * 2. Since Last Month (change awareness)
- * 3. Recommendations (max 3 actionable cards)
- * 4. Key Systems Preview (horizontal tile scroll)
+ * 1. Data Confidence Bar
+ * 2. Primary System Card
+ * 3. System Ledger
+ * 4. Missing Documentation
  */
 export function MobileDashboardView({
   systems,
@@ -65,9 +54,6 @@ export function MobileDashboardView({
   onSystemTap,
   onChatOpen,
   homeConfidence,
-  recommendations,
-  onDismissRecommendation,
-  onRecommendationAction,
 }: MobileDashboardViewProps) {
   const navigate = useNavigate();
   
@@ -83,10 +69,11 @@ export function MobileDashboardView({
   
   const animClass = prefersReducedMotion ? '' : 'animate-in fade-in duration-300 fill-mode-both';
   
-  // Priority scoring for tile ordering
+  // Priority scoring for system ordering
   const { primary, scored } = selectPrimarySystem(systems);
+  const secondarySystems = scored.slice(1).map(s => s.system);
 
-  // Track primary focus changes within session (trust validation)
+  // Track primary focus changes within session
   useEffect(() => {
     if (primary?.system) {
       const changed = checkPrimaryFocusChanged(primary.system.systemId);
@@ -103,7 +90,16 @@ export function MobileDashboardView({
     }
   }, [primary?.system?.systemId, primary?.score]);
 
-  // Empty state — first-use framing, no fake data
+  // Upload handlers — open chat with upload context
+  const handleUploadDoc = useCallback(() => {
+    onChatOpen();
+  }, [onChatOpen]);
+
+  const handleUploadPhoto = useCallback(() => {
+    onChatOpen();
+  }, [onChatOpen]);
+
+  // Empty state
   if (!systems || systems.length === 0) {
     return (
       <div className="space-y-4">
@@ -124,15 +120,12 @@ export function MobileDashboardView({
     );
   }
 
-  // Order tiles by priority score
-  const orderedSystems = scored.map(s => s.system);
-
   return (
     <div className="space-y-6">
-      {/* ── Home Confidence Hero ── */}
+      {/* ── Data Confidence Bar ── */}
       <div className={animClass}>
         {homeConfidence ? (
-          <HomeConfidenceHero confidence={homeConfidence} />
+          <DataConfidenceBar confidence={homeConfidence} />
         ) : (
           <div className="flex flex-col items-center text-center space-y-2">
             <p className="text-sm text-muted-foreground">Calculating confidence…</p>
@@ -140,25 +133,27 @@ export function MobileDashboardView({
         )}
       </div>
 
-      {/* ── Since Last Month ── */}
-      <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
-        <SinceLastMonth />
-      </div>
-
-      {/* ── Recommendations ── */}
-      {recommendations.length > 0 && (
-        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '112ms' }}>
-          <RecommendationCards
-            recommendations={recommendations}
-            onDismiss={onDismissRecommendation}
-            onAction={onRecommendationAction}
-          />
+      {/* ── Primary System Card ── */}
+      {primary && (
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+          <PrimarySystemCard system={primary.system} />
         </div>
       )}
 
-      {/* ── Key Systems Preview ── */}
+      {/* ── System Ledger ── */}
+      {secondarySystems.length > 0 && (
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '112ms' }}>
+          <SystemLedger systems={secondarySystems} />
+        </div>
+      )}
+
+      {/* ── Missing Documentation ── */}
       <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
-        <SystemTileScroll systems={orderedSystems} />
+        <MissingDocumentation
+          nextGain={homeConfidence?.nextGain ?? null}
+          onUploadDoc={handleUploadDoc}
+          onUploadPhoto={handleUploadPhoto}
+        />
       </div>
     </div>
   );
