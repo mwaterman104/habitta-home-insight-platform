@@ -20,6 +20,11 @@ export const MOBILE_EVENTS = {
   CHAT_QUICK_REPLY_USED: 'mobile_chat_quick_reply_used',
   MAINTENANCE_RECORD_ADDED: 'mobile_maintenance_record_added',
   START_PLANNING_CLICKED: 'mobile_start_planning_clicked',
+  
+  // Intelligence bridge
+  INTEL_CARD_VIEWED: 'mobile_intel_card_viewed',
+  CHAT_PROMPT_TAPPED: 'mobile_chat_prompt_tapped',
+  BADGE_FILTER_TOGGLED: 'mobile_badge_filter_toggled',
 } as const;
 
 export type MobileEventName = typeof MOBILE_EVENTS[keyof typeof MOBILE_EVENTS];
