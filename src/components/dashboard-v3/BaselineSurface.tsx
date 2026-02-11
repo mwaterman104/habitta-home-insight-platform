@@ -61,6 +61,8 @@ interface BaselineSurfaceProps {
     status: 'verified' | 'found' | 'missing'; 
     contribution: string;
   }>;
+  /** When provided, system rows become clickable navigation targets */
+  onSystemClick?: (systemKey: string) => void;
 }
 
 // ============================================
@@ -610,6 +612,7 @@ export function BaselineSurface({
   isExpanded = false,
   lastReviewedAt,
   dataSources,
+  onSystemClick,
 }: BaselineSurfaceProps) {
   // Handle empty state
   if (systems.length === 0) {
@@ -671,24 +674,40 @@ export function BaselineSurface({
             const hasVerifiedSource = system.installSource === 'permit';
             const hasInstallYear = system.installYear != null;
             
-            // Show UnknownAgeCard ONLY if truly unknown
-            if (system.state === 'baseline_incomplete' && !hasInstallYear && !hasVerifiedSource) {
-              return (
+            const isClickable = !!onSystemClick;
+            
+            const cardContent = (system.state === 'baseline_incomplete' && !hasInstallYear && !hasVerifiedSource)
+              ? (
                 <UnknownAgeCard 
                   key={system.key} 
                   system={system}
                   isExpanded={isExpanded}
                 />
+              )
+              : (
+                <SystemCard 
+                  key={system.key} 
+                  system={system}
+                  isExpanded={isExpanded}
+                />
+              );
+            
+            if (isClickable) {
+              return (
+                <div
+                  key={system.key}
+                  onClick={() => onSystemClick(system.key)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSystemClick(system.key); } }}
+                  className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition rounded-md -mx-1 px-1"
+                  role="button"
+                  tabIndex={0}
+                >
+                  {cardContent}
+                </div>
               );
             }
             
-            return (
-              <SystemCard 
-                key={system.key} 
-                system={system}
-                isExpanded={isExpanded}
-              />
-            );
+            return cardContent;
           })}
         </div>
         
