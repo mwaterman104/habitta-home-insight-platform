@@ -1,112 +1,126 @@
 
 
-# Fix Data Confidence: Realistic Scoring and Copy
+# Dashboard Refinements: Sharpened with Feedback
 
-## Two Problems
+## Overview
 
-### 1. Score is too low for confirmed systems (scoring model issue)
-A home with 3 owner-confirmed systems and 2 inferred systems scores ~25-34%. That feels wrong because the model demands evidence most homeowners can't provide (permits, serials, professional service records). The denominator (100 pts across 5 systems) penalizes every system equally for missing signals that are rare in practice.
-
-### 2. NextGain text suggests unrealistic actions
-"Upload Roof permit or invoice" is the top suggestion because it's worth 4 pts. Most homeowners don't have permits or invoices on hand. Photos and date confirmations are far more accessible.
+Five focused changes to the mobile Home Pulse dashboard, incorporating all review feedback on psychology, copy discipline, and visual hierarchy.
 
 ## Changes
 
-### File 1: `src/services/homeConfidence.ts` — Rebalance signal weights
+### 1. System Ledger: Life-Remaining Mini-Bar + Tappable Rows
 
-**Reweight signals to reflect real-world accessibility:**
+**File: `src/components/mobile/SystemLedger.tsx`**
 
-| Signal | Current | Proposed | Rationale |
-|--------|---------|----------|-----------|
-| hasInstallYear | 5 | 6 | Most achievable, should be worth more |
-| hasMaterial | 3 | 3 | No change (only roof/plumbing) |
-| hasSerial | 2 | 1 | Nice-to-have, not critical |
-| hasPhoto | 2 | 4 | Accessible and valuable (OCR potential) |
-| hasPermitOrInvoice | 4 | 2 | Rare for most homeowners |
-| hasMaintenanceRecord | 2 | 2 | No change |
-| hasProfessionalService | 2 | 1 | Subset of maintenance, shouldn't double-weight |
-| hasMaintenanceNotes | 1 | 1 | No change |
+**Life-Remaining Bar (not "consumed" bar):**
+- Compute `percentRemaining = 100 - percentConsumed` and render as a thin bar (3px tall, ~72px wide) showing life left
+- Color: habitta-olive when remaining > 40%, habitta-slate at 15-40%, habitta-clay below 15%
+- This frames as "life remaining" not "life consumed" -- same math, calmer psychology
 
-Max per system stays 20. The rebalance shifts value toward actions homeowners can actually take (photos, confirming dates) and away from documents they likely don't have (permits, serials).
+**1-year smoothing guardrail:**
+- Do NOT render the bar if:
+  - `system.dataQuality === 'low'` AND `getLateLifeState(system) === 'not-late'`
+- This prevents visualizing uncertain math for low-confidence, non-critical systems
 
-**Add a new signal: `hasOwnerConfirmation`**
-- Worth 3 points
-- True when `installSource` is `owner_reported`, `permit`, or `inspection` (anything beyond `heuristic`/`unknown`)
-- This directly rewards the user for confirming their system info during onboarding
-- Replace `hasReplacementAcknowledged` (2 pts, only late-life) with this more broadly applicable signal
+**Tappable rows:**
+- Each row navigates to `/systems/${system.systemId}/plan` on tap
+- Add a `ChevronRight` icon (14px) at the far right in `text-habitta-stone/30` -- lowest visual weight
+- Add `cursor-pointer` and `active:bg-habitta-stone/5` for touch feedback
 
-Updated signal point map:
-- hasInstallYear: 6
-- hasMaterial: 3
-- hasSerial: 1
-- hasPhoto: 4
-- hasPermitOrInvoice: 2
-- hasOwnerConfirmation: 3 (NEW — replaces hasReplacementAcknowledged)
-- hasMaintenanceRecord: 2
-- hasProfessionalService: 1
-- hasMaintenanceNotes: 1
-- hasPlannedReplacement: 0 (removed -- too niche to justify points)
+**Visual hierarchy within each row:**
+1. System name (primary)
+2. Replacement window text
+3. Mini-bar (subtle, secondary)
+4. Chevron (barely visible, tertiary)
 
-Total possible per system = 6+3+1+4+2+3+2+1+1 = 23, clamped to 20. This means a system can hit 20 without needing every signal.
+**Imports needed:** `useNavigate` from react-router-dom, `ChevronRight` from lucide-react, `getRemainingYearsForSystem`, `getLateLifeState` from homeOutlook, `getLifecyclePercent` from homeOutlook
 
-**Projected score for current profile:**
-- HVAC: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
-- Water Heater: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
-- Roof: hasInstallYear (6) + hasOwnerConfirmation (3) = 9
-- Electrical: hasInstallYear (6, via yearBuilt) = 6
-- Plumbing: hasInstallYear (6, via yearBuilt) = 6
-- Total: 39/100 = 39%, minus freshness
-- With a single photo upload: 43%
+### 2. Missing Documentation: Calm Confidence Boost Labels
 
-This puts a confirmed-but-undocumented home solidly in the "developing" range after one or two photos, which feels right.
+**File: `src/components/mobile/MissingDocumentation.tsx`**
 
-### File 2: `src/services/homeConfidence.ts` — Fix nextGain suggestions
+- Update props to accept `nextGain` with its `delta` value (already available)
+- Photo button: "Upload Photo (+{delta}% confidence)" -- parenthetical framing, not gamified
+- Doc button: "Upload Doc (+2% confidence)" -- fixed estimate for permit/invoice signal
+- Threshold rule: if boost is less than 2%, hide the boost label entirely -- a "+1%" looks trivial
+- When `nextGain` is null, buttons show without boost labels
+- No Duolingo energy. Intelligence framing only.
 
-Replace the `findNextGain` function's candidate list to prioritize realistic actions:
+### 3. Proactive Chat Insight Banner
 
-1. **Photo upload** (4 pts, highest priority) -- "Upload a photo of your [System]"
-2. **Confirm install year** (6 pts, but only if missing) -- "Confirm when your [System] was installed"
-3. **Confirm material** (3 pts, roof/plumbing only) -- "Confirm your [System] material type"
-4. **Log a service record** (2 pts) -- "Log a [System] service visit"
+**New file: `src/components/mobile/ChatInsightBanner.tsx`**
 
-Remove "Upload permit or invoice" from the candidate list entirely. If a user happens to have one, it can be captured via the chat or upload flow, but it should never be the *suggested* next step.
+A single, calm insight snippet that bridges dashboard to chat.
 
-### File 3: `src/components/mobile/DataConfidenceBar.tsx` — Rework copy
+- Props: `systemLabel: string`, `onTap: () => void`
+- Only one banner, only for the top-priority system, only when in late-life state
+- Never stacked, never multiple
 
-Replace the current template string:
-```
-"Requires {nextGain.action.toLowerCase()} for improved timeline accuracy."
-```
+**Copy (tightened per feedback):**
+- "Your {systemLabel} is entering its replacement window. See what a planned replacement looks like."
+- No "emergency" language. No alarm. Steady and directional.
 
-With copy that:
-- Acknowledges what the user has already done
-- Suggests something realistic and specific
-- Doesn't sound like a to-do list
+**Styling:**
+- `bg-habitta-slate/8 border border-habitta-slate/20 rounded-sm p-4`
+- Small message-circle icon (16px, habitta-slate) on the left
+- "Tap to explore" in `text-meta text-habitta-stone/60` below the main copy
 
-New copy logic:
-- If `nextGain` exists and involves a photo: "A photo of your {system} would strengthen this record."
-- If `nextGain` exists and involves confirming a date: "Confirming when your {system} was installed improves estimate accuracy."
-- If `nextGain` exists (generic fallback): "Adding details to your {system} record improves estimate accuracy."
-- If `nextGain` is null (everything done): No subtext shown.
+**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
 
-### File 4: `src/components/mobile/MissingDocumentation.tsx` — Update helper text
+- Import `ChatInsightBanner` and `getLateLifeState`
+- Render between the Data Confidence Bar and Primary System Card
+- Only render when the primary system has `getLateLifeState() !== 'not-late'`
+- Tapping calls `onChatOpen` (wires to chat with system context)
 
-Replace the current generic copy with something that frames documentation as strengthening the record, not filling a checklist:
-- "Providing records strengthens timeline accuracy. Next step: {nextGain action}."
-- When nextGain is null: "Upload permits, invoices, or photos to improve data confidence."
+### 4. Primary System Card: Contextual CTA
+
+**File: `src/components/mobile/PrimarySystemCard.tsx`**
+
+Add a text-style action button at the bottom of the card footer:
+
+- For late-life systems: "Explore replacement planning" (ownership language, not AI assistant wording)
+- For healthy systems: "Log recent service" (reflective, not event-scheduling)
+- Styled as: `text-habitta-slate font-semibold text-meta uppercase tracking-wider` with a small arrow icon
+- New prop: `onAction?: () => void` -- parent wires to chat open
+
+**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
+
+- Pass `onAction` to `PrimarySystemCard` that triggers `onChatOpen`
+
+### 5. Spacing Discipline
+
+**File: `src/components/dashboard-v3/mobile/MobileDashboardView.tsx`**
+
+- Increase the parent container from `space-y-6` to `space-y-7` to absorb the new insight banner without cramping
+- This is the only layout change -- all other spacing stays internal to components
+
+## Visual Hierarchy Check
+
+The additions (mini-bars, boost labels, chevrons, banner, CTA) are all designed at low visual weight:
+- Mini-bars: 3px tall, muted colors, conditional rendering
+- Boost labels: parenthetical, hidden below 2%
+- Chevrons: 14px, 30% opacity
+- Banner: single instance, slate tones, no bold
+- CTA: text button, no fill, uppercase meta size
 
 ## What Does NOT Change
-- State thresholds (solid/developing/unclear/at-risk boundaries)
-- Freshness decay logic
-- KEY_SYSTEMS list
-- Evidence chips logic
+
+- Scoring engine (homeConfidence.ts)
+- State thresholds
 - Desktop layout
-- UI component structure (just copy changes)
+- Chat infrastructure
+- System detail pages (SystemPlanView)
+- TopHeader / critical badge behavior
+- Capital timeline types
+- LifecycleRing component
 
-## Files Modified
+## Files Summary
 
-| File | Change |
+| File | Action |
 |------|--------|
-| `src/services/homeConfidence.ts` | Rebalance signal weights, add `hasOwnerConfirmation`, update `findNextGain` candidates |
-| `src/components/mobile/DataConfidenceBar.tsx` | Rework subtext copy to be realistic and context-aware |
-| `src/components/mobile/MissingDocumentation.tsx` | Update helper text framing |
+| `src/components/mobile/SystemLedger.tsx` | Modify -- life-remaining mini-bar + tappable rows + chevron |
+| `src/components/mobile/MissingDocumentation.tsx` | Modify -- calm boost labels on buttons |
+| `src/components/mobile/ChatInsightBanner.tsx` | Create -- proactive insight snippet |
+| `src/components/mobile/PrimarySystemCard.tsx` | Modify -- contextual CTA button |
+| `src/components/dashboard-v3/mobile/MobileDashboardView.tsx` | Modify -- wire banner + CTA + spacing |
+
