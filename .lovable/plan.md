@@ -1,44 +1,99 @@
 
 
-## Fix: Non-Tool Chat Responses Should Drive Right-Column Focus
+## Promote System Outlook to Permanent Right-Column Surface
 
-### Problem
-When a user mentions a system conversationally ("My water heater is taking a while to get hot water"), the AI responds without calling a tool, so the edge function returns `{ message, suggestions }` with no `focus` field. The right panel stays on HomeOverview.
+### Summary
 
-### Changes (3 files)
+Move the System Outlook from a transient chat artifact to a permanent, always-visible position at the top of the right column. Clicking a system row opens the SystemPanel below a collapsed Outlook header, preserving user orientation.
 
-**1. Edge function: `supabase/functions/ai-home-assistant/index.ts`**
+### Layout States
 
-- Accept new `activeFocus` field from request body (line ~378)
-- Add two helper functions before `generateAIResponse`:
-  - `resolveSystemFocus({ userMessage, activeFocus, focusSystem })` -- priority: active focus > focusSystem param > keyword detection
-  - `detectSystemFromMessageConservative(message)` -- regex-based, returns a systemId only when exactly one system matches and no comparison/ambiguity words are present
-- In the non-tool return block (line ~930-933), call `resolveSystemFocus()` and include `focus` in the response if resolved
-- Keyword patterns: water heater/hot water -> `water_heater`, hvac/air conditioning/furnace/heat pump -> `hvac`, roof/shingles -> `roof`
-- Ambiguity guard: if message contains "vs", "or", "compare", "between" with multiple system matches, return null (no focus)
-
-**2. Hook: `src/hooks/useAIHomeAssistant.ts`**
-
-- Accept `activeFocus` in the options interface (from the consuming component)
-- Pass `activeFocus` in the edge function request body alongside existing fields
-
-**3. Chat Console: `src/components/dashboard-v3/ChatConsole.tsx`**
-
-- Read current `focus` from `useFocusState()` (already imported)
-- Pass it as `activeFocus` to `useAIHomeAssistant` options so the edge function knows the current panel state
-
-### Focus Resolution Priority
-
+**Default (no focus):**
 ```text
-1. activeFocus (user already has a system panel open) --> keep it stable
-2. focusSystem (frontend explicitly set a system context) --> use it
-3. Keyword detection (conservative, single-system match only) --> use it
-4. No match --> return no focus (panel stays as-is)
+HomeSystemsPanel (full -- all system rows visible)
+PropertyMap
+LocalConditions
+MaintenanceCalendar
 ```
 
-### What This Does NOT Change
-- Tool-call focus injection (already works)
-- Contractor list/detail focus routing (already works)
-- User lock mechanism (already respected in ChatConsole line 302)
-- No LLM structured output changes (keeping it simple with keyword detection as the user's spec allows)
+**System focused:**
+```text
+HomeSystemsPanel (collapsed -- header only, teal accent retained)
+SystemPanel (detail view)
+```
+
+**Other focus (contractor, etc.):**
+```text
+Only the relevant panel (no Outlook)
+```
+
+### Files Changed
+
+**1. New: `src/components/dashboard-v3/HomeSystemsPanel.tsx`**
+
+Permanent right-column surface wrapping `BaselineSurface`:
+- Card with white bg, `border-slate-200`, 2-3px teal left border accent
+- Accepts `systems`, `confidenceLevel`, `yearBuilt`, `dataSources`
+- `isCollapsed` prop: when true, renders header-only state ("Your Home System Outlook -- [confidence]") using internal branching (same component, not two trees)
+- Wires `onSystemClick` to call `setFocus({ type: 'system', systemId }, { push: true })`
+- Empty state (no systems): shows "We're building your system profile. Add documentation to increase coverage." -- panel stays visible, never hidden
+- Uses `useFocusState` for click handler
+
+**2. Update: `src/components/dashboard-v3/BaselineSurface.tsx`**
+
+Add optional `onSystemClick` prop:
+- Add `onSystemClick?: (systemKey: string) => void` to `BaselineSurfaceProps` (line 51)
+- In the system map loop (lines 665-692), wrap each `SystemCard` and `UnknownAgeCard` in a clickable container when `onSystemClick` is provided
+- Clickable container: `cursor-pointer`, `hover:bg-slate-50`, `active:bg-slate-100`, `transition`, `rounded-md`, `role="button"`, `tabIndex={0}`
+- No visual changes when `onSystemClick` is undefined (chat artifact remains identical)
+
+**3. Update: `src/components/dashboard-v3/RightColumnSurface.tsx`**
+
+- Add `baselineSystems`, `confidenceLevel`, `yearBuilt`, `dataSources` to props interface
+- Import `HomeSystemsPanel`
+- Render logic:
+  - `focus === null`: `HomeSystemsPanel` (full) + `HomeOverviewPanel`
+  - `focus.type === 'system'`: `HomeSystemsPanel` (collapsed) + `SystemPanel`
+  - All other focus types: only the relevant panel (no Outlook)
+- Animation: 150ms fade + 4px slide, CSS transitions only
+
+**4. Update: `src/pages/DashboardV3.tsx`**
+
+- Rename `mobileBaselineSystems` to `baselineSystems` (single source of truth)
+- Pass `baselineSystems`, `confidenceLevel` (from `homeConfidence`), `yearBuilt` to `RightColumnSurface` via `DesktopLayout`
+- Continue passing same data to mobile surfaces (no mobile changes)
+
+### Data Flow
+
+```text
+DashboardV3 (computes baselineSystems once)
+  |
+  +-- MiddleColumn (chat -- existing BaselineSurface artifact, unchanged)
+  |
+  +-- RightColumnSurface
+        +-- HomeSystemsPanel
+        |     +-- BaselineSurface (onSystemClick wired)
+        +-- HomeOverviewPanel / SystemPanel (conditional)
+```
+
+### Interaction Model
+
+- Click system row: `setFocus({ type: 'system', systemId }, { push: true })` -- triggers user lock, Outlook collapses, SystemPanel slides in
+- Close SystemPanel (X): `clearFocus()` -- Outlook expands back, HomeOverviewPanel returns
+- Back button: `goBack()` pops focus stack
+
+### Edge Cases
+
+- **No systems**: Panel stays visible with placeholder copy
+- **Low confidence**: Shown inline as badge (already handled by `ConfidenceExplainer`)
+- **Page refresh while focused**: Focus state is local (not URL-synced), so returns to default -- acceptable for now
+- **HomeOverviewPanel remount**: Map/conditions are lightweight; no expensive recomputation concern
+
+### What Does NOT Change
+
+- `BaselineSurface` in chat (remains as artifact, no clicks)
+- Mobile layout (no right column)
+- Focus state context / user lock mechanism
+- Contractor/other panel routing
+- Animation approach (existing `animate-in` pattern)
 
