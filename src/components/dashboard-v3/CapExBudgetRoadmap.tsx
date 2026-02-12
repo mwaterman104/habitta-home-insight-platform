@@ -19,6 +19,7 @@ const MIN_PIN_HEIGHT = 40;
 const MAX_PIN_HEIGHT = 100;
 const MIN_COST = 1000;
 const MAX_COST = 50000;
+const OVERLAP_THRESHOLD = 12; // percentage points proximity that triggers staggering
 
 function getPinHeight(costHigh: number): number {
   const clamped = Math.max(MIN_COST, Math.min(costHigh, MAX_COST));
@@ -53,6 +54,21 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
     (a, b) => a.replacementWindow.likelyYear - b.replacementWindow.likelyYear
   );
 
+  // Assign stagger levels to avoid label overlap
+  const staggerLevels: number[] = [];
+  sortedSystems.forEach((system, i) => {
+    const pos = getPosition(system.replacementWindow.likelyYear, currentYear, horizonYears);
+    let level = 0;
+    // Check against all previously placed pins
+    for (let j = 0; j < i; j++) {
+      const prevPos = getPosition(sortedSystems[j].replacementWindow.likelyYear, currentYear, horizonYears);
+      if (Math.abs(pos - prevPos) < OVERLAP_THRESHOLD && staggerLevels[j] === level) {
+        level++;
+      }
+    }
+    staggerLevels.push(level);
+  });
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
       {/* Header */}
@@ -76,12 +92,14 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
       </div>
 
       {/* Timeline visualization */}
-      <div className="relative w-full overflow-x-auto" style={{ height: `${MAX_PIN_HEIGHT + 60}px`, minWidth: '280px' }}>
+      <div className="relative w-full overflow-x-auto" style={{ height: `${MAX_PIN_HEIGHT + 80}px`, minWidth: '280px' }}>
         {/* Pins and window blocks */}
-        {sortedSystems.map((system) => {
+        {sortedSystems.map((system, index) => {
           const pinType = classifySystem(system, currentYear, horizonYears);
+          const staggerLevel = staggerLevels[index];
+          const staggerOffset = staggerLevel * 18; // px offset per level
           const likelyPos = getPosition(system.replacementWindow.likelyYear, currentYear, horizonYears);
-          const height = getPinHeight(system.capitalCost.high);
+          const height = getPinHeight(system.capitalCost.high) + staggerOffset;
           const costLabel = `${formatCost(system.capitalCost.low)}–${formatCost(system.capitalCost.high)}`;
 
           // Window block for mid-range systems
@@ -101,7 +119,7 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
                     height: '28px',
                   }}
                 >
-                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] sm:text-[10px] font-semibold text-teal-700">
+                  <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] sm:text-[10px] font-semibold text-teal-700" style={{ top: `${-20 - staggerOffset}px` }}>
                     {system.systemLabel}: {costLabel}
                   </span>
                 </div>
@@ -126,9 +144,9 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
                 {/* Cost label (only shown for urgent or distant, not window which has its own label) */}
                 {!showWindow && (
                   <span className={cn(
-                    "absolute -top-5 whitespace-nowrap text-[9px] sm:text-[10px] font-bold transition-transform group-hover:scale-110",
+                    "absolute whitespace-nowrap text-[9px] sm:text-[10px] font-bold transition-transform group-hover:scale-110",
                     pinType === 'urgent' ? 'text-red-600' : 'text-stone-500'
-                  )}>
+                  )} style={{ top: `${-20 - staggerOffset}px` }}>
                     {costLabel}
                   </span>
                 )}
