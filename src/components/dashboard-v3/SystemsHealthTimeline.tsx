@@ -7,37 +7,13 @@
 
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { deriveZone, getBarColor, getBadgeClasses } from "@/lib/dashboardUtils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import type { HomeCapitalTimeline, SystemTimelineEntry } from "@/types/capitalTimeline";
+import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 
 interface SystemsHealthTimelineProps {
   timeline: HomeCapitalTimeline;
   onSystemClick?: (systemId: string) => void;
-}
-
-type Zone = 'OK' | 'WATCH' | 'PLAN NOW';
-
-function deriveZone(yearsToLikely: number | null): Zone {
-  if (yearsToLikely === null) return 'OK';
-  if (yearsToLikely <= 3) return 'PLAN NOW';
-  if (yearsToLikely <= 6) return 'WATCH';
-  return 'OK';
-}
-
-function getBarColor(zone: Zone): string {
-  switch (zone) {
-    case 'PLAN NOW': return 'bg-red-500';
-    case 'WATCH': return 'bg-amber-500';
-    case 'OK': return 'bg-emerald-500';
-  }
-}
-
-function getBadgeClasses(zone: Zone): string {
-  switch (zone) {
-    case 'PLAN NOW': return 'bg-red-500 text-white animate-subtle-pulse shadow-sm shadow-red-200';
-    case 'WATCH': return 'bg-amber-500 text-white';
-    case 'OK': return 'bg-emerald-500 text-white';
-  }
 }
 
 export function SystemsHealthTimeline({ timeline, onSystemClick }: SystemsHealthTimelineProps) {

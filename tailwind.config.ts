@@ -120,8 +120,8 @@ const config: Config = {
           to: { height: "0" },
         },
         "subtle-pulse": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.85" },
+          "0%, 100%": { opacity: "1", transform: "scale(1)" },
+          "50%": { opacity: "0.85", transform: "scale(0.98)" },
         },
       },
       animation: {
