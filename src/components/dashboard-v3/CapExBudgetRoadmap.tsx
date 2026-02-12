@@ -19,7 +19,8 @@ const MIN_PIN_HEIGHT = 40;
 const MAX_PIN_HEIGHT = 100;
 const MIN_COST = 1000;
 const MAX_COST = 50000;
-const OVERLAP_THRESHOLD = 12; // percentage points proximity that triggers staggering
+const OVERLAP_THRESHOLD = 15; // percentage points proximity that triggers staggering
+const STAGGER_PX = 28; // px offset per stagger level
 
 function getPinHeight(costHigh: number): number {
   const clamped = Math.max(MIN_COST, Math.min(costHigh, MAX_COST));
@@ -47,7 +48,31 @@ function classifySystem(system: SystemTimelineEntry, currentYear: number, horizo
 export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadmapProps) {
   const currentYear = new Date().getFullYear();
   const horizonYears = timeline.horizonYears;
-  const years = [currentYear, currentYear + 2, currentYear + 4, currentYear + 6, currentYear + 8, currentYear + 10];
+
+  // Compute dynamic year range from actual system data
+  const allYears = timeline.systems.flatMap(s => [
+    s.replacementWindow.earlyYear,
+    s.replacementWindow.likelyYear,
+    s.replacementWindow.lateYear,
+  ]);
+  const minYear = Math.min(currentYear, ...allYears);
+  const maxYear = Math.max(currentYear + horizonYears, ...allYears);
+  // Add 1-year padding on each side
+  const rangeStart = minYear;
+  const rangeEnd = maxYear + 1;
+  const rangeSpan = rangeEnd - rangeStart;
+
+  // Generate evenly spaced year markers
+  const markerCount = 6;
+  const stepYears = Math.max(1, Math.round(rangeSpan / (markerCount - 1)));
+  const years: number[] = [];
+  for (let i = 0; i < markerCount; i++) {
+    const y = rangeStart + i * stepYears;
+    if (y <= rangeEnd + 1) years.push(y);
+  }
+
+  // Position helper using dynamic range
+  const toPos = (year: number) => Math.min(100, Math.max(0, ((year - rangeStart) / rangeSpan) * 100));
 
   // Sort systems by likelyYear for rendering order
   const sortedSystems = [...timeline.systems].sort(
@@ -57,17 +82,19 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
   // Assign stagger levels to avoid label overlap
   const staggerLevels: number[] = [];
   sortedSystems.forEach((system, i) => {
-    const pos = getPosition(system.replacementWindow.likelyYear, currentYear, horizonYears);
+    const pos = toPos(system.replacementWindow.likelyYear);
     let level = 0;
-    // Check against all previously placed pins
     for (let j = 0; j < i; j++) {
-      const prevPos = getPosition(sortedSystems[j].replacementWindow.likelyYear, currentYear, horizonYears);
+      const prevPos = toPos(sortedSystems[j].replacementWindow.likelyYear);
       if (Math.abs(pos - prevPos) < OVERLAP_THRESHOLD && staggerLevels[j] === level) {
         level++;
       }
     }
     staggerLevels.push(level);
   });
+
+  const maxStagger = Math.max(0, ...staggerLevels);
+  const dynamicHeight = MAX_PIN_HEIGHT + 60 + maxStagger * STAGGER_PX;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
@@ -92,19 +119,19 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
       </div>
 
       {/* Timeline visualization */}
-      <div className="relative w-full overflow-x-auto" style={{ height: `${MAX_PIN_HEIGHT + 80}px`, minWidth: '280px' }}>
+      <div className="relative w-full overflow-x-auto" style={{ height: `${dynamicHeight}px`, minWidth: '280px' }}>
         {/* Pins and window blocks */}
         {sortedSystems.map((system, index) => {
           const pinType = classifySystem(system, currentYear, horizonYears);
           const staggerLevel = staggerLevels[index];
-          const staggerOffset = staggerLevel * 18; // px offset per level
-          const likelyPos = getPosition(system.replacementWindow.likelyYear, currentYear, horizonYears);
+          const staggerOffset = staggerLevel * STAGGER_PX;
+          const likelyPos = toPos(system.replacementWindow.likelyYear);
           const height = getPinHeight(system.capitalCost.high) + staggerOffset;
           const costLabel = `${formatCost(system.capitalCost.low)}–${formatCost(system.capitalCost.high)}`;
 
           // Window block for mid-range systems
-          const earlyPos = getPosition(system.replacementWindow.earlyYear, currentYear, horizonYears);
-          const latePos = getPosition(system.replacementWindow.lateYear, currentYear, horizonYears);
+          const earlyPos = toPos(system.replacementWindow.earlyYear);
+          const latePos = toPos(system.replacementWindow.lateYear);
           const showWindow = pinType === 'window' && (latePos - earlyPos) > 2;
 
           return (
