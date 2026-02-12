@@ -1,107 +1,191 @@
 
 
-## Surface Discovered Assets on the /systems Hub
+## Home Profile Record: Final Implementation Plan
 
-### Problem
+Three corrections applied from feedback: clean quartile thresholds, softened "limited" messaging, and snapshot architected as durable component.
 
-Chat-discovered systems (sprinkler, microwave) are recorded in `home_assets` but never shown on the `/systems` page. The hub currently only queries `systems` (structural) and `home_systems` (appliances), making discoveries invisible.
+---
 
-### Solution
+### Part 1: HomeProfileRecordBar (Shared Component)
 
-Add `home_assets` as a third data source in SystemsHub, with smart deduplication and a "Recently Discovered" section. All confidence levels are shown. Clicking a discovered asset navigates to `/systems/{asset_id}`.
+**New: `src/components/home-profile/HomeProfileRecordBar.tsx`**
 
-### Changes
+Exports:
+- `getStrengthLevel(score)` -- pure function, clean quartile bands:
+  - 0-24: `limited`
+  - 25-49: `moderate`
+  - 50-79: `established`
+  - 80+: `strong`
+- `HomeProfileRecordBar` component
 
-**1. Update: `src/pages/SystemsHub.tsx`**
+Visual spec:
+- Label: "Home Profile Record"
+- Badge: `{strengthLevel} ({strengthScore}%)`
+- Track background: `bg-habitta-stone/15`
+- Track fill: `bg-habitta-slate` (#5A7684)
+- Height: `h-2.5`, `rounded-sm`
+- No danger colors ever
 
-Add a new query for `home_assets`:
+---
+
+### Part 2: State Labels in homeConfidence.ts
+
+**Update: `src/services/homeConfidence.ts`**
+
+Replace `ConfidenceState` type and `STATE_MAP`:
+
+Old: `solid | developing | unclear | at-risk`
+New: `strong | established | moderate | limited`
+
+Clean quartile thresholds (matching Part 1):
+- score >= 80: `strong` -- "Most systems are understood and tracked"
+- score >= 50: `established` -- "Key gaps exist, but nothing critical is hidden"
+- score >= 25: `moderate` -- "Several systems lack documentation"
+- score >= 0: `limited` -- "Core system documentation is still being established"
+
+Note the softened "limited" message. No alarm. No "major systems lack basic information."
+
+**Update: `src/components/mobile/DataConfidenceBar.tsx`**
+- Rename header from "Data Confidence" to "Home Profile Record"
+- Update `STATE_BADGE_COLORS` and `STATE_LABELS` to new state names
+- Colors: strong -> olive, established -> slate, moderate -> stone, limited -> clay
+
+**Update: `src/components/mobile/HomeConfidenceHero.tsx`**
+- Update `STATE_COLORS` and `STATE_DOT_CLASSES` to new state names
+
+**Update: `src/lib/mobileCopy.ts`**
+- Update `HOME_CONFIDENCE_COPY.states` keys to new state names
+
+---
+
+### Part 3: HomeSnapshotPage (Durable Component)
+
+**New: `src/pages/HomeSnapshotPage.tsx`**
+
+Route: `/home-snapshot`
+
+Architected as a **durable, re-viewable component** -- not a throwaway onboarding artifact. The page renders the same way whether accessed post-onboarding or revisited later from settings.
+
+Layout: Centered, max-w-2xl, generous whitespace
+
+Sections:
+1. **Header**: "Your Home Profile Record has been created." / "We established an initial baseline using public records and regional lifecycle data."
+2. **Summary**: `HomeProfileRecordBar` with current strength score + "Strength increases as documentation is confirmed."
+3. **Breakdown** (provenance-based):
+   - **"What's Confirmed"**: Only truly confirmed facts -- address, year built (if from public record), climate zone, number of identified systems
+   - **"What We're Estimating"**: System service windows, lifecycle model type, inferred install years -- clearly framed as estimates
+   - **"What Strengthens the Record"**: Missing install dates count, missing photos count, missing permits. CTA: "Improve Record Strength"
+4. **CTA**: "Go to Home Pulse" button
+
+On CTA click: `localStorage.setItem('habitta_has_seen_snapshot', 'true')` then `navigate('/dashboard', { replace: true })`
+
+When revisited from settings, the CTA text changes to "Back to Home Pulse" (checks localStorage flag).
+
+Data: Uses `useHomeConfidence` + `useCapitalTimeline` + `useUserHome`
+
+**Update: `src/pages/AppRoutes.tsx`**
+- Add protected route `/home-snapshot` -> `HomeSnapshotPage`
+
+**Update: `src/pages/SettingsPage.tsx`**
+- Add a "View Home Snapshot" link in the home/profile section that navigates to `/home-snapshot`
+
+---
+
+### Part 4: Redirect Logic (Single Gate)
+
+**Update: `src/pages/DashboardV3.tsx`**
+
+After `userHome` loads, single redirect check:
+
 ```text
-supabase.from('home_assets')
-  .select('id, kind, category, manufacturer, model, confidence, source, status, install_date, created_at')
-  .eq('home_id', homeId)
-  .eq('status', 'active')
+if (userHome.id && !localStorage.getItem('habitta_has_seen_snapshot')) {
+  navigate('/home-snapshot', { replace: true });
+  return loading spinner;
+}
 ```
 
-Build a deduplication filter using smart prefix + category check:
-- Build a Set of existing structural system keys (lowercase) from `systemCards`
-- Build a Set of existing appliance key prefixes (lowercase) from `applianceCards`
-- For each `home_asset`: skip if `kind.toLowerCase()` exactly matches a structural key, OR if any appliance prefix matches the start of `kind` AND category matches
-- Remaining assets become "Discovered Assets" cards
+Dashboard is the ONE gate. `OnboardingFlow.tsx` continues navigating to `/dashboard` as-is. No double routing.
 
-Build discovered asset cards with:
-- Display name: `kind.replace(/_/g, ' ')` then title-case each word
-- Manufacturer/model subtitle if available
-- Confidence indicator (always shown, uses existing ConfidenceBadge component)
-- Source badge: "Via chat" / "Via photo" / "Discovered" based on `source` field
-- Category-based icon fallback: Appliance -> plug emoji, System -> house emoji, Unknown -> question mark
-- Click navigates to `/systems/{asset.id}` (existing route handles UUID detection)
+---
 
-Add a third section after Appliances:
-```text
-Structural Systems
-  [HVAC] [Roof] [Water Heater]
+### Part 5: Remove Duplicate BaselineSurface from Chat
 
-Appliances
-  [Refrigerator] [LG Appliance]
+**Update: `src/components/dashboard-v3/ChatConsole.tsx`**
 
-Recently Discovered
-  [Sprinkler System] [Microwave]
-```
+Remove:
+- Lines 501-549: The pinned BaselineSurface block (AI avatar + artifact header + collapsible surface)
+- Lines 722-737: The expanded Dialog/modal for BaselineSurface
+- Dead state: `isBaselineCollapsed`, `isBaselineExpanded`
 
-Section only renders when `discoveredAssets.length > 0` after dedup.
+Keep: `baselineSystems` prop still received and passed to AI context for tool calls. Only visual rendering removed.
 
-Update empty state: check all three sources before showing "No systems tracked yet."
+---
 
-Update `isLoading` to include the new query's loading state.
+### Part 6: HomeProfileRecordBar in ContextualChatPanel Only
 
-**2. Update: `src/pages/SystemPage.tsx`**
+**Update: `src/components/chat/ContextualChatPanel.tsx`**
 
-The existing SystemPage already detects UUIDs (line 48: `isApplianceId = systemKey?.length === 36 && systemKey.includes('-')`) and queries `home_systems`. When a `home_assets` UUID is clicked but doesn't exist in `home_systems`, the page currently shows an error.
+Add props: `strengthScore?: number`, `strengthLevel?: string`
 
-Add a fallback query: if `home_systems` returns no data for a UUID, try `home_assets` table. If found, render a simplified asset detail view showing:
-- Kind (formatted as title)
-- Manufacturer / Model if available
-- Confidence score
-- Source
-- Install date if available
-- A "Help Habitta learn more" CTA to enrich the asset (opens TeachHabittaModal or links to the detail enrichment flow)
+Render `HomeProfileRecordBar` between the header (line 44-49) and the chat content (line 52), with compact padding (`px-4 py-2 border-b border-border/20`).
 
-### Card Design for Discovered Assets
+Only renders when `strengthScore` is provided.
 
-```text
-+----------------------------------+
-| [icon]  Sprinkler System         |
-|         Via chat                 |
-|                                  |
-|         Confidence: 72%          |
-|         Tap to view details      |
-+----------------------------------+
-```
+RecordBar does NOT appear in the middle column ChatConsole. Only in the triggered ContextualChatPanel.
 
-- Dashed border (`border-dashed`) to signal incomplete data
-- Slightly reduced opacity (`opacity-80`)
-- Uses the same card component and layout as appliance cards for visual consistency
+**Update: `src/layouts/DashboardV3Layout.tsx`**
 
-### Data Flow
+Pass confidence data to `ContextualChatPanel`. Add `useCapitalTimeline` and `useHomeConfidence` hooks to the layout (it already has `userHome` with `homeId`).
 
-```text
-SystemsHub
-  |-- capitalTimeline -> systemCards (structural)
-  |-- home_systems -> applianceCards (Tier 1 & 2)
-  |-- home_assets -> discoveredAssets (deduplicated)
-```
+---
 
-### Icon Mapping for Discovered Assets
+### Part 7: Terminology Updates (User-Facing Only)
 
-Known kinds reuse existing `APPLIANCE_ICONS` and `SYSTEM_DISPLAY` maps first. Unknown kinds fall back to:
-- Category "appliance" -> electric plug emoji
-- Category "system" or "structural" -> house emoji
-- Anything else -> question mark emoji
+| Location | Old Copy | New Copy |
+|----------|----------|----------|
+| `DataConfidenceBar.tsx` header | "Data Confidence" | "Home Profile Record" |
+| `HomeHealthCard.tsx` | "Data confidence" | "Record strength" |
+| `recommendationEngine.ts` | "data confidence" | "record strength" |
+| `OnboardingSnapshot.tsx` | "Data Confidence" | "Home Profile Record Strength" |
+| `OnboardingPersonalization.tsx` | "Data Confidence" | "Home Profile Record Strength" |
+| System-level labels | "Low confidence" | "Install year unverified" or "Partially verified" |
+
+Rules:
+- Record-level: "Record Strength"
+- Provenance: "Verified" / "Unverified"
+- Model outputs: "Estimate" and "Range"
+- Internal code variable names unchanged
+
+---
+
+### Files Summary
+
+| File | Action |
+|------|--------|
+| `src/components/home-profile/HomeProfileRecordBar.tsx` | Create |
+| `src/pages/HomeSnapshotPage.tsx` | Create |
+| `src/services/homeConfidence.ts` | Update states + thresholds |
+| `src/components/mobile/DataConfidenceBar.tsx` | Rename + update states |
+| `src/components/mobile/HomeConfidenceHero.tsx` | Update state keys |
+| `src/lib/mobileCopy.ts` | Update state copy keys |
+| `src/components/dashboard-v3/ChatConsole.tsx` | Remove pinned BaselineSurface |
+| `src/components/chat/ContextualChatPanel.tsx` | Add RecordBar |
+| `src/layouts/DashboardV3Layout.tsx` | Pass confidence data |
+| `src/pages/DashboardV3.tsx` | Add snapshot redirect gate |
+| `src/pages/AppRoutes.tsx` | Add /home-snapshot route |
+| `src/pages/SettingsPage.tsx` | Add "View Home Snapshot" link |
+| `src/components/HomeHealthCard.tsx` | Rename label |
+| `src/services/recommendationEngine.ts` | Rename copy |
+| `src/pages/OnboardingSnapshot.tsx` | Rename labels |
+| `src/pages/OnboardingPersonalization.tsx` | Rename labels |
 
 ### What Does NOT Change
 
-- No database migrations
-- No changes to how chat discoveries are recorded
-- No changes to structural system or appliance card logic
-- No changes to mobile layout
-- BaselineSurface / HomeSystemsPanel (right column) unchanged
+- Internal type/variable names
+- Scoring computation logic (only state labels and thresholds)
+- Right column HomeSystemsPanel
+- Mobile layout structure (only copy changes)
+- Database schema
+- OnboardingFlow navigation target
+- BaselineSystems data feed to AI context
+
