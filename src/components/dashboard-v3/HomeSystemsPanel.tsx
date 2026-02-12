@@ -8,25 +8,18 @@
 
 import { cn } from "@/lib/utils";
 import { useFocusState } from "@/contexts/FocusStateContext";
-import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
+import { SystemsHealthTimeline } from "./SystemsHealthTimeline";
+import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 
 interface HomeSystemsPanelProps {
-  systems: BaselineSystem[];
   confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
-  yearBuilt?: number;
-  dataSources?: Array<{
-    name: string;
-    status: 'verified' | 'found' | 'missing';
-    contribution: string;
-  }>;
+  capitalTimeline?: HomeCapitalTimeline | null;
   isCollapsed?: boolean;
 }
 
 export function HomeSystemsPanel({
-  systems,
   confidenceLevel,
-  yearBuilt,
-  dataSources,
+  capitalTimeline,
   isCollapsed = false,
 }: HomeSystemsPanelProps) {
   const { setFocus } = useFocusState();
@@ -44,14 +37,14 @@ export function HomeSystemsPanel({
 
   return (
     <div className={cn(
-      "bg-white rounded-xl border border-slate-200 overflow-hidden",
+      "overflow-hidden",
       "transition-all duration-150 ease-in-out"
     )}>
       {isCollapsed ? (
         /* Collapsed: header only */
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-3 flex items-center justify-between">
           <p className="text-[13px] font-medium text-stone-900">
-            Your Home System Outlook
+            Home Systems Health &amp; Timeline
           </p>
           <span className={cn(
             "text-[11px] font-medium px-2 py-0.5 rounded-full",
@@ -61,28 +54,22 @@ export function HomeSystemsPanel({
           </span>
         </div>
       ) : (
-        /* Full: all system rows */
-        <div className="px-4 py-3">
-          {systems.length === 0 ? (
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium text-stone-900">
-                Your Home System Outlook
-              </p>
-              <p className="text-xs text-stone-500 leading-relaxed">
-                We're building your system profile. Add documentation to increase coverage.
-              </p>
-            </div>
-          ) : (
-            <BaselineSurface
-              systems={systems}
-              confidenceLevel={confidenceLevel}
-              yearBuilt={yearBuilt}
-              dataSources={dataSources}
-              isExpanded={false}
-              onSystemClick={handleSystemClick}
-            />
-          )}
-        </div>
+        /* Full: delegate to SystemsHealthTimeline */
+        capitalTimeline && capitalTimeline.systems.length > 0 ? (
+          <SystemsHealthTimeline
+            timeline={capitalTimeline}
+            onSystemClick={handleSystemClick}
+          />
+        ) : (
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-6 py-4 space-y-2">
+            <p className="text-[13px] font-medium text-stone-900">
+              Home Systems Health &amp; Timeline
+            </p>
+            <p className="text-xs text-stone-500 leading-relaxed">
+              We're building your system profile. Add documentation to increase coverage.
+            </p>
+          </div>
+        )
       )}
     </div>
   );
