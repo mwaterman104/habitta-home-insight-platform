@@ -22,11 +22,11 @@ export function SystemsHealthTimeline({ timeline, onSystemClick }: SystemsHealth
   const years = [currentYear, currentYear + 2, currentYear + 4, currentYear + 6, currentYear + 8, currentYear + 10];
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-lg font-bold text-stone-900 tracking-tightest">
-          Home Systems Health &amp; Timeline
+      <div className="flex justify-between items-center mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-lg font-bold text-stone-900 tracking-tightest">
+          Systems Health &amp; Timeline
         </h2>
         <TooltipProvider>
           <Tooltip>
@@ -44,16 +44,16 @@ export function SystemsHealthTimeline({ timeline, onSystemClick }: SystemsHealth
       </div>
 
       {/* Year-marker scale */}
-      <div className="flex justify-between mb-6 px-2">
+      <div className="flex justify-between mb-4 sm:mb-6 px-1 sm:px-2">
         {years.map((year) => (
-          <span key={year} className="text-[10px] font-bold text-stone-400 uppercase tracking-tighter w-8 text-center">
+          <span key={year} className="text-[9px] sm:text-[10px] font-bold text-stone-400 uppercase tracking-tighter w-6 sm:w-8 text-center">
             {year === currentYear ? 'Now' : `'${year.toString().slice(-2)}`}
           </span>
         ))}
       </div>
 
       {/* Systems list */}
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {timeline.systems.map((system) => {
           const isBeyondHorizon = system.replacementWindow.earlyYear > currentYear + horizonYears;
           const yearsToLikely = system.replacementWindow.likelyYear - currentYear;
@@ -67,15 +67,15 @@ export function SystemsHealthTimeline({ timeline, onSystemClick }: SystemsHealth
           return (
             <div
               key={system.systemId}
-              className="flex items-center gap-4 cursor-pointer group"
+              className="flex items-center gap-3 sm:gap-4 cursor-pointer group py-1 -mx-1 px-1 rounded-lg active:bg-stone-50 transition-colors"
               onClick={() => onSystemClick?.(system.systemId)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && onSystemClick?.(system.systemId)}
             >
               {/* System Name */}
-              <div className="w-28 flex-shrink-0">
-                <p className="text-sm font-bold text-stone-800 leading-tight group-hover:text-stone-950 transition-colors">
+              <div className="w-24 sm:w-28 flex-shrink-0">
+                <p className="text-xs sm:text-sm font-bold text-stone-800 leading-tight group-hover:text-stone-950 transition-colors">
                   {system.systemLabel}
                 </p>
               </div>
@@ -103,9 +103,9 @@ export function SystemsHealthTimeline({ timeline, onSystemClick }: SystemsHealth
               </div>
 
               {/* Status Badge */}
-              <div className="w-24 flex justify-end flex-shrink-0">
+              <div className="w-20 sm:w-24 flex justify-end flex-shrink-0">
                 <span className={cn(
-                  "px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase",
+                  "px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wide uppercase",
                   getBadgeClasses(zone)
                 )}>
                   {zone}

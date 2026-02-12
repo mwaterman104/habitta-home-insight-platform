@@ -523,10 +523,18 @@ export default function DashboardV3() {
   const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
 
 
-  // Mobile: Contract-compliant summary view
+  // Mobile: Visual Home Pulse dashboard
   if (isMobile) {
     // Get active system key for drawer highlighting
     const activeSystemKey = focusContext.type === 'SYSTEM' ? focusContext.systemKey : undefined;
+    
+    // Build filtered timeline if attention filter is active
+    const mobileTimeline = capitalTimeline && systemFilter === 'attention'
+      ? {
+          ...capitalTimeline,
+          systems: capitalTimeline.systems.filter(s => getLateLifeState(s) !== 'not-late'),
+        }
+      : capitalTimeline;
     
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -561,14 +569,8 @@ export default function DashboardV3() {
         
         <main className="flex-1 p-3 pb-20 space-y-3">
           <MobileDashboardView
-            systems={
-              systemFilter === 'attention'
-                ? (capitalTimeline?.systems || []).filter(s => getLateLifeState(s) !== 'not-late')
-                : (capitalTimeline?.systems || [])
-            }
-            healthStatus={getHealthStatus()}
+            capitalTimeline={mobileTimeline}
             onSystemTap={(systemKey) => navigate(`/system/${systemKey}`)}
-            onChatOpen={handleMobileChatOpen}
             homeConfidence={homeConfidence}
             filterActive={systemFilter === 'attention'}
             onClearFilter={() => setSystemFilter('all')}
