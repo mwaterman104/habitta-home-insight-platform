@@ -109,7 +109,7 @@ export default function OnboardingPersonalization() {
           <CardContent>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Data Confidence</span>
+                <span>Home Profile Record Strength</span>
                 <span>{Math.round((data.confidence || 0.7) * 100)}%</span>
               </div>
               <Progress value={(data.confidence || 0.7) * 100} className="h-2" />

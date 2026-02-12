@@ -306,7 +306,7 @@ function LegacyHomeHealthCard({
         {confidenceScore !== undefined && (
           <div className="mt-3 pt-3 border-t border-gray-200">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Data confidence</span>
+              <span className="text-muted-foreground">Record strength</span>
               <span className="font-medium">{confidenceScore}%</span>
             </div>
             <div className="mt-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">

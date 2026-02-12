@@ -7,17 +7,17 @@ interface DataConfidenceBarProps {
 }
 
 const STATE_BADGE_COLORS: Record<ConfidenceState, string> = {
-  solid: 'bg-habitta-olive/15 text-habitta-olive',
-  developing: 'bg-habitta-slate/15 text-habitta-slate',
-  unclear: 'bg-habitta-clay/15 text-habitta-clay',
-  'at-risk': 'bg-habitta-stone/15 text-habitta-stone',
+  strong: 'bg-habitta-olive/15 text-habitta-olive',
+  established: 'bg-habitta-slate/15 text-habitta-slate',
+  moderate: 'bg-habitta-stone/15 text-habitta-stone',
+  limited: 'bg-habitta-clay/15 text-habitta-clay',
 };
 
 const STATE_LABELS: Record<ConfidenceState, string> = {
-  solid: 'Solid',
-  developing: 'Developing',
-  unclear: 'Low',
-  'at-risk': 'At Risk',
+  strong: 'Strong',
+  established: 'Established',
+  moderate: 'Moderate',
+  limited: 'Limited',
 };
 
 export function DataConfidenceBar({ confidence }: DataConfidenceBarProps) {
@@ -29,7 +29,7 @@ export function DataConfidenceBar({ confidence }: DataConfidenceBarProps) {
     <section className="w-full">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-habitta-charcoal font-bold text-body tracking-tightest">
-          Data Confidence
+          Home Profile Record
         </h2>
         <span className={`text-meta font-semibold px-2.5 py-1 rounded-sm ${badgeColor}`}>
           {stateLabel} ({score}%)

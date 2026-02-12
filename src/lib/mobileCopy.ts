@@ -297,13 +297,13 @@ export const REPLACEMENT_WINDOW_PREFIX = 'Replacement window';
 // ============== Home Confidence Copy (v2) ==============
 
 export const HOME_CONFIDENCE_COPY = {
-  label: 'Home Confidence',
-  indexPrefix: 'Confidence index',
+  label: 'Home Profile Record',
+  indexPrefix: 'Record strength',
   states: {
-    solid: { label: 'Solid', meaning: 'Most systems are understood and tracked' },
-    developing: { label: 'Developing', meaning: 'Key gaps exist, but nothing critical is hidden' },
-    unclear: { label: 'Unclear', meaning: 'Too many unknowns to plan confidently' },
-    'at-risk': { label: 'At Risk', meaning: 'Major systems lack basic information' },
+    strong: { label: 'Strong', meaning: 'Most systems are understood and tracked' },
+    established: { label: 'Established', meaning: 'Key gaps exist, but nothing critical is hidden' },
+    moderate: { label: 'Moderate', meaning: 'Several systems lack documentation' },
+    limited: { label: 'Limited', meaning: 'Core system documentation is still being established' },
   },
 } as const;
 

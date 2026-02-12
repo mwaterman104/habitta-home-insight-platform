@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Save, User, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { MapPin, Save, User, LogOut, FileText } from "lucide-react";
 
 interface UserHome {
   id: string;
@@ -23,6 +24,7 @@ interface UserHome {
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [userHome, setUserHome] = useState<UserHome | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -238,6 +240,28 @@ export default function SettingsPage() {
             <Save className="w-4 h-4 mr-2" />
             {saving ? "Saving..." : "Save Address"}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Home Profile Record */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Home Profile Record
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            onClick={() => navigate('/home-snapshot')}
+            className="w-full sm:w-auto"
+          >
+            View Home Snapshot
+          </Button>
+          <p className="text-sm text-muted-foreground mt-2">
+            Review your initial home profile baseline and record strength.
+          </p>
         </CardContent>
       </Card>
 

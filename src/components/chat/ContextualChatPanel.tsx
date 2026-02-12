@@ -5,10 +5,13 @@ import { ChatConsole } from "@/components/dashboard-v3/ChatConsole";
 import { useChatContext } from "@/contexts/ChatContext";
 import { getContextualAssistantMessage } from "@/lib/chatContextCopy";
 import { cn } from "@/lib/utils";
+import { HomeProfileRecordBar, type StrengthLevel } from "@/components/home-profile/HomeProfileRecordBar";
 
 interface ContextualChatPanelProps {
   propertyId: string;
   yearBuilt?: number;
+  strengthScore?: number;
+  strengthLevel?: StrengthLevel;
 }
 
 /**
@@ -17,7 +20,7 @@ interface ContextualChatPanelProps {
  * Wraps ChatConsole with contextual opening messages.
  * Scoped to the current ChatContext (system, maintenance, etc.)
  */
-export function ContextualChatPanel({ propertyId, yearBuilt }: ContextualChatPanelProps) {
+export function ContextualChatPanel({ propertyId, yearBuilt, strengthScore, strengthLevel }: ContextualChatPanelProps) {
   const { chatContext, isOpen, closeChat } = useChatContext();
 
   // Close on Escape
@@ -47,6 +50,13 @@ export function ContextualChatPanel({ propertyId, yearBuilt }: ContextualChatPan
           <X className="h-4 w-4" />
         </Button>
       </div>
+      
+      {/* Home Profile Record Bar */}
+      {strengthScore != null && (
+        <div className="px-4 py-2 border-b border-border/20 shrink-0">
+          <HomeProfileRecordBar strengthScore={strengthScore} strengthLevel={strengthLevel} compact />
+        </div>
+      )}
       
       {/* Chat */}
       <div className="flex-1 min-h-0 overflow-hidden">

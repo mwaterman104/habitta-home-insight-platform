@@ -103,15 +103,15 @@ export default function OnboardingSnapshot() {
         {/* Confidence Score */}
         <Card>
           <CardHeader>
-            <CardTitle>Data Confidence</CardTitle>
+            <CardTitle>Home Profile Record Strength</CardTitle>
             <CardDescription>
-              How much we know about your property
+              How well-documented your property is
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Overall Confidence</span>
+                <span>Record Strength</span>
                 <span>{Math.round(data.home.confidence * 100)}%</span>
               </div>
               <Progress value={data.home.confidence * 100} className="h-2" />

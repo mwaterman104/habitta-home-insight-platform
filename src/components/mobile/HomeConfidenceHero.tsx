@@ -15,17 +15,17 @@ import { LifecycleRing } from '@/components/mobile/LifecycleRing';
 // ============== State Colors (Locked) ==============
 
 const STATE_COLORS: Record<ConfidenceState, string> = {
-  'solid': 'hsl(145, 30%, 55%)',      // Muted green
-  'developing': 'hsl(180, 25%, 50%)', // Neutral teal
-  'unclear': 'hsl(38, 60%, 55%)',     // Soft amber
-  'at-risk': 'hsl(25, 50%, 55%)',     // Warm orange (NEVER red)
+  'strong': 'hsl(145, 30%, 55%)',       // Muted green
+  'established': 'hsl(180, 25%, 50%)',  // Neutral teal
+  'moderate': 'hsl(38, 60%, 55%)',      // Soft amber
+  'limited': 'hsl(25, 50%, 55%)',       // Warm orange (NEVER red)
 };
 
 const STATE_DOT_CLASSES: Record<ConfidenceState, string> = {
-  'solid': 'bg-emerald-500/70',
-  'developing': 'bg-teal-500/70',
-  'unclear': 'bg-amber-500/70',
-  'at-risk': 'bg-orange-500/70',
+  'strong': 'bg-emerald-500/70',
+  'established': 'bg-teal-500/70',
+  'moderate': 'bg-amber-500/70',
+  'limited': 'bg-orange-500/70',
 };
 
 // ============== Component ==============

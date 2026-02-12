@@ -14,6 +14,7 @@ import SystemPlanPage from "./SystemPlanPage";
 import AdminPage from "./AdminPage";
 import NotFound from "./NotFound";
 import OnboardingFlow from "./OnboardingFlow";
+import HomeSnapshotPage from "./HomeSnapshotPage";
 import HomeProfilePage from "./HomeProfilePage";
 import MaintenancePlanner from "./MaintenancePlanner";
 import PropertyIntelligence from "./PropertyIntelligence";
@@ -47,6 +48,13 @@ export function AppRoutes() {
           <Route path="/onboarding" element={
             <ProtectedRoute>
               <OnboardingFlow />
+            </ProtectedRoute>
+          } />
+          
+          {/* Home Snapshot: Post-onboarding bridge (durable, re-viewable) */}
+          <Route path="/home-snapshot" element={
+            <ProtectedRoute>
+              <HomeSnapshotPage />
             </ProtectedRoute>
           } />
           

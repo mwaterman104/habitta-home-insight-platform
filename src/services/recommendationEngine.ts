@@ -85,7 +85,7 @@ function getRoute(actionType: string, systemKey?: string): string {
 
 const RATIONALE: Record<string, (name: string) => string> = {
   add_year: (name) => `Knowing the ${name} installation year improves replacement planning accuracy`,
-  upload_doc: (name) => `A permit or invoice for your ${name} strengthens data confidence`,
+  upload_doc: (name) => `A permit or invoice for your ${name} strengthens record strength`,
   upload_photo: (name) => `A photo helps verify ${name} condition and age`,
   add_serial: (name) => `Adding the ${name} serial number enables warranty and recall tracking`,
   confirm_material: (name) => `Confirming ${name} material improves lifespan estimates`,
@@ -260,7 +260,7 @@ function passFreshness(
     id,
     type: 'freshness',
     title: 'Review and confirm home details',
-    rationale: 'Your home record may be drifting from reality — a quick review keeps confidence accurate',
+    rationale: 'Your home record may be drifting from reality — a quick review keeps record strength accurate',
     confidenceDelta: 5,
     priorityScore: 3.5,
     actionType: 'review_freshness',
