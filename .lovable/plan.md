@@ -1,86 +1,77 @@
 
 
-# Fix "Still Analyzing" Stuck State, Address Normalization, and Permits Visibility
+# Wire Up SystemFocusDetail Buttons: Snap Photo, I Know the Year, Get Local Replacement Quotes
 
-## Problem Summary
+## Overview
 
-Three interconnected issues:
+Three buttons in the Investment Analysis view are rendered but not wired to any handlers. This plan connects each to existing infrastructure using the chat context and existing modals/components.
 
-1. **"Still analyzing your home..." never resolves** -- The enrichment chain (`create-home` -> `property-enrichment` -> `permit-enrichment`) breaks silently. Only `permit-enrichment` sets `pulse_status: 'live'` (line 120). If `property-enrichment` fails to chain, or `permit-enrichment` crashes before reaching that update, the home is permanently stuck at `enriching`.
+## Changes
 
-2. **Shovels API misses permits due to un-normalized addresses** -- The `fetchShovelsPermits` function sends the raw address string (e.g., "Lake Breeze Court") to the Shovels address search API with no suffix normalization. If the API indexes as "Ct" instead of "Court", the search returns 404.
+### 1. RightColumnSurface.tsx -- Orchestrator for modals and handlers
 
-3. **Permits section hidden behind collapsed UI** -- The `PermitsHistory` component is inside a `Collapsible` block at the bottom of HomeProfilePage that defaults to closed.
+- Import `useState`, `useChatContext`, `SystemUpdateModal`, and a new `SystemPhotoCapture` component
+- Add `homeId` prop (sourced from `capitalTimeline.propertyId` or passed explicitly from `DashboardV3`)
+- Add `yearBuilt` optional prop for the update modal
+- Track two boolean states: `showPhotoCapture` and `showUpdateModal`
+- In the `case 'system'` branch, pass three handlers to `SystemFocusDetail`:
+  - `onVerifyPhoto` -- sets `showPhotoCapture = true`
+  - `onReportYear` -- sets `showUpdateModal = true`
+- Render `SystemPhotoCapture` dialog when `showPhotoCapture` is true, scoped to the focused system
+- Render `SystemUpdateModal` when `showUpdateModal` is true, with an `onUpdateComplete` callback that also fires `openChat()` with an auto-send message noting the update
+- Add `homeId` and `yearBuilt` to the `RightColumnSurfaceProps` interface
 
-## Implementation Plan
+### 2. SystemFocusDetail.tsx -- Wire "Get Local Replacement Quotes" to chat
 
-### 1. Backend: Guarantee `pulse_status: 'live'` in `property-enrichment`
+- Import `useChatContext` 
+- Replace `handleGetQuotes` implementation: instead of `setFocus({ type: 'contractor_list', ... })`, call `openChat()` with:
+  ```
+  {
+    type: 'system',
+    systemKey: system.systemId,
+    trigger: 'find_pro',
+    autoSendMessage: `Find local contractors for ${system.systemLabel} replacement near my home.`
+  }
+  ```
+- This leverages the AI's existing `get_contractor_recommendations` tool to fetch real Google Places data
 
-**File: `supabase/functions/property-enrichment/index.ts`**
+### 3. New: SystemPhotoCapture.tsx -- Cross-platform photo capture dialog
 
-Wrap the main logic in a `try/finally` block that always sets `pulse_status: 'live'` as the last step, even if `chainToPermitEnrichment` fails or times out.
+A lightweight component that reuses the patterns from `ChatPhotoUpload`:
 
-- Add a `finally` block after the main try/catch that updates `homes.pulse_status = 'live'` for the given `home_id`
-- Add a 30-second timeout race on `chainToPermitEnrichment` so it doesn't hang indefinitely
-- Log whether the permit chain succeeded or timed out
+- Uses `useIsMobile()` to branch behavior
+- **Desktop**: Renders a `Dialog` containing `QRPhotoSession` (QR code for phone capture) plus a fallback "Upload from computer" button
+- **Mobile**: Renders a `Dialog` with two buttons: "Take Photo" (camera input with `capture="environment"`) and "Choose from Gallery" (file input)
+- On successful upload (to `home-photos` bucket under `chat-uploads/`):
+  1. Calls `openChat()` with `autoSendMessage`: "I just uploaded a photo of my [systemLabel]. Please analyze it to verify the installation details."
+  2. The existing AI flow handles photo analysis and calls `update_system_info` if it extracts useful data
+- Reuses the same validation (10MB max, image types only) and storage upload pattern from `ChatPhotoUpload`
 
-This means `permit-enrichment` can still update confidence and trigger downstream chains, but `property-enrichment` no longer depends on it completing for the home to become `live`.
+### 4. DashboardV3.tsx -- Pass homeId to RightColumnSurface
 
-### 2. Backend: Address suffix normalization in `shovels-permits`
+- Add `homeId={userHome.id}` and `yearBuilt={userHome.year_built}` props to the `RightColumnSurface` component where it's rendered (around line 763)
 
-**File: `supabase/functions/shovels-permits/index.ts`**
-
-Add a normalization step in `fetchShovelsPermits` with retry logic:
-
-- Define a suffix map: Court/Ct, Road/Rd, Street/St, Drive/Dr, Lane/Ln, Boulevard/Blvd, Avenue/Ave, Circle/Cir, Place/Pl, Terrace/Ter, Way/Wy, South/S, North/N, East/E, West/W
-- Try the original address first
-- If the address search returns 404 or 0 results, apply normalization (long to short form) and retry
-- If still no results, try expanding (short to long form) and retry
-- Log which variant succeeded for observability
-
-The Miami-Dade address normalizer already exists (`normalizeMiamiDadeAddress`); this adds similar logic for the Shovels path specifically.
-
-### 3. Frontend: Timeout fallback for stuck enrichment
-
-**File: `src/pages/DashboardV3.tsx`**
-
-Add a computed `isEffectivelyLive` check that treats a home as live if:
-- `pulse_status` is `'live'`, OR
-- `pulse_status` is `'enriching'` or `'initializing'` AND `created_at` is more than 5 minutes ago
-
-Replace the current `isEnriching` derivation (line 523) with this logic. This prevents any future pipeline failures from permanently blocking the UI.
-
-### 4. Frontend: Surface permits in Home Profile
-
-**File: `src/pages/HomeProfilePage.tsx`**
-
-Move `PermitsHistory` out of the collapsed "Deferred Sections" `Collapsible` block (lines 221-237) and place it as a standalone section after "Deferred Recommendations" (after line 217). The collapsed block will retain only Supporting Records and Activity Log.
-
-### 5. Data fix: Unstick existing homes
-
-Run a one-time SQL update to fix any homes currently stuck in `enriching`:
+## Data Flow
 
 ```text
-UPDATE homes
-SET pulse_status = 'live'
-WHERE pulse_status IN ('enriching', 'initializing')
-  AND created_at < NOW() - INTERVAL '5 minutes';
+[Snap Photo] -> SystemPhotoCapture dialog -> upload to home-photos storage
+             -> openChat(autoSendMessage with photo context)
+             -> AI analyzes photo -> update_system_info tool -> system record updated
+
+[I Know Year] -> SystemUpdateModal (existing binary-first flow)
+              -> update-system-install edge function -> system record updated
+              -> openChat(autoSendMessage noting the update)
+
+[Get Quotes]  -> openChat(autoSendMessage: "Find local contractors for X replacement")
+              -> AI calls get_contractor_recommendations -> results in chat
 ```
 
-## Execution Order
+## Files Summary
 
-1. `property-enrichment` resilience (prevents new stuck states)
-2. Data fix migration (fixes existing stuck homes)
-3. Frontend timeout (safety net)
-4. Address normalization (improves permit coverage)
-5. Permits visibility (UX fix)
-
-## Technical Details
-
-**Files modified:**
-- `supabase/functions/property-enrichment/index.ts` -- `finally` block + 30s timeout on permit chain
-- `supabase/functions/shovels-permits/index.ts` -- Address suffix normalization with bidirectional retry in `fetchShovelsPermits`
-- `src/pages/DashboardV3.tsx` -- Replace `isEnriching` with time-aware `isEffectivelyLive` check
-- `src/pages/HomeProfilePage.tsx` -- Move `PermitsHistory` above the collapsible block
-- SQL migration -- Unstick existing homes
+| File | Action |
+|------|--------|
+| `src/components/dashboard-v3/panels/SystemFocusDetail.tsx` | Import `useChatContext`, change Get Quotes handler to use `openChat` |
+| `src/components/dashboard-v3/RightColumnSurface.tsx` | Add modal state, handlers, render `SystemUpdateModal` and `SystemPhotoCapture` |
+| `src/components/dashboard-v3/SystemPhotoCapture.tsx` | **New** -- cross-platform photo capture dialog |
+| `src/pages/DashboardV3.tsx` | Pass `homeId` and `yearBuilt` props to `RightColumnSurface` |
 
