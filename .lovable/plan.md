@@ -1,99 +1,107 @@
 
 
-## Promote System Outlook to Permanent Right-Column Surface
+## Surface Discovered Assets on the /systems Hub
 
-### Summary
+### Problem
 
-Move the System Outlook from a transient chat artifact to a permanent, always-visible position at the top of the right column. Clicking a system row opens the SystemPanel below a collapsed Outlook header, preserving user orientation.
+Chat-discovered systems (sprinkler, microwave) are recorded in `home_assets` but never shown on the `/systems` page. The hub currently only queries `systems` (structural) and `home_systems` (appliances), making discoveries invisible.
 
-### Layout States
+### Solution
 
-**Default (no focus):**
+Add `home_assets` as a third data source in SystemsHub, with smart deduplication and a "Recently Discovered" section. All confidence levels are shown. Clicking a discovered asset navigates to `/systems/{asset_id}`.
+
+### Changes
+
+**1. Update: `src/pages/SystemsHub.tsx`**
+
+Add a new query for `home_assets`:
 ```text
-HomeSystemsPanel (full -- all system rows visible)
-PropertyMap
-LocalConditions
-MaintenanceCalendar
+supabase.from('home_assets')
+  .select('id, kind, category, manufacturer, model, confidence, source, status, install_date, created_at')
+  .eq('home_id', homeId)
+  .eq('status', 'active')
 ```
 
-**System focused:**
+Build a deduplication filter using smart prefix + category check:
+- Build a Set of existing structural system keys (lowercase) from `systemCards`
+- Build a Set of existing appliance key prefixes (lowercase) from `applianceCards`
+- For each `home_asset`: skip if `kind.toLowerCase()` exactly matches a structural key, OR if any appliance prefix matches the start of `kind` AND category matches
+- Remaining assets become "Discovered Assets" cards
+
+Build discovered asset cards with:
+- Display name: `kind.replace(/_/g, ' ')` then title-case each word
+- Manufacturer/model subtitle if available
+- Confidence indicator (always shown, uses existing ConfidenceBadge component)
+- Source badge: "Via chat" / "Via photo" / "Discovered" based on `source` field
+- Category-based icon fallback: Appliance -> plug emoji, System -> house emoji, Unknown -> question mark
+- Click navigates to `/systems/{asset.id}` (existing route handles UUID detection)
+
+Add a third section after Appliances:
 ```text
-HomeSystemsPanel (collapsed -- header only, teal accent retained)
-SystemPanel (detail view)
+Structural Systems
+  [HVAC] [Roof] [Water Heater]
+
+Appliances
+  [Refrigerator] [LG Appliance]
+
+Recently Discovered
+  [Sprinkler System] [Microwave]
 ```
 
-**Other focus (contractor, etc.):**
+Section only renders when `discoveredAssets.length > 0` after dedup.
+
+Update empty state: check all three sources before showing "No systems tracked yet."
+
+Update `isLoading` to include the new query's loading state.
+
+**2. Update: `src/pages/SystemPage.tsx`**
+
+The existing SystemPage already detects UUIDs (line 48: `isApplianceId = systemKey?.length === 36 && systemKey.includes('-')`) and queries `home_systems`. When a `home_assets` UUID is clicked but doesn't exist in `home_systems`, the page currently shows an error.
+
+Add a fallback query: if `home_systems` returns no data for a UUID, try `home_assets` table. If found, render a simplified asset detail view showing:
+- Kind (formatted as title)
+- Manufacturer / Model if available
+- Confidence score
+- Source
+- Install date if available
+- A "Help Habitta learn more" CTA to enrich the asset (opens TeachHabittaModal or links to the detail enrichment flow)
+
+### Card Design for Discovered Assets
+
 ```text
-Only the relevant panel (no Outlook)
++----------------------------------+
+| [icon]  Sprinkler System         |
+|         Via chat                 |
+|                                  |
+|         Confidence: 72%          |
+|         Tap to view details      |
++----------------------------------+
 ```
 
-### Files Changed
-
-**1. New: `src/components/dashboard-v3/HomeSystemsPanel.tsx`**
-
-Permanent right-column surface wrapping `BaselineSurface`:
-- Card with white bg, `border-slate-200`, 2-3px teal left border accent
-- Accepts `systems`, `confidenceLevel`, `yearBuilt`, `dataSources`
-- `isCollapsed` prop: when true, renders header-only state ("Your Home System Outlook -- [confidence]") using internal branching (same component, not two trees)
-- Wires `onSystemClick` to call `setFocus({ type: 'system', systemId }, { push: true })`
-- Empty state (no systems): shows "We're building your system profile. Add documentation to increase coverage." -- panel stays visible, never hidden
-- Uses `useFocusState` for click handler
-
-**2. Update: `src/components/dashboard-v3/BaselineSurface.tsx`**
-
-Add optional `onSystemClick` prop:
-- Add `onSystemClick?: (systemKey: string) => void` to `BaselineSurfaceProps` (line 51)
-- In the system map loop (lines 665-692), wrap each `SystemCard` and `UnknownAgeCard` in a clickable container when `onSystemClick` is provided
-- Clickable container: `cursor-pointer`, `hover:bg-slate-50`, `active:bg-slate-100`, `transition`, `rounded-md`, `role="button"`, `tabIndex={0}`
-- No visual changes when `onSystemClick` is undefined (chat artifact remains identical)
-
-**3. Update: `src/components/dashboard-v3/RightColumnSurface.tsx`**
-
-- Add `baselineSystems`, `confidenceLevel`, `yearBuilt`, `dataSources` to props interface
-- Import `HomeSystemsPanel`
-- Render logic:
-  - `focus === null`: `HomeSystemsPanel` (full) + `HomeOverviewPanel`
-  - `focus.type === 'system'`: `HomeSystemsPanel` (collapsed) + `SystemPanel`
-  - All other focus types: only the relevant panel (no Outlook)
-- Animation: 150ms fade + 4px slide, CSS transitions only
-
-**4. Update: `src/pages/DashboardV3.tsx`**
-
-- Rename `mobileBaselineSystems` to `baselineSystems` (single source of truth)
-- Pass `baselineSystems`, `confidenceLevel` (from `homeConfidence`), `yearBuilt` to `RightColumnSurface` via `DesktopLayout`
-- Continue passing same data to mobile surfaces (no mobile changes)
+- Dashed border (`border-dashed`) to signal incomplete data
+- Slightly reduced opacity (`opacity-80`)
+- Uses the same card component and layout as appliance cards for visual consistency
 
 ### Data Flow
 
 ```text
-DashboardV3 (computes baselineSystems once)
-  |
-  +-- MiddleColumn (chat -- existing BaselineSurface artifact, unchanged)
-  |
-  +-- RightColumnSurface
-        +-- HomeSystemsPanel
-        |     +-- BaselineSurface (onSystemClick wired)
-        +-- HomeOverviewPanel / SystemPanel (conditional)
+SystemsHub
+  |-- capitalTimeline -> systemCards (structural)
+  |-- home_systems -> applianceCards (Tier 1 & 2)
+  |-- home_assets -> discoveredAssets (deduplicated)
 ```
 
-### Interaction Model
+### Icon Mapping for Discovered Assets
 
-- Click system row: `setFocus({ type: 'system', systemId }, { push: true })` -- triggers user lock, Outlook collapses, SystemPanel slides in
-- Close SystemPanel (X): `clearFocus()` -- Outlook expands back, HomeOverviewPanel returns
-- Back button: `goBack()` pops focus stack
-
-### Edge Cases
-
-- **No systems**: Panel stays visible with placeholder copy
-- **Low confidence**: Shown inline as badge (already handled by `ConfidenceExplainer`)
-- **Page refresh while focused**: Focus state is local (not URL-synced), so returns to default -- acceptable for now
-- **HomeOverviewPanel remount**: Map/conditions are lightweight; no expensive recomputation concern
+Known kinds reuse existing `APPLIANCE_ICONS` and `SYSTEM_DISPLAY` maps first. Unknown kinds fall back to:
+- Category "appliance" -> electric plug emoji
+- Category "system" or "structural" -> house emoji
+- Anything else -> question mark emoji
 
 ### What Does NOT Change
 
-- `BaselineSurface` in chat (remains as artifact, no clicks)
-- Mobile layout (no right column)
-- Focus state context / user lock mechanism
-- Contractor/other panel routing
-- Animation approach (existing `animate-in` pattern)
-
+- No database migrations
+- No changes to how chat discoveries are recorded
+- No changes to structural system or appliance card logic
+- No changes to mobile layout
+- BaselineSurface / HomeSystemsPanel (right column) unchanged
