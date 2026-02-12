@@ -11,6 +11,7 @@ import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { getLateLifeState } from "@/services/homeOutlook";
 import { trackMobileEvent, MOBILE_EVENTS } from "@/lib/analytics/mobileEvents";
 import { useHomeConfidence } from "@/hooks/useHomeConfidence";
+import { getStrengthLevel } from "@/components/home-profile/HomeProfileRecordBar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAdvisorState } from "@/hooks/useAdvisorState";
 import { useInvalidateRiskDeltas } from "@/hooks/useRiskDeltas";
@@ -735,6 +736,8 @@ function DesktopLayout({
                   onSystemUpdated={handleSystemUpdated}
                   homeSystems={homeSystems}
                   yearBuilt={yearBuilt}
+                  strengthScore={homeConfidence?.score}
+                  strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
                 />
               </div>
             </ResizablePanel>
@@ -797,6 +800,8 @@ function DesktopLayout({
               chatMode={chatModeContext.mode}
               systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
               onSystemUpdated={handleSystemUpdated}
+              strengthScore={homeConfidence?.score}
+              strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
             />
           </div>
         )}

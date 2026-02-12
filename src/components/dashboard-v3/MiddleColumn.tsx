@@ -25,6 +25,7 @@
 import { useMemo, useCallback } from "react";
 import { ChatConsole } from "./ChatConsole";
 import { StateOfHomeReport } from "./StateOfHomeReport";
+import { HomeProfileRecordBar, type StrengthLevel } from "@/components/home-profile/HomeProfileRecordBar";
 import { type BaselineSystem } from "./BaselineSurface";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
 import { track } from "@/lib/analytics";
@@ -85,6 +86,9 @@ interface MiddleColumnProps {
   homeSystems?: HomeSystem[];
   // Year built from home record
   yearBuilt?: number;
+  // Home Profile Record strength
+  strengthScore?: number;
+  strengthLevel?: StrengthLevel;
 }
 
 export function MiddleColumn({
@@ -107,6 +111,8 @@ export function MiddleColumn({
   onSystemUpdated,
   homeSystems = [],
   yearBuilt: yearBuiltProp,
+  strengthScore,
+  strengthLevel,
 }: MiddleColumnProps) {
   // Engagement cadence hook - only for annual interrupt
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
@@ -390,6 +396,15 @@ export function MiddleColumn({
           Still analyzing your home...
         </div>
       )}
+
+      {/* Home Profile Record Bar - fixed at top */}
+      <div className="px-4 py-3 border-b border-border/50 bg-card/50 shrink-0 rounded-t-lg">
+        <HomeProfileRecordBar
+          strengthScore={strengthScore ?? 0}
+          strengthLevel={strengthLevel ?? 'limited'}
+          compact
+        />
+      </div>
 
       {/* THE CHAT CONSOLE IS THE MIDDLE COLUMN */}
       <ChatConsole
