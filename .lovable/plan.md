@@ -1,252 +1,86 @@
 
 
-## Implementation Plan: SystemFocusDetail.tsx - "Investment Analysis" View
+# Fix "Still Analyzing" Stuck State, Address Normalization, and Permits Visibility
 
-### Overview
+## Problem Summary
 
-Replace the tabbed `SystemPanel` (Overview/Evidence/Timeline) with a single-scroll "Investment Analysis" detail view that transforms the `SystemTimelineEntry` data into a narrative-driven financial breakdown. This shifts the UX from technical documentation to financial advisory.
+Three interconnected issues:
 
-### Architecture
+1. **"Still analyzing your home..." never resolves** -- The enrichment chain (`create-home` -> `property-enrichment` -> `permit-enrichment`) breaks silently. Only `permit-enrichment` sets `pulse_status: 'live'` (line 120). If `property-enrichment` fails to chain, or `permit-enrichment` crashes before reaching that update, the home is permanently stuck at `enriching`.
 
-The component tree will be:
-```
-RightColumnSurface (focus.type === 'system')
-  ├── HomeSystemsPanel (collapsed header)
-  └── SystemFocusDetail (new component)
-```
+2. **Shovels API misses permits due to un-normalized addresses** -- The `fetchShovelsPermits` function sends the raw address string (e.g., "Lake Breeze Court") to the Shovels address search API with no suffix normalization. If the API indexes as "Ct" instead of "Court", the search returns 404.
 
-The zone (status) calculation logic already exists in `SystemsHealthTimeline.tsx` and must be extracted into a shared utility to maintain consistency across all system visualizations.
+3. **Permits section hidden behind collapsed UI** -- The `PermitsHistory` component is inside a `Collapsible` block at the bottom of HomeProfilePage that defaults to closed.
 
-### New Files
+## Implementation Plan
 
-#### 1. `src/components/dashboard-v3/panels/SystemFocusDetail.tsx`
+### 1. Backend: Guarantee `pulse_status: 'live'` in `property-enrichment`
 
-A vertically stacked card layout with 6 sections, consuming `SystemTimelineEntry` directly:
+**File: `supabase/functions/property-enrichment/index.ts`**
 
-**Section 1: Header Navigation**
-- Back button (ArrowLeft icon, calls `goBack()`)
-- System name (bold, `text-xl`)
-- "Investment Analysis" subtitle (muted, uppercase, `tracking-widest`)
-- Status badge aligned right (OK/WATCH/PLAN NOW with color/pulse logic)
+Wrap the main logic in a `try/finally` block that always sets `pulse_status: 'live'` as the last step, even if `chainToPermitEnrichment` fails or times out.
 
-**Section 2: Primary Financial Metric Card**
-- Dark anchor card: `bg-stone-900 text-white rounded-xl p-6 shadow-lg`
-- "Estimated Capital Outlay" label (uppercase, muted)
-- Large cost range: `$Xk – $Yk` in `text-3xl font-bold`
-- Attribution line: uses `system.costAttributionLine` (optional)
-- Cost disclaimer: uses `system.costDisclaimer` with Info icon (optional)
-- Subtle background decoration: low-opacity TrendingDown icon (`-right-4 -bottom-4 opacity-10`)
+- Add a `finally` block after the main try/catch that updates `homes.pulse_status = 'live'` for the given `home_id`
+- Add a 30-second timeout race on `chainToPermitEnrichment` so it doesn't hang indefinitely
+- Log whether the permit chain succeeded or timed out
 
-**Section 3: Cost Context Grid** (2 columns, white cards)
-- Left card: "Labor & Parts"
-  - Uses `system.capitalCost.typicalLow`/`typicalHigh` if available
-  - Falls back to 40% of total cost range if not provided
-  - Icon: Hammer
-  - Subtext: "Based on local regional labor rates"
-- Right card: "Maintenance ROI"
-  - Uses `system.maintenanceEffect.expectedDelayYears` (e.g., `+2 Years`)
-  - Icon: Clock
-  - Subtext: `system.maintenanceEffect.explanation`
+This means `permit-enrichment` can still update confidence and trigger downstream chains, but `property-enrichment` no longer depends on it completing for the home to become `live`.
 
-**Section 4: Replacement Rationale Card** (white card)
-- "Why This Window" header
-- Key metrics:
-  - Unit Age: `currentYear - installYear` (e.g., "12 Years (Installed 2014)")
-  - Lifecycle progress bar (h-2 rounded-full) using the same color logic as SystemsHealthTimeline:
-    - Red for PLAN NOW (<=3 years to likely)
-    - Amber for WATCH (<=6 years)
-    - Emerald for OK
-  - Width: `(currentYear - installYear) / (lateYear - installYear) * 100` clamped to [5, 100]
-- Rationale text: italicized quote from `system.replacementWindow.rationale`
-- Lifespan drivers table:
-  - Rows for each `system.lifespanDrivers[]` entry
-  - Display: `factor` | direction (`↑`/`↓`) + `impact` (low/medium/high)
-  - Text color: red text for negative, emerald for positive
-  - Example: "Climate stress | ↓ high"
+### 2. Backend: Address suffix normalization in `shovels-permits`
 
-**Section 5: Evidence Summary** (compact white card)
-- Confidence indicator:
-  - ShieldCheck icon (emerald for high, amber otherwise)
-  - Label: `system.dataQuality` (High/Medium/Low)
-- Inline badges for:
-  - `system.installSource` (with Calendar icon if present)
-  - `system.materialType`
-  - `system.climateZone` (with MapPin icon if present)
-- All badges: `bg-stone-100 rounded text-[9px] font-bold text-stone-500 uppercase`
+**File: `supabase/functions/shovels-permits/index.ts`**
 
-**Section 6: Call to Action**
-- Full-width dark button: "Get Local Replacement Quotes"
-- Styling: `bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold py-4 rounded-xl`
-- Behavior: Triggers `setFocus({ type: 'contractor_list', systemId: focus.systemId, query: 'Replacement' }, { push: true })`
+Add a normalization step in `fetchShovelsPermits` with retry logic:
 
-**Global Styling:**
-- Container: `animate-in slide-in-from-right duration-300 pb-12`
-- Spacing: `gap-6` between sections
-- Card base: `bg-white p-4/6 rounded-xl border border-stone-100 shadow-sm`
-- Typography consistency with dashboard (stone-900, stone-400, text-[10px] labels)
+- Define a suffix map: Court/Ct, Road/Rd, Street/St, Drive/Dr, Lane/Ln, Boulevard/Blvd, Avenue/Ave, Circle/Cir, Place/Pl, Terrace/Ter, Way/Wy, South/S, North/N, East/E, West/W
+- Try the original address first
+- If the address search returns 404 or 0 results, apply normalization (long to short form) and retry
+- If still no results, try expanding (short to long form) and retry
+- Log which variant succeeded for observability
 
-**Data Mapping from `SystemTimelineEntry`:**
-| UI Element | Source |
-|---|---|
-| System name | `systemLabel` |
-| Cost range | `capitalCost.low` / `capitalCost.high` |
-| Attribution | `costAttributionLine` (optional) |
-| Disclaimer | `costDisclaimer` (optional) |
-| Labor estimate | `capitalCost.typicalLow/typicalHigh` or fallback |
-| Maintenance impact | `maintenanceEffect.expectedDelayYears` + `.explanation` |
-| Unit age | `currentYear - installYear` |
-| Lifecycle bar width | `(currentYear - installYear) / (lateYear - installYear) * 100` clamped [5,100] |
-| Rationale | `replacementWindow.rationale` |
-| Drivers | `lifespanDrivers[]` array with `factor`, `impact`, `severity` |
-| Install verification | `installSource` (permit/inferred/unknown) |
-| Material | `materialType` (optional) |
-| Climate zone | `climateZone` (optional) |
-| Data quality | `dataQuality` (high/medium/low) |
+The Miami-Dade address normalizer already exists (`normalizeMiamiDadeAddress`); this adds similar logic for the Shovels path specifically.
 
-### Modified Files
+### 3. Frontend: Timeout fallback for stuck enrichment
 
-#### 2. `src/components/dashboard-v3/RightColumnSurface.tsx`
+**File: `src/pages/DashboardV3.tsx`**
 
-In the `case 'system'` switch branch:
-- Replace `SystemPanel` import with `SystemFocusDetail`
-- Update the system case to render:
-  ```tsx
-  <SystemFocusDetail
-    system={system}
-    onBack={() => goBack()}
-    currentYear={new Date().getFullYear()}
-  />
-  ```
-- Remove `initialTab` prop passing (no tabs in the new design)
-- Remove the `space-y-6` wrapper since `SystemFocusDetail` is the only content rendered
+Add a computed `isEffectivelyLive` check that treats a home as live if:
+- `pulse_status` is `'live'`, OR
+- `pulse_status` is `'enriching'` or `'initializing'` AND `created_at` is more than 5 minutes ago
 
-#### 3. `src/lib/dashboardUtils.ts` (New utility file)
+Replace the current `isEnriching` derivation (line 523) with this logic. This prevents any future pipeline failures from permanently blocking the UI.
 
-Extract the zone derivation logic into a shared utility so it's consistent across `SystemsHealthTimeline`, `SystemFocusDetail`, and any other components that need it:
+### 4. Frontend: Surface permits in Home Profile
 
-```typescript
-export type Zone = 'OK' | 'WATCH' | 'PLAN NOW';
+**File: `src/pages/HomeProfilePage.tsx`**
 
-export function deriveZone(yearsToLikely: number | null): Zone {
-  if (yearsToLikely === null) return 'OK';
-  if (yearsToLikely <= 3) return 'PLAN NOW';
-  if (yearsToLikely <= 6) return 'WATCH';
-  return 'OK';
-}
+Move `PermitsHistory` out of the collapsed "Deferred Sections" `Collapsible` block (lines 221-237) and place it as a standalone section after "Deferred Recommendations" (after line 217). The collapsed block will retain only Supporting Records and Activity Log.
 
-export function getBarColor(zone: Zone): string {
-  switch (zone) {
-    case 'PLAN NOW': return 'bg-red-500';
-    case 'WATCH': return 'bg-amber-500';
-    case 'OK': return 'bg-emerald-500';
-  }
-}
+### 5. Data fix: Unstick existing homes
 
-export function getBadgeClasses(zone: Zone): string {
-  switch (zone) {
-    case 'PLAN NOW': return 'bg-red-500 text-white animate-subtle-pulse shadow-sm shadow-red-200';
-    case 'WATCH': return 'bg-amber-500 text-white';
-    case 'OK': return 'bg-emerald-500 text-white';
-  }
-}
+Run a one-time SQL update to fix any homes currently stuck in `enriching`:
+
+```text
+UPDATE homes
+SET pulse_status = 'live'
+WHERE pulse_status IN ('enriching', 'initializing')
+  AND created_at < NOW() - INTERVAL '5 minutes';
 ```
 
-Then update `SystemsHealthTimeline.tsx` to import these utilities instead of defining them locally.
+## Execution Order
 
-#### 4. `tailwind.config.ts`
+1. `property-enrichment` resilience (prevents new stuck states)
+2. Data fix migration (fixes existing stuck homes)
+3. Frontend timeout (safety net)
+4. Address normalization (improves permit coverage)
+5. Permits visibility (UX fix)
 
-The `subtle-pulse` animation is **already defined** (lines 122-130), but we need to enhance it with the scale transform as suggested in the user's reference code:
+## Technical Details
 
-Change line 122-125 from:
-```typescript
-"subtle-pulse": {
-  "0%, 100%": { opacity: "1" },
-  "50%": { opacity: "0.85" },
-},
-```
-
-To:
-```typescript
-"subtle-pulse": {
-  "0%, 100%": { 
-    opacity: "1",
-    transform: "scale(1)"
-  },
-  "50%": { 
-    opacity: "0.85",
-    transform: "scale(0.98)"
-  },
-},
-```
-
-This adds the 3D "breathing" depth effect mentioned in the refinement notes.
-
-### Integration Flow
-
-**Clicking a system in SystemsHealthTimeline:**
-1. User clicks a system row → `onSystemClick(systemId)` called
-2. `HomeSystemsPanel` → `setFocus({ type: 'system', systemId }, { push: true })`
-3. `RightColumnSurface` detects `focus.type === 'system'`
-4. `SystemFocusDetail` renders with the found system data
-5. Back button calls `goBack()` from FocusState context (inherited via `useFocusState`)
-
-**Clicking a pin on CapExBudgetRoadmap:**
-- Already wired via `onSystemClick` in the roadmap component
-- Same flow as above
-
-**Contractor flow (future):**
-- "Get Local Replacement Quotes" button calls `setFocus({ type: 'contractor_list', ... }, { push: true })`
-- Pushes a new focus state onto the stack
-- Back button navigates back to system detail (not home)
-
-### Visual Consistency Checkpoints
-
-✓ All cards use `bg-white rounded-xl border border-stone-100 shadow-sm`
-✓ All labels use `text-[10px] font-bold text-stone-400 uppercase tracking-widest`
-✓ Dark card (hero) uses `bg-stone-900 text-white shadow-lg shadow-stone-200`
-✓ Status badge color logic matches `SystemsHealthTimeline` (via shared utility)
-✓ PLAN NOW badge only element using `animate-subtle-pulse`
-✓ Lifecycle bar colors match health timeline (emerald/amber/red)
-✓ Icons from lucide-react for consistency
-✓ Typography follows existing pattern (IBM Plex Sans, no serif)
-
-### Data Safety & Defensive Coding
-
-- All optional fields (like `costAttributionLine`, `materialType`, etc.) have null checks and render conditionally
-- Fallback for `typicalLow/typicalHigh`: uses 40% of total cost range if not provided
-- Fallback for `maintenanceEffect`: renders "+0 Years" if missing
-- Fallback for `lifespanDrivers`: skips the drivers section if array is empty
-- Lifecycle bar percent clamped to [5, 100] to ensure always visible
-- `currentYear` passed as a prop for testability (can mock in tests)
-
-### TypeScript Contracts
-
-The component expects:
-```typescript
-interface SystemFocusDetailProps {
-  system: SystemTimelineEntry;
-  onBack: () => void;
-  currentYear: number;
-}
-```
-
-All `SystemTimelineEntry` fields are already typed in `src/types/capitalTimeline.ts`, so no new types are needed.
-
-### Animation & Interaction
-
-- Outer container: `animate-in slide-in-from-right duration-300` (smooth entry from right)
-- Lifecycle bar: `transition-all duration-700` (slow bar fill animation)
-- Back button & Info icon: `hover:text-stone-600 transition-colors` (subtle hover feedback)
-- CTA button: `active:scale-[0.98]` (tactile press feedback)
-
-### Testing Notes
-
-Once implemented, should verify:
-- System with PLAN NOW status shows pulsing red badge
-- System with WATCH shows amber badge (no pulse)
-- System with OK shows emerald badge
-- Labor & Parts falls back to 40% calculation when typicalLow/High missing
-- Lifespan drivers render with correct directional arrows
-- Beyond-horizon systems can still open detail view
-- Back button properly pops focus stack
+**Files modified:**
+- `supabase/functions/property-enrichment/index.ts` -- `finally` block + 30s timeout on permit chain
+- `supabase/functions/shovels-permits/index.ts` -- Address suffix normalization with bidirectional retry in `fetchShovelsPermits`
+- `src/pages/DashboardV3.tsx` -- Replace `isEnriching` with time-aware `isEffectivelyLive` check
+- `src/pages/HomeProfilePage.tsx` -- Move `PermitsHistory` above the collapsible block
+- SQL migration -- Unstick existing homes
 
