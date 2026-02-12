@@ -54,6 +54,7 @@ interface UserHome {
   pulse_status?: string;
   confidence?: number;
   year_built?: number;
+  created_at?: string;
 }
 
 /**
@@ -520,7 +521,14 @@ export default function DashboardV3() {
   }
 
   const fullAddress = `${userHome.address}, ${userHome.city}, ${userHome.state} ${userHome.zip_code}`;
-  const isEnriching = userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing';
+  // Treat as live if pulse_status is 'live' OR if stuck in enriching for >5 minutes
+  const ENRICHMENT_TIMEOUT_MS = 5 * 60 * 1000;
+  const isEffectivelyLive = userHome.pulse_status === 'live' || (
+    (userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing') &&
+    userHome.created_at &&
+    (Date.now() - new Date(userHome.created_at).getTime()) > ENRICHMENT_TIMEOUT_MS
+  );
+  const isEnriching = !isEffectivelyLive && (userHome.pulse_status === 'enriching' || userHome.pulse_status === 'initializing');
 
 
   // Mobile: Visual Home Pulse dashboard

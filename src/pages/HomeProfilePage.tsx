@@ -216,17 +216,19 @@ function HomeRecordContent() {
       {/* 11. Deferred Recommendations */}
       <DeferredRecommendationsSection items={report.deferredRecommendations} />
 
-      {/* 12-14. Deferred sections (collapsed by default) */}
+      {/* 12. Permits & Construction History (visible by default) */}
+      {report.homeId && report.fullAddress && (
+        <PermitsHistory homeId={report.homeId} address={report.fullAddress} />
+      )}
+
+      {/* 13-14. Supporting records & activity log (collapsed by default) */}
       {report.homeId && report.fullAddress && (
         <Collapsible>
           <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full py-3 group">
             <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
-            Show permits, records, and activity log
+            Show records and activity log
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-8 pt-4">
-            {/* 12. Permits & Construction History */}
-            <PermitsHistory homeId={report.homeId} address={report.fullAddress} />
-
             {/* 13. Supporting Records */}
             <SupportingRecordsWithChat />
 

@@ -31,6 +31,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Extract home_id early so finally block can use it
+  let home_id: string | null = null;
+  let supabase: any = null;
+
   try {
     // Validate internal secret
     const internalSecret = req.headers.get('x-internal-secret');
@@ -46,9 +50,10 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { home_id } = await req.json();
+    const body = await req.json();
+    home_id = body.home_id;
 
     if (!home_id) {
       throw new Error('home_id is required');
@@ -70,8 +75,8 @@ serve(async (req) => {
     // 2. Check if already enriched (skip if we have year_built AND square_feet AND year_built_effective)
     if (home.year_built && home.square_feet && home.year_built_effective !== null) {
       console.log('[property-enrichment] Home already enriched, skipping ATTOM call');
-      // Still chain to permit-enrichment
-      await chainToPermitEnrichment(supabase, home_id);
+      // Still chain to permit-enrichment (with timeout)
+      await chainToPermitEnrichmentWithTimeout(supabase, home_id, expectedSecret);
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: 'already_enriched' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -115,7 +120,6 @@ serve(async (req) => {
                          attomData._attomData?.building?.size?.bldgsize;
 
       // DEFENSIVE FOLIO EXTRACTION
-      // Priority: apn > parcelId > alternateParcelId (NOT fips - that's geographic, not parcel)
       const identifiers = attomData._attomData?.identifier || {};
       console.log('[property-enrichment] Raw ATTOM identifiers:', JSON.stringify(identifiers));
       
@@ -130,44 +134,22 @@ serve(async (req) => {
         console.log(`[property-enrichment] Folio extracted: raw=${rawFolio}, normalized=${folio}`);
       }
 
-      // CRITICAL: Log what we extracted to debug persistence issues
       console.log('[property-enrichment] ATTOM extracted values:', {
-        yearBuilt,
-        squareFeet,
-        folio,
+        yearBuilt, squareFeet, folio,
         existingYearBuilt: home.year_built,
         existingSquareFeet: home.square_feet,
-        rawPropertyDetails: attomData.propertyDetails ? 'present' : 'missing',
-        rawAttomData: attomData._attomData ? 'present' : 'missing',
       });
 
       const updates: any = {};
-      if (yearBuilt && !home.year_built) {
-        updates.year_built = yearBuilt;
-        console.log(`[property-enrichment] Will update year_built to: ${yearBuilt}`);
-      } else if (yearBuilt && home.year_built) {
-        console.log(`[property-enrichment] year_built already set to ${home.year_built}, not overwriting with ${yearBuilt}`);
-      } else if (!yearBuilt) {
-        console.warn(`[property-enrichment] ATTOM did not return yearBuilt for home: ${home_id}`);
-      }
-      
-      if (squareFeet && !home.square_feet) {
-        updates.square_feet = squareFeet;
-        console.log(`[property-enrichment] Will update square_feet to: ${squareFeet}`);
-      } else if (squareFeet && home.square_feet) {
-        console.log(`[property-enrichment] square_feet already set to ${home.square_feet}, not overwriting with ${squareFeet}`);
-      } else if (!squareFeet) {
-        console.warn(`[property-enrichment] ATTOM did not return squareFeet for home: ${home_id}`);
-      }
-
-      // Store folio with source tracking
+      if (yearBuilt && !home.year_built) updates.year_built = yearBuilt;
+      if (squareFeet && !home.square_feet) updates.square_feet = squareFeet;
       if (folio) {
         updates.folio = folio;
         updates.folio_source = 'attom';
-        console.log(`[property-enrichment] Will update folio to: ${folio} (source: attom)`);
       }
 
       // Extract bedrooms, bathrooms, property_type
+      const rawProperty = attomData._attomData;
       const bedrooms = attomData.propertyDetails?.bedrooms ||
                        rawProperty?.building?.rooms?.beds || null;
       const bathsFull = rawProperty?.building?.rooms?.bathsfull || 0;
@@ -177,59 +159,21 @@ serve(async (req) => {
       const propertyType = attomData.propertyDetails?.propertyType ||
                            rawProperty?.summary?.proptype || null;
 
-      if (bedrooms && !home.bedrooms) {
-        updates.bedrooms = bedrooms;
-        console.log(`[property-enrichment] Will update bedrooms to: ${bedrooms}`);
-      }
-      if (bathrooms && !home.bathrooms) {
-        updates.bathrooms = bathrooms;
-        console.log(`[property-enrichment] Will update bathrooms to: ${bathrooms}`);
-      }
-      if (propertyType && !home.property_type) {
-        updates.property_type = propertyType;
-        console.log(`[property-enrichment] Will update property_type to: ${propertyType}`);
-      }
+      if (bedrooms && !home.bedrooms) updates.bedrooms = bedrooms;
+      if (bathrooms && !home.bathrooms) updates.bathrooms = bathrooms;
+      if (propertyType && !home.property_type) updates.property_type = propertyType;
 
       // Sprint 1: Extract and write-through new ATTOM fields via canonical normalizer
-      const rawProperty = attomData._attomData;
       if (rawProperty) {
         const normalized = normalizeAttom(rawProperty);
-        console.log('[property-enrichment] Normalized ATTOM profile:', {
-          effectiveYearBuilt: normalized.effectiveYearBuilt,
-          buildQuality: normalized.buildQuality,
-          archStyle: normalized.archStyle,
-          dataMatchConfidence: normalized.dataMatchConfidence,
-          fipsCode: normalized.fipsCode,
-          grossSqft: normalized.grossSqft,
-          roomsTotal: normalized.roomsTotal,
-          groundFloorSqft: normalized.groundFloorSqft,
-        });
-
-        // Write-through: only write if currently null (never overwrite user data)
-        if (normalized.effectiveYearBuilt && !home.year_built_effective) {
-          updates.year_built_effective = normalized.effectiveYearBuilt;
-        }
-        if (normalized.buildQuality && !home.build_quality) {
-          updates.build_quality = normalized.buildQuality;
-        }
-        if (normalized.archStyle && !home.arch_style) {
-          updates.arch_style = normalized.archStyle;
-        }
-        if (normalized.dataMatchConfidence && !home.data_match_confidence) {
-          updates.data_match_confidence = normalized.dataMatchConfidence;
-        }
-        if (normalized.fipsCode && !home.fips_code) {
-          updates.fips_code = normalized.fipsCode;
-        }
-        if (normalized.grossSqft && !home.gross_sqft) {
-          updates.gross_sqft = normalized.grossSqft;
-        }
-        if (normalized.roomsTotal && !home.rooms_total) {
-          updates.rooms_total = normalized.roomsTotal;
-        }
-        if (normalized.groundFloorSqft && !home.ground_floor_sqft) {
-          updates.ground_floor_sqft = normalized.groundFloorSqft;
-        }
+        if (normalized.effectiveYearBuilt && !home.year_built_effective) updates.year_built_effective = normalized.effectiveYearBuilt;
+        if (normalized.buildQuality && !home.build_quality) updates.build_quality = normalized.buildQuality;
+        if (normalized.archStyle && !home.arch_style) updates.arch_style = normalized.archStyle;
+        if (normalized.dataMatchConfidence && !home.data_match_confidence) updates.data_match_confidence = normalized.dataMatchConfidence;
+        if (normalized.fipsCode && !home.fips_code) updates.fips_code = normalized.fipsCode;
+        if (normalized.grossSqft && !home.gross_sqft) updates.gross_sqft = normalized.grossSqft;
+        if (normalized.roomsTotal && !home.rooms_total) updates.rooms_total = normalized.roomsTotal;
+        if (normalized.groundFloorSqft && !home.ground_floor_sqft) updates.ground_floor_sqft = normalized.groundFloorSqft;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -245,18 +189,11 @@ serve(async (req) => {
         } else {
           console.error('[property-enrichment] FAILED to update home:', updateError);
         }
-      } else {
-        console.log('[property-enrichment] No updates needed - either data already exists or ATTOM returned nothing');
       }
-    } else {
-      console.warn(`[property-enrichment] No ATTOM data to process for home: ${home_id}`, {
-        attomData: attomData ? 'present' : 'missing',
-        attomError: attomError ? attomError.message : 'none'
-      });
     }
 
-    // 5. Chain to permit-enrichment
-    await chainToPermitEnrichment(supabase, home_id);
+    // 5. Chain to permit-enrichment (with timeout)
+    await chainToPermitEnrichmentWithTimeout(supabase, home_id, expectedSecret);
 
     console.log('[property-enrichment] Complete for home:', home_id);
 
@@ -276,28 +213,43 @@ serve(async (req) => {
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // ALWAYS set pulse_status to 'live' — even if permit chain or ATTOM failed
+    if (home_id && supabase) {
+      try {
+        console.log(`[property-enrichment] Setting pulse_status='live' for home: ${home_id}`);
+        await supabase
+          .from('homes')
+          .update({ pulse_status: 'live' })
+          .eq('id', home_id);
+      } catch (finalErr) {
+        console.error('[property-enrichment] Failed to set pulse_status in finally:', finalErr);
+      }
+    }
   }
 });
 
 /**
- * Chain to permit-enrichment function
+ * Chain to permit-enrichment with a 30-second timeout so it never hangs indefinitely
  */
-async function chainToPermitEnrichment(supabase: any, home_id: string) {
-  const internalSecret = Deno.env.get('INTERNAL_ENRICH_SECRET');
-  
+async function chainToPermitEnrichmentWithTimeout(supabase: any, home_id: string, internalSecret: string | undefined) {
   try {
-    console.log('[property-enrichment] Chaining to permit-enrichment');
-    const { error } = await supabase.functions.invoke('permit-enrichment', {
+    console.log('[property-enrichment] Chaining to permit-enrichment (30s timeout)');
+    const permitPromise = supabase.functions.invoke('permit-enrichment', {
       body: { home_id },
       headers: { 'x-internal-secret': internalSecret },
     });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('permit-enrichment timeout after 30s')), 30000)
+    );
 
-    if (error) {
-      console.error('[property-enrichment] permit-enrichment chain error:', error);
+    const result = await Promise.race([permitPromise, timeoutPromise]) as any;
+    if (result?.error) {
+      console.error('[property-enrichment] permit-enrichment chain error:', result.error);
     } else {
       console.log('[property-enrichment] permit-enrichment chain successful');
     }
   } catch (err) {
-    console.error('[property-enrichment] permit-enrichment chain failed:', err);
+    console.error('[property-enrichment] permit-enrichment chain failed/timed out:', err);
   }
 }
