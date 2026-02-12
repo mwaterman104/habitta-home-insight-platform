@@ -512,7 +512,28 @@ function normalizeMiamiDadeAddress(address: string): string | null {
 }
 
 /**
- * Fetch permits from Shovels V2 API
+ * Address suffix normalization map for Shovels API matching
+ */
+const SUFFIX_LONG_TO_SHORT: Record<string, string> = {
+  'COURT': 'CT', 'ROAD': 'RD', 'STREET': 'ST', 'DRIVE': 'DR',
+  'LANE': 'LN', 'BOULEVARD': 'BLVD', 'AVENUE': 'AVE', 'CIRCLE': 'CIR',
+  'PLACE': 'PL', 'TERRACE': 'TER', 'WAY': 'WY',
+  'SOUTH': 'S', 'NORTH': 'N', 'EAST': 'E', 'WEST': 'W',
+};
+const SUFFIX_SHORT_TO_LONG = Object.fromEntries(
+  Object.entries(SUFFIX_LONG_TO_SHORT).map(([k, v]) => [v, k])
+);
+
+function normalizeSuffixes(address: string, map: Record<string, string>): string {
+  let result = address;
+  for (const [from, to] of Object.entries(map)) {
+    result = result.replace(new RegExp(`\\b${from}\\b`, 'gi'), to);
+  }
+  return result;
+}
+
+/**
+ * Fetch permits from Shovels V2 API with address normalization retry
  */
 async function fetchShovelsPermits(address: string): Promise<NormalizedPermit[]> {
   const shovelsApiKey = Deno.env.get('SHOVELS_API_KEY')
@@ -520,60 +541,60 @@ async function fetchShovelsPermits(address: string): Promise<NormalizedPermit[]>
     throw new Error('Shovels API key not configured')
   }
 
-  // Resolve address to geo_id via Shovels V2 Addresses API
-  const addrSearchResp = await fetch(`https://api.shovels.ai/v2/addresses/search?q=${encodeURIComponent(address)}`, {
-    headers: {
-      'X-API-Key': shovelsApiKey,
-      'Content-Type': 'application/json'
+  const variants = [
+    address, // original
+    normalizeSuffixes(address, SUFFIX_LONG_TO_SHORT), // long -> short
+    normalizeSuffixes(address, SUFFIX_SHORT_TO_LONG), // short -> long
+  ];
+  // Deduplicate variants
+  const uniqueVariants = [...new Set(variants)];
+
+  for (const variant of uniqueVariants) {
+    console.log(`[shovels] Trying address variant: "${variant}"`);
+    const addrSearchResp = await fetch(`https://api.shovels.ai/v2/addresses/search?q=${encodeURIComponent(variant)}`, {
+      headers: { 'X-API-Key': shovelsApiKey, 'Content-Type': 'application/json' }
+    });
+
+    if (!addrSearchResp.ok) {
+      console.log(`[shovels] Address search returned ${addrSearchResp.status} for variant`);
+      continue;
     }
-  })
 
-  let geoId: string | null = null
-  if (addrSearchResp.ok) {
-    const addrJson = await addrSearchResp.json()
-    geoId = addrJson?.items?.[0]?.geo_id || null
-    console.log('[shovels] Address search items:', addrJson?.items?.length || 0, 'geo_id:', geoId)
-  } else {
-    console.log(`[shovels] Address search returned ${addrSearchResp.status}`)
-    return [];
-  }
+    const addrJson = await addrSearchResp.json();
+    const geoId = addrJson?.items?.[0]?.geo_id || null;
+    console.log('[shovels] Address search items:', addrJson?.items?.length || 0, 'geo_id:', geoId);
 
-  if (!geoId) {
-    console.log('[shovels] No geo_id found for address; skipping permits search')
-    return [];
-  }
+    if (!geoId) continue;
 
-  // Default date range - last 20 years
-  const to = new Date()
-  const from = new Date()
-  from.setFullYear(to.getFullYear() - 20)
-  const permit_from = from.toISOString().split('T')[0]
-  const permit_to = to.toISOString().split('T')[0]
+    // Found a geo_id — fetch permits
+    const to = new Date();
+    const from = new Date();
+    from.setFullYear(to.getFullYear() - 20);
 
-  const params = new URLSearchParams({
-    geo_id: geoId,
-    permit_from,
-    permit_to,
-    size: '100'
-  })
-  
-  const permitsResponse = await fetch(`https://api.shovels.ai/v2/permits/search?${params.toString()}`, {
-    headers: {
-      'X-API-Key': shovelsApiKey,
-      'Content-Type': 'application/json'
+    const params = new URLSearchParams({
+      geo_id: geoId,
+      permit_from: from.toISOString().split('T')[0],
+      permit_to: to.toISOString().split('T')[0],
+      size: '100'
+    });
+
+    const permitsResponse = await fetch(`https://api.shovels.ai/v2/permits/search?${params.toString()}`, {
+      headers: { 'X-API-Key': shovelsApiKey, 'Content-Type': 'application/json' }
+    });
+
+    if (!permitsResponse.ok) {
+      console.log(`[shovels] Permits search returned ${permitsResponse.status}`);
+      return [];
     }
-  })
-  
-  if (!permitsResponse.ok) {
-    console.log(`[shovels] Permits search returned ${permitsResponse.status}`)
-    return [];
+
+    const permitsJson = await permitsResponse.json();
+    const permitsItems = permitsJson?.items || [];
+    console.log(`[shovels] Received ${permitsItems.length} permits (variant: "${variant}")`);
+    return permitsItems.map((p: any) => normalizeShovelsPermit(p));
   }
 
-  const permitsJson = await permitsResponse.json()
-  const permitsItems = permitsJson?.items || []
-  console.log('[shovels] Received permits items:', permitsItems.length)
-
-  return permitsItems.map((p: any) => normalizeShovelsPermit(p));
+  console.log('[shovels] No geo_id found for any address variant');
+  return [];
 }
 
 // ========== HELPER FUNCTIONS ==========
