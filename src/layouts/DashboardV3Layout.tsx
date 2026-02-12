@@ -202,8 +202,8 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
         <ContextualChatPanel 
           propertyId={userHome.id}
           yearBuilt={userHome.year_built ?? undefined}
-          strengthScore={strengthScore}
-          strengthLevel={strengthLevel}
+          strengthScore={strengthScore ?? 0}
+          strengthLevel={strengthLevel ?? 'limited'}
         />
       </div>
     </div>

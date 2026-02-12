@@ -51,12 +51,10 @@ export function ContextualChatPanel({ propertyId, yearBuilt, strengthScore, stre
         </Button>
       </div>
       
-      {/* Home Profile Record Bar */}
-      {strengthScore != null && (
-        <div className="px-4 py-2 border-b border-border/20 shrink-0">
-          <HomeProfileRecordBar strengthScore={strengthScore} strengthLevel={strengthLevel} compact />
-        </div>
-      )}
+      {/* Home Profile Record Bar - always rendered, fixed at top */}
+      <div className="px-4 py-3 border-b border-border/50 bg-card/50 shrink-0">
+        <HomeProfileRecordBar strengthScore={strengthScore ?? 0} strengthLevel={strengthLevel ?? 'limited'} compact />
+      </div>
       
       {/* Chat */}
       <div className="flex-1 min-h-0 overflow-hidden">
