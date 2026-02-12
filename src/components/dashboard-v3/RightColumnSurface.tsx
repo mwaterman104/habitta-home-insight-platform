@@ -13,13 +13,16 @@ import { SystemPanel } from "./panels/SystemPanel";
 import { ContractorListPanel } from "./panels/ContractorListPanel";
 import { ContractorDetailPanel } from "./panels/ContractorDetailPanel";
 import { HomeSystemsPanel } from "./HomeSystemsPanel";
-import type { SystemTimelineEntry } from "@/types/capitalTimeline";
+import { CapitalTimeline } from "@/components/CapitalTimeline";
+import type { SystemTimelineEntry, HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { ContractorRecommendation } from "@/lib/chatFormatting";
 import type { BaselineSystem } from "./BaselineSurface";
 
 interface RightColumnSurfaceProps extends HomeOverviewPanelProps {
   /** Capital timeline systems for SystemPanel lookup */
   capitalSystems?: SystemTimelineEntry[];
+  /** Full capital timeline for the timeline visualization */
+  capitalTimeline?: HomeCapitalTimeline | null;
   /** Baseline systems for the permanent Outlook panel */
   baselineSystems?: BaselineSystem[];
   /** Confidence level for Outlook header */
@@ -36,13 +39,14 @@ interface RightColumnSurfaceProps extends HomeOverviewPanelProps {
 
 export function RightColumnSurface({
   capitalSystems = [],
+  capitalTimeline,
   baselineSystems = [],
   confidenceLevel = 'Unknown',
   yearBuilt,
   dataSources,
   ...homeOverviewProps
 }: RightColumnSurfaceProps) {
-  const { focus, focusData } = useFocusState();
+  const { focus, focusData, setFocus } = useFocusState();
 
   const renderPanel = () => {
     if (!focus) {
@@ -55,6 +59,12 @@ export function RightColumnSurface({
             dataSources={dataSources}
             isCollapsed={false}
           />
+          {capitalTimeline && (
+            <CapitalTimeline
+              timeline={capitalTimeline}
+              onSystemClick={(systemId) => setFocus({ type: 'system', systemId }, { push: true })}
+            />
+          )}
           <HomeOverviewPanel {...homeOverviewProps} />
         </div>
       );
