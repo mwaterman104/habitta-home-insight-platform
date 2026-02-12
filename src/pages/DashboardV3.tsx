@@ -752,9 +752,6 @@ function DesktopLayout({
               <aside className="border-l bg-muted/10 h-full overflow-y-auto p-6">
                 <RightColumnSurface
                   loading={forecastLoading || hvacLoading || timelineLoading}
-                  latitude={userHome.latitude}
-                  longitude={userHome.longitude}
-                  address={userHome.address}
                   city={userHome.city}
                   state={userHome.state}
                   maintenanceTasks={maintenanceTasks?.map((t: any) => ({
@@ -766,6 +763,7 @@ function DesktopLayout({
                   })) || []}
                   maintenanceLoading={tasksLoading}
                   capitalSystems={capitalTimeline?.systems || []}
+                  capitalTimeline={capitalTimeline}
                   baselineSystems={baselineSystems}
                   confidenceLevel={confidenceLevel}
                   yearBuilt={yearBuilt}
