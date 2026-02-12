@@ -479,6 +479,16 @@ export default function DashboardV3() {
     );
   }
 
+  // Snapshot redirect gate — single source of truth
+  if (userHome?.id && !localStorage.getItem('habitta_has_seen_snapshot')) {
+    navigate('/home-snapshot', { replace: true });
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-lg">Loading...</div>
+      </div>
+    );
+  }
+
   // No home state
   if (!userHome) {
     return (

@@ -10,6 +10,9 @@ import { ChatContextProvider, useChatContext } from "@/contexts/ChatContext";
 import { ContextualChatPanel } from "@/components/chat/ContextualChatPanel";
 import { MobileChatSheet } from "@/components/dashboard-v3/mobile";
 import { getContextualAssistantMessage } from "@/lib/chatContextCopy";
+import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
+import { useHomeConfidence } from "@/hooks/useHomeConfidence";
+import { getStrengthLevel } from "@/components/home-profile/HomeProfileRecordBar";
 
 interface DashboardV3LayoutProps {
   children: ReactNode;
@@ -122,6 +125,16 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
     return 'critical';
   };
 
+  // Capital timeline + confidence for RecordBar in chat panel
+  const { timeline: capitalTimeline } = useCapitalTimeline({ homeId: userHome.id || undefined, enabled: !!userHome.id });
+  const { confidence: homeConfidence } = useHomeConfidence(
+    userHome.id || undefined,
+    capitalTimeline?.systems || [],
+    userHome.year_built
+  );
+  const strengthScore = homeConfidence?.score;
+  const strengthLevel = strengthScore != null ? getStrengthLevel(strengthScore) : undefined;
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -189,6 +202,8 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
         <ContextualChatPanel 
           propertyId={userHome.id}
           yearBuilt={userHome.year_built ?? undefined}
+          strengthScore={strengthScore}
+          strengthLevel={strengthLevel}
         />
       </div>
     </div>

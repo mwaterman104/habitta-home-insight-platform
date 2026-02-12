@@ -46,7 +46,7 @@ export interface SystemSignals {
   hasMaintenanceNotes: boolean;
 }
 
-export type ConfidenceState = 'solid' | 'developing' | 'unclear' | 'at-risk';
+export type ConfidenceState = 'strong' | 'established' | 'moderate' | 'limited';
 
 export interface HomeConfidenceResult {
   score: number;
@@ -106,10 +106,10 @@ const SIGNAL_POINTS: Record<keyof SystemSignals, number> = {
 // ============== State Mapping ==============
 
 const STATE_MAP: Array<{ min: number; state: ConfidenceState; meaning: string }> = [
-  { min: 80, state: 'solid', meaning: 'Most systems are understood and tracked' },
-  { min: 55, state: 'developing', meaning: 'Key gaps exist, but nothing critical is hidden' },
-  { min: 30, state: 'unclear', meaning: 'Too many unknowns to plan confidently' },
-  { min: 0, state: 'at-risk', meaning: 'Major systems lack basic information' },
+  { min: 80, state: 'strong', meaning: 'Most systems are understood and tracked' },
+  { min: 50, state: 'established', meaning: 'Key gaps exist, but nothing critical is hidden' },
+  { min: 25, state: 'moderate', meaning: 'Several systems lack documentation' },
+  { min: 0, state: 'limited', meaning: 'Core system documentation is still being established' },
 ];
 
 function getState(score: number): { state: ConfidenceState; meaning: string } {
