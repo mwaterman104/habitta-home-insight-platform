@@ -9,7 +9,7 @@
 
 import { useFocusState } from "@/contexts/FocusStateContext";
 import { HomeOverviewPanel, type HomeOverviewPanelProps } from "./panels/HomeOverviewPanel";
-import { SystemPanel } from "./panels/SystemPanel";
+import { SystemFocusDetail } from "./panels/SystemFocusDetail";
 import { ContractorListPanel } from "./panels/ContractorListPanel";
 import { ContractorDetailPanel } from "./panels/ContractorDetailPanel";
 import { HomeSystemsPanel } from "./HomeSystemsPanel";
@@ -32,7 +32,7 @@ export function RightColumnSurface({
   confidenceLevel = 'Unknown',
   ...homeOverviewProps
 }: RightColumnSurfaceProps) {
-  const { focus, focusData, setFocus } = useFocusState();
+  const { focus, focusData, setFocus, goBack } = useFocusState();
 
   const handleSystemFocus = (systemId: string) => {
     setFocus({ type: 'system', systemId }, { push: true });
@@ -61,19 +61,20 @@ export function RightColumnSurface({
     switch (focus.type) {
       case 'system': {
         const system = capitalSystems.find(s => s.systemId === focus.systemId);
+        if (!system) return <HomeOverviewPanel {...homeOverviewProps} />;
         return (
-          <div className="space-y-6">
+          <>
             <HomeSystemsPanel
               confidenceLevel={confidenceLevel}
               capitalTimeline={capitalTimeline}
               isCollapsed={true}
             />
-            <SystemPanel
-              systemId={focus.systemId}
+            <SystemFocusDetail
               system={system}
-              initialTab={focus.tab}
+              onBack={() => goBack()}
+              currentYear={new Date().getFullYear()}
             />
-          </div>
+          </>
         );
       }
       case 'contractor_list': {
