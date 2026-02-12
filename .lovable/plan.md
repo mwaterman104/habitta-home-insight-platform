@@ -1,56 +1,54 @@
 
 
-## Issue: HomeProfileRecordBar Not Fixed at Top of Desktop Chat
+## Add Capital Timeline to Right Column, Remove Map
 
-### Problem Analysis
+### What Changes
 
-Looking at the current implementation:
+1. **Remove PropertyMap** from `HomeOverviewPanel` -- the map is removed from the default right column view
+2. **Add CapitalTimeline** between `HomeSystemsPanel` and `HomeOverviewPanel` in `RightColumnSurface`
+3. **Pass capital timeline data** through to `RightColumnSurface` (it already receives `capitalSystems` but needs the full `HomeCapitalTimeline` object for the `CapitalTimeline` component)
 
-**ContextualChatPanel.tsx (lines 40-80)**:
-- The component uses `flex flex-col` on the main container ✓
-- Header has `shrink-0` to stay fixed ✓
-- HomeProfileRecordBar (lines 55-59) is wrapped in `shrink-0` ✓
-- ChatConsole wrapper has `flex-1 min-h-0 overflow-hidden` ✓
+### Technical Details
 
-**Issue Root Cause**: The HomeProfileRecordBar IS structured correctly to be fixed. However, there are two possible problems:
+**Update: `src/components/dashboard-v3/panels/HomeOverviewPanel.tsx`**
+- Remove `PropertyMap` import and rendering (lines 7, 70-79)
+- Remove map-related props: `latitude`, `longitude`, `address`, `city`, `state`, `intelligenceOverlay`, `onMapClick`
+- Keep `LocalConditions` and `MaintenanceCalendarWidget` only
+- Simplify loading skeleton (remove the tall map skeleton)
 
-1. **The bar may not be rendering at all** because `strengthScore` is being evaluated. Line 55 checks `strengthScore != null` before rendering. If `strengthScore` is `undefined` or `null`, the bar never renders.
+**Update: `src/components/dashboard-v3/RightColumnSurface.tsx`**
+- Add `capitalTimeline?: HomeCapitalTimeline` prop (the full timeline object, not just the systems array)
+- Import `CapitalTimeline` component
+- In the default (null focus) state, render order becomes:
+  1. `HomeSystemsPanel` (System Outlook -- permanent anchor)
+  2. `CapitalTimeline` (replacement windows visualization)
+  3. `HomeOverviewPanel` (local conditions + maintenance calendar)
+- In system focus state, the timeline stays visible below the collapsed Outlook
 
-2. **The visual appearance may be too subtle** – even if it's rendering, the `px-4 py-2 border-b border-border/20` styling is minimal and the bar might not be visually prominent.
+**Update: `src/pages/DashboardV3.tsx`**
+- Pass the full `capitalTimeline` object (from `useCapitalTimeline`) to `RightColumnSurface` as a new prop
+- Wire `onSystemClick` from `CapitalTimeline` to the focus state system navigation
 
-### Solution
+### Visual Result (Default Right Column)
 
-Fix the implementation to ensure:
+```text
++----------------------------+
+| System Outlook (Anchor)    |
++----------------------------+
+| Home Systems Timeline      |
+| [HVAC ====|========  $8-12k|
+| [Roof   ====|=====  $15-25k|
+| [Water  ==|===      $3-5k  |
++----------------------------+
+| Local Conditions           |
++----------------------------+
+| Maintenance Calendar       |
++----------------------------+
+```
 
-1. **Always render the bar** (don't conditionally hide it) – make it a required prop so it's always there
-2. **Add proper visual separation** with a solid border, not just a subtle one
-3. **Ensure proper spacing** between the bar and the chat content
-4. **Verify the layout constraint** – the chat wrapper must have `overflow-y-auto` or `overflow-hidden` with internal scroll, not overflow on the parent
+The map is fully removed from the right column. The timeline visualization reinforces the System Outlook with temporal context -- when things need attention, not just what their current state is.
 
-### Changes Required
+### Props Cleanup
 
-**Update: `src/components/chat/ContextualChatPanel.tsx`**
-
-1. Change the `strengthScore` and `strengthLevel` props from optional to required (or provide defaults)
-2. Always render `HomeProfileRecordBar` (remove the conditional `strengthScore != null` check)
-3. Update the bar's wrapper styling:
-   - Change from `border-border/20` to a more visible border like `border-border/50`
-   - Add more spacing: `px-4 py-3` instead of `px-4 py-2`
-   - Add `bg-card/50` background to create visual separation from the chat
-4. Ensure the chat container has proper scrolling:
-   - Keep `flex-1 min-h-0 overflow-hidden` on the chat wrapper
-   - Let ChatConsole handle its own internal scrolling
-
-**Update: `src/layouts/DashboardV3Layout.tsx`**
-
-1. Ensure `strengthScore` is always defined before passing to `ContextualChatPanel`
-2. Add a fallback: if `strengthScore` is undefined, pass `0` with `strengthLevel: 'limited'`
-
-### Expected Result
-
-After the fix, the HomeProfileRecordBar will:
-- Always appear at the top of the ContextualChatPanel
-- Remain fixed (non-scrolling) as the user types and reads chat
-- Have clear visual separation from the chat content below
-- Provide proper context about the home's documentation strength without interfering with conversation flow
+The `HomeOverviewPanelProps` interface will shrink significantly since map-related props are removed. This simplifies the prop chain through `RightColumnSurface` as well -- fewer props to spread.
 
