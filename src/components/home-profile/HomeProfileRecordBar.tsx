@@ -63,7 +63,7 @@ export function HomeProfileRecordBar({
 
       <div className="w-full h-2.5 bg-habitta-stone/15 rounded-sm overflow-hidden">
         <div
-          className="h-full bg-habitta-slate rounded-sm transition-all duration-500"
+          className="h-full bg-emerald-500 rounded-sm transition-all duration-500"
           style={{ width: `${clampedScore}%` }}
         />
       </div>
