@@ -13,56 +13,44 @@ import { SystemPanel } from "./panels/SystemPanel";
 import { ContractorListPanel } from "./panels/ContractorListPanel";
 import { ContractorDetailPanel } from "./panels/ContractorDetailPanel";
 import { HomeSystemsPanel } from "./HomeSystemsPanel";
-import { CapitalTimeline } from "@/components/CapitalTimeline";
+import { CapExBudgetRoadmap } from "./CapExBudgetRoadmap";
 import type { SystemTimelineEntry, HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { ContractorRecommendation } from "@/lib/chatFormatting";
-import type { BaselineSystem } from "./BaselineSurface";
 
 interface RightColumnSurfaceProps extends HomeOverviewPanelProps {
   /** Capital timeline systems for SystemPanel lookup */
   capitalSystems?: SystemTimelineEntry[];
   /** Full capital timeline for the timeline visualization */
   capitalTimeline?: HomeCapitalTimeline | null;
-  /** Baseline systems for the permanent Outlook panel */
-  baselineSystems?: BaselineSystem[];
   /** Confidence level for Outlook header */
   confidenceLevel?: 'Unknown' | 'Early' | 'Moderate' | 'High';
-  /** Year built for Outlook context */
-  yearBuilt?: number;
-  /** Data sources for confidence explainer */
-  dataSources?: Array<{
-    name: string;
-    status: 'verified' | 'found' | 'missing';
-    contribution: string;
-  }>;
 }
 
 export function RightColumnSurface({
   capitalSystems = [],
   capitalTimeline,
-  baselineSystems = [],
   confidenceLevel = 'Unknown',
-  yearBuilt,
-  dataSources,
   ...homeOverviewProps
 }: RightColumnSurfaceProps) {
   const { focus, focusData, setFocus } = useFocusState();
 
+  const handleSystemFocus = (systemId: string) => {
+    setFocus({ type: 'system', systemId }, { push: true });
+  };
+
   const renderPanel = () => {
     if (!focus) {
       return (
-        <div className="space-y-6">
+        <div className="space-y-8">
           <HomeSystemsPanel
-            systems={baselineSystems}
             confidenceLevel={confidenceLevel}
-            yearBuilt={yearBuilt}
-            dataSources={dataSources}
+            capitalTimeline={capitalTimeline}
             isCollapsed={false}
           />
           {capitalTimeline && (
-            <CapitalTimeline
+            <CapExBudgetRoadmap
               timeline={capitalTimeline}
-              onSystemClick={(systemId) => setFocus({ type: 'system', systemId }, { push: true })}
+              onSystemClick={handleSystemFocus}
             />
           )}
           <HomeOverviewPanel {...homeOverviewProps} />
@@ -76,10 +64,8 @@ export function RightColumnSurface({
         return (
           <div className="space-y-6">
             <HomeSystemsPanel
-              systems={baselineSystems}
               confidenceLevel={confidenceLevel}
-              yearBuilt={yearBuilt}
-              dataSources={dataSources}
+              capitalTimeline={capitalTimeline}
               isCollapsed={true}
             />
             <SystemPanel

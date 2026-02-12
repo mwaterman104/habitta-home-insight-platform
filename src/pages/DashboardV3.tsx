@@ -764,9 +764,7 @@ function DesktopLayout({
                   maintenanceLoading={tasksLoading}
                   capitalSystems={capitalTimeline?.systems || []}
                   capitalTimeline={capitalTimeline}
-                  baselineSystems={baselineSystems}
                   confidenceLevel={confidenceLevel}
-                  yearBuilt={yearBuilt}
                 />
               </aside>
             </ResizablePanel>
