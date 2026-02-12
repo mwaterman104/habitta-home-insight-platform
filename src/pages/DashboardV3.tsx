@@ -764,6 +764,8 @@ function DesktopLayout({
                   loading={forecastLoading || hvacLoading || timelineLoading}
                   city={userHome.city}
                   state={userHome.state}
+                  homeId={userHome.id}
+                  yearBuilt={userHome.year_built}
                   maintenanceTasks={maintenanceTasks?.map((t: any) => ({
                     id: t.id,
                     title: t.title,

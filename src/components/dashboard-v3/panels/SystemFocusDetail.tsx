@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deriveZone, getBarColor, getBadgeClasses } from "@/lib/dashboardUtils";
-import { useFocusState } from "@/contexts/FocusStateContext";
+import { useChatContext } from "@/contexts/ChatContext";
 import type { SystemTimelineEntry } from "@/types/capitalTimeline";
 
 interface SystemFocusDetailProps {
@@ -34,7 +34,7 @@ interface SystemFocusDetailProps {
 }
 
 export function SystemFocusDetail({ system, onBack, currentYear, onVerifyPhoto, onReportYear, onUploadDoc }: SystemFocusDetailProps) {
-  const { setFocus } = useFocusState();
+  const { openChat } = useChatContext();
   const installYear = system.installYear ?? currentYear;
   const age = currentYear - installYear;
   const totalLife = system.replacementWindow.lateYear - installYear;
@@ -49,10 +49,12 @@ export function SystemFocusDetail({ system, onBack, currentYear, onVerifyPhoto, 
   const delayYears = system.maintenanceEffect?.expectedDelayYears ?? 0;
 
   const handleGetQuotes = () => {
-    setFocus(
-      { type: 'contractor_list', systemId: system.systemId, query: 'Replacement' },
-      { push: true }
-    );
+    openChat({
+      type: 'system',
+      systemKey: system.systemId,
+      trigger: 'find_pro',
+      autoSendMessage: `Find local contractors for ${system.systemLabel} replacement near my home.`,
+    });
   };
 
   return (
