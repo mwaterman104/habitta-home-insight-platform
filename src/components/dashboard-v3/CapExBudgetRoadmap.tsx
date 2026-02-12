@@ -54,11 +54,11 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-10">
-        <h2 className="text-lg font-bold text-stone-900 tracking-tightest">
-          Capital Expenditure Budget Roadmap
+      <div className="flex justify-between items-center mb-6 sm:mb-10">
+        <h2 className="text-base sm:text-lg font-bold text-stone-900 tracking-tightest">
+          Budget Roadmap
         </h2>
         <TooltipProvider>
           <Tooltip>
@@ -76,7 +76,7 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
       </div>
 
       {/* Timeline visualization */}
-      <div className="relative w-full" style={{ height: `${MAX_PIN_HEIGHT + 60}px` }}>
+      <div className="relative w-full overflow-x-auto" style={{ height: `${MAX_PIN_HEIGHT + 60}px`, minWidth: '280px' }}>
         {/* Pins and window blocks */}
         {sortedSystems.map((system) => {
           const pinType = classifySystem(system, currentYear, horizonYears);
@@ -101,7 +101,7 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
                     height: '28px',
                   }}
                 >
-                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-teal-700">
+                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] sm:text-[10px] font-semibold text-teal-700">
                     {system.systemLabel}: {costLabel}
                   </span>
                 </div>
@@ -111,7 +111,7 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
               <div
                 className={cn(
                   "absolute bottom-6 flex flex-col items-center cursor-pointer group",
-                  "transition-transform hover:scale-105"
+                  "transition-transform hover:scale-105 active:scale-110"
                 )}
                 style={{
                   left: `${likelyPos}%`,
@@ -126,16 +126,16 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
                 {/* Cost label (only shown for urgent or distant, not window which has its own label) */}
                 {!showWindow && (
                   <span className={cn(
-                    "absolute -top-5 whitespace-nowrap text-[10px] font-bold transition-transform group-hover:scale-110",
+                    "absolute -top-5 whitespace-nowrap text-[9px] sm:text-[10px] font-bold transition-transform group-hover:scale-110",
                     pinType === 'urgent' ? 'text-red-600' : 'text-stone-500'
                   )}>
                     {costLabel}
                   </span>
                 )}
 
-                {/* Circle top */}
+                {/* Circle top — larger on mobile for touch */}
                 <div className={cn(
-                  "w-3 h-3 rounded-full border-2 bg-white z-10 flex-shrink-0",
+                  "w-4 h-4 sm:w-3 sm:h-3 rounded-full border-2 bg-white z-10 flex-shrink-0",
                   pinType === 'urgent' ? 'border-red-500' : pinType === 'window' ? 'border-teal-500' : 'border-stone-400'
                 )} />
 
@@ -156,21 +156,21 @@ export function CapExBudgetRoadmap({ timeline, onSystemClick }: CapExBudgetRoadm
       {/* Year markers */}
       <div className="flex justify-between px-0 mt-1">
         {years.map((year) => (
-          <span key={year} className="text-[10px] font-medium text-stone-400 uppercase tracking-wider">
+          <span key={year} className="text-[9px] sm:text-[10px] font-medium text-stone-400 uppercase tracking-wider">
             {year === currentYear ? 'Now' : `'${year.toString().slice(-2)}`}
           </span>
         ))}
       </div>
 
       {/* Legend */}
-      <div className="mt-6 flex gap-6 border-t border-stone-100 pt-4">
-        <div className="flex items-center gap-2">
+      <div className="mt-4 sm:mt-6 flex gap-4 sm:gap-6 border-t border-stone-100 pt-3 sm:pt-4">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="w-2 h-2 rounded-full bg-red-500" />
-          <span className="text-[11px] text-stone-500 font-medium">High-Priority Expense</span>
+          <span className="text-[10px] sm:text-[11px] text-stone-500 font-medium">High-Priority</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="w-3 h-1.5 bg-teal-500/20 border-t border-teal-500/40 rounded-sm" />
-          <span className="text-[11px] text-stone-500 font-medium">Replacement Window</span>
+          <span className="text-[10px] sm:text-[11px] text-stone-500 font-medium">Replacement Window</span>
         </div>
       </div>
     </div>

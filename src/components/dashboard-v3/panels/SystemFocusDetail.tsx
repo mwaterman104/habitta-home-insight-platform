@@ -14,6 +14,10 @@ import {
   Calendar,
   ShieldCheck,
   MapPin,
+  AlertCircle,
+  Camera,
+  History,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deriveZone, getBarColor, getBadgeClasses } from "@/lib/dashboardUtils";
@@ -24,9 +28,12 @@ interface SystemFocusDetailProps {
   system: SystemTimelineEntry;
   onBack: () => void;
   currentYear: number;
+  onVerifyPhoto?: () => void;
+  onReportYear?: () => void;
+  onUploadDoc?: () => void;
 }
 
-export function SystemFocusDetail({ system, onBack, currentYear }: SystemFocusDetailProps) {
+export function SystemFocusDetail({ system, onBack, currentYear, onVerifyPhoto, onReportYear, onUploadDoc }: SystemFocusDetailProps) {
   const { setFocus } = useFocusState();
   const installYear = system.installYear ?? currentYear;
   const age = currentYear - installYear;
@@ -104,6 +111,57 @@ export function SystemFocusDetail({ system, onBack, currentYear }: SystemFocusDe
           <TrendingDown className="w-32 h-32 text-white" />
         </div>
       </div>
+
+      {/* 2b. Verification Path (low/medium confidence only) */}
+      {system.dataQuality !== 'high' && (
+        <div className="bg-amber-50 rounded-xl p-5 border border-amber-100">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="w-5 h-5 text-amber-600" />
+            <h3 className="text-sm font-bold text-stone-900">Verify for Better Accuracy</h3>
+          </div>
+          
+          <p className="text-xs text-stone-600 mb-4 leading-relaxed">
+            Our timeline for the {system.systemLabel} is an estimate. Help us refine it with a quick photo or update.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Primary: Camera */}
+            <button
+              onClick={onVerifyPhoto}
+              className="flex flex-col items-center justify-center gap-2 bg-white border border-stone-200 p-4 rounded-xl shadow-sm active:bg-stone-50 transition-colors"
+            >
+              <div className="bg-stone-900 p-2 rounded-full">
+                <Camera className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-[11px] font-bold text-stone-800">Snap Photo</span>
+              <span className="text-[9px] text-stone-400 text-center uppercase">Label or Surface</span>
+            </button>
+
+            {/* Secondary: User Report */}
+            <button
+              onClick={onReportYear}
+              className="flex flex-col items-center justify-center gap-2 bg-white border border-stone-200 p-4 rounded-xl shadow-sm active:bg-stone-50 transition-colors"
+            >
+              <div className="bg-emerald-500 p-2 rounded-full">
+                <History className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-[11px] font-bold text-stone-800">I Know the Year</span>
+              <span className="text-[9px] text-stone-400 text-center uppercase">Manual Update</span>
+            </button>
+          </div>
+
+          {/* Tertiary: Document Upload */}
+          {onUploadDoc && (
+            <button
+              onClick={onUploadDoc}
+              className="w-full mt-3 py-2 flex items-center justify-center gap-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest hover:text-stone-600 transition-colors"
+            >
+              <FileText className="w-3 h-3" />
+              Have a permit or invoice? Upload here
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 3. Cost Context Grid */}
       <div className="grid grid-cols-2 gap-4">
