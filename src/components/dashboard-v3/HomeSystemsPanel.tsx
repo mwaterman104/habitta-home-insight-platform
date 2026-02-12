@@ -44,7 +44,7 @@ export function HomeSystemsPanel({
 
   return (
     <div className={cn(
-      "bg-white rounded-xl border border-slate-200 border-l-[3px] border-l-teal-500 overflow-hidden",
+      "bg-white rounded-xl border border-slate-200 overflow-hidden",
       "transition-all duration-150 ease-in-out"
     )}>
       {isCollapsed ? (
