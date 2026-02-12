@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SystemDetailView } from "@/components/SystemDetailView";
 import { ApplianceDetailView } from "@/components/system/ApplianceDetailView";
+import { AssetDetailView } from "@/components/system/AssetDetailView";
 import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 import { isValidSystemKey } from "@/lib/systemMeta";
@@ -74,6 +75,23 @@ export default function SystemPage() {
       return { ...data, system_catalog: catalog };
     },
     enabled: !!isApplianceId && !!systemKey,
+    retry: false,
+  });
+
+  // Fallback: if UUID not found in home_systems, try home_assets
+  const { data: assetData, isLoading: isAssetLoading } = useQuery({
+    queryKey: ['asset-detail', systemKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('home_assets')
+        .select('id, kind, category, manufacturer, model, confidence, source, status, install_date, created_at')
+        .eq('id', systemKey!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    // Only run if appliance query finished and returned nothing
+    enabled: !!isApplianceId && !!systemKey && !isApplianceLoading && !applianceData,
   });
 
   // Fetch user home first
@@ -215,9 +233,9 @@ export default function SystemPage() {
     });
   };
 
-  // If this is an appliance, render the ApplianceDetailView
+  // If this is a UUID-based item (appliance or discovered asset)
   if (isApplianceId) {
-    if (isApplianceLoading) {
+    if (isApplianceLoading || isAssetLoading) {
       return (
         <DashboardV3Layout>
           <div className="p-6 space-y-6 max-w-3xl mx-auto animate-pulse">
@@ -229,26 +247,40 @@ export default function SystemPage() {
       );
     }
 
-    if (!applianceData) {
+    // Render appliance detail if found in home_systems
+    if (applianceData) {
       return (
         <DashboardV3Layout>
-          <div className="p-6 max-w-3xl mx-auto">
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-lg mb-2">Appliance not found</p>
-              <p className="text-sm">This appliance may have been removed.</p>
-            </div>
-          </div>
+          <ApplianceDetailView 
+            appliance={applianceData} 
+            onBack={handleBack}
+            onDelete={handleDeleteAppliance}
+          />
         </DashboardV3Layout>
       );
     }
 
+    // Render discovered asset detail if found in home_assets
+    if (assetData) {
+      return (
+        <DashboardV3Layout>
+          <AssetDetailView 
+            asset={assetData} 
+            onBack={handleBack}
+          />
+        </DashboardV3Layout>
+      );
+    }
+
+    // Neither found
     return (
       <DashboardV3Layout>
-        <ApplianceDetailView 
-          appliance={applianceData} 
-          onBack={handleBack}
-          onDelete={handleDeleteAppliance}
-        />
+        <div className="p-6 max-w-3xl mx-auto">
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="text-lg mb-2">Item not found</p>
+            <p className="text-sm">This item may have been removed.</p>
+          </div>
+        </div>
       </DashboardV3Layout>
     );
   }

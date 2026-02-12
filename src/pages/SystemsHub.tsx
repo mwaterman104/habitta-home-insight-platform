@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Cpu, CheckCircle2, AlertTriangle, Clock, Plus, Package } from "lucide-react";
+import { Cpu, CheckCircle2, AlertTriangle, Clock, Plus, Package, Sparkles } from "lucide-react";
+import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { cn } from "@/lib/utils";
 import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
 import { TeachHabittaModal } from "@/components/TeachHabittaModal";
@@ -117,7 +118,23 @@ export default function SystemsHub() {
     },
   });
 
-  const isLoading = isSystemsLoading || isAppliancesLoading;
+  // Fetch discovered assets from home_assets
+  const { data: homeAssetsRaw, isLoading: isAssetsLoading } = useQuery({
+    queryKey: ['home-assets', userHome?.id],
+    queryFn: async () => {
+      if (!userHome?.id) return [];
+      const { data, error } = await supabase
+        .from('home_assets')
+        .select('id, kind, category, manufacturer, model, confidence, source, status, install_date, created_at')
+        .eq('home_id', userHome.id)
+        .eq('status', 'active');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!userHome?.id,
+  });
+
+  const isLoading = isSystemsLoading || isAppliancesLoading || isAssetsLoading;
   const currentYear = new Date().getFullYear();
 
   // Build structural system cards (Tier 0)
@@ -233,6 +250,28 @@ export default function SystemsHub() {
     }).filter(a => a.tier === 1 || a.tier === 2);
   }, [appliancesRaw, catalogData, currentYear]);
 
+  // Deduplicate home_assets against structural + appliance sources
+  const discoveredAssets = useMemo(() => {
+    if (!homeAssetsRaw?.length) return [];
+    
+    const structuralKeys = new Set(systemCards.map(s => s.key.toLowerCase()));
+    const appliancePrefixes = applianceCards.map(a => {
+      const base = a.systemKey.split('_')[0].toLowerCase();
+      return { prefix: base, category: 'appliance' };
+    });
+    
+    return homeAssetsRaw.filter(asset => {
+      const kind = asset.kind.toLowerCase();
+      // Exact match against structural systems
+      if (structuralKeys.has(kind)) return false;
+      // Smart prefix + category match against appliances
+      if (appliancePrefixes.some(ap => 
+        kind.startsWith(ap.prefix) && asset.category.toLowerCase() === ap.category
+      )) return false;
+      return true;
+    });
+  }, [homeAssetsRaw, systemCards, applianceCards]);
+
   // Count by tier
   const tier1Count = applianceCards.filter(a => a.tier === 1).length;
   const tier2Count = applianceCards.filter(a => a.tier === 2).length;
@@ -278,7 +317,7 @@ export default function SystemsHub() {
               <Skeleton key={i} className="h-40 rounded-xl" />
             ))}
           </div>
-        ) : systemCards.length === 0 && applianceCards.length === 0 ? (
+        ) : systemCards.length === 0 && applianceCards.length === 0 && discoveredAssets.length === 0 ? (
           <Card className="rounded-xl">
             <CardContent className="p-8 text-center">
               <Cpu className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
@@ -342,7 +381,7 @@ export default function SystemsHub() {
             
             {/* Appliances Section - Using Resolved Identity */}
             {applianceCards.length > 0 && (
-              <section>
+              <section className="mb-8">
                 <div className="flex items-center gap-2 mb-3">
                   <Package className="h-4 w-4 text-muted-foreground" />
                   <h2 className="heading-h3 text-muted-foreground">Appliances</h2>
@@ -375,7 +414,6 @@ export default function SystemsHub() {
                             <div className="flex items-center gap-2">
                               <span className="text-xl">{icon}</span>
                               <div>
-                                {/* Composed title with inline confidence label */}
                                 <CardTitle className="system-name text-base">
                                   {appliance.title}
                                   {appliance.confidenceLabel && (
@@ -395,10 +433,66 @@ export default function SystemsHub() {
                                 ~{appliance.ageYears} years old
                               </p>
                             )}
-                            {/* Status copy using resolver */}
                             <p className="text-sm text-muted-foreground">
                               {appliance.statusCopy}
                             </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Recently Discovered Section */}
+            {discoveredAssets.length > 0 && (
+              <section className="mb-8">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="heading-h3 text-muted-foreground">Recently Discovered</h2>
+                  <span className="text-xs text-muted-foreground">
+                    {discoveredAssets.length} found
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {discoveredAssets.map(asset => {
+                    const kind = asset.kind.toLowerCase();
+                    const icon = APPLIANCE_ICONS[kind as ApplianceKey] 
+                      || (asset.category === 'appliance' ? '🔌' 
+                        : (asset.category === 'system' || asset.category === 'structural') ? '🏠' 
+                        : '❓');
+                    const displayName = asset.kind
+                      .replace(/_/g, ' ')
+                      .replace(/\b\w/g, (c: string) => c.toUpperCase());
+                    const sourceLabel = asset.source.includes('chat') ? 'Via chat' 
+                      : asset.source.includes('photo') ? 'Via photo' 
+                      : 'Discovered';
+                    
+                    return (
+                      <Card
+                        key={asset.id}
+                        className="rounded-xl cursor-pointer transition-all hover:shadow-md border-dashed opacity-80"
+                        onClick={() => navigate(`/systems/${asset.id}`)}
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">{icon}</span>
+                              <div>
+                                <CardTitle className="system-name text-base">{displayName}</CardTitle>
+                                {asset.manufacturer && (
+                                  <p className="text-xs text-muted-foreground">{asset.manufacturer}</p>
+                                )}
+                              </div>
+                            </div>
+                            <ConfidenceBadge confidence={asset.confidence} source={asset.source} />
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">{sourceLabel}</p>
+                            <p className="text-xs text-muted-foreground">Tap to view details</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -428,6 +522,7 @@ export default function SystemsHub() {
           onSystemAdded={() => {
             queryClient.invalidateQueries({ queryKey: ['capital-timeline', userHome?.id] });
             queryClient.invalidateQueries({ queryKey: ['home-appliances', userHome?.id] });
+            queryClient.invalidateQueries({ queryKey: ['home-assets', userHome?.id] });
           }}
         />
       </div>
