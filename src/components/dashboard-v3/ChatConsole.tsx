@@ -58,14 +58,17 @@ import {
   formatOpeningMessage,
   wasBaselineOpeningShown,
   markBaselineOpeningShown,
+  clearBaselineOpeningShown,
   getModeBehavior,
   formatProvenanceOpeningMessage,
   getWhyStateLabel,
   isFirstVisit,
   markFirstVisitComplete,
 } from "@/lib/chatModeCopy";
-import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, type HabittaGreetingResult } from "@/lib/chatGreetings";
+import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, GREETING_ENGINE_VERSION, type HabittaGreetingResult } from "@/lib/chatGreetings";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
+
+const GREETING_VERSION_KEY = 'habitta_greeting_engine_version';
 
 // ============================================
 // Conversation Starters
@@ -200,7 +203,7 @@ export function ChatConsole({
   // Import focus state hook (single call, used for both continuity and focus setting)
   const { focus: currentFocus, setFocus, isUserLocked, setFocusData } = useFocusState();
 
-  const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring } = useAIHomeAssistant(propertyId, {
+  const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring, clearConversation } = useAIHomeAssistant(propertyId, {
     advisorState,
     confidence,
     risk,
@@ -240,16 +243,28 @@ export function ChatConsole({
   // Inject context-aware greeting via Habitta Greeting Engine
   // Wait for restoration to complete before deciding to show opening
   const [greetingResult, setGreetingResult] = useState<HabittaGreetingResult | null>(null);
+  const versionCheckedRef = useRef(false);
+  
+  // Version check: clear stale sessions when greeting engine is upgraded
+  useEffect(() => {
+    if (isRestoring || versionCheckedRef.current) return;
+    versionCheckedRef.current = true;
+    
+    const storedVersion = parseInt(localStorage.getItem(GREETING_VERSION_KEY) || '0', 10);
+    if (storedVersion < GREETING_ENGINE_VERSION) {
+      console.log(`[ChatConsole] Greeting engine upgraded (v${storedVersion} → v${GREETING_ENGINE_VERSION}). Clearing stale session.`);
+      localStorage.setItem(GREETING_VERSION_KEY, String(GREETING_ENGINE_VERSION));
+      clearConversation();
+      clearBaselineOpeningShown(propertyId);
+      setHasShownBaselineOpening(false);
+    }
+  }, [isRestoring, clearConversation, propertyId]);
   
   useEffect(() => {
-    // Don't show opening while still restoring from storage
     if (isRestoring) return;
-    
-    // Wait for baselineSystems to load (async data) - effect will re-run when they arrive
     if (baselineSystems.length === 0) return;
     
     if (messages.length === 0 && !hasShownBaselineOpening) {
-      // Build enriched context for strategy-based greeting
       const context = buildGreetingContext({
         baselineSystems,
         isFirstVisit: isFirstUserVisit,
@@ -265,7 +280,8 @@ export function ChatConsole({
       markBaselineOpeningShown(propertyId);
       setHasShownBaselineOpening(true);
       
-      // Mark first visit complete after showing onboarding message
+      localStorage.setItem(GREETING_VERSION_KEY, String(GREETING_ENGINE_VERSION));
+      
       if (isFirstUserVisit) {
         markFirstVisitComplete();
       }

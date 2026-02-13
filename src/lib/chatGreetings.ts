@@ -15,6 +15,13 @@
 
 import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
 
+/**
+ * Greeting engine version — increment when templates or strategy logic changes.
+ * When this version differs from what's stored, the persisted chat session is
+ * cleared so the new greeting can fire.
+ */
+export const GREETING_ENGINE_VERSION = 2;
+
 // ============================================
 // Types
 // ============================================
