@@ -1,77 +1,95 @@
 
+## Add Tooltip to HomeProfileRecordBar for Next Score-Building Action
 
-# Wire Up SystemFocusDetail Buttons: Snap Photo, I Know the Year, Get Local Replacement Quotes
+### Context
+The `HomeProfileRecordBar` component displays the home's record strength (0-100 score and strength level: Limited/Moderate/Established/Strong). The underlying `HomeConfidenceResult` (from `homeConfidence.ts`) already computes a `nextGain` field that contains:
+- `action`: A user-friendly description of the highest-priority action to improve the score (e.g., "Upload a photo of your HVAC")
+- `delta`: The potential point increase (e.g., 4 points)
+- `systemKey`: The system affected (optional, e.g., "hvac")
 
-## Overview
+This tooltip will expose that computed recommendation directly at the record bar, making it immediately discoverable.
 
-Three buttons in the Investment Analysis view are rendered but not wired to any handlers. This plan connects each to existing infrastructure using the chat context and existing modals/components.
+### Design
 
-## Changes
+**Tooltip Position & Trigger**
+- Add a help icon (`HelpCircle` from `lucide-react`) next to the "Home Profile Record" title
+- Hover or click the icon to reveal the tooltip (via Radix `Tooltip` + `TooltipTrigger` + `TooltipContent`)
+- Place the tooltip above or to the side to avoid covering the progress bar
 
-### 1. RightColumnSurface.tsx -- Orchestrator for modals and handlers
+**Tooltip Content**
+- If `nextGain` is available: Show the action and point delta (e.g., "Upload a photo of your HVAC (+4 points)")
+- If `nextGain` is null (record is complete): Show "Your home profile record is complete"
 
-- Import `useState`, `useChatContext`, `SystemUpdateModal`, and a new `SystemPhotoCapture` component
-- Add `homeId` prop (sourced from `capitalTimeline.propertyId` or passed explicitly from `DashboardV3`)
-- Add `yearBuilt` optional prop for the update modal
-- Track two boolean states: `showPhotoCapture` and `showUpdateModal`
-- In the `case 'system'` branch, pass three handlers to `SystemFocusDetail`:
-  - `onVerifyPhoto` -- sets `showPhotoCapture = true`
-  - `onReportYear` -- sets `showUpdateModal = true`
-- Render `SystemPhotoCapture` dialog when `showPhotoCapture` is true, scoped to the focused system
-- Render `SystemUpdateModal` when `showUpdateModal` is true, with an `onUpdateComplete` callback that also fires `openChat()` with an auto-send message noting the update
-- Add `homeId` and `yearBuilt` to the `RightColumnSurfaceProps` interface
+**Styling**
+- Reuse the existing `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider` from `@/components/ui/tooltip`
+- Place the help icon inline with the title, styled subtly (inherit text color, opacity-60, hover:opacity-100)
+- Icon size: 16-18px to match the text size
 
-### 2. SystemFocusDetail.tsx -- Wire "Get Local Replacement Quotes" to chat
+### Implementation Details
 
-- Import `useChatContext` 
-- Replace `handleGetQuotes` implementation: instead of `setFocus({ type: 'contractor_list', ... })`, call `openChat()` with:
-  ```
-  {
-    type: 'system',
-    systemKey: system.systemId,
-    trigger: 'find_pro',
-    autoSendMessage: `Find local contractors for ${system.systemLabel} replacement near my home.`
-  }
-  ```
-- This leverages the AI's existing `get_contractor_recommendations` tool to fetch real Google Places data
+**File: `src/components/home-profile/HomeProfileRecordBar.tsx`**
 
-### 3. New: SystemPhotoCapture.tsx -- Cross-platform photo capture dialog
+1. Import the required components:
+   - `HelpCircle` from `lucide-react`
+   - `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider` from `@/components/ui/tooltip`
 
-A lightweight component that reuses the patterns from `ChatPhotoUpload`:
+2. Add a new prop to `HomeProfileRecordBarProps`:
+   - `nextGain?: HomeConfidenceResult['nextGain'] | null` (optional, to support existing use cases where `nextGain` is not available)
 
-- Uses `useIsMobile()` to branch behavior
-- **Desktop**: Renders a `Dialog` containing `QRPhotoSession` (QR code for phone capture) plus a fallback "Upload from computer" button
-- **Mobile**: Renders a `Dialog` with two buttons: "Take Photo" (camera input with `capture="environment"`) and "Choose from Gallery" (file input)
-- On successful upload (to `home-photos` bucket under `chat-uploads/`):
-  1. Calls `openChat()` with `autoSendMessage`: "I just uploaded a photo of my [systemLabel]. Please analyze it to verify the installation details."
-  2. The existing AI flow handles photo analysis and calls `update_system_info` if it extracts useful data
-- Reuses the same validation (10MB max, image types only) and storage upload pattern from `ChatPhotoUpload`
+3. Update the JSX to wrap the title area in a tooltip:
+   - Keep the existing "Home Profile Record" h2
+   - Add an inline help icon wrapped in `TooltipTrigger`
+   - Add `TooltipContent` showing the action and delta, or the completion message
+   - Wrap the entire section in `TooltipProvider` (with a reasonable `delayDuration`, e.g., 300ms)
 
-### 4. DashboardV3.tsx -- Pass homeId to RightColumnSurface
+4. Style the icon:
+   - Inherit text color from parent
+   - Use opacity-60, hover:opacity-100 for visual feedback
+   - Cursor: help
 
-- Add `homeId={userHome.id}` and `yearBuilt={userHome.year_built}` props to the `RightColumnSurface` component where it's rendered (around line 763)
+**Files that Pass `nextGain` to HomeProfileRecordBar**
 
-## Data Flow
+The following components will need to pass the `nextGain` prop:
+- `src/components/dashboard-v3/MiddleColumn.tsx` (line ~402) – has access to `confidence` from `useHomeConfidence`
+- `src/components/chat/ContextualChatPanel.tsx` (line ~56) – has access to `confidence`
+- `src/pages/HomeSnapshotPage.tsx` (line ~100) – has access to `confidence`
 
-```text
-[Snap Photo] -> SystemPhotoCapture dialog -> upload to home-photos storage
-             -> openChat(autoSendMessage with photo context)
-             -> AI analyzes photo -> update_system_info tool -> system record updated
+These components already have the `confidence` object from `useHomeConfidence`, so they can simply pass `nextGain={confidence?.nextGain}` to `HomeProfileRecordBar`.
 
-[I Know Year] -> SystemUpdateModal (existing binary-first flow)
-              -> update-system-install edge function -> system record updated
-              -> openChat(autoSendMessage noting the update)
+### Data Flow
 
-[Get Quotes]  -> openChat(autoSendMessage: "Find local contractors for X replacement")
-              -> AI calls get_contractor_recommendations -> results in chat
+```
+useHomeConfidence hook
+  ↓
+computeHomeConfidence (src/services/homeConfidence.ts)
+  ↓
+HomeConfidenceResult { score, state, nextGain, ... }
+  ↓
+Passed to HomeProfileRecordBar as prop
+  ↓
+Rendered in tooltip on hover/focus
 ```
 
-## Files Summary
+### Edge Cases
 
-| File | Action |
+1. **nextGain is null**: Display "Your home profile record is complete"
+2. **nextGain is undefined (older consumers)**: Show nothing or a default message (optional – can be left blank)
+3. **Compact mode**: The icon and tooltip will still appear, but the font size will be smaller to match the compact title (text-sm instead of text-body)
+4. **Mobile**: Tooltips work on touch by triggering on focus; Radix handles this automatically
+
+### Files to Modify
+
+| File | Change |
 |------|--------|
-| `src/components/dashboard-v3/panels/SystemFocusDetail.tsx` | Import `useChatContext`, change Get Quotes handler to use `openChat` |
-| `src/components/dashboard-v3/RightColumnSurface.tsx` | Add modal state, handlers, render `SystemUpdateModal` and `SystemPhotoCapture` |
-| `src/components/dashboard-v3/SystemPhotoCapture.tsx` | **New** -- cross-platform photo capture dialog |
-| `src/pages/DashboardV3.tsx` | Pass `homeId` and `yearBuilt` props to `RightColumnSurface` |
+| `src/components/home-profile/HomeProfileRecordBar.tsx` | Add tooltip trigger icon and `nextGain` prop; render tooltip content |
+| `src/components/dashboard-v3/MiddleColumn.tsx` | Pass `nextGain={confidence?.nextGain}` to `HomeProfileRecordBar` |
+| `src/components/chat/ContextualChatPanel.tsx` | Pass `nextGain={confidence?.nextGain}` to `HomeProfileRecordBar` |
+| `src/pages/HomeSnapshotPage.tsx` | Pass `nextGain={confidence?.nextGain}` to `HomeProfileRecordBar` |
+
+### Implementation Sequence
+
+1. Update `HomeProfileRecordBar` component with tooltip and new prop
+2. Update all three consuming components to pass the `nextGain` prop
+3. Test on desktop (hover) and mobile (tap) to ensure tooltip triggers correctly
+4. Verify compact mode appearance in chat panel context
 
