@@ -204,6 +204,7 @@ function DashboardV3LayoutInner({ children }: DashboardV3LayoutProps) {
           yearBuilt={userHome.year_built ?? undefined}
           strengthScore={strengthScore ?? 0}
           strengthLevel={strengthLevel ?? 'limited'}
+          nextGain={homeConfidence?.nextGain}
         />
       </div>
     </div>

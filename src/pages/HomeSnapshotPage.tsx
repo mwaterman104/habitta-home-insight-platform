@@ -97,7 +97,7 @@ export default function HomeSnapshotPage() {
         {/* Summary */}
         <Card className="border-border/50">
           <CardContent className="p-6 space-y-3">
-            <HomeProfileRecordBar strengthScore={score} strengthLevel={strengthLevel} />
+            <HomeProfileRecordBar strengthScore={score} strengthLevel={strengthLevel} nextGain={confidence?.nextGain} />
             <p className="text-sm text-muted-foreground">
               Strength increases as you confirm documentation (photos, install dates, service records).
             </p>

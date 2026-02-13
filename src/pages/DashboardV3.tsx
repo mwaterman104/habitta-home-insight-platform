@@ -748,6 +748,7 @@ function DesktopLayout({
                   yearBuilt={yearBuilt}
                   strengthScore={homeConfidence?.score}
                   strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
+                  nextGain={homeConfidence?.nextGain}
                 />
               </div>
             </ResizablePanel>
@@ -810,6 +811,7 @@ function DesktopLayout({
               onSystemUpdated={handleSystemUpdated}
               strengthScore={homeConfidence?.score}
               strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
+              nextGain={homeConfidence?.nextGain}
             />
           </div>
         )}
