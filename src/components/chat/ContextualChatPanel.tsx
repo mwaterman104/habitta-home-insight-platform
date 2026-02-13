@@ -12,6 +12,7 @@ interface ContextualChatPanelProps {
   yearBuilt?: number;
   strengthScore?: number;
   strengthLevel?: StrengthLevel;
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
 }
 
 /**
@@ -20,7 +21,7 @@ interface ContextualChatPanelProps {
  * Wraps ChatConsole with contextual opening messages.
  * Scoped to the current ChatContext (system, maintenance, etc.)
  */
-export function ContextualChatPanel({ propertyId, yearBuilt, strengthScore, strengthLevel }: ContextualChatPanelProps) {
+export function ContextualChatPanel({ propertyId, yearBuilt, strengthScore, strengthLevel, nextGain }: ContextualChatPanelProps) {
   const { chatContext, isOpen, closeChat } = useChatContext();
 
   // Close on Escape
@@ -53,7 +54,7 @@ export function ContextualChatPanel({ propertyId, yearBuilt, strengthScore, stre
       
       {/* Home Profile Record Bar - always rendered, fixed at top */}
       <div className="px-4 py-3 border-b border-border/50 bg-card/50 shrink-0">
-        <HomeProfileRecordBar strengthScore={strengthScore ?? 0} strengthLevel={strengthLevel ?? 'limited'} compact />
+        <HomeProfileRecordBar strengthScore={strengthScore ?? 0} strengthLevel={strengthLevel ?? 'limited'} compact nextGain={nextGain} />
       </div>
       
       {/* Chat */}

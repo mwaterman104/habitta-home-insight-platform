@@ -10,6 +10,9 @@
  * - No danger colors ever
  */
 
+import { HelpCircle } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+
 export type StrengthLevel = 'limited' | 'moderate' | 'established' | 'strong';
 
 export function getStrengthLevel(score: number): StrengthLevel {
@@ -33,29 +36,60 @@ const STRENGTH_LABELS: Record<StrengthLevel, string> = {
   limited: 'Limited',
 };
 
+interface NextGain {
+  action: string;
+  delta: number;
+  systemKey?: string;
+}
+
 interface HomeProfileRecordBarProps {
   strengthScore: number;
   strengthLevel?: StrengthLevel;
   /** Compact mode for embedding in chat panel */
   compact?: boolean;
+  /** Next recommended action to improve the score */
+  nextGain?: NextGain | null;
 }
 
 export function HomeProfileRecordBar({ 
   strengthScore, 
   strengthLevel,
   compact = false,
+  nextGain,
 }: HomeProfileRecordBarProps) {
   const level = strengthLevel ?? getStrengthLevel(strengthScore);
   const badgeColor = STRENGTH_BADGE_COLORS[level];
   const label = STRENGTH_LABELS[level];
   const clampedScore = Math.max(0, Math.min(100, strengthScore));
 
+  const tooltipText = nextGain
+    ? `${nextGain.action} (+${nextGain.delta} pts)`
+    : nextGain === null
+      ? 'Your home profile record is complete'
+      : undefined;
+
   return (
     <section className={compact ? 'w-full' : 'w-full'}>
       <div className={`flex items-center justify-between ${compact ? 'mb-1.5' : 'mb-3'}`}>
-        <h2 className={`text-habitta-charcoal font-bold tracking-tightest ${compact ? 'text-sm' : 'text-body'}`}>
-          Home Profile Record
-        </h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className={`text-habitta-charcoal font-bold tracking-tightest ${compact ? 'text-sm' : 'text-body'}`}>
+            Home Profile Record
+          </h2>
+          {tooltipText !== undefined && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle
+                    className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-habitta-charcoal opacity-60 hover:opacity-100 cursor-help transition-opacity`}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[240px] text-xs">
+                  {tooltipText}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         <span className={`font-semibold px-2.5 py-1 rounded-sm ${badgeColor} ${compact ? 'text-[11px]' : 'text-meta'}`}>
           {label} ({clampedScore}%)
         </span>

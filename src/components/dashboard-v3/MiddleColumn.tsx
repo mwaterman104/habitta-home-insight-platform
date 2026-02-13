@@ -89,6 +89,7 @@ interface MiddleColumnProps {
   // Home Profile Record strength
   strengthScore?: number;
   strengthLevel?: StrengthLevel;
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
 }
 
 export function MiddleColumn({
@@ -113,6 +114,7 @@ export function MiddleColumn({
   yearBuilt: yearBuiltProp,
   strengthScore,
   strengthLevel,
+  nextGain,
 }: MiddleColumnProps) {
   // Engagement cadence hook - only for annual interrupt
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
@@ -403,6 +405,7 @@ export function MiddleColumn({
           strengthScore={strengthScore ?? 0}
           strengthLevel={strengthLevel ?? 'limited'}
           compact
+          nextGain={nextGain}
         />
       </div>
 
