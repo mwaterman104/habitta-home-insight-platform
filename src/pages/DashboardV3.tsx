@@ -157,7 +157,8 @@ export default function DashboardV3() {
   const { 
     confidence: homeConfidence, 
     recommendations: homeRecommendations, 
-    dismissRecommendation 
+    dismissRecommendation,
+    lastTouchAt,
   } = useHomeConfidence(userHome?.id, capitalTimeline?.systems || [], userHome?.year_built);
 
   // Chat State Machine: Fetch home systems and permits for mode derivation
@@ -628,6 +629,7 @@ export default function DashboardV3() {
         yearBuilt={userHome.year_built}
         baselineSystems={baselineSystems}
         homeConfidence={homeConfidence}
+        lastTouchAt={lastTouchAt}
       />
     </FocusStateProvider>
   );
@@ -670,6 +672,7 @@ function DesktopLayout({
   yearBuilt,
   baselineSystems,
   homeConfidence,
+  lastTouchAt,
 }: any) {
   const { setFocus } = useFocusState();
 
@@ -749,6 +752,7 @@ function DesktopLayout({
                   strengthScore={homeConfidence?.score}
                   strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
                   nextGain={homeConfidence?.nextGain}
+                  lastTouchAt={lastTouchAt}
                 />
               </div>
             </ResizablePanel>
@@ -812,6 +816,7 @@ function DesktopLayout({
               strengthScore={homeConfidence?.score}
               strengthLevel={homeConfidence?.score != null ? getStrengthLevel(homeConfidence.score) : undefined}
               nextGain={homeConfidence?.nextGain}
+              lastTouchAt={lastTouchAt}
             />
           </div>
         )}

@@ -1,12 +1,16 @@
 /**
- * Revised Greeting System for Habitta
+ * Habitta Greeting Engine — Priority-Based Strategy Selector
  * 
- * Philosophy:
- * - Lead with outcome (stability, peace of mind), not process
- * - Frame uncertainty as learning, not incompleteness
- * - Use specific system names when available
- * - Provide soft engagement hooks
- * - Differentiate by user state (first visit, returning, etc.)
+ * Replaces the old 3-state system with a 5-priority strategy system
+ * that evaluates signals in strict order to produce contextual,
+ * engagement-driving greetings.
+ * 
+ * Priority Hierarchy:
+ * 1. The Follow-Up — Recent action detected (referrals, uploads)
+ * 2. The Guardian — Systems in elevated or planning_window state
+ * 3. The Historian — User dormancy > 30 days
+ * 4. The Builder — Record strength < 70% AND nextGain exists
+ * 5. The Neighbor — Fallback for stable, well-documented homes
  */
 
 import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
@@ -15,288 +19,316 @@ import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
 // Types
 // ============================================
 
-export type GreetingState = 
-  | 'first_visit'       // User has never seen Habitta before
-  | 'returning_stable'  // All systems verified, nothing needs attention
-  | 'returning_partial' // Some systems verified, still learning others
-  | 'returning_attention' // Handled by advisor opening (not here)
-  ;
+export type GreetingStrategy =
+  | 'first_visit'
+  | 'follow_up'
+  | 'guardian'
+  | 'historian'
+  | 'builder'
+  | 'neighbor';
 
-export interface GreetingContext {
-  state: GreetingState;
-  systems: BaselineSystem[];
-  verifiedCount: number;
-  establishingCount: number;
-  hasActiveRisks: boolean;
-  propertyName?: string;
+export interface RecentAction {
+  type: 'REFERRAL_SENT' | 'SYSTEM_ADDED' | 'PHOTO_UPLOAD';
+  systemDisplayName?: string;
+  meta?: { topProName?: string };
+}
+
+export interface HabittaGreetingContext {
+  // Core signals
+  strengthScore: number;
   timeOfDay: 'morning' | 'afternoon' | 'evening';
+  totalSystemCount: number;
+
+  // System state signals
+  elevatedSystems: string[];
+  planningWindowSystems: string[];
+
+  // Growth signals
+  nextGain?: {
+    action: string;
+    delta: number;
+    systemKey?: string;
+  } | null;
+
+  // Recency signals
+  daysSinceLastTouch: number;
+
+  // Recent action tracking
+  recentAction?: RecentAction;
+
+  // Session management
+  isFirstVisit: boolean;
+}
+
+export interface HabittaGreetingResult {
+  text: string;
+  strategy: GreetingStrategy;
+  starters: string[];
 }
 
 // ============================================
-// Verification Helper (Corrected Mapping)
+// Strategy Selector
 // ============================================
 
-/**
- * Check if system has verified (permit-based) install data
- * Uses installSource field from BaselineSystem
- */
-function isSystemVerified(system: BaselineSystem): boolean {
-  return system.installSource === 'permit';
+export function determineGreetingStrategy(context: HabittaGreetingContext): GreetingStrategy {
+  if (context.isFirstVisit) {
+    return 'first_visit';
+  }
+
+  // Priority 1: Follow-up on recent high-intent action
+  if (context.recentAction && context.daysSinceLastTouch < 3) {
+    return 'follow_up';
+  }
+
+  // Priority 2: System urgency (Guardian)
+  if (context.elevatedSystems.length > 0 || context.planningWindowSystems.length > 0) {
+    return 'guardian';
+  }
+
+  // Priority 3: Long dormancy (Historian)
+  if (context.daysSinceLastTouch >= 30) {
+    return 'historian';
+  }
+
+  // Priority 4: Profile gaps with clear next action (Builder)
+  if (context.strengthScore < 70 && context.nextGain) {
+    return 'builder';
+  }
+
+  // Priority 5: Stable fallback (Neighbor)
+  return 'neighbor';
+}
+
+// ============================================
+// Template Library (Multiple Variations Each)
+// ============================================
+
+type GreetingTemplate = (ctx: HabittaGreetingContext) => string;
+
+const FIRST_VISIT_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => `Good ${ctx.timeOfDay}. I'm Habitta—I monitor your home's key systems and give you advance notice when something needs attention. I'm tracking ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system' : 'systems'} for you and gathering baseline data right now. This means you'll get proactive alerts instead of emergency surprises.`,
+  (ctx) => `Good ${ctx.timeOfDay} and welcome. I'm Habitta, your home's monitoring system. I've started tracking ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system' : 'systems'} and I'm building a baseline so I can spot when things change. I'll surface anything that needs your attention—no guesswork required.`,
+];
+
+const FOLLOW_UP_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => {
+    const system = ctx.recentAction?.systemDisplayName || 'that system';
+    const pro = ctx.recentAction?.meta?.topProName;
+    return `Good ${ctx.timeOfDay}. Did you get a chance to connect with ${pro || 'a specialist'} about your ${system}? I'm ready to update your record whenever you have news.`;
+  },
+  (ctx) => {
+    const system = ctx.recentAction?.systemDisplayName || 'that system';
+    const pro = ctx.recentAction?.meta?.topProName;
+    return `Good ${ctx.timeOfDay}. Just checking in on those ${system} referrals${pro ? ` — did ${pro} work out` : ''}? Let me know and I'll log it to your timeline.`;
+  },
+  (ctx) => {
+    const system = ctx.recentAction?.systemDisplayName || 'that system';
+    return `Good ${ctx.timeOfDay}. I've been thinking about your ${system}. Any updates from the pros I found? I can keep looking if you need more options.`;
+  },
+];
+
+const GUARDIAN_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => {
+    const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
+    return `Good ${ctx.timeOfDay}. I've been tracking your ${system}—it's hitting the age where things usually get tricky. A quick photo of the label would help me narrow down a cost estimate for you.`;
+  },
+  (ctx) => {
+    const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
+    return `Good ${ctx.timeOfDay}. Your ${system} is officially in its replacement window. I'd rather you plan for this than get surprised by it—want me to help you map out the next steps?`;
+  },
+  (ctx) => {
+    const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
+    return `Good ${ctx.timeOfDay}. I'm keeping a close eye on your ${system}. It's reached the point where reliability starts to drop, and I want to make sure you're not caught off guard.`;
+  },
+];
+
+const HISTORIAN_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => `Good ${ctx.timeOfDay}. Welcome back—I've been keeping watch while you were away. Your ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system is' : 'systems are'} holding steady${ctx.planningWindowSystems.length > 0 ? `, though your ${ctx.planningWindowSystems[0]} is worth keeping an eye on` : ''}.`,
+  (ctx) => `Good ${ctx.timeOfDay}. It's been a while! I haven't slept—I've kept your logs updated. Your home is still looking healthy${ctx.strengthScore < 50 ? `, though we could strengthen your record (currently at ${ctx.strengthScore}%)` : ''}.`,
+  (ctx) => `Good ${ctx.timeOfDay}. Good to see you again. I've been monitoring your ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system' : 'systems'} in the background. Nothing urgent, but I've got some updates if you're interested.`,
+];
+
+const BUILDER_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => {
+    const systemKey = ctx.nextGain?.systemKey || 'your system';
+    const delta = ctx.nextGain?.delta || 0;
+    return `Good ${ctx.timeOfDay}. Your home record is at ${ctx.strengthScore}%. Snapping a photo of your ${systemKey} label would add +${delta} points and help me track it more accurately.`;
+  },
+  (ctx) => {
+    const systemKey = ctx.nextGain?.systemKey || 'your system';
+    const delta = ctx.nextGain?.delta || 0;
+    return `Good ${ctx.timeOfDay}. I'm tracking your ${systemKey} based on permits, but a photo of the manufacturer label would make this record verified—that's +${delta} points toward a stronger profile.`;
+  },
+  (ctx) => {
+    const systemKey = ctx.nextGain?.systemKey || 'your system';
+    const delta = ctx.nextGain?.delta || 0;
+    return `Good ${ctx.timeOfDay}. I want to move your record from where it is now to something stronger. Adding details for your ${systemKey} is the fastest way—+${delta} points in one step.`;
+  },
+];
+
+const NEIGHBOR_TEMPLATES: GreetingTemplate[] = [
+  (ctx) => `Good ${ctx.timeOfDay}. All quiet on the home front. Your ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system is' : 'systems are'} stable and your record is established. I'll let you know the second that changes.`,
+  (ctx) => `Good ${ctx.timeOfDay}. Your home is looking healthy and verified. I'm standing by if you need to plan a project or check a timeline.`,
+  (ctx) => `Good ${ctx.timeOfDay}. Everything is green—your systems are stable and maintenance is on track. Enjoy the peace of mind.`,
+];
+
+const STRATEGY_TEMPLATES: Record<GreetingStrategy, GreetingTemplate[]> = {
+  first_visit: FIRST_VISIT_TEMPLATES,
+  follow_up: FOLLOW_UP_TEMPLATES,
+  guardian: GUARDIAN_TEMPLATES,
+  historian: HISTORIAN_TEMPLATES,
+  builder: BUILDER_TEMPLATES,
+  neighbor: NEIGHBOR_TEMPLATES,
+};
+
+// ============================================
+// Conversation Starters Per Strategy
+// ============================================
+
+function getStartersForStrategy(strategy: GreetingStrategy, ctx: HabittaGreetingContext): string[] {
+  switch (strategy) {
+    case 'first_visit':
+      return ['What are you tracking?', 'How does this work?'];
+
+    case 'follow_up':
+      return [
+        ctx.recentAction?.meta?.topProName ? `I called ${ctx.recentAction.meta.topProName}` : 'I called them',
+        'Not yet',
+        'Find more options',
+      ];
+
+    case 'guardian': {
+      const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
+      return [
+        'Show me options',
+        system ? `Why is my ${system} flagged?` : 'Why is it flagged?',
+        'I already replaced it',
+      ];
+    }
+
+    case 'historian':
+      return ['What changed while I was away?', 'Show me my timeline'];
+
+    case 'builder':
+      return [
+        'Where is the label?',
+        'What else can I add?',
+      ];
+
+    case 'neighbor':
+      // Stable homes don't need aggressive starters
+      return [];
+
+    default:
+      return [];
+  }
 }
 
 // ============================================
 // Main Greeting Generator
 // ============================================
 
-export function generateGreeting(context: GreetingContext): string {
-  const { state } = context;
-  
-  switch (state) {
-    case 'first_visit':
-      return generateFirstVisitGreeting(context);
-    
-    case 'returning_stable':
-      return generateStableGreeting(context);
-    
-    case 'returning_partial':
-      return generatePartialGreeting(context);
-    
-    default:
-      return generateStableGreeting(context);
-  }
+/**
+ * Generate a contextual, strategy-driven greeting for Habitta.
+ * Returns the greeting text, the selected strategy, and dynamic conversation starters.
+ */
+export function generateHabittaBlurb(context: HabittaGreetingContext): HabittaGreetingResult {
+  const strategy = determineGreetingStrategy(context);
+  const templates = STRATEGY_TEMPLATES[strategy];
+
+  // Select a random template for freshness
+  const index = Math.floor(Math.random() * templates.length);
+  const text = templates[index](context);
+
+  return {
+    text,
+    strategy,
+    starters: getStartersForStrategy(strategy, context),
+  };
 }
 
 // ============================================
-// Greeting Templates by State
+// Helper Functions
 // ============================================
-
-function generateFirstVisitGreeting(context: GreetingContext): string {
-  const { timeOfDay, systems, propertyName } = context;
-  const systemCount = systems.length;
-  
-  let greeting = `Good ${timeOfDay}${propertyName ? ` and welcome to ${propertyName}` : ''}. I'm Habitta—I monitor your home's key systems and give you advance notice when something needs attention.`;
-  
-  if (systemCount > 0) {
-    const systemNames = getSystemNamesSummary(systems, 3);
-    greeting += ` I'm tracking ${systemCount} systems for you: ${systemNames}.`;
-  }
-  
-  greeting += ` I'm gathering baseline data on your systems right now, which helps me spot when things change.`;
-  greeting += ` This means you'll get proactive alerts instead of emergency surprises.`;
-  greeting += ` Want to see what I've learned about your home so far?`;
-  
-  return greeting;
-}
-
-function generateStableGreeting(context: GreetingContext): string {
-  const { timeOfDay, systems, verifiedCount } = context;
-  const systemCount = systems.length;
-  
-  let greeting = `Good ${timeOfDay}. Your home is stable—I'm monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} and nothing needs immediate attention.`;
-  
-  if (verifiedCount === systemCount && systemCount > 0) {
-    greeting += ` I've verified all your systems from permit records and historical data.`;
-  } else if (verifiedCount > 0) {
-    const verifiedNames = getVerifiedSystemNames(systems, 2);
-    greeting += ` I've verified ${verifiedNames} from permit records.`;
-  }
-  
-  greeting += ` I'll let you know if I spot anything that needs your attention. Want to see details on any of your systems?`;
-  
-  return greeting;
-}
-
-function generatePartialGreeting(context: GreetingContext): string {
-  const { timeOfDay, systems, verifiedCount, establishingCount } = context;
-  const systemCount = systems.length;
-  
-  let greeting = `Good ${timeOfDay}. Your home is stable—I'm monitoring ${systemCount} ${systemCount === 1 ? 'system' : 'systems'} and nothing needs immediate attention.`;
-  
-  if (verifiedCount > 0) {
-    const verifiedNames = getVerifiedSystemNames(systems, 3);
-    greeting += ` I've verified ${verifiedNames} from permit records.`;
-  }
-  
-  if (establishingCount > 0) {
-    const establishingNames = getEstablishingSystemNames(systems, 2);
-    if (establishingNames) {
-      greeting += ` I'm still gathering baseline data on ${establishingNames}—this helps me give you accurate timelines when things need attention.`;
-    } else {
-      greeting += ` I'm still gathering baseline data on ${establishingCount} ${establishingCount === 1 ? 'system' : 'systems'}.`;
-    }
-  }
-  
-  greeting += ` Want to see what I know so far?`;
-  
-  return greeting;
-}
-
-// ============================================
-// Helper Functions (Using Correct Fields)
-// ============================================
-
-/**
- * Get summary of system names using displayName field
- */
-function getSystemNamesSummary(systems: BaselineSystem[], maxCount: number = 3): string {
-  const names = systems
-    .filter(s => s.displayName)
-    .map(s => s.displayName)  // Use displayName directly - already formatted
-    .slice(0, maxCount);
-  
-  const remaining = systems.length - names.length;
-  
-  if (remaining > 0) {
-    return `${names.join(', ')}, and ${remaining} more`;
-  }
-  
-  return formatList(names);
-}
-
-/**
- * Get names of verified systems (installSource === 'permit')
- */
-function getVerifiedSystemNames(systems: BaselineSystem[], maxCount: number = 3): string {
-  const verified = systems
-    .filter(s => isSystemVerified(s) && s.displayName)
-    .map(s => s.displayName)
-    .slice(0, maxCount);
-  
-  if (verified.length === 0) return '';
-  
-  const totalVerified = systems.filter(isSystemVerified).length;
-  const remaining = totalVerified - verified.length;
-  
-  if (remaining > 0) {
-    return `${formatList(verified)} and ${remaining} more`;
-  }
-  
-  return formatList(verified);
-}
-
-/**
- * Get names of systems still being established (not permit-verified)
- */
-function getEstablishingSystemNames(systems: BaselineSystem[], maxCount: number = 2): string {
-  const establishing = systems
-    .filter(s => !isSystemVerified(s) && s.displayName)
-    .map(s => s.displayName)
-    .slice(0, maxCount);
-  
-  if (establishing.length === 0) return '';
-  
-  const totalEstablishing = systems.filter(s => !isSystemVerified(s)).length;
-  const remaining = totalEstablishing - establishing.length;
-  
-  if (remaining > 0) {
-    return `${formatList(establishing)} and ${remaining} more`;
-  }
-  
-  return formatList(establishing);
-}
-
-/**
- * Format array into natural language list
- */
-function formatList(items: string[]): string {
-  if (items.length === 0) return '';
-  if (items.length === 1) return `your ${items[0]}`;
-  if (items.length === 2) return `your ${items[0]} and ${items[1]}`;
-  
-  const lastItem = items[items.length - 1];
-  const otherItems = items.slice(0, -1);
-  return `your ${otherItems.join(', ')}, and ${lastItem}`;
-}
 
 /**
  * Get time of day for greeting
  */
 export function getTimeOfDay(): 'morning' | 'afternoon' | 'evening' {
   const hour = new Date().getHours();
-  
   if (hour < 12) return 'morning';
   if (hour < 18) return 'afternoon';
   return 'evening';
 }
 
 /**
- * Determine greeting state based on context
+ * Calculate days since a given date. Returns 999 if null/undefined.
  */
-export function determineGreetingState(context: {
+export function calculateDaysSince(lastDate?: string | Date | null): number {
+  if (!lastDate) return 999;
+  const last = new Date(lastDate);
+  const now = new Date();
+  return Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Build a HabittaGreetingContext from ChatConsole-level props.
+ * Centralizes context construction so ChatConsole stays lean.
+ */
+export function buildGreetingContext(params: {
+  baselineSystems: BaselineSystem[];
   isFirstVisit: boolean;
-  systems: BaselineSystem[];
-  hasActiveRisks: boolean;
-}): GreetingState {
-  const { isFirstVisit, systems, hasActiveRisks } = context;
-  
-  if (isFirstVisit) {
-    return 'first_visit';
-  }
-  
-  if (hasActiveRisks) {
-    return 'returning_attention';
-  }
-  
-  const verifiedCount = systems.filter(isSystemVerified).length;
-  const totalCount = systems.length;
-  
-  if (verifiedCount === totalCount && totalCount > 0) {
-    return 'returning_stable';
-  }
-  
-  return 'returning_partial';
+  strengthScore?: number;
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
+  daysSinceLastTouch?: number;
+  recentAction?: RecentAction;
+}): HabittaGreetingContext {
+  const {
+    baselineSystems,
+    isFirstVisit,
+    strengthScore = 0,
+    nextGain,
+    daysSinceLastTouch = 999,
+    recentAction,
+  } = params;
+
+  const elevatedSystems = baselineSystems
+    .filter(s => s.state === 'elevated')
+    .map(s => s.displayName);
+
+  const planningWindowSystems = baselineSystems
+    .filter(s => s.state === 'planning_window')
+    .map(s => s.displayName);
+
+  return {
+    strengthScore,
+    timeOfDay: getTimeOfDay(),
+    totalSystemCount: baselineSystems.length,
+    elevatedSystems,
+    planningWindowSystems,
+    nextGain,
+    daysSinceLastTouch,
+    recentAction,
+    isFirstVisit,
+  };
 }
 
 // ============================================
-// Drop-in Replacement for ChatConsole
+// Legacy Drop-in (for MobileChatSheet / other consumers)
 // ============================================
 
 /**
- * Drop-in replacement for generatePersonalBlurb from chatModeCopy.ts
- * 
- * @param systems - BaselineSystem array from ChatConsole props
- * @param isFirstVisit - Whether this is the user's first visit
+ * Legacy drop-in for consumers that don't yet have enriched context.
+ * Falls back to builder/neighbor based on system states only.
  */
 export function generatePersonalBlurb(
-  systems: BaselineSystem[], 
-  isFirstVisit: boolean = false
+  systems: BaselineSystem[],
+  isFirstVisitFlag: boolean = false,
 ): string {
-  const verifiedCount = systems.filter(isSystemVerified).length;
-  const establishingCount = systems.length - verifiedCount;
-  
-  // Check for active risks (planning window or elevated state)
-  const hasActiveRisks = systems.some(
-    s => s.state === 'planning_window' || s.state === 'elevated'
-  );
-  
-  const state = determineGreetingState({
-    isFirstVisit,
-    systems,
-    hasActiveRisks,
+  const context = buildGreetingContext({
+    baselineSystems: systems,
+    isFirstVisit: isFirstVisitFlag,
   });
-  
-  // If there are active risks, let the advisor opening handle it
-  if (state === 'returning_attention') {
-    // Fall back to stable greeting - advisor will add the alert
-    const context: GreetingContext = {
-      state: 'returning_stable',
-      systems,
-      verifiedCount,
-      establishingCount,
-      hasActiveRisks: false,
-      timeOfDay: getTimeOfDay(),
-    };
-    return generateGreeting(context);
-  }
-  
-  const context: GreetingContext = {
-    state,
-    systems,
-    verifiedCount,
-    establishingCount,
-    hasActiveRisks: false,
-    timeOfDay: getTimeOfDay(),
-  };
-  
-  return generateGreeting(context);
+
+  return generateHabittaBlurb(context).text;
 }

@@ -36,6 +36,8 @@ interface UseHomeConfidenceReturn {
   recommendations: Recommendation[];
   dismissRecommendation: (id: string) => void;
   loading: boolean;
+  /** Last user interaction timestamp (most recent home_assets/home_events update) */
+  lastTouchAt: Date | null;
 }
 
 export function useHomeConfidence(
@@ -143,5 +145,5 @@ export function useHomeConfidence(
     });
   }, []);
 
-  return { confidence, recommendations, dismissRecommendation, loading };
+  return { confidence, recommendations, dismissRecommendation, loading, lastTouchAt };
 }

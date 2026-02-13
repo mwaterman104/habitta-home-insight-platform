@@ -64,7 +64,7 @@ import {
   isFirstVisit,
   markFirstVisitComplete,
 } from "@/lib/chatModeCopy";
-import { generatePersonalBlurb } from "@/lib/chatGreetings";
+import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, type HabittaGreetingResult } from "@/lib/chatGreetings";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
 // ============================================
@@ -72,45 +72,24 @@ import { getChatModeLabel } from "@/lib/chatModeSelector";
 // ============================================
 
 interface ConversationStartersProps {
-  planningCount: number;
-  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  starters: string[];
   onStarterClick: (message: string) => void;
 }
 
-function ConversationStarters({ planningCount, confidenceLevel, onStarterClick }: ConversationStartersProps) {
-  const hasPlanningSystems = planningCount > 0;
-  const isLowConfidence = confidenceLevel === 'Early' || confidenceLevel === 'Unknown';
-  
-  // Don't show if neither condition is met
-  if (!hasPlanningSystems && !isLowConfidence) return null;
+function ConversationStarters({ starters, onStarterClick }: ConversationStartersProps) {
+  if (!starters || starters.length === 0) return null;
   
   return (
     <div className="flex flex-wrap gap-2 mt-3 ml-6 animate-fade-in">
-      {hasPlanningSystems && (
-        <>
-          <button 
-            onClick={() => onStarterClick("Show me which system needs attention")}
-            className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
-          >
-            Show me which one
-          </button>
-          <button 
-            onClick={() => onStarterClick("What should I do about the system in the planning window?")}
-            className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
-          >
-            What should I do?
-          </button>
-        </>
-      )}
-      
-      {isLowConfidence && (
+      {starters.map((starter) => (
         <button 
-          onClick={() => onStarterClick("How can I improve the accuracy of your monitoring?")}
-          className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 rounded-lg text-xs font-medium hover:bg-stone-50 hover:border-stone-400 transition-colors"
+          key={starter}
+          onClick={() => onStarterClick(starter)}
+          className="px-3 py-1.5 bg-card border border-border text-foreground rounded-lg text-xs font-medium hover:bg-muted hover:border-border/80 transition-colors"
         >
-          How can I improve accuracy?
+          {starter}
         </button>
-      )}
+      ))}
     </div>
   );
 }
@@ -153,6 +132,13 @@ interface ChatConsoleProps {
   totalSystemCount?: number;
   /** Auto-send message: fires sendMessage() once on mount when set */
   autoSendMessage?: string;
+  // NEW: Enriched greeting context
+  /** Home profile record strength score (0-100) */
+  strengthScore?: number;
+  /** Next best action to improve record strength */
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
+  /** Last user interaction timestamp for dormancy detection */
+  lastTouchAt?: Date | null;
 }
 
 // ============================================
@@ -182,6 +168,10 @@ export function ChatConsole({
   totalSystemCount,
   // Auto-send
   autoSendMessage,
+  // NEW: Enriched greeting context
+  strengthScore,
+  nextGain,
+  lastTouchAt,
 }: ChatConsoleProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -247,9 +237,10 @@ export function ChatConsole({
     }
   }, [hasAgentMessage, openingMessage, hasShownOpening, injectMessage]);
 
-  // Inject personal blurb explaining the System Outlook artifact
-  // Uses the new generatePersonalBlurb for warm, time-aware greetings
+  // Inject context-aware greeting via Habitta Greeting Engine
   // Wait for restoration to complete before deciding to show opening
+  const [greetingResult, setGreetingResult] = useState<HabittaGreetingResult | null>(null);
+  
   useEffect(() => {
     // Don't show opening while still restoring from storage
     if (isRestoring) return;
@@ -258,14 +249,20 @@ export function ChatConsole({
     if (baselineSystems.length === 0) return;
     
     if (messages.length === 0 && !hasShownBaselineOpening) {
-      // New simplified call - systems have all the data
-      const message = generatePersonalBlurb(
-        baselineSystems, 
-        isFirstUserVisit
-      );
+      // Build enriched context for strategy-based greeting
+      const context = buildGreetingContext({
+        baselineSystems,
+        isFirstVisit: isFirstUserVisit,
+        strengthScore,
+        nextGain,
+        daysSinceLastTouch: calculateDaysSince(lastTouchAt),
+      });
       
-      injectMessage(message);
-      markBaselineOpeningShown(propertyId); // Pass propertyId for property-specific flag
+      const result = generateHabittaBlurb(context);
+      setGreetingResult(result);
+      
+      injectMessage(result.text);
+      markBaselineOpeningShown(propertyId);
       setHasShownBaselineOpening(true);
       
       // Mark first visit complete after showing onboarding message
@@ -273,7 +270,7 @@ export function ChatConsole({
         markFirstVisitComplete();
       }
     }
-  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, confidenceLevel, yearBuilt, isFirstUserVisit, propertyId, verifiedSystemCount, totalSystemCount]);
+  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, isFirstUserVisit, propertyId, strengthScore, nextGain, lastTouchAt]);
 
   // Reset opening state when focus or opening message changes
   useEffect(() => {
@@ -553,10 +550,9 @@ export function ChatConsole({
                 )}
                 
                 {/* Conversation Starters - show after first AI message only */}
-                {message.role === "assistant" && index === 0 && messages.length === 1 && (
+                {message.role === "assistant" && index === 0 && messages.length === 1 && greetingResult && (
                   <ConversationStarters
-                    planningCount={baselineSystems.filter(s => s.state === 'planning_window' || s.state === 'elevated').length}
-                    confidenceLevel={confidenceLevel}
+                    starters={greetingResult.starters}
                     onStarterClick={(prompt) => {
                       setInput(prompt);
                       inputRef.current?.focus();

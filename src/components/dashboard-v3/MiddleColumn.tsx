@@ -90,6 +90,8 @@ interface MiddleColumnProps {
   strengthScore?: number;
   strengthLevel?: StrengthLevel;
   nextGain?: { action: string; delta: number; systemKey?: string } | null;
+  /** Last user interaction timestamp for dormancy detection */
+  lastTouchAt?: Date | null;
 }
 
 export function MiddleColumn({
@@ -115,6 +117,7 @@ export function MiddleColumn({
   strengthScore,
   strengthLevel,
   nextGain,
+  lastTouchAt,
 }: MiddleColumnProps) {
   // Engagement cadence hook - only for annual interrupt
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
@@ -431,6 +434,10 @@ export function MiddleColumn({
         // NEW: Pass verification context for honest chat messaging
         verifiedSystemCount={verifiedSystemCount}
         totalSystemCount={baselineSystems.length}
+        // NEW: Pass enriched greeting context
+        strengthScore={strengthScore}
+        nextGain={nextGain}
+        lastTouchAt={lastTouchAt}
       />
     </div>
   );
