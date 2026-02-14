@@ -1,45 +1,53 @@
 
-## Fix: Broken Onboarding Route + Smart Post-Auth Redirect
 
-### Changes
+## Fix: Mobile Photo Upload + AI System Awareness
 
-#### 1. `src/pages/AddHomePage.tsx` — Fix broken redirect
-Change `navigate('/onboarding/start')` to `navigate('/onboarding')`. This is the primary blocker.
+### Problem 1: Mobile photo upload fails silently
 
-#### 2. `src/pages/OnboardingPersonalization.tsx`, `OnboardingUnknowns.tsx`, `OnboardingSnapshot.tsx` — Fix fallback redirects
-Change all three occurrences of `/onboarding/start` to `/onboarding`.
+**Root Cause**: The Supabase storage RLS policy for the `home-photos` bucket checks `(storage.foldername(name))[1]` against `auth.uid()`. PostgreSQL arrays are 1-indexed, so for the upload path `chat-uploads/{userId}/photo.jpg`, position `[1]` returns `chat-uploads` — not the user ID. The policy always rejects the upload.
 
-#### 3. `src/pages/AuthPage.tsx` — Smart post-auth redirect
+**Fix**: Create a migration that drops the old INSERT policy and replaces it with one that checks position `[2]` for paths that start with `chat-uploads/`, while also supporting direct `{userId}/filename` paths for backward compatibility.
 
-The current `useEffect` blindly sends all authenticated users to `/dashboard`. For brand-new users (no homes), this creates friction since they land on an empty dashboard and must click "Add Your Home."
+| File | Change |
+|------|--------|
+| New migration SQL | Drop + recreate INSERT, UPDATE, DELETE policies to handle both `{userId}/...` and `chat-uploads/{userId}/...` path patterns |
 
-**The fix**: When `user` becomes truthy, query `homes` table for that user. If `count === 0`, redirect to `/onboarding`. If `count > 0`, redirect to `/dashboard`.
-
-This handles the QA concern about returning users: a user with 3 homes will never see onboarding.
-
-**Double-protection**: `OnboardingFlow` itself (line 172) already redirects users who have homes back to `/dashboard`, so even if the query races, the user won't get stuck.
-
-#### 4. Race condition (edge function vs. dashboard) — Already handled
-
-The `OnboardingFlow` component already has a multi-step flow: address entry, handshake, snapshot reveal, systems step, and a **completion screen** (`OnboardingComplete`). Only when the user clicks "Continue" on the completion screen does it navigate to `/dashboard`. By that point, the `create-home` edge function has long finished (it fires on address selection, which is step 1 of 5). No additional polling needed.
-
-### Technical Details
-
-**AuthPage.tsx redirect logic:**
+**New policy logic**:
 ```text
-useEffect:
-  if (!user) return
-  query homes where user_id = user.id, count only
-  if count === 0 -> navigate('/onboarding')
-  if count > 0  -> navigate('/dashboard')
+INSERT allowed when:
+  bucket_id = 'home-photos'
+  AND (
+    auth.uid() = foldername(name)[1]          -- direct: userId/file.jpg
+    OR auth.uid() = foldername(name)[2]        -- nested: chat-uploads/userId/file.jpg
+  )
 ```
+
+Same adjustment for UPDATE and DELETE policies.
+
+---
+
+### Problem 2: Chat doesn't know about user-added appliances
+
+**Root Cause**: The AI edge function (`ai-home-assistant`) queries `systems` (canonical/capital-timeline) and `home_assets` (VIN layer), but NOT `home_systems` — the table where manually added appliances (e.g., refrigerator) are stored.
+
+**Fix**: Add `home_systems` to the parallel fetch in `getPropertyContext()` and include any active entries in the AI's system prompt context.
+
+| File | Change |
+|------|--------|
+| `supabase/functions/ai-home-assistant/index.ts` | Add `home_systems` query to `Promise.all` block; merge results into returned context; include in system prompt |
+
+**Implementation details**:
+- Add to the Promise.all: `supabase.from('home_systems').select('*').eq('home_id', propertyId).eq('status', 'active')`
+- Include the results in the returned context object as `userReportedSystems`
+- In the system prompt builder, format these as "User-reported appliances" so the AI can reference them naturally
+- Deduplicate against canonical systems by `system_key` to avoid double-counting
+
+---
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/AddHomePage.tsx` | `/onboarding/start` to `/onboarding` |
-| `src/pages/OnboardingPersonalization.tsx` | `/onboarding/start` to `/onboarding` |
-| `src/pages/OnboardingUnknowns.tsx` | `/onboarding/start` to `/onboarding` |
-| `src/pages/OnboardingSnapshot.tsx` | `/onboarding/start` to `/onboarding` |
-| `src/pages/AuthPage.tsx` | Smart redirect: check homes count before choosing `/onboarding` vs `/dashboard` |
+| New migration file | Fix storage RLS policies for `home-photos` bucket to support `chat-uploads/` prefix |
+| `supabase/functions/ai-home-assistant/index.ts` | Add `home_systems` query + merge into AI context |
+
