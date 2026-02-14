@@ -551,7 +551,8 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     { data: home },
     { data: homeAssets },
     { data: openEvents },
-    { data: permits }
+    { data: permits },
+    { data: userReportedSystems }
   ] = await Promise.all([
     // CANONICAL TRUTH: Read from 'systems' table (same as capital-timeline)
     supabase.from('systems').select('*').eq('home_id', propertyId),
@@ -564,11 +565,27 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     // HOME RECORD: Fetch open events for follow-up linking
     supabase.from('home_events').select('*').eq('home_id', propertyId).eq('status', 'open').order('created_at', { ascending: false }).limit(5),
     // PERMITS: Fetch for authority-aware system updates
-    supabase.from('permits').select('*').eq('home_id', propertyId).order('date_issued', { ascending: false }).limit(20)
+    supabase.from('permits').select('*').eq('home_id', propertyId).order('date_issued', { ascending: false }).limit(20),
+    // USER-REPORTED SYSTEMS: Manually added appliances from home_systems table
+    supabase.from('home_systems').select('*').eq('home_id', propertyId).eq('status', 'active')
   ]);
 
   console.log(`[getPropertyContext] Fetched ${rawSystems?.length || 0} systems from canonical 'systems' table for home ${propertyId}`);
   console.log(`[getPropertyContext] Fetched ${homeAssets?.length || 0} home assets, ${openEvents?.length || 0} open events, ${permits?.length || 0} permits`);
+  console.log(`[getPropertyContext] Fetched ${userReportedSystems?.length || 0} user-reported systems from home_systems table`);
+
+  // Deduplicate user-reported systems against canonical systems and home assets
+  const canonicalKeys = new Set([
+    ...(rawSystems || []).map((s: any) => s.kind?.toLowerCase()),
+    ...(homeAssets || []).map((a: any) => a.kind?.toLowerCase()),
+  ].filter(Boolean));
+  
+  const uniqueUserSystems = (userReportedSystems || []).filter((us: any) => {
+    const key = us.system_key?.toLowerCase();
+    return key && !canonicalKeys.has(key);
+  });
+  
+  console.log(`[getPropertyContext] ${uniqueUserSystems.length} unique user-reported systems after dedup`);
 
   // Build property context for lifecycle calculations
   const propertyContext: LifecyclePropertyContext = {
@@ -612,6 +629,8 @@ async function getPropertyContext(supabase: any, propertyId: string, userId?: st
     openEvents: openEvents || [],
     // PERMITS: Include for authority-aware updates
     permits: permits || [],
+    // USER-REPORTED SYSTEMS: Manually added appliances (deduplicated)
+    userReportedSystems: uniqueUserSystems,
   };
 }
 
@@ -1067,6 +1086,15 @@ FORBIDDEN when referencing verified systems:
     return `- ${a.kind.replace(/_/g, ' ')}${brandNote}${ageNote}, ${a.source}-reported, confidence: ${a.confidence}`;
   }).join('\n');
 
+  // Build user-reported systems context (from home_systems table)
+  const userReportedInfo = (context.userReportedSystems || []).map((us: any) => {
+    const brandNote = us.brand ? ` (${us.brand})` : '';
+    const modelNote = us.model ? ` model: ${us.model}` : '';
+    const installNote = us.install_date ? `, installed: ${us.install_date}` : '';
+    const label = us.system_key?.replace(/_/g, ' ') || 'unknown';
+    return `- ${label}${brandNote}${modelNote}${installNote}`;
+  }).join('\n');
+
   const openEventsInfo = (context.openEvents || []).map((e: any) => {
     const daysAgo = Math.floor((Date.now() - new Date(e.created_at).getTime()) / (1000 * 60 * 60 * 24));
     const timeNote = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
@@ -1091,6 +1119,9 @@ ${systemInfo || 'No systems registered yet'}
 
 HOME ASSETS ON FILE:
 ${homeAssetsInfo || 'No assets discovered yet'}
+
+USER-REPORTED APPLIANCES:
+${userReportedInfo || 'No user-reported appliances'}
 
 PERMITS ON FILE:
 ${permitsInfo || 'No permits discovered yet'}
