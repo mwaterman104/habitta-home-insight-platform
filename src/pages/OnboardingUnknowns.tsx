@@ -35,7 +35,7 @@ export default function OnboardingUnknowns() {
     if (storedData) {
       setData(JSON.parse(storedData));
     } else {
-      navigate('/onboarding/start');
+      navigate('/onboarding');
     }
   }, [navigate]);
 

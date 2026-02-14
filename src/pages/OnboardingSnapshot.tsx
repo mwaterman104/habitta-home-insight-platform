@@ -24,7 +24,7 @@ export default function OnboardingSnapshot() {
       setData(JSON.parse(storedData));
     } else {
       // No onboarding data, redirect to start
-      navigate('/onboarding/start');
+      navigate('/onboarding');
     }
   }, [navigate]);
 
