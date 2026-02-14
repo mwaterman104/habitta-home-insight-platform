@@ -28,9 +28,26 @@ const AuthPage = () => {
 
   // Redirect if already authenticated
   React.useEffect(() => {
-    if (user) {
-      navigate('/dashboard', { replace: true });
-    }
+    if (!user) return;
+    
+    const checkHomesAndRedirect = async () => {
+      try {
+        const { count } = await supabase
+          .from('homes')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id);
+        
+        if (count === 0) {
+          navigate('/onboarding', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      } catch {
+        navigate('/dashboard', { replace: true });
+      }
+    };
+    
+    checkHomesAndRedirect();
   }, [user, navigate]);
 
   const handleAuth = async (e: React.FormEvent) => {

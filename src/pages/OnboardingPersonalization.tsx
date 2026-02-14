@@ -22,7 +22,7 @@ export default function OnboardingPersonalization() {
     if (storedData) {
       setData(JSON.parse(storedData));
     } else {
-      navigate('/onboarding/start');
+      navigate('/onboarding');
     }
   }, [navigate]);
 

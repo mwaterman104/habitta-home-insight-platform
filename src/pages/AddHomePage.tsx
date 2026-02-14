@@ -6,7 +6,7 @@ const AddHomePage = () => {
 
   useEffect(() => {
     // Redirect to new onboarding flow
-    navigate('/onboarding/start');
+    navigate('/onboarding');
   }, [navigate]);
 
   return (
