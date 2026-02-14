@@ -18,6 +18,21 @@ function normalizeFolio(folio: string | null | undefined): string | null {
 }
 
 /**
+ * Normalize ATTOM property type strings to match homes table CHECK constraint.
+ * Allowed values: single_family, condo, townhouse, multi_family
+ */
+function normalizePropertyType(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.toLowerCase().trim();
+  if (t.includes('single') || t.includes('sfr') || t.includes('detached')) return 'single_family';
+  if (t.includes('condo') || t.includes('condominium')) return 'condo';
+  if (t.includes('town') || t.includes('townhome') || t.includes('townhouse') || t.includes('row')) return 'townhouse';
+  if (t.includes('multi') || t.includes('duplex') || t.includes('triplex') || t.includes('fourplex') || t.includes('apartment')) return 'multi_family';
+  // Don't write unrecognized types — they'd violate the CHECK constraint
+  return null;
+}
+
+/**
  * property-enrichment: ATTOM property data enrichment
  * 
  * Internal function called by create-home via background task.
@@ -161,7 +176,8 @@ serve(async (req) => {
 
       if (bedrooms && !home.bedrooms) updates.bedrooms = bedrooms;
       if (bathrooms && !home.bathrooms) updates.bathrooms = bathrooms;
-      if (propertyType && !home.property_type) updates.property_type = propertyType;
+      const normalizedPropType = normalizePropertyType(propertyType);
+      if (normalizedPropType && !home.property_type) updates.property_type = normalizedPropType;
 
       // Sprint 1: Extract and write-through new ATTOM fields via canonical normalizer
       if (rawProperty) {
