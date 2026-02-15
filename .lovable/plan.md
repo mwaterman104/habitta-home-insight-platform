@@ -1,53 +1,52 @@
 
+## Proactive Onboarding Message: Pass Profile Vitals to Edge Function
 
-## Fix: Mobile Photo Upload + AI System Awareness
+### What This Does
+The greeting engine already generates local onboarding messages based on `strengthScore` and `nextGain`. However, these vitals are **not** sent to the `ai-home-assistant` edge function, so the AI cannot personalize its responses based on record strength. This change closes that gap.
 
-### Problem 1: Mobile photo upload fails silently
+### Changes
 
-**Root Cause**: The Supabase storage RLS policy for the `home-photos` bucket checks `(storage.foldername(name))[1]` against `auth.uid()`. PostgreSQL arrays are 1-indexed, so for the upload path `chat-uploads/{userId}/photo.jpg`, position `[1]` returns `chat-uploads` — not the user ID. The policy always rejects the upload.
+#### 1. `src/hooks/useAIHomeAssistant.ts` — Extend options + request body
 
-**Fix**: Create a migration that drops the old INSERT policy and replaces it with one that checks position `[2]` for paths that start with `chat-uploads/`, while also supporting direct `{userId}/filename` paths for backward compatibility.
+- Add `strengthScore` (number) and `nextGain` (object) to the `UseAIHomeAssistantOptions` interface
+- Destructure them in the hook
+- Include both fields in the `supabase.functions.invoke` body inside `sendMessage()`
 
-| File | Change |
-|------|--------|
-| New migration SQL | Drop + recreate INSERT, UPDATE, DELETE policies to handle both `{userId}/...` and `chat-uploads/{userId}/...` path patterns |
+#### 2. `src/components/dashboard-v3/ChatConsole.tsx` — Pass vitals to the hook
 
-**New policy logic**:
-```text
-INSERT allowed when:
-  bucket_id = 'home-photos'
-  AND (
-    auth.uid() = foldername(name)[1]          -- direct: userId/file.jpg
-    OR auth.uid() = foldername(name)[2]        -- nested: chat-uploads/userId/file.jpg
-  )
+- Update the `useAIHomeAssistant()` call (currently at line 206) to include `strengthScore` and `nextGain` in the options object, so every message sent carries the current profile state
+
+### Technical Details
+
+**useAIHomeAssistant.ts changes:**
+```
+// Interface additions:
+strengthScore?: number;
+nextGain?: { action: string; delta: number; systemKey?: string } | null;
+
+// Destructure in hook:
+const { ..., strengthScore, nextGain } = options;
+
+// Add to sendMessage body:
+body: {
+  ...existing fields,
+  strengthScore,
+  nextGain,
+}
 ```
 
-Same adjustment for UPDATE and DELETE policies.
-
----
-
-### Problem 2: Chat doesn't know about user-added appliances
-
-**Root Cause**: The AI edge function (`ai-home-assistant`) queries `systems` (canonical/capital-timeline) and `home_assets` (VIN layer), but NOT `home_systems` — the table where manually added appliances (e.g., refrigerator) are stored.
-
-**Fix**: Add `home_systems` to the parallel fetch in `getPropertyContext()` and include any active entries in the AI's system prompt context.
-
-| File | Change |
-|------|--------|
-| `supabase/functions/ai-home-assistant/index.ts` | Add `home_systems` query to `Promise.all` block; merge results into returned context; include in system prompt |
-
-**Implementation details**:
-- Add to the Promise.all: `supabase.from('home_systems').select('*').eq('home_id', propertyId).eq('status', 'active')`
-- Include the results in the returned context object as `userReportedSystems`
-- In the system prompt builder, format these as "User-reported appliances" so the AI can reference them naturally
-- Deduplicate against canonical systems by `system_key` to avoid double-counting
-
----
+**ChatConsole.tsx change (line ~206):**
+```
+const { messages, ... } = useAIHomeAssistant(propertyId, {
+  ...existing options,
+  strengthScore,
+  nextGain,
+});
+```
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| New migration file | Fix storage RLS policies for `home-photos` bucket to support `chat-uploads/` prefix |
-| `supabase/functions/ai-home-assistant/index.ts` | Add `home_systems` query + merge into AI context |
-
+| `src/hooks/useAIHomeAssistant.ts` | Add `strengthScore` + `nextGain` to interface, destructuring, and request body |
+| `src/components/dashboard-v3/ChatConsole.tsx` | Pass `strengthScore` and `nextGain` to `useAIHomeAssistant()` options |
