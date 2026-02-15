@@ -20,7 +20,7 @@ import type { BaselineSystem } from '@/components/dashboard-v3/BaselineSurface';
  * When this version differs from what's stored, the persisted chat session is
  * cleared so the new greeting can fire.
  */
-export const GREETING_ENGINE_VERSION = 2;
+export const GREETING_ENGINE_VERSION = 3;
 
 // ============================================
 // Types
@@ -112,6 +112,28 @@ export function determineGreetingStrategy(context: HabittaGreetingContext): Gree
 
 type GreetingTemplate = (ctx: HabittaGreetingContext) => string;
 
+/**
+ * Returns system-appropriate photo request copy.
+ * Roofs have no manufacturer label — ask for a house photo instead.
+ */
+function getPhotoAsk(systemName: string): string {
+  const lower = systemName.toLowerCase();
+  if (lower === 'roof' || lower.includes('roof')) {
+    return 'a photo of your house with as much roof showing as possible';
+  }
+  return `a photo of the manufacturer label on your ${systemName}`;
+}
+
+/**
+ * Appends a record-strength nudge when the profile is Limited (<25%).
+ */
+function withRecordNudge(text: string, ctx: HabittaGreetingContext): string {
+  if (ctx.strengthScore < 25) {
+    return `${text} Your home record is at ${ctx.strengthScore}%—adding a few details would sharpen all my estimates.`;
+  }
+  return text;
+}
+
 const FIRST_VISIT_TEMPLATES: GreetingTemplate[] = [
   (ctx) => `Good ${ctx.timeOfDay}. I'm Habitta—I monitor your home's key systems and give you advance notice when something needs attention. I'm tracking ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system' : 'systems'} for you and gathering baseline data right now. This means you'll get proactive alerts instead of emergency surprises.`,
   (ctx) => `Good ${ctx.timeOfDay} and welcome. I'm Habitta, your home's monitoring system. I've started tracking ${ctx.totalSystemCount} ${ctx.totalSystemCount === 1 ? 'system' : 'systems'} and I'm building a baseline so I can spot when things change. I'll surface anything that needs your attention—no guesswork required.`,
@@ -137,15 +159,18 @@ const FOLLOW_UP_TEMPLATES: GreetingTemplate[] = [
 const GUARDIAN_TEMPLATES: GreetingTemplate[] = [
   (ctx) => {
     const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
-    return `Good ${ctx.timeOfDay}. I've been tracking your ${system}—it's hitting the age where things usually get tricky. A quick photo of the label would help me narrow down a cost estimate for you.`;
+    const base = `Good ${ctx.timeOfDay}. I've been tracking your ${system}—it's hitting the age where things usually get tricky. A quick ${getPhotoAsk(system)} would help me narrow down a cost estimate for you.`;
+    return withRecordNudge(base, ctx);
   },
   (ctx) => {
     const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
-    return `Good ${ctx.timeOfDay}. Your ${system} is officially in its replacement window. I'd rather you plan for this than get surprised by it—want me to help you map out the next steps?`;
+    const base = `Good ${ctx.timeOfDay}. Your ${system} is officially in its replacement window. I'd rather you plan for this than get surprised by it—want me to help you map out the next steps?`;
+    return withRecordNudge(base, ctx);
   },
   (ctx) => {
     const system = ctx.elevatedSystems[0] || ctx.planningWindowSystems[0];
-    return `Good ${ctx.timeOfDay}. I'm keeping a close eye on your ${system}. It's reached the point where reliability starts to drop, and I want to make sure you're not caught off guard.`;
+    const base = `Good ${ctx.timeOfDay}. I'm keeping a close eye on your ${system}. It's reached the point where reliability starts to drop, and I want to make sure you're not caught off guard.`;
+    return withRecordNudge(base, ctx);
   },
 ];
 
@@ -159,12 +184,12 @@ const BUILDER_TEMPLATES: GreetingTemplate[] = [
   (ctx) => {
     const systemKey = ctx.nextGain?.systemKey || 'your system';
     const delta = ctx.nextGain?.delta || 0;
-    return `Good ${ctx.timeOfDay}. Your home record is at ${ctx.strengthScore}%. Snapping a photo of your ${systemKey} label would add +${delta} points and help me track it more accurately.`;
+    return `Good ${ctx.timeOfDay}. Your home record is at ${ctx.strengthScore}%. Snapping ${getPhotoAsk(systemKey)} would add +${delta} points and help me track it more accurately.`;
   },
   (ctx) => {
     const systemKey = ctx.nextGain?.systemKey || 'your system';
     const delta = ctx.nextGain?.delta || 0;
-    return `Good ${ctx.timeOfDay}. I'm tracking your ${systemKey} based on permits, but a photo of the manufacturer label would make this record verified—that's +${delta} points toward a stronger profile.`;
+    return `Good ${ctx.timeOfDay}. I'm tracking your ${systemKey} based on permits, but ${getPhotoAsk(systemKey)} would make this record verified—that's +${delta} points toward a stronger profile.`;
   },
   (ctx) => {
     const systemKey = ctx.nextGain?.systemKey || 'your system';
@@ -218,7 +243,7 @@ function getStartersForStrategy(strategy: GreetingStrategy, ctx: HabittaGreeting
 
     case 'builder':
       return [
-        'Where is the label?',
+        'How do I add details?',
         'What else can I add?',
       ];
 
