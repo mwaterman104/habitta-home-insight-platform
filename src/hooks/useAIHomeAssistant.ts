@@ -50,6 +50,10 @@ interface UseAIHomeAssistantOptions {
   visibleBaseline?: VisibleBaselineSystem[];
   /** Current right-column focus state (for focus continuity) */
   activeFocus?: any;
+  /** Home Profile Record strength (0-100) */
+  strengthScore?: number;
+  /** Next best action to improve record strength */
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
 }
 
 export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssistantOptions = {}) => {
@@ -62,6 +66,8 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     baselineSource,
     visibleBaseline,
     activeFocus,
+    strengthScore,
+    nextGain,
   } = options;
   
   const { user } = useAuth();
@@ -219,6 +225,9 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
             visibleBaseline,
             // Focus continuity: pass current right-column focus
             activeFocus,
+            // Onboarding vitals for AI personalization
+            strengthScore,
+            nextGain,
           }
         }
       );

@@ -214,6 +214,9 @@ export function ChatConsole({
     visibleBaseline,
     // Focus continuity: pass current right-column focus to edge function
     activeFocus: currentFocus,
+    // Onboarding vitals for AI personalization
+    strengthScore,
+    nextGain,
   });
 
   // Auto-send message guard (single-fire per unique message value)
