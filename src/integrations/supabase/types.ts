@@ -667,6 +667,24 @@ export type Database = {
         }
         Relationships: []
       }
+      document_intelligence_values: {
+        Row: {
+          description: string | null
+          doc_type: string
+          point_gain: number
+        }
+        Insert: {
+          description?: string | null
+          doc_type: string
+          point_gain: number
+        }
+        Update: {
+          description?: string | null
+          doc_type?: string
+          point_gain?: number
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           created_at: string
@@ -1802,6 +1820,69 @@ export type Database = {
           },
         ]
       }
+      home_supporting_records: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          extracted_vitals: Json | null
+          file_size_bytes: number | null
+          home_id: string
+          id: string
+          is_verified: boolean | null
+          name: string
+          point_value: number | null
+          storage_path: string
+          system_key: string | null
+          type: string
+          verified_at: string | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          extracted_vitals?: Json | null
+          file_size_bytes?: number | null
+          home_id: string
+          id?: string
+          is_verified?: boolean | null
+          name: string
+          point_value?: number | null
+          storage_path: string
+          system_key?: string | null
+          type: string
+          verified_at?: string | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          extracted_vitals?: Json | null
+          file_size_bytes?: number | null
+          home_id?: string
+          id?: string
+          is_verified?: boolean | null
+          name?: string
+          point_value?: number | null
+          storage_path?: string
+          system_key?: string | null
+          type?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_supporting_records_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_supporting_records_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
+          },
+        ]
+      }
       home_systems: {
         Row: {
           baseline_strength: number | null
@@ -1955,6 +2036,7 @@ export type Database = {
           ground_floor_sqft: number | null
           id: string
           intervention_threshold: number
+          last_intelligence_input: string | null
           latitude: number | null
           longitude: number | null
           photo_url: string | null
@@ -1966,6 +2048,7 @@ export type Database = {
           square_feet: number | null
           state: string
           status: string | null
+          strength_score: number | null
           updated_at: string
           user_id: string
           year_built: number | null
@@ -1992,6 +2075,7 @@ export type Database = {
           ground_floor_sqft?: number | null
           id?: string
           intervention_threshold?: number
+          last_intelligence_input?: string | null
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
@@ -2003,6 +2087,7 @@ export type Database = {
           square_feet?: number | null
           state: string
           status?: string | null
+          strength_score?: number | null
           updated_at?: string
           user_id: string
           year_built?: number | null
@@ -2029,6 +2114,7 @@ export type Database = {
           ground_floor_sqft?: number | null
           id?: string
           intervention_threshold?: number
+          last_intelligence_input?: string | null
           latitude?: number | null
           longitude?: number | null
           photo_url?: string | null
@@ -2040,6 +2126,7 @@ export type Database = {
           square_feet?: number | null
           state?: string
           status?: string | null
+          strength_score?: number | null
           updated_at?: string
           user_id?: string
           year_built?: number | null
