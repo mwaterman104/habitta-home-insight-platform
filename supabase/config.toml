@@ -73,3 +73,6 @@ verify_jwt = false
 
 [functions.maintenance-alerts]
 verify_jwt = false
+
+[functions.waitlist-welcome]
+verify_jwt = false
