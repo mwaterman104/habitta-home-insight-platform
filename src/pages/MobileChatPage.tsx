@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
+import { useHomeConfidence } from "@/hooks/useHomeConfidence";
 import { useChatMode } from "@/hooks/useChatMode";
 import { ChatConsole } from "@/components/dashboard-v3/ChatConsole";
 import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
@@ -52,6 +53,13 @@ export default function MobileChatPage() {
     homeId: userHome?.id,
     enabled: !!userHome?.id,
   });
+
+  // Home Confidence for onboarding-aware greeting
+  const {
+    confidence: homeConfidence,
+    lastTouchAt,
+    loading: confidenceLoading,
+  } = useHomeConfidence(userHome?.id, timeline?.systems || [], userHome?.year_built);
 
   // Build baseline systems
   const baselineSystems: BaselineSystem[] = useMemo(() => {
@@ -103,7 +111,7 @@ export default function MobileChatPage() {
     }
   };
 
-  if (homeLoading || timelineLoading) {
+  if (homeLoading || timelineLoading || confidenceLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -142,6 +150,9 @@ export default function MobileChatPage() {
           systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
           onWhyClick={() => {}}
           autoSendMessage={intent?.autoSendMessage}
+          strengthScore={homeConfidence?.score}
+          nextGain={homeConfidence?.nextGain}
+          lastTouchAt={lastTouchAt}
         />
       </div>
     </div>

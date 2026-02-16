@@ -8,7 +8,7 @@ import { Home, Plus } from "lucide-react";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
-import { buildGreetingContext, generateHabittaBlurb } from "@/lib/chatGreetings";
+import { buildGreetingContext, generateHabittaBlurb, calculateDaysSince, hasSeenOnboardingGreeting } from "@/lib/chatGreetings";
 import { getLateLifeState } from "@/services/homeOutlook";
 import { trackMobileEvent, MOBILE_EVENTS } from "@/lib/analytics/mobileEvents";
 import { useHomeConfidence } from "@/hooks/useHomeConfidence";
@@ -552,6 +552,8 @@ export default function DashboardV3() {
       isFirstVisit: isFirstVisit(),
       strengthScore: homeConfidence?.score,
       nextGain: homeConfidence?.nextGain,
+      daysSinceLastTouch: lastTouchAt ? calculateDaysSince(lastTouchAt) : null,
+      hasSeenOnboardingGreeting: hasSeenOnboardingGreeting(),
     });
     const greetingResult = generateHabittaBlurb(greetingContext);
     

@@ -65,7 +65,7 @@ import {
   isFirstVisit,
   markFirstVisitComplete,
 } from "@/lib/chatModeCopy";
-import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, GREETING_ENGINE_VERSION, type HabittaGreetingResult } from "@/lib/chatGreetings";
+import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, GREETING_ENGINE_VERSION, hasSeenOnboardingGreeting, markOnboardingGreetingShown, type HabittaGreetingResult } from "@/lib/chatGreetings";
 import { getChatModeLabel } from "@/lib/chatModeSelector";
 
 const GREETING_VERSION_KEY = 'habitta_greeting_engine_version';
@@ -265,6 +265,10 @@ export function ChatConsole({
   
   useEffect(() => {
     if (isRestoring) return;
+    
+    // greetingReady guard: don't select strategy until we have context
+    const greetingReady = strengthScore !== undefined || lastTouchAt !== undefined || baselineSystems.length > 0;
+    if (!greetingReady) return;
     if (baselineSystems.length === 0) return;
     
     if (messages.length === 0 && !hasShownBaselineOpening) {
@@ -274,6 +278,7 @@ export function ChatConsole({
         strengthScore,
         nextGain,
         daysSinceLastTouch: calculateDaysSince(lastTouchAt),
+        hasSeenOnboardingGreeting: hasSeenOnboardingGreeting(),
       });
       
       const result = generateHabittaBlurb(context);
@@ -284,6 +289,11 @@ export function ChatConsole({
       setHasShownBaselineOpening(true);
       
       localStorage.setItem(GREETING_VERSION_KEY, String(GREETING_ENGINE_VERSION));
+      
+      // Mark onboarding greeting as shown if that strategy was selected
+      if (result.strategy === 'onboarding') {
+        markOnboardingGreetingShown();
+      }
       
       if (isFirstUserVisit) {
         markFirstVisitComplete();

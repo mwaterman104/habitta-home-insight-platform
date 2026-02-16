@@ -392,6 +392,9 @@ serve(async (req) => {
       triggerReason,
       // Focus continuity: current right-column focus from frontend
       activeFocus,
+      // Onboarding vitals
+      strengthScore,
+      nextGain,
     } = await req.json();
     
     console.log('[ai-home-assistant] Request:', { 
@@ -703,7 +706,7 @@ async function generateAIResponse(
   triggerReason?: string,
   activeFocus?: any
 ) {
-  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason);
+  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason, strengthScore, nextGain);
   
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -1037,7 +1040,9 @@ function createSystemPrompt(
   baselineSource?: string,
   visibleBaseline?: Array<{ key: string; displayName: string; state: string }>,
   isPlanningSession: boolean = false,
-  triggerReason?: string
+  triggerReason?: string,
+  strengthScore?: number,
+  nextGain?: { action: string; delta: number; systemKey?: string } | null,
 ): string {
   // Format system info using enriched context from canonical 'systems' table
   const systemInfo = context.systems.map((s: EnrichedSystemContext) => {
@@ -1191,6 +1196,40 @@ This means:
 - Professional restraint over engagement
 - Trust over session length
 - Silence is acceptable; urgency is not
+`;
+  }
+
+  // ============================================
+  // ONBOARDING BEHAVIORAL CONTRACT
+  // ============================================
+  
+  if (typeof strengthScore === 'number' && strengthScore < 50) {
+    const nextGainAction = nextGain?.action || 'adding system details';
+    const nextGainDelta = nextGain?.delta || 0;
+    const nextGainSystem = nextGain?.systemKey?.replace(/_/g, ' ') || 'a system';
+    
+    prompt += `
+ONBOARDING BEHAVIORAL CONTRACT (ACTIVE — strengthScore=${strengthScore}%):
+This user recently completed onboarding. Their home record strength is at ${strengthScore}%.
+Most system data is estimated from public records unless marked [verified].
+
+YOUR PRIMARY GOAL: Help them strengthen their record through natural conversation.
+
+BEHAVIORAL RULES:
+- Be proactive. Walk through systems and ask if they know specifics (install year, brand, whether original or replaced).
+- Ask about ONE system at a time. Don't overwhelm.
+- When the user provides specific info, use update_system_info to persist it.
+- After a successful tool call, acknowledge the update factually. Do NOT fabricate updated scores.
+- Suggest photo uploads for ${nextGainSystem} as the highest-value action.
+- Use provenance-safe language: "estimated from property records" vs "confirmed."
+
+PRIORITY ACTION: ${nextGainAction} (+${nextGainDelta} points)
+
+FORBIDDEN:
+- Do NOT wait passively for questions. Lead the conversation.
+- Do NOT say "Let me know if you have questions."
+- Do NOT say "How can I help you today?"
+- Do NOT claim the record has changed unless you received confirmation from a tool.
 `;
   }
 
