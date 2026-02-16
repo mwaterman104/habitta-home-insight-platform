@@ -393,8 +393,8 @@ serve(async (req) => {
       // Focus continuity: current right-column focus from frontend
       activeFocus,
       // Onboarding vitals
-      strengthScore,
-      nextGain,
+      strengthScore: reqStrengthScore,
+      nextGain: reqNextGain,
     } = await req.json();
     
     console.log('[ai-home-assistant] Request:', { 
@@ -428,7 +428,9 @@ serve(async (req) => {
       visibleBaseline,
       isPlanningSession,
       triggerReason,
-      activeFocus
+      activeFocus,
+      reqStrengthScore,
+      reqNextGain
     );
     
     return new Response(JSON.stringify(response), {
@@ -704,7 +706,9 @@ async function generateAIResponse(
   visibleBaseline?: Array<{ key: string; displayName: string; state: string }>,
   isPlanningSession: boolean = false,
   triggerReason?: string,
-  activeFocus?: any
+  activeFocus?: any,
+  strengthScore?: number,
+  nextGain?: { action: string; delta: number; systemKey?: string } | null
 ) {
   const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason, strengthScore, nextGain);
   
