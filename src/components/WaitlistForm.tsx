@@ -43,6 +43,12 @@ export const WaitlistForm: React.FC = () => {
 
       setIsSuccess(true);
       toast.success('Welcome to the Habitta waitlist!');
+
+      // Send welcome email via Resend (fire-and-forget)
+      supabase.functions.invoke('waitlist-welcome', {
+        body: { name: name.trim(), email: email.trim().toLowerCase() },
+      }).catch((err) => console.error('Welcome email failed:', err));
+
       setName('');
       setEmail('');
       
