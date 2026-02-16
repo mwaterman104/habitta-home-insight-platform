@@ -32,7 +32,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Habitta <onboarding@resend.dev>',
+        from: 'Habitta <hello@habitta.app>',
         to: [email],
         subject: 'Welcome to the Habitta Waitlist!',
         html: `
