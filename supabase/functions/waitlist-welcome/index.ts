@@ -57,7 +57,12 @@ serve(async (req) => {
 
     if (!res.ok) {
       console.error('Resend API error:', JSON.stringify(data));
-      throw new Error(`Resend API failed [${res.status}]: ${JSON.stringify(data)}`);
+      // Return success with warning instead of throwing — don't break the signup flow
+      // Common cause: domain not verified in Resend (403)
+      return new Response(JSON.stringify({ success: false, warning: `Resend API [${res.status}]`, detail: data }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({ success: true, id: data.id }), {
