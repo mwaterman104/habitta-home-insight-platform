@@ -4,3 +4,4 @@ export { SecondarySystemsList } from "./SecondarySystemsList";
 export { ContextualChatLauncher, getContextualOpeningMessage, CHAT_QUICK_REPLIES } from "./ContextualChatLauncher";
 export { MobileDashboardView } from "./MobileDashboardView";
 export { MobileChatSheet } from "./MobileChatSheet";
+export { HabittaGreetingCard } from "./HabittaGreetingCard";

@@ -6,6 +6,7 @@ import { CapExBudgetRoadmap } from "@/components/dashboard-v3/CapExBudgetRoadmap
 import { WelcomeHeroCard } from "@/components/mobile/WelcomeHeroCard";
 import type { HomeCapitalTimeline } from "@/types/capitalTimeline";
 import type { HomeConfidenceResult } from "@/services/homeConfidence";
+import { HabittaGreetingCard } from "./HabittaGreetingCard";
 import { useEffect, useState, useRef } from "react";
 
 // ============================================================
@@ -28,6 +29,8 @@ interface MobileDashboardViewProps {
   onClearFilter?: () => void;
   isFirstVisit?: boolean;
   onWelcomeDismiss?: () => void;
+  greetingText?: string;
+  onGreetingTap?: () => void;
 }
 
 /**
@@ -46,6 +49,8 @@ export function MobileDashboardView({
   onClearFilter,
   isFirstVisit = false,
   onWelcomeDismiss,
+  greetingText,
+  onGreetingTap,
 }: MobileDashboardViewProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -150,9 +155,16 @@ export function MobileDashboardView({
         )}
       </div>
 
+      {/* ── Habitta Greeting Module ── */}
+      {greetingText && onGreetingTap && (
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+          <HabittaGreetingCard text={greetingText} onTap={onGreetingTap} />
+        </div>
+      )}
+
       {/* ── Systems Health & Timeline ── */}
       {capitalTimeline && (
-        <div ref={timelineRef} className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '75ms' }}>
+        <div ref={timelineRef} className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
           <SystemsHealthTimeline
             timeline={capitalTimeline}
             onSystemClick={onSystemTap}
@@ -162,7 +174,7 @@ export function MobileDashboardView({
 
       {/* ── CapEx Budget Roadmap ── */}
       {capitalTimeline && (
-        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '150ms' }}>
+        <div className={animClass} style={prefersReducedMotion ? undefined : { animationDelay: '225ms' }}>
           <CapExBudgetRoadmap
             timeline={capitalTimeline}
             onSystemClick={onSystemTap}

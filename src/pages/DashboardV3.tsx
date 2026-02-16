@@ -8,6 +8,7 @@ import { Home, Plus } from "lucide-react";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
+import { buildGreetingContext, generateHabittaBlurb } from "@/lib/chatGreetings";
 import { getLateLifeState } from "@/services/homeOutlook";
 import { trackMobileEvent, MOBILE_EVENTS } from "@/lib/analytics/mobileEvents";
 import { useHomeConfidence } from "@/hooks/useHomeConfidence";
@@ -544,6 +545,15 @@ export default function DashboardV3() {
           systems: capitalTimeline.systems.filter(s => getLateLifeState(s) !== 'not-late'),
         }
       : capitalTimeline;
+
+    // Generate Habitta greeting for the dashboard module
+    const greetingContext = buildGreetingContext({
+      baselineSystems,
+      isFirstVisit: isFirstVisit(),
+      strengthScore: homeConfidence?.score,
+      nextGain: homeConfidence?.nextGain,
+    });
+    const greetingResult = generateHabittaBlurb(greetingContext);
     
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -585,6 +595,8 @@ export default function DashboardV3() {
             onClearFilter={() => setSystemFilter('all')}
             isFirstVisit={isFirstVisit()}
             onWelcomeDismiss={() => markFirstVisitComplete()}
+            greetingText={greetingResult.text}
+            onGreetingTap={() => navigate('/chat', { state: { intent: { initialAssistantMessage: greetingResult.text } } })}
           />
         </main>
         
