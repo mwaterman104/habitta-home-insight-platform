@@ -395,6 +395,8 @@ serve(async (req) => {
       // Onboarding vitals
       strengthScore: reqStrengthScore,
       nextGain: reqNextGain,
+      // Onboarding contract gate
+      lastTouchAt: reqLastTouchAt,
     } = await req.json();
     
     console.log('[ai-home-assistant] Request:', { 
@@ -430,7 +432,8 @@ serve(async (req) => {
       triggerReason,
       activeFocus,
       reqStrengthScore,
-      reqNextGain
+      reqNextGain,
+      reqLastTouchAt
     );
     
     return new Response(JSON.stringify(response), {
@@ -708,9 +711,10 @@ async function generateAIResponse(
   triggerReason?: string,
   activeFocus?: any,
   strengthScore?: number,
-  nextGain?: { action: string; delta: number; systemKey?: string } | null
+  nextGain?: { action: string; delta: number; systemKey?: string } | null,
+  lastTouchAt?: string | null
 ) {
-  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason, strengthScore, nextGain);
+  const systemPrompt = createSystemPrompt(context, copyProfile, focusSystem, baselineSource, visibleBaseline, isPlanningSession, triggerReason, strengthScore, nextGain, lastTouchAt);
   
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -1047,6 +1051,7 @@ function createSystemPrompt(
   triggerReason?: string,
   strengthScore?: number,
   nextGain?: { action: string; delta: number; systemKey?: string } | null,
+  lastTouchAt?: string | null,
 ): string {
   // Format system info using enriched context from canonical 'systems' table
   const systemInfo = context.systems.map((s: EnrichedSystemContext) => {
@@ -1207,7 +1212,8 @@ This means:
   // ONBOARDING BEHAVIORAL CONTRACT
   // ============================================
   
-  if (typeof strengthScore === 'number' && strengthScore < 50) {
+  const isOnboarding = typeof strengthScore === 'number' && strengthScore < 50 && !lastTouchAt;
+  if (isOnboarding) {
     const nextGainAction = nextGain?.action || 'adding system details';
     const nextGainDelta = nextGain?.delta || 0;
     const nextGainSystem = nextGain?.systemKey?.replace(/_/g, ' ') || 'a system';
@@ -1223,7 +1229,7 @@ BEHAVIORAL RULES:
 - Be proactive. Walk through systems and ask if they know specifics (install year, brand, whether original or replaced).
 - Ask about ONE system at a time. Don't overwhelm.
 - When the user provides specific info, use update_system_info to persist it.
-- After a successful tool call, acknowledge the update factually. Do NOT fabricate updated scores.
+- After a successful tool call, the response will include newStrengthScore, previousStrengthScore, and strengthDelta. USE these numbers to celebrate progress: "Your record just jumped from {previous}% to {new}%!" Do NOT fabricate scores.
 - Suggest photo uploads for ${nextGainSystem} as the highest-value action.
 - Use provenance-safe language: "estimated from property records" vs "confirmed."
 
@@ -2397,7 +2403,70 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
           }
         }
         
-        // HARDENING FIX #4: Structured response envelope (extended with advisory)
+        // ============================================================
+        // SCORE CELEBRATION: Recompute strength after successful update
+        // ============================================================
+        let strengthData: any = undefined;
+        if (!result.alreadyRecorded) {
+          try {
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+            const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+            const adminClient = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
+            
+            const { data: allSystems } = await adminClient
+              .from('systems')
+              .select('kind, install_source, confidence')
+              .eq('home_id', homeId);
+            
+            if (allSystems && allSystems.length > 0) {
+              const total = allSystems.length;
+              const verified = allSystems.filter((s: any) => 
+                s.install_source && s.install_source !== 'inferred' && s.install_source !== 'year_built_heuristic'
+              ).length;
+              const newScore = Math.round((verified / total) * 100);
+              
+              // Calculate previous score (before this update)
+              const prevVerified = verified - 1; // this system was just upgraded
+              const previousScore = Math.max(0, Math.round((prevVerified / total) * 100));
+              
+              // Find next best gain (a remaining heuristic system)
+              const heuristicSystems = allSystems.filter((s: any) => 
+                !s.install_source || s.install_source === 'inferred' || s.install_source === 'year_built_heuristic'
+              );
+              
+              const systemLabels: Record<string, string> = {
+                hvac: 'HVAC', roof: 'Roof', water_heater: 'Water Heater',
+                electrical_panel: 'Electrical Panel', pool: 'Pool', solar: 'Solar',
+              };
+              
+              let nextGainData = null;
+              if (heuristicSystems.length > 0) {
+                const nextSystem = heuristicSystems[0];
+                const perSystemDelta = Math.round(100 / total);
+                nextGainData = {
+                  action: `Upload ${systemLabels[nextSystem.kind] || nextSystem.kind} label photo`,
+                  delta: perSystemDelta,
+                  systemKey: nextSystem.kind,
+                };
+              }
+              
+              strengthData = {
+                newStrengthScore: newScore,
+                previousStrengthScore: previousScore,
+                strengthDelta: newScore - previousScore,
+                nextGain: nextGainData,
+              };
+              
+              console.log('[update_system_info] Score celebration data:', strengthData);
+            }
+          } catch (scoreError) {
+            // Non-blocking: if score computation fails, update still succeeds
+            console.error('[update_system_info] Score computation failed (non-blocking):', scoreError);
+          }
+        }
+        
+        // HARDENING FIX #4: Structured response envelope (extended with advisory + score)
         return JSON.stringify({
           type: 'system_update',
           success: true,
@@ -2410,6 +2479,8 @@ async function handleFunctionCall(functionCall: any, context: any): Promise<stri
             : result.message,
           // Structured advisory for post-confirmation formatting (chatFormatting.ts owns the prose)
           postConfirmationAdvisory,
+          // Score celebration data for dopamine loop
+          ...strengthData,
         });
       } catch (error) {
         console.error('[update_system_info] Error:', error);

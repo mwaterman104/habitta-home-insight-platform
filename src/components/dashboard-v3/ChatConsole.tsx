@@ -217,6 +217,8 @@ export function ChatConsole({
     // Onboarding vitals for AI personalization
     strengthScore,
     nextGain,
+    // Onboarding contract gate: pass lastTouchAt to distinguish new vs returning users
+    lastTouchAt,
   });
 
   // Auto-send message guard (single-fire per unique message value)
@@ -583,8 +585,7 @@ export function ChatConsole({
                   <ConversationStarters
                     starters={greetingResult.starters}
                     onStarterClick={(prompt) => {
-                      setInput(prompt);
-                      inputRef.current?.focus();
+                      sendMessage(prompt);
                     }}
                   />
                 )}
