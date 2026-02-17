@@ -1,81 +1,107 @@
 
 
-## Warm Up Onboarding Greeting: "I've Done the Homework" Tone
+## Launch Blockers: Fixes Required
 
-### What Changes
-Rewrite the onboarding greeting templates to lead with what Habitta already found (permit-verified systems with years) before pivoting to blind spots. Add provenance-aware system data to the greeting context so templates can distinguish "I found a permit for your HVAC" from "I'm estimating your Roof from year built."
+Three items need fixing before ship. Everything else is iteration.
 
-### Why This Works
-- **Validates the tech**: Mentioning a specific permit proves Habitta actually searched their property
-- **Gap strategy**: "I need to see what public records don't show" gives a clear reason to take photos
-- **Benefit framing**: Asking for photos so Habitta can "watch" systems and "spot expensive surprises" -- not for "profile completion"
+---
 
-### Implementation
+### Fix 1: Conversation Starters Must Auto-Send
 
-#### 1. Enrich greeting context with provenance data
-**File:** `src/lib/chatGreetings.ts`
+**Problem:** Clicking a starter only fills the input box (`setInput(prompt)`) but does not send the message. The user must manually press Enter. This breaks the "illusion of intelligence" and makes starters feel inert.
 
-Add to `HabittaGreetingContext`:
+**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+
+**Change:** Replace the `onStarterClick` handler so it calls `handleSend()` (or equivalent) immediately after setting input, instead of just focusing the input field.
+
 ```text
-permitVerifiedSystems: Array<{ name: string; installYear?: number | null }>
-estimatedSystems: string[]
+Current (broken):
+  onStarterClick={(prompt) => {
+    setInput(prompt);
+    inputRef.current?.focus();
+  }}
+
+Fixed:
+  onStarterClick={(prompt) => {
+    handleSend(prompt);  // or: sendMessage(prompt) directly
+  }}
 ```
 
-Update `buildGreetingContext` to split `baselineSystems` by `installSource`:
-- `installSource === 'permit'` -> `permitVerifiedSystems` (with year)
-- everything else -> `estimatedSystems`
+The starter UI should also clear itself after sending (it already does -- starters only render when `messages.length === 1`).
 
-#### 2. Rewrite onboarding templates
-**File:** `src/lib/chatGreetings.ts`
+---
 
-Replace current `ONBOARDING_TEMPLATES` with provenance-aware versions:
+### Fix 2: Score Celebration Loop (update_system_info response)
 
-**Template A** (has permit-verified systems):
-"Good morning! I've been digging through the public records for your home and I've already got a head start. I found a permit for your HVAC system (installed 2022), so I'm tracking its age and maintenance window automatically. That puts your record at 23%. To get a fuller picture, I need to see the things public records don't show. Have you replaced the Roof or Water Heater recently? A quick photo of those would let me start watching them for you -- tracking their health and spotting maintenance needs before they become expensive surprises."
+**Problem:** After `update_system_info` succeeds, the tool response does NOT include `newStrengthScore`, `previousStrengthScore`, or `nextGain`. The AI behavioral contract says "celebrate progress" but has no data to do it with. This kills the dopamine loop.
 
-**Template B** (no permits, all estimated):
-"Good morning! I've started building your home's record. From property data, I'm estimating ages for your Roof, HVAC, and Water Heater -- but these are rough guesses based on your home's age. Your record is at 23%. The fastest way to sharpen everything is a quick photo of the manufacturer label on your Water Heater. That gives me a real date to work with instead of an estimate. Want to start there, or tell me about any systems you've already replaced?"
+**File:** `supabase/functions/ai-home-assistant/index.ts`
 
-The template selector checks `permitVerifiedSystems.length > 0` to pick the right variant.
+**Change:** After the `update-system-install` call succeeds (and is not `alreadyRecorded`), re-run a lightweight confidence computation and include the result in the tool response envelope.
 
-#### 3. Update conversation starters to match tone
-**File:** `src/lib/chatGreetings.ts`
+Steps:
+1. After successful update, query the `systems` table for all systems belonging to this home
+2. Compute a simple strength score (count of systems with non-heuristic `install_source` / total systems, scaled to 100)
+3. Determine `nextGain` (which remaining heuristic system would gain the most points)
+4. Add to the response:
+   ```text
+   {
+     ...existing fields,
+     strengthScore: 47,
+     previousStrengthScore: 32,
+     strengthDelta: 15,
+     nextGain: { action: "Upload HVAC label photo", delta: 12, systemKey: "hvac" }
+   }
+   ```
 
-Onboarding starters become:
-- "I replaced something recently"
-- "Take a photo"
-- "What did you find in records?"
+This is a lightweight query (one SELECT) plus simple math -- no external API calls. The AI can then say "Your record just jumped from 32% to 47%!" with real data.
 
-### Technical Detail
+---
+
+### Fix 3: Tighten Onboarding Contract Gate
+
+**Problem:** The onboarding behavioral contract injects when `strengthScore < 50` but does NOT check `lastTouchAt`. A returning user at 48% who has been active recently would still get the "new user orientation" tone.
+
+**File:** `supabase/functions/ai-home-assistant/index.ts`
+
+**Change:** The contract injection condition should be:
 
 ```text
-HabittaGreetingContext additions:
-  permitVerifiedSystems: { name: string; installYear?: number | null }[]
-  estimatedSystems: string[]
+Current:
+  if (strengthScore !== undefined && strengthScore < 50) {
+    // inject onboarding contract
+  }
 
-buildGreetingContext changes:
-  const permitVerified = baselineSystems
-    .filter(s => s.installSource === 'permit')
-    .map(s => ({ name: s.displayName, installYear: s.installYear }));
-  const estimated = baselineSystems
-    .filter(s => s.installSource !== 'permit')
-    .map(s => s.displayName);
-
-Template logic:
-  if (ctx.permitVerifiedSystems.length > 0) {
-    // Lead with permit hook: "I found a permit for your {name}..."
-    // Then pivot to estimated systems as blind spots
-  } else {
-    // All estimated: "From property data, I'm estimating..."
-    // Suggest nextGain photo as fastest way to sharpen
+Fixed:
+  const isOnboarding = strengthScore !== undefined && strengthScore < 50 
+    && !lastTouchAt;  // lastTouchAt must be passed from frontend
+  if (isOnboarding) {
+    // inject onboarding contract
   }
 ```
 
-### Files to Modify
+This requires:
+1. The frontend already passes `lastTouchAt` to `ChatConsole` (done in prior work)
+2. `ChatConsole` / `useAIHomeAssistant` must forward `lastTouchAt` in the edge function request body
+3. The edge function must extract `lastTouchAt` from the request and use it in the gate
 
-| File | Change |
-|------|--------|
-| `src/lib/chatGreetings.ts` | Add `permitVerifiedSystems` and `estimatedSystems` to context; rewrite `ONBOARDING_TEMPLATES` with provenance-aware "concierge" tone; update starters |
+**Files affected:**
+- `src/hooks/useAIHomeAssistant.ts` -- add `lastTouchAt` to options and request body
+- `supabase/functions/ai-home-assistant/index.ts` -- extract and use in gate
 
-No other files change -- the `BaselineSystem` type already carries `installSource` and `installYear`, and `buildGreetingContext` already receives `baselineSystems`.
+---
 
+### Summary Table
+
+| Fix | File(s) | Risk if Skipped |
+|-----|---------|-----------------|
+| Starters auto-send | `ChatConsole.tsx` | Starters feel dead; users don't know to press Enter |
+| Score celebration | `ai-home-assistant/index.ts` | AI can't celebrate progress; onboarding loses its reward loop |
+| Contract gate tightening | `useAIHomeAssistant.ts`, `ai-home-assistant/index.ts` | Returning users at 48% get treated like brand-new accounts |
+
+### What This Does NOT Change
+- No database changes
+- No new tables or columns
+- Greeting engine templates unchanged
+- Desktop flow unaffected
+- installSource pipeline verified and working as-is
