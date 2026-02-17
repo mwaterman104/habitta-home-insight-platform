@@ -50,6 +50,10 @@ export interface HabittaGreetingContext {
   // System names for onboarding template
   systemNames: string[];
 
+  // Provenance-aware system data for onboarding
+  permitVerifiedSystems: Array<{ name: string; installYear?: number | null }>;
+  estimatedSystems: string[];
+
   // Growth signals
   nextGain?: {
     action: string;
@@ -173,14 +177,19 @@ const FOLLOW_UP_TEMPLATES: GreetingTemplate[] = [
 
 const ONBOARDING_TEMPLATES: GreetingTemplate[] = [
   (ctx) => {
+    // Template A: Has permit-verified systems — lead with the hook
+    if (ctx.permitVerifiedSystems.length > 0) {
+      const permit = ctx.permitVerifiedSystems[0];
+      const yearStr = permit.installYear ? ` (installed ${permit.installYear})` : '';
+      const blindSpots = ctx.estimatedSystems.length > 0
+        ? ` To get a fuller picture, I need to see the things public records don't show. Have you replaced the ${ctx.estimatedSystems.slice(0, 2).join(' or ')} recently? A quick photo of those would let me start watching them for you — tracking their health and spotting maintenance needs before they become expensive surprises.`
+        : ' Want to tell me about any systems you\'ve already replaced?';
+      return `Good ${ctx.timeOfDay}! I've been digging through the public records for your home and I've already got a head start. I found a permit for your ${permit.name}${yearStr}, so I'm tracking its age and maintenance window automatically. That puts your record at ${ctx.strengthScore}%.${blindSpots}`;
+    }
+    // Template B: All estimated — be transparent about guesses
     const systemList = ctx.systemNames.length > 0 ? ctx.systemNames.join(', ') : `${ctx.totalSystemCount} systems`;
-    const nextAction = ctx.nextGain ? ` The fastest way to sharpen this is to snap ${getPhotoAsk(ctx.nextGain.systemKey || 'your system')}.` : '';
-    return `Good ${ctx.timeOfDay}. I've started building your home's record. From public records, I'm tracking ${systemList}. Most of what I have is estimated from property data — your record is at ${ctx.strengthScore}%.${nextAction} Want to start there, or tell me about any systems you've already replaced?`;
-  },
-  (ctx) => {
-    const systemList = ctx.systemNames.length > 0 ? ctx.systemNames.join(', ') : `${ctx.totalSystemCount} systems`;
-    const nextAction = ctx.nextGain ? ` Adding details for your ${ctx.nextGain.systemKey?.replace(/_/g, ' ') || 'system'} is the quickest win — +${ctx.nextGain.delta} points.` : '';
-    return `Good ${ctx.timeOfDay}. I've pulled what I can from your property records and I'm tracking ${systemList}. Right now your record is at ${ctx.strengthScore}% — most of this is estimated, not confirmed.${nextAction} What would you like to start with?`;
+    const photoTarget = ctx.nextGain?.systemKey?.replace(/_/g, ' ') || ctx.systemNames[0] || 'your system';
+    return `Good ${ctx.timeOfDay}! I've started building your home's record. From property data, I'm estimating ages for ${systemList} — but these are rough guesses based on your home's age. Your record is at ${ctx.strengthScore}%. The fastest way to sharpen everything is a quick photo of the manufacturer label on your ${photoTarget}. That gives me a real date to work with instead of an estimate. Want to start there, or tell me about any systems you've already replaced?`;
   },
 ];
 
@@ -260,9 +269,9 @@ function getStartersForStrategy(strategy: GreetingStrategy, ctx: HabittaGreeting
 
     case 'onboarding':
       return [
-        'What have you replaced?',
+        'I replaced something recently',
         'Take a photo',
-        'What did you find?',
+        'What did you find in records?',
       ];
 
     case 'guardian': {
@@ -362,6 +371,14 @@ export function buildGreetingContext(params: {
 
   const systemNames = baselineSystems.map(s => s.displayName);
 
+  const permitVerifiedSystems = baselineSystems
+    .filter(s => s.installSource === 'permit')
+    .map(s => ({ name: s.displayName, installYear: s.installYear }));
+
+  const estimatedSystems = baselineSystems
+    .filter(s => s.installSource !== 'permit')
+    .map(s => s.displayName);
+
   return {
     strengthScore,
     timeOfDay: getTimeOfDay(),
@@ -369,6 +386,8 @@ export function buildGreetingContext(params: {
     elevatedSystems,
     planningWindowSystems,
     systemNames,
+    permitVerifiedSystems,
+    estimatedSystems,
     nextGain,
     daysSinceLastTouch: daysSinceLastTouch ?? null,
     recentAction,
