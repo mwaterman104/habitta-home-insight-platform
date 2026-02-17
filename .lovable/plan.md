@@ -1,148 +1,81 @@
 
 
-## Onboarding-Aware Chat: Revised Plan (QA-Hardened)
+## Warm Up Onboarding Greeting: "I've Done the Homework" Tone
 
-### Problem Summary
-New users see "Good to see you again. I've been monitoring your 3 systems..." because:
-1. `isFirstVisit()` localStorage flag is consumed before chat opens
-2. MobileChatPage passes no `strengthScore`, `nextGain`, or `lastTouchAt` to ChatConsole
-3. `daysSinceLastTouch` defaults to 999, incorrectly triggering "historian"
-4. The edge function receives `strengthScore`/`nextGain` from the frontend but ignores them entirely in the system prompt
+### What Changes
+Rewrite the onboarding greeting templates to lead with what Habitta already found (permit-verified systems with years) before pivoting to blind spots. Add provenance-aware system data to the greeting context so templates can distinguish "I found a permit for your HVAC" from "I'm estimating your Roof from year built."
 
----
+### Why This Works
+- **Validates the tech**: Mentioning a specific permit proves Habitta actually searched their property
+- **Gap strategy**: "I need to see what public records don't show" gives a clear reason to take photos
+- **Benefit framing**: Asking for photos so Habitta can "watch" systems and "spot expensive surprises" -- not for "profile completion"
 
-### Changes Overview
+### Implementation
 
-#### 1. New `onboarding` greeting strategy with robust gating
+#### 1. Enrich greeting context with provenance data
 **File:** `src/lib/chatGreetings.ts`
 
-**Gate logic (no time math):**
+Add to `HabittaGreetingContext`:
 ```text
-isOnboarding = !lastTouchAt && strengthScore < 50
-```
-- Uses `!lastTouchAt` (null/undefined) as the "new account" signal -- deterministic, no timezone issues
-- Combined with low strength to distinguish from a well-documented account that just hasn't interacted
-
-**Kill the 999 hack:**
-- `daysSinceLastTouch` becomes `number | null` in `HabittaGreetingContext`
-- `calculateDaysSince()` returns `null` instead of 999 when input is null/undefined
-- `historian` only triggers when `daysSinceLastTouch !== null && daysSinceLastTouch >= 30`
-
-**Updated priority order:**
-```text
-1. first_visit     -- keep but make extremely narrow (localStorage flag, one-time)
-2. follow_up       -- recent referral/upload action
-3. onboarding      -- !lastTouchAt && strengthScore < 50
-4. guardian         -- elevated/planning_window systems
-5. historian        -- daysSinceLastTouch != null && >= 30
-6. builder          -- strengthScore < 70 && nextGain exists (ongoing nudges)
-7. neighbor         -- stable fallback
+permitVerifiedSystems: Array<{ name: string; installYear?: number | null }>
+estimatedSystems: string[]
 ```
 
-**Semantic clarity between strategies:**
-- `onboarding`: First meaningful chat after account creation. Orientation + inventory walkthrough + first action prompt
-- `builder`: Returning user with gaps. Nudges toward specific improvements
-- `historian`: True re-engagement after real dormancy (has a real lastTouchAt that's old)
+Update `buildGreetingContext` to split `baselineSystems` by `installSource`:
+- `installSource === 'permit'` -> `permitVerifiedSystems` (with year)
+- everything else -> `estimatedSystems`
 
-**Onboarding templates use provenance-safe language:**
-```text
-"Good afternoon. I've started building your home's record.
-From public records, I'm tracking 3 systems: Roof, HVAC,
-and Water Heater. Most of what I have is estimated from
-property data -- your record is at 22%. The fastest way to
-sharpen this is to snap a photo of the Water Heater label.
-Want to start there, or tell me about any systems you've
-already replaced?"
-```
+#### 2. Rewrite onboarding templates
+**File:** `src/lib/chatGreetings.ts`
 
-**Add system display names to context:**
-- Add `systemNames: string[]` to `HabittaGreetingContext` so templates can list discovered systems by name
+Replace current `ONBOARDING_TEMPLATES` with provenance-aware versions:
 
-**Conversation starters for onboarding:**
-- "What have you replaced?"
+**Template A** (has permit-verified systems):
+"Good morning! I've been digging through the public records for your home and I've already got a head start. I found a permit for your HVAC system (installed 2022), so I'm tracking its age and maintenance window automatically. That puts your record at 23%. To get a fuller picture, I need to see the things public records don't show. Have you replaced the Roof or Water Heater recently? A quick photo of those would let me start watching them for you -- tracking their health and spotting maintenance needs before they become expensive surprises."
+
+**Template B** (no permits, all estimated):
+"Good morning! I've started building your home's record. From property data, I'm estimating ages for your Roof, HVAC, and Water Heater -- but these are rough guesses based on your home's age. Your record is at 23%. The fastest way to sharpen everything is a quick photo of the manufacturer label on your Water Heater. That gives me a real date to work with instead of an estimate. Want to start there, or tell me about any systems you've already replaced?"
+
+The template selector checks `permitVerifiedSystems.length > 0` to pick the right variant.
+
+#### 3. Update conversation starters to match tone
+**File:** `src/lib/chatGreetings.ts`
+
+Onboarding starters become:
+- "I replaced something recently"
 - "Take a photo"
-- "What did you find?"
+- "What did you find in records?"
 
-**Persistence guard:**
-- Add `hasSeenOnboardingChatGreeting` to localStorage, set once the onboarding greeting fires
-- `buildGreetingContext` accepts a new `hasSeenOnboardingGreeting` param; if true, skip onboarding strategy
-
-#### 2. Wire `useHomeConfidence` into MobileChatPage
-**File:** `src/pages/MobileChatPage.tsx`
-
-- Import and call `useHomeConfidence(userHome?.id, timeline?.systems || [], userHome?.year_built)`
-- Pass `strengthScore={homeConfidence?.score}`, `nextGain={homeConfidence?.nextGain}`, `lastTouchAt={lastTouchAt}` to ChatConsole
-- Add a loading guard: don't render ChatConsole until confidence has loaded (show spinner alongside existing `homeLoading || timelineLoading` check)
-
-#### 3. Ensure ChatConsole delays greeting until context arrives
-**File:** `src/components/dashboard-v3/ChatConsole.tsx`
-
-Current greeting injection (line ~266) runs when `messages.length === 0 && !hasShownBaselineOpening`. Problem: it can fire before `strengthScore`/`lastTouchAt` arrive, picking a wrong strategy.
-
-Fix: Add a `greetingReady` guard:
-```text
-const greetingReady = strengthScore !== undefined || lastTouchAt !== undefined || baselineSystems.length > 0;
-```
-Only run greeting selection when `greetingReady` is true. This ensures we either have confidence data OR have explicitly decided "new account with no data."
-
-Also: if `strengthScore` or `lastTouchAt` change and user hasn't sent a message yet (messages.length <= 1, the injected greeting), recompute greeting. This handles the race where confidence loads after the initial render.
-
-#### 4. Inject onboarding behavioral contract into AI system prompt
-**File:** `supabase/functions/ai-home-assistant/index.ts`
-
-The edge function currently receives `strengthScore` and `nextGain` from the request body but ignores them.
-
-- Extract `strengthScore` and `nextGain` from the request body
-- Pass them to `createSystemPrompt`
-- When `strengthScore < 50`, append an onboarding behavioral contract:
+### Technical Detail
 
 ```text
-ONBOARDING BEHAVIORAL CONTRACT:
-This user recently completed onboarding. Their home record strength is at {strengthScore}%.
-Most system data is estimated from public records unless marked [verified].
+HabittaGreetingContext additions:
+  permitVerifiedSystems: { name: string; installYear?: number | null }[]
+  estimatedSystems: string[]
 
-YOUR PRIMARY GOAL: Help them strengthen their record through natural conversation.
+buildGreetingContext changes:
+  const permitVerified = baselineSystems
+    .filter(s => s.installSource === 'permit')
+    .map(s => ({ name: s.displayName, installYear: s.installYear }));
+  const estimated = baselineSystems
+    .filter(s => s.installSource !== 'permit')
+    .map(s => s.displayName);
 
-BEHAVIORAL RULES:
-- Be proactive. Walk through systems and ask if they know specifics.
-- Ask about one system at a time. Don't overwhelm.
-- When the user provides info, use update_system_info to persist it.
-- After a successful tool call, the second-pass response should
-  acknowledge the update factually. Do NOT fabricate updated scores
-  unless the actual new score is returned by the tool.
-- Suggest photo uploads for {nextGain.systemKey} as the highest-value action.
-- Use provenance-safe language: "estimated from property records" vs "confirmed."
-
-PRIORITY ACTION: {nextGain.action} (+{nextGain.delta} points)
-
-FORBIDDEN:
-- Do NOT wait passively for questions. Lead the conversation.
-- Do NOT say "Let me know if you have questions."
-- Do NOT claim the record has changed unless you received confirmation from a tool.
+Template logic:
+  if (ctx.permitVerifiedSystems.length > 0) {
+    // Lead with permit hook: "I found a permit for your {name}..."
+    // Then pivot to estimated systems as blind spots
+  } else {
+    // All estimated: "From property data, I'm estimating..."
+    // Suggest nextGain photo as fastest way to sharpen
+  }
 ```
 
-#### 5. Fix DashboardV3 greeting context for mobile module
-**File:** `src/pages/DashboardV3.tsx`
-
-The dashboard greeting context (line ~550) currently passes `isFirstVisit: isFirstVisit()` but not `daysSinceLastTouch` or `lastTouchAt`. This means the dashboard greeting card can also pick wrong strategies.
-
-- Pass `daysSinceLastTouch: lastTouchAt ? calculateDaysSince(lastTouchAt) : null` to `buildGreetingContext`
-- Pass `hasSeenOnboardingGreeting` from localStorage
-
----
-
-### Files to Create/Modify
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/lib/chatGreetings.ts` | Add `onboarding` strategy; change `daysSinceLastTouch` to `number \| null`; add `systemNames` and `hasSeenOnboardingGreeting` to context; fix historian guard; add onboarding templates and starters; add localStorage flag helper |
-| `src/pages/MobileChatPage.tsx` | Wire `useHomeConfidence`; pass `strengthScore`, `nextGain`, `lastTouchAt` to ChatConsole; extend loading guard |
-| `src/components/dashboard-v3/ChatConsole.tsx` | Add `greetingReady` guard; handle recomputation if context arrives late |
-| `supabase/functions/ai-home-assistant/index.ts` | Extract `strengthScore`/`nextGain` from request body; inject onboarding behavioral contract when `strengthScore < 50` |
-| `src/pages/DashboardV3.tsx` | Pass `lastTouchAt`-derived dormancy and `hasSeenOnboardingGreeting` to greeting context |
+| `src/lib/chatGreetings.ts` | Add `permitVerifiedSystems` and `estimatedSystems` to context; rewrite `ONBOARDING_TEMPLATES` with provenance-aware "concierge" tone; update starters |
 
-### What This Does NOT Change
-- No new database tables or columns
-- No changes to the confidence scoring model
-- No changes to the greeting card UI component
-- Desktop chat flow is unaffected (it already has the props wired from DashboardV3)
+No other files change -- the `BaselineSystem` type already carries `installSource` and `installYear`, and `buildGreetingContext` already receives `baselineSystems`.
+
