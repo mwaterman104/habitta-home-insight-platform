@@ -54,6 +54,8 @@ interface UseAIHomeAssistantOptions {
   strengthScore?: number;
   /** Next best action to improve record strength */
   nextGain?: { action: string; delta: number; systemKey?: string } | null;
+  /** Last user interaction timestamp for onboarding contract gating */
+  lastTouchAt?: Date | null;
 }
 
 export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssistantOptions = {}) => {
@@ -68,6 +70,7 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
     activeFocus,
     strengthScore,
     nextGain,
+    lastTouchAt,
   } = options;
   
   const { user } = useAuth();
@@ -228,6 +231,8 @@ export const useAIHomeAssistant = (propertyId?: string, options: UseAIHomeAssist
             // Onboarding vitals for AI personalization
             strengthScore,
             nextGain,
+            // Onboarding contract gate: pass lastTouchAt so edge function can distinguish new vs returning users
+            lastTouchAt: lastTouchAt ? lastTouchAt.toISOString() : null,
           }
         }
       );
