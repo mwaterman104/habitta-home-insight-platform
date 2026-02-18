@@ -11,6 +11,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// ── Utility Helpers ──
+
 function ymd(d: Date) { return d.toISOString().slice(0,10); }
 function addDays(d: Date, n: number) { const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function nextMonthDate(month: number, day=15) { 
@@ -20,7 +22,33 @@ function nextMonthDate(month: number, day=15) {
   return t; 
 }
 
-// ── Climate Zone Derivation (mirrors src/lib/climateZone.ts) ──
+// ── System Normalization ──
+
+const SYSTEM_ALIASES: Record<string, string> = {
+  swimming_pool: "pool", inground_pool: "pool", above_ground_pool: "pool",
+  spa_pool: "spa", hot_tub: "spa", jacuzzi: "spa",
+  irrigation: "sprinkler", sprinkler_system: "sprinkler",
+  ac: "hvac", furnace: "hvac", heat_pump: "hvac", air_conditioning: "hvac",
+  water_heater: "water_heater", tankless: "water_heater", boiler: "water_heater",
+  ev_charger: "ev_charger", backup_generator: "generator",
+};
+
+function normalizeSystemType(type?: string | null): string | null {
+  if (!type) return null;
+  const t = type.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return SYSTEM_ALIASES[t] || t;
+}
+
+const OPTIONAL_SYSTEMS = new Set([
+  "pool", "solar", "sprinkler", "spa", "generator", "septic", "well", "ev_charger",
+]);
+
+const KEYWORD_SYSTEM_MAP: Record<string, string> = {
+  pool: "pool", spa: "spa", irrigation: "sprinkler",
+  sprinkler: "sprinkler", solar: "solar", generator: "generator",
+};
+
+// ── Climate Zone Derivation ──
 
 type ClimateZoneType = 'high_heat' | 'coastal' | 'freeze_thaw' | 'moderate';
 
@@ -79,6 +107,53 @@ function mapPriority(urg?: string | null) {
   return "medium"; 
 }
 
+// ── System-Aware Filtering ──
+
+function taskRequiresAbsentSystem(task: any, knownSystems: Set<string>): boolean {
+  // Check system_type field
+  const sysType = normalizeSystemType(task.system_type);
+  if (sysType && OPTIONAL_SYSTEMS.has(sysType) && !knownSystems.has(sysType)) return true;
+
+  // Secondary keyword check on title + description
+  const text = `${task.title || ''} ${task.description || ''}`.toLowerCase();
+  for (const [keyword, system] of Object.entries(KEYWORD_SYSTEM_MAP)) {
+    if (text.includes(keyword) && !knownSystems.has(system)) return true;
+  }
+  return false;
+}
+
+async function buildKnownSystems(admin: any, homeId: string): Promise<Set<string>> {
+  const knownSystems = new Set<string>();
+
+  // Source 1: Canonical systems table (home_id anchored)
+  const { data: homeSys } = await admin
+    .from("systems")
+    .select("kind")
+    .eq("home_id", homeId);
+  for (const s of (homeSys || [])) {
+    const n = normalizeSystemType(s.kind);
+    if (n) knownSystems.add(n);
+  }
+
+  // Source 2: Permits table (home_id anchored) - check system_tags + description
+  const { data: homePermits } = await admin
+    .from("permits")
+    .select("system_tags, description, trade")
+    .eq("home_id", homeId);
+  for (const p of (homePermits || [])) {
+    for (const tag of (p.system_tags || [])) {
+      const n = normalizeSystemType(tag);
+      if (n) knownSystems.add(n);
+    }
+    const desc = `${p.description || ''} ${p.trade || ''}`.toLowerCase();
+    for (const [keyword, system] of Object.entries(KEYWORD_SYSTEM_MAP)) {
+      if (desc.includes(keyword)) knownSystems.add(system);
+    }
+  }
+
+  return knownSystems;
+}
+
 // ── Climate-Aware Seasonal Templates ──
 
 interface SeasonalTask {
@@ -99,19 +174,15 @@ function seasonalTemplates(climateZone: ClimateZoneType): SeasonalTask[] {
   switch (climateZone) {
     case 'freeze_thaw':
       return [
-        // Spring
         { month: 3, title: "HVAC cooling tune-up", category: "hvac", system_type: "hvac", description: "Service AC. Replace filter. Check refrigerant levels before summer.", priority: "medium" },
         { month: 3, title: "Check sump pump", category: "plumbing", system_type: "plumbing", description: "Test sump pump operation before spring thaw and heavy rains.", priority: "high" },
         { month: 4, title: "Foundation crack inspection", category: "exterior", system_type: "foundation", description: "Inspect foundation for new cracks from freeze-thaw cycles.", priority: "medium" },
         { month: 4, title: "Gutter & downspout clean (Spring)", category: "exterior", system_type: "roof", description: "Clear winter debris. Check for ice dam damage.", priority: "medium" },
         { month: 5, title: "Exterior paint & caulk inspection", category: "exterior", system_type: "exterior", description: "Check caulking and paint for freeze damage. Reseal as needed.", priority: "low" },
-        // Summer
         { month: 6, title: "Deck & patio inspection", category: "exterior", system_type: "exterior", description: "Check for wood rot, loose boards, and seal surfaces.", priority: "low" },
-        // Fall
         { month: 9, title: "Furnace tune-up", category: "hvac", system_type: "hvac", description: "Professional furnace service before heating season.", priority: "high" },
         { month: 10, title: "Roof & flashing inspection", category: "exterior", system_type: "roof", description: "Inspect shingles and flashing before winter.", priority: "high" },
         { month: 10, title: "Gutter clean (leaf season)", category: "exterior", system_type: "roof", description: "Clear gutters before freeze to prevent ice dams.", priority: "medium" },
-        // Winter prep
         { month: 11, title: "Winterize exterior plumbing", category: "plumbing", system_type: "plumbing", description: "Shut off hose bibs. Insulate exposed pipes. Drain sprinkler system.", priority: "urgent" },
         { month: 11, title: "Weatherstrip doors & windows", category: "exterior", system_type: "exterior", description: "Replace worn weatherstripping to reduce drafts and heating costs.", priority: "medium" },
         { month: 11, title: "Snow equipment check", category: "exterior", system_type: "exterior", description: "Service snow blower. Stock ice melt and shovels.", priority: "low" },
@@ -120,37 +191,29 @@ function seasonalTemplates(climateZone: ClimateZoneType): SeasonalTask[] {
 
     case 'high_heat':
       return [
-        // Spring
         { month: 3, title: "AC deep service", category: "hvac", system_type: "hvac", description: "Full AC tune-up. Clean coils, check refrigerant, replace filter. Critical before summer.", priority: "high" },
         { month: 3, title: "Pool pump & equipment service", category: "exterior", system_type: "pool", description: "Service pool pump, check filter, inspect equipment for wear.", priority: "medium" },
-        { month: 4, title: "Irrigation system check", category: "exterior", system_type: "exterior", description: "Test irrigation zones. Check for leaks and adjust timers for dry season.", priority: "medium" },
-        // Summer
+        { month: 4, title: "Irrigation system check", category: "exterior", system_type: "sprinkler", description: "Test irrigation zones. Check for leaks and adjust timers for dry season.", priority: "medium" },
         { month: 6, title: "AC filter replacement (Summer)", category: "hvac", system_type: "hvac", description: "Monthly filter check recommended in high-use months.", priority: "medium" },
         { month: 7, title: "Pest prevention sweep", category: "exterior", system_type: "exterior", description: "Inspect and seal entry points. Check for termites (high humidity risk).", priority: "medium" },
         { month: 7, title: "Water heater inspection", category: "plumbing", system_type: "water_heater", description: "Check anode rod. Flush sediment. Higher temps accelerate wear.", priority: "medium" },
-        // Fall (hurricane/storm season)
         { month: 9, title: "Hurricane shutter & storm prep check", category: "exterior", system_type: "exterior", description: "Inspect shutters, secure loose outdoor items, check emergency supplies.", priority: "high" },
         { month: 10, title: "Roof inspection post-storm season", category: "exterior", system_type: "roof", description: "Inspect for storm damage. Check flashings and soft spots.", priority: "high" },
         { month: 10, title: "AC filter replacement (Fall)", category: "hvac", system_type: "hvac", description: "Replace filter after heavy summer use.", priority: "medium" },
-        // Winter (mild)
         { month: 12, title: "Exterior paint & seal check", category: "exterior", system_type: "exterior", description: "UV and humidity degrade coatings faster. Inspect and touch up.", priority: "low" },
         ...common,
       ];
 
     case 'coastal':
       return [
-        // Spring
         { month: 3, title: "HVAC coil & condenser clean", category: "hvac", system_type: "hvac", description: "Salt air accelerates corrosion. Deep clean coils and rinse condenser.", priority: "high" },
         { month: 4, title: "Gutter & downspout check", category: "exterior", system_type: "roof", description: "Clear debris. Check for corrosion from salt air.", priority: "medium" },
         { month: 4, title: "Deck & exterior power wash", category: "exterior", system_type: "exterior", description: "Remove salt residue from siding, deck, and outdoor surfaces.", priority: "medium" },
         { month: 5, title: "Window seal inspection", category: "exterior", system_type: "exterior", description: "Salt air degrades seals faster. Check all windows and doors.", priority: "medium" },
-        // Summer
         { month: 6, title: "Exterior metal corrosion check", category: "exterior", system_type: "exterior", description: "Inspect railings, fixtures, and hardware for rust. Treat early.", priority: "medium" },
         { month: 7, title: "Salt air HVAC rinse", category: "hvac", system_type: "hvac", description: "Mid-summer rinse of outdoor HVAC components to prevent salt buildup.", priority: "medium" },
-        // Fall
         { month: 9, title: "Roof & flashing inspection", category: "exterior", system_type: "roof", description: "Salt air and moisture accelerate flashing deterioration.", priority: "high" },
         { month: 10, title: "Exterior stain & seal", category: "exterior", system_type: "exterior", description: "Reapply protective coatings before winter moisture season.", priority: "medium" },
-        // Winter
         { month: 12, title: "Plumbing corrosion check", category: "plumbing", system_type: "plumbing", description: "Inspect exposed pipes and fixtures for salt-related corrosion.", priority: "medium" },
         ...common,
       ];
@@ -158,14 +221,10 @@ function seasonalTemplates(climateZone: ClimateZoneType): SeasonalTask[] {
     case 'moderate':
     default:
       return [
-        // Spring
         { month: 3, title: "HVAC cooling tune-up", category: "hvac", system_type: "hvac", description: "Service AC. Replace filter. Standard spring prep.", priority: "medium" },
         { month: 3, title: "Gutter & downspout clean (Spring)", category: "exterior", system_type: "roof", description: "Clear winter debris. Ensure proper drainage.", priority: "medium" },
         { month: 4, title: "Exterior caulk & seal check", category: "exterior", system_type: "exterior", description: "Inspect and reseal windows, doors, and trim.", priority: "low" },
-        // Summer
-        { month: 6, title: "Irrigation & pool check", category: "exterior", system_type: "exterior", description: "Check for leaks. Adjust timers. Inspect pool equipment.", priority: "low" },
-        { month: 7, title: "Pest prevention sweep", category: "exterior", system_type: "exterior", description: "Inspect and seal entry points.", priority: "low" },
-        // Fall
+        { month: 6, title: "Pest prevention sweep", category: "exterior", system_type: "exterior", description: "Inspect and seal entry points.", priority: "low" },
         { month: 9, title: "HVAC heating tune-up", category: "hvac", system_type: "hvac", description: "Service furnace or heat pump before heating season.", priority: "medium" },
         { month: 10, title: "Roof & flashing inspection", category: "exterior", system_type: "roof", description: "Inspect shingles, flashings, and penetrations.", priority: "high" },
         { month: 10, title: "Gutter clean (leaf season)", category: "exterior", system_type: "roof", description: "Clear gutters to prevent water damage.", priority: "medium" },
@@ -233,6 +292,10 @@ serve(async (req) => {
     // Derive climate zone
     const climateZone: ClimateZoneType = overrideZone || deriveClimateZone(home.state, home.city, home.latitude);
     console.log(`Climate zone: ${climateZone} (state: ${home.state}, city: ${home.city})`);
+
+    // Build known systems set (home_id anchored only)
+    const knownSystems = await buildKnownSystems(admin, homeId);
+    console.log("Known systems for home:", [...knownSystems]);
 
     // Get condition signals and renovation items if property is linked
     let conditionScore: number | null = null; 
@@ -306,6 +369,12 @@ serve(async (req) => {
       });
     }
 
+    // Filter out tasks for optional systems this home doesn't have
+    const systemFilteredCandidates = candidates.filter(
+      t => !taskRequiresAbsentSystem(t, knownSystems)
+    );
+    console.log(`System filter: ${candidates.length} candidates -> ${systemFilteredCandidates.length} after filtering`);
+
     // Filter out existing tasks unless force mode
     const horizonEnd = ymd(addDays(now, Math.max(1, Math.min(24, Number(months))) * 30));
     let existing: any[] = [];
@@ -322,7 +391,7 @@ serve(async (req) => {
     
     const exists = new Set(existing.map(e => `${e.title.toLowerCase()}|${e.due_date}`));
 
-    const rows = candidates
+    const rows = systemFilteredCandidates
       .filter(t => force || !exists.has(`${String(t.title).toLowerCase()}|${t.due_date}`))
       .map(t => ({
         home_id: home.id,
@@ -352,9 +421,9 @@ serve(async (req) => {
       inserted = rows.length;
     }
 
-    console.log(`Plan generation complete: ${inserted} tasks inserted from ${candidates.length} considered (zone: ${climateZone})`);
+    console.log(`Plan generation complete: ${inserted} tasks inserted from ${systemFilteredCandidates.length} considered (zone: ${climateZone}, known systems: ${[...knownSystems].join(',')})`);
 
-    return new Response(JSON.stringify({ ok: true, inserted, considered: candidates.length, climateZone }), { 
+    return new Response(JSON.stringify({ ok: true, inserted, considered: systemFilteredCandidates.length, climateZone, knownSystems: [...knownSystems] }), { 
       headers: { ...cors, "Content-Type": "application/json" } 
     });
   } catch (e) {
