@@ -38,6 +38,8 @@ interface UseHomeConfidenceReturn {
   loading: boolean;
   /** Last user interaction timestamp (most recent home_assets/home_events update) */
   lastTouchAt: Date | null;
+  /** Re-fetch home_assets and home_events to recompute confidence */
+  refetchConfidence: () => Promise<void>;
 }
 
 export function useHomeConfidence(
@@ -52,7 +54,7 @@ export function useHomeConfidence(
   const [dismissedIds, setDismissedIds] = useState<string[]>(getDismissedIds);
 
   // Fetch home_assets and home_events
-  useEffect(() => {
+  const refetchConfidence = useCallback(async () => {
     if (!homeId) {
       setHomeAssets([]);
       setHomeEvents([]);
@@ -61,68 +63,64 @@ export function useHomeConfidence(
       return;
     }
 
-    let cancelled = false;
+    setLoading(true);
+    try {
+      const [assetsRes, eventsRes] = await Promise.all([
+        supabase
+          .from('home_assets')
+          .select('id, kind, serial, metadata, status, updated_at')
+          .eq('home_id', homeId)
+          .eq('status', 'active'),
+        supabase
+          .from('home_events')
+          .select('id, event_type, title, description, source, status, severity, metadata, asset_id, home_id, created_at')
+          .eq('home_id', homeId)
+          .order('created_at', { ascending: false })
+          .limit(100),
+      ]);
 
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const [assetsRes, eventsRes] = await Promise.all([
-          supabase
-            .from('home_assets')
-            .select('id, kind, serial, metadata, status, updated_at')
-            .eq('home_id', homeId!)
-            .eq('status', 'active'),
-          supabase
-            .from('home_events')
-            .select('id, event_type, title, description, source, status, severity, metadata, asset_id, home_id, created_at')
-            .eq('home_id', homeId!)
-            .order('created_at', { ascending: false })
-            .limit(100),
-        ]);
+      const assets: HomeAssetRecord[] = (assetsRes.data || []).map(a => ({
+        id: a.id,
+        kind: a.kind,
+        serial: a.serial,
+        metadata: (a.metadata as Record<string, unknown>) || {},
+        status: a.status,
+        updated_at: a.updated_at,
+      }));
 
-        if (cancelled) return;
+      const events: HomeEventRecord[] = (eventsRes.data || []).map(e => ({
+        id: e.id,
+        event_type: e.event_type,
+        title: e.title,
+        description: e.description,
+        source: e.source,
+        status: e.status,
+        severity: e.severity,
+        metadata: (e.metadata as Record<string, unknown>) || {},
+        asset_id: e.asset_id,
+        home_id: e.home_id,
+        created_at: e.created_at,
+      }));
 
-        const assets: HomeAssetRecord[] = (assetsRes.data || []).map(a => ({
-          id: a.id,
-          kind: a.kind,
-          serial: a.serial,
-          metadata: (a.metadata as Record<string, unknown>) || {},
-          status: a.status,
-          updated_at: a.updated_at,
-        }));
+      setHomeAssets(assets);
+      setHomeEvents(events);
 
-        const events: HomeEventRecord[] = (eventsRes.data || []).map(e => ({
-          id: e.id,
-          event_type: e.event_type,
-          title: e.title,
-          description: e.description,
-          source: e.source,
-          status: e.status,
-          severity: e.severity,
-          metadata: (e.metadata as Record<string, unknown>) || {},
-          asset_id: e.asset_id,
-          home_id: e.home_id,
-          created_at: e.created_at,
-        }));
-
-        setHomeAssets(assets);
-        setHomeEvents(events);
-
-        // Compute last_user_touch_at
-        const timestamps: number[] = [];
-        for (const e of events) timestamps.push(new Date(e.created_at).getTime());
-        for (const a of assets) timestamps.push(new Date(a.updated_at).getTime());
-        setLastTouchAt(timestamps.length > 0 ? new Date(Math.max(...timestamps)) : null);
-      } catch (err) {
-        console.error('[useHomeConfidence] Fetch error:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      // Compute last_user_touch_at
+      const timestamps: number[] = [];
+      for (const e of events) timestamps.push(new Date(e.created_at).getTime());
+      for (const a of assets) timestamps.push(new Date(a.updated_at).getTime());
+      setLastTouchAt(timestamps.length > 0 ? new Date(Math.max(...timestamps)) : null);
+    } catch (err) {
+      console.error('[useHomeConfidence] Fetch error:', err);
+    } finally {
+      setLoading(false);
     }
-
-    fetchData();
-    return () => { cancelled = true; };
   }, [homeId]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    refetchConfidence();
+  }, [refetchConfidence]);
 
   // Compute confidence
   const confidence = useMemo(() => {
@@ -145,5 +143,5 @@ export function useHomeConfidence(
     });
   }, []);
 
-  return { confidence, recommendations, dismissRecommendation, loading, lastTouchAt };
+  return { confidence, recommendations, dismissRecommendation, loading, lastTouchAt, refetchConfidence };
 }

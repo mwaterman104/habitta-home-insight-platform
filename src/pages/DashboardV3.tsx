@@ -160,6 +160,7 @@ export default function DashboardV3() {
     recommendations: homeRecommendations, 
     dismissRecommendation,
     lastTouchAt,
+    refetchConfidence,
   } = useHomeConfidence(userHome?.id, capitalTimeline?.systems || [], userHome?.year_built);
 
   // Chat State Machine: Fetch home systems and permits for mode derivation
@@ -173,15 +174,16 @@ export default function DashboardV3() {
     permitsFound: permitInsights.length > 0,
   });
 
-  // System Update Contract: Callback for when systems are updated via photo analysis
-  const handleSystemUpdated = useCallback(() => {
-    refetchSystems();
-    // Chat mode will recompute via useChatMode dependency on systems
-  }, [refetchSystems]);
-
   // Risk delta invalidation
   const invalidateRiskDeltas = useInvalidateRiskDeltas();
   const queryClient = useQueryClient();
+
+  // System Update Contract: Callback for when systems are updated via photo analysis
+  const handleSystemUpdated = useCallback(() => {
+    refetchSystems();
+    refetchConfidence();
+    queryClient.invalidateQueries({ queryKey: ['capital-timeline'] });
+  }, [refetchSystems, refetchConfidence, queryClient]);
 
   // Fetch user home - extracted as callback for reuse
   const fetchUserHome = useCallback(async () => {
