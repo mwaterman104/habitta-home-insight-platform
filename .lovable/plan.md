@@ -1,107 +1,71 @@
 
 
-## Launch Blockers: Fixes Required
+## Fix: Sync Home Profile Record Bar After Chat Updates
 
-Three items need fixing before ship. Everything else is iteration.
+### The Problem
+The screenshot shows the chat celebrating "your record strength just jumped from 50% to 100%!" while the Home Profile Record bar at the top still reads "Limited (17%)". The AI calculates a fresh score inside the edge function, but the frontend never re-fetches the data that drives the bar.
 
----
+### Root Cause
+`useHomeConfidence` fetches `home_assets` and `home_events` once on mount (keyed by `homeId`) and exposes no refetch mechanism. When the chat updates a system via `update_system_info`:
 
-### Fix 1: Conversation Starters Must Auto-Send
+1. `onSystemUpdated()` fires in `DashboardV3`
+2. It calls `refetchSystems()` (the `systems` table)
+3. But `useHomeConfidence` never re-fetches its underlying data (`home_assets`, `home_events`)
+4. The `capitalTimeline` query is also not invalidated
+5. The bar stays frozen at its initial score
 
-**Problem:** Clicking a starter only fills the input box (`setInput(prompt)`) but does not send the message. The user must manually press Enter. This breaks the "illusion of intelligence" and makes starters feel inert.
+### The Fix
 
-**File:** `src/components/dashboard-v3/ChatConsole.tsx`
+#### 1. Expose a `refetch` function from `useHomeConfidence`
+**File:** `src/hooks/useHomeConfidence.ts`
 
-**Change:** Replace the `onStarterClick` handler so it calls `handleSend()` (or equivalent) immediately after setting input, instead of just focusing the input field.
-
-```text
-Current (broken):
-  onStarterClick={(prompt) => {
-    setInput(prompt);
-    inputRef.current?.focus();
-  }}
-
-Fixed:
-  onStarterClick={(prompt) => {
-    handleSend(prompt);  // or: sendMessage(prompt) directly
-  }}
-```
-
-The starter UI should also clear itself after sending (it already does -- starters only render when `messages.length === 1`).
-
----
-
-### Fix 2: Score Celebration Loop (update_system_info response)
-
-**Problem:** After `update_system_info` succeeds, the tool response does NOT include `newStrengthScore`, `previousStrengthScore`, or `nextGain`. The AI behavioral contract says "celebrate progress" but has no data to do it with. This kills the dopamine loop.
-
-**File:** `supabase/functions/ai-home-assistant/index.ts`
-
-**Change:** After the `update-system-install` call succeeds (and is not `alreadyRecorded`), re-run a lightweight confidence computation and include the result in the tool response envelope.
-
-Steps:
-1. After successful update, query the `systems` table for all systems belonging to this home
-2. Compute a simple strength score (count of systems with non-heuristic `install_source` / total systems, scaled to 100)
-3. Determine `nextGain` (which remaining heuristic system would gain the most points)
-4. Add to the response:
-   ```text
-   {
-     ...existing fields,
-     strengthScore: 47,
-     previousStrengthScore: 32,
-     strengthDelta: 15,
-     nextGain: { action: "Upload HVAC label photo", delta: 12, systemKey: "hvac" }
-   }
-   ```
-
-This is a lightweight query (one SELECT) plus simple math -- no external API calls. The AI can then say "Your record just jumped from 32% to 47%!" with real data.
-
----
-
-### Fix 3: Tighten Onboarding Contract Gate
-
-**Problem:** The onboarding behavioral contract injects when `strengthScore < 50` but does NOT check `lastTouchAt`. A returning user at 48% who has been active recently would still get the "new user orientation" tone.
-
-**File:** `supabase/functions/ai-home-assistant/index.ts`
-
-**Change:** The contract injection condition should be:
+Extract the fetch logic into a named function and return it alongside existing values:
 
 ```text
-Current:
-  if (strengthScore !== undefined && strengthScore < 50) {
-    // inject onboarding contract
-  }
+// Move the async fetchData() out of useEffect so it can be called externally
+const refetchConfidence = useCallback(async () => { ... fetch home_assets + home_events ... }, [homeId]);
 
-Fixed:
-  const isOnboarding = strengthScore !== undefined && strengthScore < 50 
-    && !lastTouchAt;  // lastTouchAt must be passed from frontend
-  if (isOnboarding) {
-    // inject onboarding contract
-  }
+// Still call it on mount via useEffect
+useEffect(() => { refetchConfidence(); }, [refetchConfidence]);
+
+return { confidence, recommendations, dismissRecommendation, loading, lastTouchAt, refetchConfidence };
 ```
 
-This requires:
-1. The frontend already passes `lastTouchAt` to `ChatConsole` (done in prior work)
-2. `ChatConsole` / `useAIHomeAssistant` must forward `lastTouchAt` in the edge function request body
-3. The edge function must extract `lastTouchAt` from the request and use it in the gate
+#### 2. Wire `handleSystemUpdated` to also refresh confidence data
+**File:** `src/pages/DashboardV3.tsx`
 
-**Files affected:**
-- `src/hooks/useAIHomeAssistant.ts` -- add `lastTouchAt` to options and request body
-- `supabase/functions/ai-home-assistant/index.ts` -- extract and use in gate
+Update the callback to also invalidate the capital timeline and re-fetch confidence:
 
----
+```text
+const handleSystemUpdated = useCallback(() => {
+  refetchSystems();
+  refetchConfidence();                                          // NEW
+  queryClient.invalidateQueries({ queryKey: ['capital-timeline'] });  // NEW
+}, [refetchSystems, refetchConfidence, queryClient]);
+```
 
-### Summary Table
+This ensures that after any system update (chat-driven or photo-driven), the bar re-computes from fresh DB data.
 
-| Fix | File(s) | Risk if Skipped |
-|-----|---------|-----------------|
-| Starters auto-send | `ChatConsole.tsx` | Starters feel dead; users don't know to press Enter |
-| Score celebration | `ai-home-assistant/index.ts` | AI can't celebrate progress; onboarding loses its reward loop |
-| Contract gate tightening | `useAIHomeAssistant.ts`, `ai-home-assistant/index.ts` | Returning users at 48% get treated like brand-new accounts |
+#### 3. Verify the same fix applies to MobileChatPage
+**File:** `src/pages/MobileChatPage.tsx`
 
-### What This Does NOT Change
+The mobile page also passes `onSystemUpdated` to `ChatConsole`. It needs the same treatment: call `refetchConfidence` + invalidate `capital-timeline` when a system update occurs.
+
+### Why This Solves Both Directions
+
+- **Score goes up:** User provides data via chat, bar refreshes immediately
+- **Score discrepancy:** The edge function's lightweight score calculation may differ slightly from the frontend's `computeHomeConfidence`. After the fix, the bar always shows the frontend's canonical computation from fresh data -- no disagreement possible
+
+### What Does NOT Change
+- No edge function changes needed
+- No greeting logic changes
 - No database changes
-- No new tables or columns
-- Greeting engine templates unchanged
-- Desktop flow unaffected
-- installSource pipeline verified and working as-is
+- The AI's celebration message is fine -- the issue is purely that the bar doesn't catch up
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/hooks/useHomeConfidence.ts` | Expose `refetchConfidence` callback |
+| `src/pages/DashboardV3.tsx` | Call `refetchConfidence()` and invalidate `capital-timeline` in `handleSystemUpdated` |
+| `src/pages/MobileChatPage.tsx` | Same wiring for mobile path |
