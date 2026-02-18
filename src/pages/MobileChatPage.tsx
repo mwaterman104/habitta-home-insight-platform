@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
 import { useHomeConfidence } from "@/hooks/useHomeConfidence";
@@ -59,7 +59,15 @@ export default function MobileChatPage() {
     confidence: homeConfidence,
     lastTouchAt,
     loading: confidenceLoading,
+    refetchConfidence,
   } = useHomeConfidence(userHome?.id, timeline?.systems || [], userHome?.year_built);
+
+  const queryClient = useQueryClient();
+
+  const handleSystemUpdated = useCallback(() => {
+    refetchConfidence();
+    queryClient.invalidateQueries({ queryKey: ['capital-timeline'] });
+  }, [refetchConfidence, queryClient]);
 
   // Build baseline systems
   const baselineSystems: BaselineSystem[] = useMemo(() => {
@@ -149,6 +157,7 @@ export default function MobileChatPage() {
           baselineSource={chatModeContext.baselineSource}
           systemsWithLowConfidence={chatModeContext.systemsWithLowConfidence}
           onWhyClick={() => {}}
+          onSystemUpdated={handleSystemUpdated}
           autoSendMessage={intent?.autoSendMessage}
           strengthScore={homeConfidence?.score}
           nextGain={homeConfidence?.nextGain}
