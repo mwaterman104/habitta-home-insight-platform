@@ -1655,6 +1655,7 @@ export type Database = {
           related_event_id: string | null
           severity: string
           source: string
+          source_platform: string | null
           status: string
           title: string
           user_id: string
@@ -1672,6 +1673,7 @@ export type Database = {
           related_event_id?: string | null
           severity?: string
           source: string
+          source_platform?: string | null
           status?: string
           title: string
           user_id: string
@@ -1689,6 +1691,7 @@ export type Database = {
           related_event_id?: string | null
           severity?: string
           source?: string
+          source_platform?: string | null
           status?: string
           title?: string
           user_id?: string
@@ -1721,6 +1724,84 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "home_events"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      home_intent_events: {
+        Row: {
+          cost_estimate_max: number | null
+          cost_estimate_min: number | null
+          created_at: string | null
+          diy_flag: boolean | null
+          home_id: string | null
+          id: string
+          intent_category: string
+          lead_value_score: number | null
+          platform: string
+          pro_flag: boolean | null
+          raw_payload: Json | null
+          session_id: string | null
+          session_summary: string | null
+          severity: string | null
+          symptom_summary: string | null
+          system_type: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cost_estimate_max?: number | null
+          cost_estimate_min?: number | null
+          created_at?: string | null
+          diy_flag?: boolean | null
+          home_id?: string | null
+          id?: string
+          intent_category: string
+          lead_value_score?: number | null
+          platform?: string
+          pro_flag?: boolean | null
+          raw_payload?: Json | null
+          session_id?: string | null
+          session_summary?: string | null
+          severity?: string | null
+          symptom_summary?: string | null
+          system_type?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cost_estimate_max?: number | null
+          cost_estimate_min?: number | null
+          created_at?: string | null
+          diy_flag?: boolean | null
+          home_id?: string | null
+          id?: string
+          intent_category?: string
+          lead_value_score?: number | null
+          platform?: string
+          pro_flag?: boolean | null
+          raw_payload?: Json | null
+          session_id?: string | null
+          session_summary?: string | null
+          severity?: string | null
+          symptom_summary?: string | null
+          system_type?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_intent_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_intent_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "v_property_profile"
+            referencedColumns: ["property_id"]
           },
         ]
       }
@@ -4911,6 +4992,16 @@ export type Database = {
           state: string
         }
         Returns: string
+      }
+      compute_lead_value_score: {
+        Args: {
+          p_cost_max: number
+          p_home_id: string
+          p_pro_flag: boolean
+          p_severity: string
+          p_system_type: string
+        }
+        Returns: number
       }
       get_permits_by_property: {
         Args: { p_property_address: string; p_user_id: string }
