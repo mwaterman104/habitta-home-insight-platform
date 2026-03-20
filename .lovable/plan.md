@@ -1,148 +1,121 @@
 
 
-## Make Maintenance Plan System-Aware
+## ChatDIY × Habitta Integration — Habitta Side Implementation (Revised)
 
-### The Problem
-`seed-maintenance-plan` generates all seasonal templates for a climate zone without checking what systems the home actually has. Pool pump tasks appear for poolless homes. Irrigation tasks appear for homes with no sprinkler system.
+### Corrections from Review
 
-### What Data We Have (No Schema Changes Needed)
+1. **Route discrepancy fixed:** `/chatdiy` redirects to `/dashboard` (not `/`). The previous plan stated `/` — corrected.
+2. **Trigger multi-home edge case:** The `trg_link_intent_events_on_home_create` trigger will link unlinked intent events to the newly created home. If a user creates a second home, the trigger must only link events that are still `home_id IS NULL` — and it should pick the **first** home (oldest) for deterministic behavior. Adding `LIMIT 1` + `ORDER BY created_at ASC` on the home lookup, plus a comment documenting the single-home assumption.
 
-| Source | Anchored By | Useful Fields |
-|--------|------------|---------------|
-| `systems` table | `home_id` | `kind` (hvac, roof, water_heater, electrical, smart_devices) |
-| `permits` table | `home_id` | `system_tags` (text array), `description`, `trade` |
-| `habitta_home_systems` | `user_id` only (no `home_id`) | `type` -- **cannot safely use per-home** |
-| `habitta_permits` | `user_id` only (no `home_id`) | `related_system_type` -- **cannot safely use per-home** |
-| `homes` table | is the home | No pool/solar indicator stored today |
+### Step 1: Database Migration
 
-**Decision:** Only query `systems` and `permits` (both have `home_id`). Skip `habitta_home_systems` and `habitta_permits` since they lack `home_id` and would leak systems across multi-home users.
+Create table + supporting objects in a single migration:
 
-### The Fix
+**`home_intent_events` table:**
+- `id uuid PK DEFAULT gen_random_uuid()`
+- `user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`
+- `home_id uuid REFERENCES homes(id) ON DELETE SET NULL` (nullable — user may not have a home yet)
+- `platform text NOT NULL DEFAULT 'chatdiy'`
+- `session_id text`
+- `intent_category text NOT NULL` (repair, replace, upgrade, inspect, diy_project, general)
+- `system_type text` (hvac, roof, water_heater, pool, electrical, plumbing, etc.)
+- `symptom_summary text`
+- `session_summary text`
+- `diy_flag boolean DEFAULT false`
+- `pro_flag boolean DEFAULT false`
+- `severity text` (low, medium, high, urgent)
+- `cost_estimate_min numeric`
+- `cost_estimate_max numeric`
+- `lead_value_score integer DEFAULT 0`
+- `raw_payload jsonb`
+- `created_at timestamptz DEFAULT now()`
+- `updated_at timestamptz DEFAULT now()`
 
-**File:** `supabase/functions/seed-maintenance-plan/index.ts`
+**Indexes:** `user_id`, `home_id` (partial WHERE NOT NULL), `system_type` (partial), `pro_flag + lead_value_score` (partial WHERE pro_flag = true), `created_at DESC`
 
-#### 1. Add system normalization constants (top of file)
+**RLS policies:**
+- Users SELECT own rows (`auth.uid() = user_id`)
+- No user INSERT/UPDATE/DELETE (service role only via edge function)
 
-```typescript
-const SYSTEM_ALIASES: Record<string, string> = {
-  swimming_pool: "pool", inground_pool: "pool", above_ground_pool: "pool",
-  spa_pool: "spa", hot_tub: "spa", jacuzzi: "spa",
-  irrigation: "sprinkler", sprinkler_system: "sprinkler",
-  ac: "hvac", furnace: "hvac", heat_pump: "hvac", air_conditioning: "hvac",
-  water_heater: "water_heater", tankless: "water_heater", boiler: "water_heater",
-  ev_charger: "ev_charger", backup_generator: "generator",
-};
+**Add column to `home_events`:**
+- `source_platform text DEFAULT 'habitta'`
 
-function normalizeSystemType(type?: string | null): string | null {
-  if (!type) return null;
-  const t = type.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  return SYSTEM_ALIASES[t] || t;
-}
-
-const OPTIONAL_SYSTEMS = new Set([
-  "pool", "solar", "sprinkler", "spa", "generator", "septic", "well", "ev_charger",
-]);
-
-const KEYWORD_SYSTEM_MAP: Record<string, string> = {
-  pool: "pool", spa: "spa", irrigation: "sprinkler",
-  sprinkler: "sprinkler", solar: "solar", generator: "generator",
-};
+**Function: `compute_lead_value_score`**
+```sql
+CREATE OR REPLACE FUNCTION compute_lead_value_score(
+  p_pro_flag boolean, p_severity text, p_system_type text,
+  p_cost_max numeric, p_home_id uuid
+) RETURNS integer AS $$
+DECLARE score integer := 0;
+BEGIN
+  IF p_pro_flag THEN score := score + 40; END IF;
+  IF p_severity = 'urgent' THEN score := score + 20;
+  ELSIF p_severity = 'high' THEN score := score + 10; END IF;
+  IF p_system_type IN ('hvac','roof','water_heater','electrical_panel') THEN score := score + 15; END IF;
+  IF p_cost_max > 500 THEN score := score + 10; END IF;
+  IF p_home_id IS NOT NULL THEN score := score + 15; END IF;
+  RETURN LEAST(score, 100);
+END; $$ LANGUAGE plpgsql IMMUTABLE;
 ```
 
-#### 2. Build known system set after home is loaded (~line 231)
+**Trigger function: `link_intent_events_on_home_create`**
+```sql
+-- When a home is created, link any unlinked intent events for that user
+-- NOTE: Assumes single-home per user. For multi-home users,
+-- unlinked events get assigned to the FIRST home created.
+CREATE OR REPLACE FUNCTION link_intent_events_on_home_create()
+RETURNS trigger AS $$
+BEGIN
+  UPDATE home_intent_events
+  SET home_id = NEW.id, updated_at = now()
+  WHERE user_id = NEW.user_id
+    AND home_id IS NULL;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-After `console.log("Found home:", home.address);`, add:
-
-```typescript
-// Build set of systems this home actually has
-const knownSystems = new Set<string>();
-
-// Source 1: Canonical systems table (home_id anchored)
-const { data: homeSys } = await admin
-  .from("systems")
-  .select("kind")
-  .eq("home_id", homeId);
-for (const s of (homeSys || [])) {
-  const n = normalizeSystemType(s.kind);
-  if (n) knownSystems.add(n);
-}
-
-// Source 2: Permits table (home_id anchored) - check system_tags + description
-const { data: homePermits } = await admin
-  .from("permits")
-  .select("system_tags, description, trade")
-  .eq("home_id", homeId);
-for (const p of (homePermits || [])) {
-  // system_tags is a text array
-  for (const tag of (p.system_tags || [])) {
-    const n = normalizeSystemType(tag);
-    if (n) knownSystems.add(n);
-  }
-  // Also scan description for pool/solar/etc keywords
-  const desc = `${p.description || ''} ${p.trade || ''}`.toLowerCase();
-  for (const [keyword, system] of Object.entries(KEYWORD_SYSTEM_MAP)) {
-    if (desc.includes(keyword)) knownSystems.add(system);
-  }
-}
-
-console.log("Known systems for home:", [...knownSystems]);
+CREATE TRIGGER trg_link_intent_events_on_home_create
+AFTER INSERT ON homes
+FOR EACH ROW EXECUTE FUNCTION link_intent_events_on_home_create();
 ```
 
-#### 3. Filter candidates before insert (~line 307, after all candidates are pushed)
+**Updated_at trigger:** Reuse existing `update_updated_at_column()` on `home_intent_events`.
 
-Replace the direct insert flow with a filtered one:
+### Step 2: Edge Function — `receive-chatdiy-intent`
 
-```typescript
-// Filter out tasks for optional systems this home doesn't have
-function taskRequiresAbsentSystem(task: any, known: Set<string>): boolean {
-  // Check system_type field
-  const sysType = normalizeSystemType(task.system_type);
-  if (sysType && OPTIONAL_SYSTEMS.has(sysType) && !known.has(sysType)) return true;
+**File:** `supabase/functions/receive-chatdiy-intent/index.ts`
 
-  // Secondary keyword check on title + description
-  const text = `${task.title || ''} ${task.description || ''}`.toLowerCase();
-  for (const [keyword, system] of Object.entries(KEYWORD_SYSTEM_MAP)) {
-    if (text.includes(keyword) && !known.has(system)) return true;
-  }
-  return false;
-}
+- Validates `x-chatdiy-key` header against `CHATDIY_WEBHOOK_SECRET` env var
+- Service role Supabase client for all DB writes
+- Resolves `home_id`: query `homes` WHERE `user_id` = payload user_id, `ORDER BY created_at ASC LIMIT 1`
+- Calls `compute_lead_value_score` RPC
+- Inserts into `home_intent_events`
+- If `home_id` resolved AND `intent_category` IN (`repair`, `repair_replace`): also inserts into `home_events` with `source_platform = 'chatdiy'`, `event_type = 'issue_reported'`
+- Returns `{ success, intent_event_id, home_id, lead_value_score }`
+- CORS headers matching existing edge function patterns
 
-const systemFilteredCandidates = candidates.filter(
-  t => !taskRequiresAbsentSystem(t, knownSystems)
-);
+**Config:** Add to `supabase/config.toml`:
+```toml
+[functions.receive-chatdiy-intent]
+verify_jwt = false
 ```
 
-Then use `systemFilteredCandidates` instead of `candidates` for the dedup and insert logic.
+### Step 3: Secret
 
-#### 4. Update the `SeasonalTask` interface
+Add `CHATDIY_WEBHOOK_SECRET` to Supabase Edge Function secrets. Generate a random 32-char string; the same value must be stored in the ChatDIY project's environment.
 
-No change needed -- `system_type` already exists and is already set to values like `"pool"`, `"hvac"`, etc. The normalization handles the mapping.
+### What This Does NOT Touch
+- `ai-home-assistant/index.ts` (2,744 lines — no changes)
+- `AuthContext.tsx` or `UserHomeContext.tsx`
+- `src/integrations/supabase/types.ts` (auto-generated, will sync after migration)
+- Any existing migration files
+- The ChatDIY project itself
 
-### What Changes
+### Files to Create/Modify
 
-| Before | After |
-|--------|-------|
-| Every FL home gets pool pump tasks | Only homes with pool in `systems` or `permits` |
-| "Irrigation & pool check" appears everywhere in moderate zone | Filtered if no pool or sprinkler detected |
-| No system awareness at all | Queries `systems` + `permits` by `home_id` |
-| HVAC assumed for all | HVAC tasks still included (not in `OPTIONAL_SYSTEMS`) but the system is extensible |
-
-### What Does NOT Change
-- No database schema changes
-- No new tables or columns  
-- No frontend changes
-- Existing tasks already in DB are untouched
-- Templates themselves remain the same (filtered at generation time)
-- `habitta_home_systems` and `habitta_permits` deliberately excluded (no `home_id`)
-
-### Edge Cases Handled
-- Home with no systems recorded at all: all universal tasks still generated, only optional-system tasks filtered
-- Permit description mentions "pool" but no formal system record: keyword scan catches it, pool tasks included
-- Multi-home user: all queries anchored to `home_id`, no cross-home leakage
-
-### Files to Modify
-
-| File | Change |
+| File | Action |
 |------|--------|
-| `supabase/functions/seed-maintenance-plan/index.ts` | Add normalization constants, query systems/permits, filter candidates |
+| Database migration | Create `home_intent_events`, indexes, RLS, `compute_lead_value_score`, trigger, `source_platform` column on `home_events` |
+| `supabase/functions/receive-chatdiy-intent/index.ts` | New edge function |
+| `supabase/config.toml` | Add `receive-chatdiy-intent` entry |
+| Supabase secrets | Add `CHATDIY_WEBHOOK_SECRET` |
 
