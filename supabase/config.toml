@@ -76,3 +76,6 @@ verify_jwt = false
 
 [functions.waitlist-welcome]
 verify_jwt = false
+
+[functions.receive-chatdiy-intent]
+verify_jwt = false
