@@ -22,12 +22,15 @@
  * - ChatConsole (the entire column)
  */
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChatConsole } from "./ChatConsole";
 import { StateOfHomeReport } from "./StateOfHomeReport";
 import { HomeProfileRecordBar, type StrengthLevel } from "@/components/home-profile/HomeProfileRecordBar";
+import { ChatDIYIntentCard } from "./ChatDIYIntentCard";
 import { type BaselineSystem } from "./BaselineSurface";
 import { useEngagementCadence } from "@/hooks/useEngagementCadence";
+import { useHomeIntentEvents } from "@/hooks/useHomeIntentEvents";
 import { track } from "@/lib/analytics";
 import { PLANNING_MONTHS, BASELINE_INCOMPLETE_CONFIDENCE, type SystemState } from "@/types/systemState";
 import type { SystemPrediction, HomeForecast } from "@/types/systemPrediction";
@@ -119,8 +122,25 @@ export function MiddleColumn({
   nextGain,
   lastTouchAt,
 }: MiddleColumnProps) {
+  const navigate = useNavigate();
+
   // Engagement cadence hook - only for annual interrupt
   const { annualCard, dismissAnnual } = useEngagementCadence(propertyId);
+
+  // ChatDIY intent events — surface cross-product signals
+  const { events: intentEvents, hasRecentEvents } = useHomeIntentEvents(propertyId);
+  const [dismissedIntentIds, setDismissedIntentIds] = useState<Set<string>>(new Set());
+
+  const visibleIntentEvents = intentEvents.filter(e => !dismissedIntentIds.has(e.id));
+  const showIntentCard = hasRecentEvents && visibleIntentEvents.length > 0;
+
+  const handleIntentDismiss = useCallback((eventId: string) => {
+    setDismissedIntentIds(prev => new Set([...prev, eventId]));
+  }, []);
+
+  const handleIntentViewSystem = useCallback((systemKey: string) => {
+    navigate(`/system/${systemKey}`);
+  }, [navigate]);
 
   // ============================================
   // Derive Baseline Systems from Authority Sources
@@ -387,9 +407,20 @@ export function MiddleColumn({
       {/* Annual State of Home - ONLY interrupt allowed */}
       {annualCard && (
         <div className="mb-4 shrink-0">
-          <StateOfHomeReport 
-            data={annualCard} 
-            onDismiss={dismissAnnual} 
+          <StateOfHomeReport
+            data={annualCard}
+            onDismiss={dismissAnnual}
+          />
+        </div>
+      )}
+
+      {/* ChatDIY intent events — cross-product signal surface */}
+      {showIntentCard && (
+        <div className="shrink-0">
+          <ChatDIYIntentCard
+            events={visibleIntentEvents}
+            onDismiss={handleIntentDismiss}
+            onViewSystem={handleIntentViewSystem}
           />
         </div>
       )}

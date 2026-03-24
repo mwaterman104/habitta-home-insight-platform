@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUserHome } from "@/contexts/UserHomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,13 +43,12 @@ export default function MaintenancePage() {
 }
 
 function MaintenancePageContent() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { openChat } = useChatContext();
+  const { userHome } = useUserHome();
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
-  const [userHome, setUserHome] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generateTimeout, setGenerateTimeout] = useState(false);
@@ -58,21 +57,6 @@ function MaintenancePageContent() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterSystem, setFilterSystem] = useState("all");
-
-  // Fetch user's home
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const { data } = await supabase
-        .from("homes")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (data) setUserHome(data);
-    })();
-  }, [user]);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {

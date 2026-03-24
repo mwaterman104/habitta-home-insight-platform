@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUserHome } from "@/contexts/UserHomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SystemDetailView } from "@/components/SystemDetailView";
@@ -11,16 +11,6 @@ import type { SystemPrediction } from "@/types/systemPrediction";
 import { useToast } from "@/hooks/use-toast";
 import { isValidSystemKey } from "@/lib/systemMeta";
 import { DashboardV3Layout } from "@/layouts/DashboardV3Layout";
-
-interface UserHome {
-  id: string;
-  address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  property_id?: string;
-  year_built?: number;
-}
 
 /**
  * SystemPage - Route-based system detail view
@@ -40,16 +30,15 @@ export default function SystemPage() {
   const params = useParams<{ systemKey?: string; systemSlug?: string }>();
   const systemKey = params.systemKey || params.systemSlug;
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { userHome } = useUserHome();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Check if this is an appliance UUID vs a system key
   // UUIDs are 36 chars with dashes (e.g., "550e8400-e29b-41d4-a716-446655440000")
   const isApplianceId = systemKey?.length === 36 && systemKey.includes('-');
-  
+
   const [loading, setLoading] = useState(true);
-  const [userHome, setUserHome] = useState<UserHome | null>(null);
   const [prediction, setPrediction] = useState<SystemPrediction | null>(null);
   
   // Fetch appliance data if UUID
@@ -93,30 +82,6 @@ export default function SystemPage() {
     // Only run if appliance query finished and returned nothing
     enabled: !!isApplianceId && !!systemKey && !isApplianceLoading && !applianceData,
   });
-
-  // Fetch user home first
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchUserHome = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('homes')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) throw error;
-        setUserHome(data);
-      } catch (error) {
-        console.error('Error fetching user home:', error);
-      }
-    };
-
-    fetchUserHome();
-  }, [user]);
 
   // Fetch system prediction when home is available (only for structural systems)
   useEffect(() => {

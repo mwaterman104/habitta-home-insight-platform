@@ -2,9 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserHome } from "@/contexts/UserHomeContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Home, Plus } from "lucide-react";
+import { useMaintenanceAlerts } from "@/hooks/useMaintenanceAlerts";
 import { useUpcomingTasks } from "@/hooks/useUpcomingTasks";
 import { useSmartyPropertyData } from "@/hooks/useSmartyPropertyData";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
@@ -42,22 +44,6 @@ import { MobileSystemDrawer } from "@/components/mobile";
 import type { BaselineSystem } from "@/components/dashboard-v3/BaselineSurface";
 // ChatDock is now rendered inside MiddleColumn, not here
 
-interface UserHome {
-  id: string;
-  address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  property_id?: string;
-  latitude?: number;
-  longitude?: number;
-  user_id: string;
-  pulse_status?: string;
-  confidence?: number;
-  year_built?: number;
-  created_at?: string;
-}
-
 /**
  * DashboardV3 - Three-Column Intelligent Home Platform
  * 
@@ -75,13 +61,16 @@ export default function DashboardV3() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  
+
+  // Home data from shared context — single fetch, shared across all pages
+  const { userHome, loading, refreshHome, updateHome } = useUserHome();
+
   // JavaScript-based xl breakpoint detection for deterministic conditional rendering
   const [isXlScreen, setIsXlScreen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth >= 1280;
   });
-  
+
   useEffect(() => {
     const handleResize = () => {
       setIsXlScreen(window.innerWidth >= 1280);
@@ -89,9 +78,6 @@ export default function DashboardV3() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
-  const [loading, setLoading] = useState(true);
-  const [userHome, setUserHome] = useState<UserHome | null>(null);
   
   // Mobile chat intent (for navigation to /chat)
   const [mobileChatIntent, setMobileChatIntent] = useState<MobileChatIntent | null>(null);
@@ -185,39 +171,13 @@ export default function DashboardV3() {
     queryClient.invalidateQueries({ queryKey: ['capital-timeline'] });
   }, [refetchSystems, refetchConfidence, queryClient]);
 
-  // Fetch user home - extracted as callback for reuse
-  const fetchUserHome = useCallback(async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('homes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) setUserHome(data);
-    } catch (error) {
-      console.error('Error fetching user home:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchUserHome();
-  }, [fetchUserHome]);
-
   // Backfill coordinates if missing (fire-and-forget, silent failure)
   useEffect(() => {
     if (!userHome?.id) return;
     if (userHome.latitude != null && userHome.longitude != null) return; // Already has coords
 
     console.log('[DashboardV3] Triggering coordinate backfill for home:', userHome.id);
-    
+
     supabase.functions.invoke('backfill-home-coordinates', {
       body: { home_id: userHome.id }
     }).then(({ data, error }) => {
@@ -226,14 +186,15 @@ export default function DashboardV3() {
         return;
       }
       if (data?.status === 'success' && data?.geo) {
-        console.log('[DashboardV3] Coordinates backfilled, refreshing home data');
-        fetchUserHome();
+        console.log('[DashboardV3] Coordinates backfilled, updating home data');
+        // Optimistically update context with new coordinates
+        updateHome({ latitude: data.geo.latitude, longitude: data.geo.longitude });
       }
     }).catch((err) => {
       console.error('[DashboardV3] Coordinate backfill error:', err);
-      // Silent failure - map shows fallback, no error banner
+      // Silent failure — map shows fallback, no error banner
     });
-  }, [userHome?.id, userHome?.latitude, userHome?.longitude, fetchUserHome]);
+  }, [userHome?.id, userHome?.latitude, userHome?.longitude, updateHome]);
 
   // Fetch predictions when home is available
   useEffect(() => {
@@ -431,17 +392,20 @@ export default function DashboardV3() {
     }
   };
 
+  // Maintenance alerts for notification bell
+  const { alerts: maintenanceAlerts, totalCount: alertCount } = useMaintenanceAlerts(userHome?.id);
+
   // Handle task completion with risk delta capture
   const handleTaskComplete = useCallback(async (taskId: string) => {
     if (!userHome?.id) return;
-    
+
     try {
-      // Update task status in database
+      // Update task status in canonical maintenance_tasks table
       const { error } = await supabase
-        .from('habitta_maintenance_tasks')
-        .update({ 
-          completed: true,
-          completed_at: new Date().toISOString()
+        .from('maintenance_tasks')
+        .update({
+          status: 'completed',
+          completed_date: new Date().toISOString().slice(0, 10),
         })
         .eq('id', taskId);
       
@@ -561,7 +525,7 @@ export default function DashboardV3() {
     
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        <TopHeader 
+        <TopHeader
           address={fullAddress}
           healthStatus={getHealthStatus()}
           onAddressClick={handleAddressClick}
@@ -574,6 +538,8 @@ export default function DashboardV3() {
             });
           }}
           filterActive={systemFilter === 'attention'}
+          alertCount={alertCount}
+          alerts={maintenanceAlerts}
           condensed
         />
         
@@ -646,6 +612,8 @@ export default function DashboardV3() {
         baselineSystems={baselineSystems}
         homeConfidence={homeConfidence}
         lastTouchAt={lastTouchAt}
+        alertCount={alertCount}
+        maintenanceAlerts={maintenanceAlerts}
       />
     </FocusStateProvider>
   );
@@ -689,6 +657,8 @@ function DesktopLayout({
   baselineSystems,
   homeConfidence,
   lastTouchAt,
+  alertCount = 0,
+  maintenanceAlerts = [],
 }: any) {
   const { setFocus } = useFocusState();
 
@@ -711,10 +681,12 @@ function DesktopLayout({
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <TopHeader 
+      <TopHeader
         address={fullAddress}
         healthStatus={getHealthStatus()}
         onAddressClick={handleAddressClick}
+        alertCount={alertCount}
+        alerts={maintenanceAlerts}
       />
       
       <div className="flex flex-1 min-h-0 overflow-hidden">

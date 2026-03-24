@@ -12,12 +12,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import type { AlertItem } from "@/hooks/useMaintenanceAlerts";
 
 interface TopHeaderProps {
   address: string;
   healthStatus: 'healthy' | 'attention' | 'critical';
   onAddressClick?: () => void;
-  
+
+  /** Maintenance alert count for notification badge */
+  alertCount?: number;
+  /** Maintenance alert items for notification dropdown */
+  alerts?: AlertItem[];
+
   /** Mobile condensed mode: smaller height, tighter truncation, hide date */
   condensed?: boolean;
   /** Callback for hamburger menu tap (mobile only) */
@@ -30,15 +36,16 @@ interface TopHeaderProps {
 
 /**
  * TopHeader - Property selector + health status + notifications + profile
- * 
+ *
  * Displays the current property with a health badge.
  * Includes full auth controls since Dashboard V3 is a standalone layout.
  */
-export function TopHeader({ 
-  address, 
-  healthStatus, 
+export function TopHeader({
+  address,
+  healthStatus,
   onAddressClick,
-  
+  alertCount = 0,
+  alerts = [],
   condensed = false,
   onMenuOpen,
   onHealthBadgeClick,
@@ -53,7 +60,7 @@ export function TopHeader({
   };
 
   const activeRing = filterActive ? ' ring-2 ring-[hsl(var(--habitta-slate)/0.4)]' : '';
-  
+
   const getStatusBadge = () => {
     const badge = (() => {
       switch (healthStatus) {
@@ -65,7 +72,7 @@ export function TopHeader({
           return <Badge variant="outline" className={`text-red-600 border-red-200 bg-red-50${activeRing}`}>critical</Badge>;
       }
     })();
-    
+
     if (onHealthBadgeClick) {
       return (
         <button onClick={onHealthBadgeClick} className="focus:outline-none">
@@ -76,12 +83,33 @@ export function TopHeader({
     return badge;
   };
 
-  const currentDate = new Date().toLocaleDateString('en-US', { 
+  const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
-    month: 'long', 
+    month: 'long',
     day: 'numeric',
-    year: 'numeric' 
+    year: 'numeric',
   });
+
+  const formatDueDate = (dueDateStr: string): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDateStr);
+    due.setHours(0, 0, 0, 0);
+
+    if (due < today) return 'Overdue';
+
+    return 'Due ' + due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const isOverdue = (dueDateStr: string): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDateStr);
+    due.setHours(0, 0, 0, 0);
+    return due < today;
+  };
+
+  const badgeLabel = alertCount > 9 ? '9+' : alertCount > 0 ? String(alertCount) : null;
 
   return (
     <header className={`border-b flex items-center justify-between shrink-0 ${
@@ -91,21 +119,21 @@ export function TopHeader({
       <div className={`flex items-center ${condensed ? 'gap-2' : 'gap-4'}`}>
         {/* Hamburger menu for mobile */}
         {condensed && onMenuOpen && (
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onMenuOpen}
             className="h-8 w-8"
           >
             <Menu className="h-5 w-5" />
           </Button>
         )}
-        
+
         <span className={`font-serif font-semibold text-primary ${condensed ? 'text-lg' : 'text-xl'}`}>
           Habitta
         </span>
-        
-        <button 
+
+        <button
           onClick={onAddressClick}
           className="flex items-center gap-2 hover:bg-muted/50 rounded-lg px-2 py-1.5 transition-colors"
         >
@@ -138,17 +166,55 @@ export function TopHeader({
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
+              {alertCount >= 4 && badgeLabel && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                  {badgeLabel}
+                </span>
+              )}
+              {alertCount > 0 && alertCount < 4 && (
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <div className="px-2 py-6 text-center">
-              <p className="text-sm text-muted-foreground">No notifications yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">Habitta will notify you when something needs attention.</p>
-            </div>
+            {alerts.length > 0 ? (
+              <div className="max-h-72 overflow-y-auto">
+                {alerts.map(alert => {
+                  const overdue = isOverdue(alert.due_date);
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`px-3 py-2.5 border-b border-border/40 last:border-b-0 ${
+                        overdue ? 'border-l-2 border-l-amber-400 pl-2.5' : ''
+                      }`}
+                    >
+                      <p className="text-sm font-medium text-foreground leading-tight">
+                        {alert.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-xs ${overdue ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                          {formatDueDate(alert.due_date)}
+                        </span>
+                        {alert.system_type && (
+                          <span className="text-xs text-muted-foreground">
+                            · {alert.system_type.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="px-2 py-6 text-center">
+                <p className="text-sm text-muted-foreground">No notifications yet.</p>
+                <p className="text-xs text-muted-foreground mt-1">Habitta will notify you when something needs attention.</p>
+              </div>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCapitalTimeline } from "@/hooks/useCapitalTimeline";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUserHome } from "@/contexts/UserHomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,25 +66,11 @@ const SYSTEM_DISPLAY: Record<string, { name: string; icon: string }> = {
  */
 export default function SystemsHub() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showTeachModal, setShowTeachModal] = useState(false);
-  
-  // Fetch user's home
-  const { data: userHome } = useQuery({
-    queryKey: ['user-home', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data, error } = await supabase
-        .from('homes')
-        .select('id, address, property_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+
+  // Home data from shared context
+  const { userHome } = useUserHome();
 
   // Fetch capital timeline for structural system data
   const { timeline: capitalTimeline, loading: isSystemsLoading } = useCapitalTimeline({ 

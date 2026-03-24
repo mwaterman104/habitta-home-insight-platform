@@ -10,136 +10,98 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// Create Supabase client with service role for full access
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Scheduled job for nightly intelligence updates
 async function runNightlyUpdate() {
   console.log('Starting nightly intelligence update...');
-  
+
   try {
-    // Get all properties that need updates
-    const { data: properties, error } = await supabase
-      .from('properties')
-      .select('id');
-    
+    // Query the correct `homes` table, filter to live homes only
+    const { data: homes, error } = await supabase
+      .from('homes')
+      .select('id')
+      .eq('pulse_status', 'live')
+      .limit(100);
+
     if (error) {
-      console.error('Error fetching properties:', error);
+      console.error('Error fetching homes:', error);
       return { error: error.message };
     }
-    
+
     let updateCount = 0;
     let errorCount = 0;
-    
-    // Update predictions for each property
-    for (const property of properties || []) {
+
+    for (const home of homes || []) {
       try {
         const { error: updateError } = await supabase.functions.invoke('intelligence-engine', {
-          body: { action: 'predictions', property_id: property.id }
+          body: { action: 'predictions', home_id: home.id }
         });
-        
+
         if (updateError) {
-          console.error(`Error updating property ${property.id}:`, updateError);
+          console.error(`Error updating home ${home.id}:`, updateError);
           errorCount++;
         } else {
           updateCount++;
         }
-        
+
         // Small delay to avoid overwhelming the system
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
       } catch (err) {
-        console.error(`Unexpected error updating property ${property.id}:`, err);
+        console.error(`Unexpected error updating home ${home.id}:`, err);
         errorCount++;
       }
     }
-    
+
     console.log(`Nightly update complete: ${updateCount} updated, ${errorCount} errors`);
-    
+
     return {
       success: true,
       updated: updateCount,
       errors: errorCount,
-      message: `Updated ${updateCount} properties with ${errorCount} errors`
+      message: `Updated ${updateCount} homes with ${errorCount} errors`,
     };
-    
+
   } catch (err) {
     console.error('Nightly update failed:', err);
     return { error: 'Nightly update failed', details: err.message };
   }
 }
 
-// Weather alert monitoring
+// Weather alert monitoring — stub until NOAA integration is built
 async function checkWeatherAlerts() {
-  console.log('Checking weather alerts...');
-  
-  try {
-    // In a production system, this would integrate with NOAA API
-    // For now, we'll check for any existing weather alerts
-    const { data: alerts, error } = await supabase
-      .from('weather_alerts')
-      .select('*')
-      .eq('is_active', true);
-    
-    if (error) {
-      console.error('Error fetching weather alerts:', error);
-      return { error: error.message };
-    }
-    
-    console.log(`Found ${alerts?.length || 0} active weather alerts`);
-    
-    // Process each alert and generate relevant tasks
-    for (const alert of alerts || []) {
-      // Generate weather-triggered maintenance tasks
-      // This would typically create entries in maintenance_tasks table
-      console.log(`Processing alert: ${alert.title}`);
-    }
-    
-    return {
-      success: true,
-      alertsProcessed: alerts?.length || 0
-    };
-    
-  } catch (err) {
-    console.error('Weather alert check failed:', err);
-    return { error: 'Weather alert check failed', details: err.message };
-  }
+  console.log('Weather alert check called (not yet implemented)');
+  return { success: true, message: 'Weather alerts not yet implemented' };
 }
 
-// Permit monitoring for system updates
+// Permit monitoring — permit enrichment is handled by the permit-enrichment function
 async function checkPermitUpdates() {
-  console.log('Checking for new permit data...');
-  
+  console.log('Permit update check called');
+
   try {
-    // Check for permits added in the last 24 hours
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    const { data: recentPermits, error } = await supabase
-      .from('permits')
-      .select('*')
-      .gte('created_at', yesterday.toISOString());
-    
+
+    // Check for homes with recent permit enrichment activity
+    const { data: recentHomes, error } = await supabase
+      .from('homes')
+      .select('id')
+      .gte('updated_at', yesterday.toISOString())
+      .limit(50);
+
     if (error) {
-      console.error('Error fetching recent permits:', error);
+      console.error('Error fetching recently updated homes:', error);
       return { error: error.message };
     }
-    
-    console.log(`Found ${recentPermits?.length || 0} new permits`);
-    
-    // Update system lifecycles based on new permits
-    for (const permit of recentPermits || []) {
-      if (permit.is_energy_related || permit.system_tags?.length > 0) {
-        // Update system lifecycle predictions based on new permit data
-        console.log(`Processing permit: ${permit.permit_number} for system updates`);
-      }
-    }
-    
+
+    console.log(`Found ${recentHomes?.length || 0} recently updated homes`);
+
     return {
       success: true,
-      permitsProcessed: recentPermits?.length || 0
+      homesChecked: recentHomes?.length || 0,
     };
-    
+
   } catch (err) {
     console.error('Permit update check failed:', err);
     return { error: 'Permit update check failed', details: err.message };
@@ -173,18 +135,18 @@ serve(async (req) => {
         result = await checkPermitUpdates();
         break;
 
-      case 'all':
-        // Run all jobs
+      case 'all': {
         const nightlyResult = await runNightlyUpdate();
         const weatherResult = await checkWeatherAlerts();
         const permitsResult = await checkPermitUpdates();
-        
+
         result = {
           nightly: nightlyResult,
           weather: weatherResult,
-          permits: permitsResult
+          permits: permitsResult,
         };
         break;
+      }
 
       default:
         throw new Error(`Unknown job type: ${jobType}`);
@@ -194,7 +156,7 @@ serve(async (req) => {
       success: true,
       job: jobType,
       timestamp: new Date().toISOString(),
-      result
+      result,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -202,11 +164,11 @@ serve(async (req) => {
   } catch (error) {
     console.error('Intelligence Scheduler error:', error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error.message,
         job: 'unknown',
-        timestamp: new Date().toISOString()
-      }), 
+        timestamp: new Date().toISOString(),
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
