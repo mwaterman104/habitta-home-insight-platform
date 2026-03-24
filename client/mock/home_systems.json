@@ -1,0 +1,50 @@
+[
+  {
+    "key": "hvac",
+    "currentScore": 85,
+    "nextMaintenance": "2025-11-15",
+    "efficiency": "Above Average",
+    "lastService": "2025-03-20",
+    "status": "green"
+  },
+  {
+    "key": "roof",
+    "currentScore": 92,
+    "nextInspection": "2026-04-01",
+    "condition": "Excellent",
+    "lastMaintenance": "2024-09-10",
+    "status": "green"
+  },
+  {
+    "key": "plumbing",
+    "currentScore": 78,
+    "nextService": "2025-10-30",
+    "efficiency": "Good",
+    "riskFactors": ["aging pipes"],
+    "status": "yellow"
+  },
+  {
+    "key": "electrical",
+    "currentScore": 88,
+    "nextInspection": "2026-01-15",
+    "condition": "Very Good",
+    "lastService": "2024-08-12",
+    "status": "green"
+  },
+  {
+    "key": "water",
+    "currentScore": 82,
+    "nextService": "2025-09-20",
+    "efficiency": "Good",
+    "lastMaintenance": "2024-12-01",
+    "status": "green"
+  },
+  {
+    "key": "appliances",
+    "currentScore": 90,
+    "nextMaintenance": "2025-06-10",
+    "efficiency": "Excellent",
+    "lastService": "2024-11-15",
+    "status": "green"
+  }
+]

@@ -1,0 +1,254 @@
+/* Habitta Typography System V1 - IBM Plex Sans (functional) + IBM Plex Serif (emphasis) */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3D Transform utilities for flip animations */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+@layer base {
+  :root {
+    /* Habitta Brand Colors */
+    --habitta-green: 171 60% 11%; /* #0C3629 */
+    --habitta-yellow: 45 100% 63%; /* #FFC940 */
+    --habitta-cream: 45 33% 97%; /* #F7F6F2 */
+    
+    /* Color Palette - using brand colors */
+    --background: 45 33% 97%; /* Cream background */
+    --foreground: 171 60% 11%; /* Dark green text */
+    
+    --card: 0 0% 100%;
+    --card-foreground: 171 60% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 171 60% 11%;
+    
+    --primary: 171 60% 11%; /* Habitta green */
+    --primary-foreground: 45 33% 97%; /* Cream text on green */
+    
+    --secondary: 171 20% 95%;
+    --secondary-foreground: 171 60% 11%;
+    
+    --muted: 171 20% 95%;
+    --muted-foreground: 171 25% 40%;
+    
+    --accent: 45 100% 63%; /* Habitta yellow */
+    --accent-foreground: 171 60% 11%; /* Dark green text on yellow */
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 171 20% 90%;
+    --input: 171 20% 90%;
+    --ring: 171 60% 11%;
+    
+    --radius: 0.75rem;
+    
+    /* Warning */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    /* Danger */
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 98%;
+    
+    /* Sidebar colors */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 171 60% 11%;
+    --sidebar-primary: 171 60% 11%;
+    --sidebar-primary-foreground: 45 33% 97%;
+    --sidebar-accent: 171 20% 95%;
+    --sidebar-accent-foreground: 171 60% 11%;
+    --sidebar-border: 171 20% 90%;
+    --sidebar-ring: 171 60% 11%;
+  }
+
+  .dark {
+    /* Dark mode colors */
+    --background: 215 28% 8%;
+    --foreground: 215 16% 90%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 16% 65%;
+    --card: 215 30% 12%;
+    --card-foreground: 215 16% 90%;
+    --popover: 215 30% 12%;
+    --popover-foreground: 215 16% 90%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+
+    /* Dark sidebar colors */
+    --sidebar-background: 215 30% 12%;
+    --sidebar-foreground: 215 16% 65%;
+    --sidebar-accent: 215 28% 17%;
+    --sidebar-accent-foreground: 215 16% 90%;
+    --sidebar-border: 215 28% 17%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.9375rem; /* 15px - Primary Body */
+    line-height: 1.47; /* ~22px */
+  }
+}
+
+@layer utilities {
+  /* ===== HABITTA TYPOGRAPHY SYSTEM V1 ===== */
+  
+  /* Serif headers - use sparingly for "meaning + emphasis" */
+  .heading-h1 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.75rem; /* 28px */
+    line-height: 2.25rem; /* 36px */
+    font-weight: 600;
+  }
+  
+  .heading-h2 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.375rem; /* 22px */
+    line-height: 1.875rem; /* 30px */
+    font-weight: 500;
+  }
+  
+  .heading-h3 {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.625rem; /* 26px */
+    font-weight: 500;
+  }
+  
+  /* System names - serif emphasis for HVAC, Roof, Water Heater, etc. */
+  .system-name {
+    font-family: 'IBM Plex Serif', serif;
+    font-weight: 500;
+  }
+  
+  /* Label/control text - with letter-spacing for tabs, buttons, UI controls */
+  .text-label {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 1rem; /* 16px */
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+  
+  /* KPI numbers - tabular for alignment, semibold for emphasis */
+  .text-kpi {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .text-kpi-lg {
+    font-size: 1.5rem; /* 24px */
+    line-height: 1.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Touch-friendly styles for mobile */
+  @media (max-width: 768px) {
+    /* Mobile type scale - reduce by ~12-15%, min 14px body */
+    body {
+      font-size: 0.875rem; /* 14px min body */
+      line-height: 1.5;
+    }
+    
+    .heading-h1 {
+      font-size: 1.5rem; /* 24px */
+      line-height: 2rem;
+    }
+    
+    .heading-h2 {
+      font-size: 1.25rem; /* 20px */
+      line-height: 1.75rem;
+    }
+    
+    .heading-h3 {
+      font-size: 1rem; /* 16px */
+      line-height: 1.5rem;
+    }
+    
+    .touch-friendly {
+      min-height: 44px;
+      touch-action: manipulation;
+    }
+    
+    /* Improve tap targets on mobile */
+    button, 
+    [role="button"], 
+    input[type="button"], 
+    input[type="submit"], 
+    .clickable {
+      min-height: 44px;
+      min-width: 44px;
+      touch-action: manipulation;
+    }
+    
+    /* Improved spacing for mobile */
+    .mobile-spacing-y > * + * {
+      margin-top: 0.75rem;
+    }
+    
+    .mobile-spacing-x > * + * {
+      margin-left: 0.75rem;
+    }
+  }
+
+  /* Responsive text utilities - legacy, use heading-* classes instead */
+  .text-responsive-xs { font-size: 0.75rem; }
+  .text-responsive-sm { font-size: 0.875rem; }
+  .text-responsive-base { font-size: 0.9375rem; }
+  .text-responsive-lg { font-size: 1.125rem; }
+  .text-responsive-xl { font-size: 1.25rem; }
+  
+  /* Hero text shadow for video readability */
+  .hero-text-shadow {
+    text-shadow: 0 2px 12px hsl(var(--primary) / 0.25), 0 1px 4px hsl(0 0% 0% / 0.1);
+  }
+
+  /* Mobile-first animation performance */
+  @media (max-width: 768px) {
+    .animate-fade-in,
+    .animate-scale-in {
+      transform: translateZ(0); /* Force hardware acceleration */
+    }
+  }
+}
+
+/* Animated gradient fallback for hero video */
+@keyframes hero-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.hero-gradient-fallback {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary) / 0.15) 0%,
+    hsl(var(--accent) / 0.1) 25%,
+    hsl(var(--background)) 50%,
+    hsl(var(--primary) / 0.08) 75%,
+    hsl(var(--accent) / 0.12) 100%
+  );
+  background-size: 400% 400%;
+  animation: hero-gradient-shift 20s ease infinite;
+}

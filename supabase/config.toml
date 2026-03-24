@@ -1,0 +1,81 @@
+project_id = "vbcsuoubxyhjhxcgrqco"
+
+# Internal enrichment pipeline functions (verify_jwt = false, protected by x-internal-secret header)
+[functions.property-enrichment]
+verify_jwt = false
+
+[functions.permit-enrichment]
+verify_jwt = false
+
+[functions.intelligence-engine]
+verify_jwt = false
+
+[functions.shovels-permits]
+verify_jwt = false
+
+[functions.attom-property]
+verify_jwt = false
+
+[functions.smarty-proxy]
+verify_jwt = false
+
+[functions.seed-maintenance-plan]
+verify_jwt = false
+
+[functions.capital-timeline]
+verify_jwt = false
+
+[functions.backfill-home-coordinates]
+verify_jwt = false
+
+# User-facing functions (verify_jwt = true or handled in code)
+[functions.admin-users]
+verify_jwt = true
+
+[functions.create-home]
+verify_jwt = true
+
+# Public functions (no JWT required)
+[functions.smarty-autocomplete]
+verify_jwt = false
+
+[functions.solar-imagery-proxy]
+verify_jwt = false
+
+[functions.google-places-autocomplete]
+verify_jwt = false
+
+[functions.google-places-details]
+verify_jwt = false
+
+[functions.google-static-map]
+verify_jwt = false
+
+# Other functions
+[functions.google-weather-insights]
+verify_jwt = true
+
+[functions.google-solar-analysis]
+verify_jwt = true
+
+[functions.enrich-property]
+verify_jwt = true
+
+[functions.update-system-install]
+verify_jwt = false
+
+[functions.ai-home-assistant]
+verify_jwt = false
+
+# Photo transfer session for QR code flow (auth handled in code)
+[functions.photo-transfer-session]
+verify_jwt = false
+
+[functions.maintenance-alerts]
+verify_jwt = false
+
+[functions.waitlist-welcome]
+verify_jwt = false
+
+[functions.receive-chatdiy-intent]
+verify_jwt = false

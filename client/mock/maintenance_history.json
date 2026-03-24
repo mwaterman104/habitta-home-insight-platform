@@ -1,0 +1,68 @@
+[
+  {
+    "id": "hist-1",
+    "date": "2024-11-15",
+    "title": "Gutter cleaning and inspection",
+    "category": "Exterior",
+    "impact": {
+      "condition": 2,
+      "value": 350
+    },
+    "notes": "Removed leaves and debris, fixed loose bracket"
+  },
+  {
+    "id": "hist-2", 
+    "date": "2024-10-22",
+    "title": "HVAC filter replacement",
+    "category": "HVAC",
+    "impact": {
+      "condition": 1,
+      "value": 200
+    },
+    "notes": "Replaced with MERV 11 filter, improved air quality"
+  },
+  {
+    "id": "hist-3",
+    "date": "2024-09-30",
+    "title": "Smoke detector battery replacement",
+    "category": "Safety",
+    "impact": {
+      "condition": 1,
+      "value": 100
+    },
+    "notes": "Replaced batteries in all 6 detectors"
+  },
+  {
+    "id": "hist-4",
+    "date": "2024-08-18",
+    "title": "Water heater flush and inspection",
+    "category": "Plumbing",
+    "impact": {
+      "condition": 3,
+      "value": 500
+    },
+    "notes": "Flushed sediment, replaced anode rod, extended lifespan"
+  },
+  {
+    "id": "hist-5",
+    "date": "2024-07-25",
+    "title": "Exterior paint touch-up",
+    "category": "Exterior",
+    "impact": {
+      "condition": 2,
+      "value": 800
+    },
+    "notes": "Touched up south-facing wall, prevents wood damage"
+  },
+  {
+    "id": "hist-6",
+    "date": "2024-06-12",
+    "title": "AC system tune-up",
+    "category": "HVAC",
+    "impact": {
+      "condition": 2,
+      "value": 400
+    },
+    "notes": "Cleaned coils, checked refrigerant, improved efficiency"
+  }
+]

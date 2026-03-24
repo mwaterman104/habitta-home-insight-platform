@@ -1,0 +1,15 @@
+{
+  "condition_label": "Good",
+  "condition_score": 82,
+  "condition_trend": "stable",
+  "home_value": 650000,
+  "value_change_1year": 24000,
+  "value_change_percent": 3.8,
+  "last_updated": "2024-12-15",
+  "metrics": {
+    "maintenance_completion_rate": 89,
+    "preventive_maintenance_score": 85,
+    "energy_efficiency_rating": "B+",
+    "safety_compliance": 95
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "baseline_monthly_cost": 150,
+  "global_multiplier": 0.08,
+  "by_category": {
+    "HVAC": {
+      "monthly_multiplier": 0.12,
+      "description": "Delayed HVAC maintenance can lead to system failure and expensive emergency repairs"
+    },
+    "Plumbing": {
+      "monthly_multiplier": 0.15,
+      "description": "Water damage from leaks can escalate quickly and affect multiple systems"
+    },
+    "Exterior": {
+      "monthly_multiplier": 0.06,
+      "description": "Weather exposure compounds over time, leading to structural issues"
+    },
+    "Safety": {
+      "monthly_multiplier": 0.03,
+      "description": "Safety issues can lead to liability and insurance complications"
+    },
+    "Electrical": {
+      "monthly_multiplier": 0.10,
+      "description": "Electrical issues pose fire risks and can damage expensive appliances"
+    }
+  },
+  "scenarios": [
+    {
+      "months_delayed": 0,
+      "multiplier": 1.0,
+      "description": "On-time maintenance"
+    },
+    {
+      "months_delayed": 3,
+      "multiplier": 1.25,
+      "description": "Minor delay - 25% cost increase"
+    },
+    {
+      "months_delayed": 6,
+      "multiplier": 1.6,
+      "description": "Moderate delay - 60% cost increase"  
+    },
+    {
+      "months_delayed": 12,
+      "multiplier": 2.2,
+      "description": "Major delay - 120% cost increase"
+    }
+  ]
+}

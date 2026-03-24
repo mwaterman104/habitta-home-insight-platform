@@ -1,0 +1,309 @@
+{
+  "basicInfo": {
+    "yearBuilt": 1987,
+    "age": 37,
+    "squareFootage": 2100,
+    "lotSize": "0.24 acres",
+    "propertyType": "Single Family",
+    "lastMajorUpdate": "Kitchen Renovation (2019)",
+    "riskScore": "Low-Medium",
+    "ownershipHistory": [
+      {"year": 2018, "event": "Current owners purchased", "price": 485000},
+      {"year": 2019, "event": "Kitchen renovation permit", "value": 35000},
+      {"year": 2021, "event": "HVAC replacement permit", "value": 8500}
+    ]
+  },
+  "structuralAnalysis": {
+    "roofCondition": {
+      "material": "Asphalt Shingles",
+      "estimatedAge": 12,
+      "conditionScore": 78,
+      "predictedLifespan": 23,
+      "replacementTimeline": "2030-2032",
+      "confidenceScore": 87,
+      "weatherDamageRisk": "Medium",
+      "regionalBenchmark": "7 years older than TX median",
+      "neighborhoodStatus": "73% of similar homes need roof work by 2031"
+    },
+    "foundationHealth": {
+      "type": "Slab on Grade",
+      "settlementRisk": "Low",
+      "drainageGrade": "Excellent",
+      "moistureRisk": "Low",
+      "soilExpansionRisk": 15,
+      "foundationMovementPrediction": "Minimal risk next 10 years"
+    },
+    "buildingEnvelope": {
+      "exteriorMaterial": "Brick & Vinyl Siding",
+      "windowAge": "Mixed (2015-2019)",
+      "doorAge": "Original (1987)",
+      "insulationEffectiveness": "Good",
+      "airLeakageRisk": "Low-Medium"
+    }
+  },
+  "environmentalFactors": {
+    "climateImpact": {
+      "sunExposure": "Excellent - South-facing orientation",
+      "windExposure": "Protected by mature trees",
+      "microclimateBenefits": "Natural cooling from established landscape",
+      "weatherDamageCorrelation": "Below average for region"
+    },
+    "landscapeIntelligence": {
+      "treeHealth": "Excellent - Well maintained mature oaks",
+      "rootSystemRisk": "Monitor large oak near foundation",
+      "irrigationEfficiency": "Good - Drought-resistant plantings",
+      "seasonalMaintenanceNeeds": "Spring pruning, Fall leaf management"
+    },
+    "soilAndDrainage": {
+      "soilType": "Clay loam",
+      "drainageCharacteristics": "Good - Proper grading maintained",
+      "foundationStabilityFactors": "Stable - Clay well managed",
+      "waterRetention": "Appropriate for regional climate"
+    }
+  },
+  "neighborhoodContext": {
+    "maintenanceBenchmarking": {
+      "comparableHomeCycles": "Your home: 89% compliance vs neighborhood 71%",
+      "contractorAvailability": "High - 12 rated contractors within 5 miles",
+      "seasonalDemandPatterns": "Peak season: March-May, October-November",
+      "regionalRequirements": "No specific building code updates required"
+    },
+    "infrastructureIntelligence": {
+      "utilityReliability": "Above average - Recent infrastructure updates",
+      "municipalServices": "Excellent - City services within 5 minutes",
+      "developmentPatterns": "Stable neighborhood - Low turnover",
+      "valueCorrelation": "Strong correlation with maintenance quality"
+    },
+    "riskAssessment": {
+      "naturalDisasterRisk": "Low - No major historical events",
+      "crimeAndSafety": "Very Low - Well-established neighborhood",
+      "insuranceClaimFrequency": "Below average for ZIP code",
+      "emergencyServices": "Fire station 2.1 miles, Hospital 4.3 miles"
+    }
+  },
+  "predictiveModeling": {
+    "maintenanceForecasting": {
+      "next12Months": [
+        {
+          "month": "March 2025",
+          "item": "HVAC Filter Replacement",
+          "probability": 95,
+          "cost": 45,
+          "triggerFactors": ["Runtime patterns", "Air quality", "Seasonal demand"]
+        },
+        {
+          "month": "June 2025",
+          "item": "Roof Inspection",
+          "probability": 78,
+          "cost": 200,
+          "triggerFactors": ["Spring storm damage check", "Age-based timeline"]
+        },
+        {
+          "month": "September 2025",
+          "item": "Gutter Cleaning",
+          "probability": 85,
+          "cost": 150,
+          "triggerFactors": ["Fall leaves", "Drainage maintenance", "Storm prep"]
+        }
+      ],
+      "majorSystemReplacements": [
+        {
+          "system": "HVAC",
+          "currentAge": 4,
+          "predictedReplacement": "2032-2034",
+          "confidence": 82,
+          "costProjection": "$8,500-12,000",
+          "factorsConsidered": ["Usage patterns", "Efficiency decline", "Regional climate"]
+        },
+        {
+          "system": "Roof",
+          "currentAge": 12,
+          "predictedReplacement": "2030-2032",
+          "confidence": 87,
+          "costProjection": "$15,000-18,000",
+          "factorsConsidered": ["Material degradation", "Weather exposure", "Installation quality"]
+        }
+      ]
+    },
+    "financialProjections": {
+      "currentScenario": {
+        "propertyValue": 650000,
+        "deferredMaintenanceRisk": 12000,
+        "wellMaintainedPremium": 24000
+      },
+      "proactiveScenario": {
+        "year2030Value": 785000,
+        "maintenanceCost": 45000,
+        "netPosition": 740000,
+        "equityPreserved": 31000
+      },
+      "reactiveScenario": {
+        "year2030Value": 720000,
+        "emergencyRepairCost": 67000,
+        "netPosition": 653000,
+        "equityLoss": 87000
+      }
+    },
+    "lifestyleOptimization": {
+      "energyIndependence": {
+        "currentEfficiency": 87,
+        "solarReadiness": "Excellent - South-facing roof, minimal shading",
+        "evChargerCompatibility": "200amp service adequate",
+        "projectedSavings": "$2,400/year with optimization"
+      },
+      "entertainingReadiness": {
+        "outdoorSystemsHealth": 95,
+        "weatherProtection": "Excellent",
+        "seasonalOptimization": "Spring: 100% ready, Summer: 100% ready"
+      }
+    }
+  },
+  "satelliteOverlays": {
+    "roofCondition": {
+      "zones": [
+        {"area": "South-facing slope", "condition": "Good", "score": 82},
+        {"area": "North-facing slope", "condition": "Fair", "score": 68},
+        {"area": "Gutters", "condition": "Excellent", "score": 95}
+      ]
+    },
+    "drainage": {
+      "flowPatterns": ["Away from foundation", "Proper grading", "No standing water zones"],
+      "riskAreas": []
+    },
+    "vegetation": {
+      "healthyZones": 85,
+      "concernAreas": ["Large oak near power lines", "Hedge blocking drainage"]
+    }
+  },
+  "analyticsEngine": {
+    "modelPerformance": {
+      "overallAccuracy": {
+        "last12Months": 87,
+        "last24Months": 84,
+        "trend": "improving",
+        "confidenceInterval": "±3%"
+      },
+      "predictionAccuracy": {
+        "maintenanceTiming": 91,
+        "costEstimates": 88,
+        "systemFailures": 79,
+        "emergencyEvents": 73
+      },
+      "calibrationMetrics": {
+        "overconfidence": 0.12,
+        "underconfidence": 0.08,
+        "reliabilityScore": 0.89
+      }
+    },
+    "dataSources": {
+      "propertyRecords": {
+        "points": 47,
+        "lastUpdated": "2025-01-15",
+        "reliability": 0.94,
+        "coverage": "Complete"
+      },
+      "weatherData": {
+        "historicalYears": 15,
+        "stationDistance": "2.3 miles",
+        "reliability": 0.97,
+        "updateFrequency": "Daily"
+      },
+      "benchmarkData": {
+        "comparableProperties": 2847,
+        "radius": "5 miles",
+        "dataQuality": 0.89,
+        "lastRefresh": "2025-01-20"
+      },
+      "iotIntegration": {
+        "devices": 3,
+        "connectivity": "Intermittent",
+        "reliability": 0.78,
+        "lastSync": "2025-01-22"
+      },
+      "permitHistory": {
+        "records": 12,
+        "completeness": 0.92,
+        "lastUpdated": "2025-01-10",
+        "municipalApi": "Active"
+      }
+    },
+    "modelDetails": {
+      "homeScoreWeighting": {
+        "hvacSystems": 0.25,
+        "roofCondition": 0.20,
+        "plumbing": 0.15,
+        "electrical": 0.12,
+        "appliances": 0.10,
+        "exterior": 0.18
+      },
+      "predictionMethods": {
+        "timeSeriesModeling": "ARIMA with seasonal adjustment",
+        "regressionAnalysis": "Random Forest with cross-validation",
+        "riskScoring": "Logistic regression with regularization",
+        "costForecasting": "Ensemble method with regional adjustments"
+      },
+      "uncertaintyQuantification": {
+        "confidenceIntervals": "Bootstrap sampling with 1000 iterations",
+        "predictionIntervals": "Quantile regression for cost estimates",
+        "modelUncertainty": "Bayesian model averaging",
+        "dataUncertainty": "Monte Carlo propagation"
+      }
+    },
+    "validation": {
+      "historicalAccuracy": {
+        "maintenanceTimingTrend": [
+          {"year": 2022, "accuracy": 85},
+          {"year": 2023, "accuracy": 88},
+          {"year": 2024, "accuracy": 91}
+        ],
+        "costEstimatePrecision": [
+          {"year": 2022, "variance": 15},
+          {"year": 2023, "variance": 13},
+          {"year": 2024, "variance": 12}
+        ]
+      },
+      "stressTesting": {
+        "severeWeatherEvents": "92% accuracy during Hurricane season",
+        "marketVolatility": "±8% variance during 2023 inflation peak",
+        "edgeCases": "73% coverage for unusual property configurations"
+      },
+      "peerValidation": {
+        "thirdPartyValidation": "MIT Real Estate Lab - 2024 Study",
+        "industryBenchmarks": "Top 15% accuracy vs. industry standard",
+        "certifications": ["ISO 27001", "SOC 2 Type II"],
+        "researchPartners": ["Texas A&M Property Research", "NIST Building Standards"]
+      }
+    },
+    "scenarioBuilder": {
+      "availableVariables": [
+        {"name": "maintenanceFrequency", "type": "slider", "range": [0.5, 2.0], "default": 1.0, "label": "Maintenance Frequency Multiplier"},
+        {"name": "materialQuality", "type": "select", "options": ["Standard", "Premium", "Luxury"], "default": "Standard", "label": "Material Quality Preference"},
+        {"name": "climateProjection", "type": "select", "options": ["Current", "Conservative", "Aggressive"], "default": "Current", "label": "Climate Change Scenario"},
+        {"name": "budgetConstraint", "type": "range", "min": 1000, "max": 50000, "default": 10000, "label": "Annual Maintenance Budget"}
+      ],
+      "outputMetrics": [
+        "totalLifecycleCost",
+        "propertyValueImpact",
+        "emergencyRepairRisk",
+        "energyEfficiencyGain"
+      ],
+      "presetScenarios": [
+        {
+          "name": "Proactive Maintenance",
+          "description": "High-frequency maintenance with premium materials",
+          "settings": {"maintenanceFrequency": 1.5, "materialQuality": "Premium", "climateProjection": "Conservative", "budgetConstraint": 15000}
+        },
+        {
+          "name": "Budget Conscious",
+          "description": "Cost-optimized maintenance strategy",
+          "settings": {"maintenanceFrequency": 0.8, "materialQuality": "Standard", "climateProjection": "Current", "budgetConstraint": 5000}
+        },
+        {
+          "name": "Climate Resilient",
+          "description": "Future-proofed for climate change impacts",
+          "settings": {"maintenanceFrequency": 1.2, "materialQuality": "Premium", "climateProjection": "Aggressive", "budgetConstraint": 20000}
+        }
+      ]
+    }
+  }
+}

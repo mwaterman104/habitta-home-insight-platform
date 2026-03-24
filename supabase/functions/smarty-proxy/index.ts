@@ -1,0 +1,231 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const AUTH_ID = Deno.env.get("SMARTY_AUTH_ID")!;
+const AUTH_TOKEN = Deno.env.get("SMARTY_AUTH_TOKEN")!;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const endpoints = {
+  street: "https://us-street.api.smarty.com/street-address",
+  rooftop: "https://us-rooftop-geo.api.smarty.com/lookup",
+  // Enrichment requires /search/ path when using address fields (not SmartyKey)
+  enrich: "https://us-enrichment.api.smarty.com/lookup/search/property/principal",
+  financial: "https://us-enrichment.api.smarty.com/lookup/search/property/financial",
+};
+
+serve(async (req) => {
+  const stepId = crypto.randomUUID().slice(0, 8);
+  console.log(`[${stepId}] Smarty-proxy request:`, req.method);
+
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const startTime = Date.now();
+    
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.log(`[${stepId}] Missing auth header`);
+      throw new Error('No authorization header');
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { 
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+
+    // Get user from JWT
+    const jwt = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    
+    if (userError || !user) {
+      console.error(`[${stepId}] Auth error:`, userError);
+      throw new Error('Unauthorized');
+    }
+
+    const { action, payload } = await req.json();
+    console.log(`[${stepId}] Action:`, action, 'User:', user.id);
+
+    const qs = (o: Record<string, string | number | boolean | undefined>) =>
+      new URLSearchParams(
+        Object.entries(o).reduce((acc, [k,v]) => {
+          if (v !== undefined && v !== null) acc[k] = String(v);
+          return acc;
+        }, {} as Record<string,string>)
+      ).toString();
+
+    if (action === "standardize_geocode") {
+      console.log(`[${stepId}] Calling standardize + geocode`);
+      
+      // Validate required fields
+      if (!payload.street || !payload.city || !payload.state) {
+        throw new Error('Missing required address fields');
+      }
+      
+      // 1) Standardize address (US Street)
+      const stdUrl = `${endpoints.street}?${qs({
+        "auth-id": AUTH_ID,
+        "auth-token": AUTH_TOKEN,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zipcode: payload.postal_code,
+        candidates: 1
+      })}`;
+      
+      const stdRes = await fetch(stdUrl);
+      if (!stdRes.ok) {
+        throw new Error(`Standardization failed: ${stdRes.status}`);
+      }
+      const standardized = await stdRes.json();
+
+      // Log if US Street returns empty array (no matches)
+      if (Array.isArray(standardized) && standardized.length === 0) {
+        console.log(`[${stepId}] US Street returned no candidates for address`);
+      }
+
+      // 2) Rooftop geocode
+      const geoUrl = `${endpoints.rooftop}?${qs({
+        "auth-id": AUTH_ID,
+        "auth-token": AUTH_TOKEN,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zipcode: payload.postal_code
+      })}`;
+      
+      const geoRes = await fetch(geoUrl);
+      if (!geoRes.ok) {
+        console.warn(`[${stepId}] Geocoding failed: ${geoRes.status}`);
+      }
+      const geocode = geoRes.ok ? await geoRes.json() : [];
+
+      const latency = Date.now() - startTime;
+      console.log(`[${stepId}] Standardize+geocode complete:`, latency + 'ms');
+      
+      return new Response(JSON.stringify({ standardized, geocode }), { 
+        headers: { ...corsHeaders, "content-type": "application/json" } 
+      });
+    }
+
+    if (action === "enrich") {
+      console.log(`[${stepId}] Calling enrichment (property/principal)`);
+      
+      // Validate required fields
+      if (!payload.street || !payload.city || !payload.state) {
+        throw new Error('Missing required address fields for enrichment');
+      }
+      
+      const enrUrl = `${endpoints.enrich}?${qs({
+        "auth-id": AUTH_ID,
+        "auth-token": AUTH_TOKEN,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zipcode: payload.postal_code
+      })}`;
+      
+      console.log(`[${stepId}] Enrichment URL:`, enrUrl.replace(AUTH_TOKEN, '***'));
+      
+      const enrRes = await fetch(enrUrl);
+      
+      // Handle 404 gracefully - address may not have enrichment data
+      // Handle 402 gracefully - billing/subscription issue with Smarty API
+      if (enrRes.status === 404 || enrRes.status === 402) {
+        const reason = enrRes.status === 404 ? 'not found' : 'billing/subscription required';
+        console.log(`[${stepId}] Enrichment unavailable (${enrRes.status} - ${reason})`);
+        return new Response(JSON.stringify({ results: [], message: `Enrichment data unavailable: ${reason}` }), { 
+          headers: { ...corsHeaders, "content-type": "application/json" } 
+        });
+      }
+      
+      if (!enrRes.ok) {
+        const errorText = await enrRes.text();
+        console.error(`[${stepId}] Enrichment API error:`, enrRes.status, errorText);
+        throw new Error(`Enrichment failed: ${enrRes.status}`);
+      }
+      const enrichment = await enrRes.json();
+      
+      const latency = Date.now() - startTime;
+      console.log(`[${stepId}] Enrichment complete:`, latency + 'ms', 'records:', enrichment?.results?.length || enrichment?.length || 0);
+      
+      return new Response(JSON.stringify(enrichment), { 
+        headers: { ...corsHeaders, "content-type": "application/json" } 
+      });
+    }
+
+    if (action === "financial_lookup") {
+      console.log(`[${stepId}] Calling financial lookup (property/financial)`);
+      
+      // Validate required fields
+      if (!payload.street || !payload.city || !payload.state) {
+        throw new Error('Missing required address fields for financial lookup');
+      }
+      
+      const finUrl = `${endpoints.financial}?${qs({
+        "auth-id": AUTH_ID,
+        "auth-token": AUTH_TOKEN,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zipcode: payload.postal_code
+      })}`;
+      
+      console.log(`[${stepId}] Financial URL:`, finUrl.replace(AUTH_TOKEN, '***'));
+      
+      const finRes = await fetch(finUrl);
+      
+      // Handle 404 gracefully - address may not have financial data
+      // Handle 402 gracefully - billing/subscription issue with Smarty API
+      if (finRes.status === 404 || finRes.status === 402) {
+        const reason = finRes.status === 404 ? 'not found' : 'billing/subscription required';
+        console.log(`[${stepId}] Financial data unavailable (${finRes.status} - ${reason})`);
+        return new Response(JSON.stringify({ results: [], message: `Financial data unavailable: ${reason}` }), { 
+          headers: { ...corsHeaders, "content-type": "application/json" } 
+        });
+      }
+      
+      if (!finRes.ok) {
+        const errorText = await finRes.text();
+        console.error(`[${stepId}] Financial API error:`, finRes.status, errorText);
+        throw new Error(`Financial lookup failed: ${finRes.status}`);
+      }
+      const financial = await finRes.json();
+      
+      const latency = Date.now() - startTime;
+      console.log(`[${stepId}] Financial lookup complete:`, latency + 'ms', 'records:', Array.isArray(financial) ? financial.length : (financial?.results?.length || 0));
+      
+      return new Response(JSON.stringify(financial), { 
+        headers: { ...corsHeaders, "content-type": "application/json" } 
+      });
+    }
+
+    console.log(`[${stepId}] Unknown action:`, action);
+    return new Response(JSON.stringify({ 
+      error: "Unknown action. Supported: standardize_geocode, enrich, financial_lookup" 
+    }), { 
+      status: 400, 
+      headers: { ...corsHeaders, "content-type": "application/json" } 
+    });
+    
+  } catch (error) {
+    console.error(`[${stepId}] Smarty proxy error:`, error);
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : String(error),
+      stepId 
+    }), { 
+      status: 500, 
+      headers: { ...corsHeaders, "content-type": "application/json" } 
+    });
+  }
+});

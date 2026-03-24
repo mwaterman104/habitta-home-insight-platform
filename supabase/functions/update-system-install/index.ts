@@ -1,0 +1,521 @@
+/**
+ * update-system-install Edge Function
+ * 
+ * Handles user corrections to system install data.
+ * Strategy A: Returns updated prediction payload directly to prevent UI jitter.
+ * 
+ * Auth: JWT required, verifies user owns home
+ * Idempotent: Uses client_request_id in metadata
+ */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+type InstallSource = 'heuristic' | 'owner_reported' | 'inspection' | 'permit_verified';
+type ReplacementStatus = 'original' | 'replaced' | 'unknown';
+type ConfidenceLevel = 'low' | 'medium' | 'high';
+
+interface UpdateRequest {
+  homeId: string;
+  systemKey: string;
+  replacementStatus: ReplacementStatus;
+  installYear?: number;
+  installMonth?: number;
+  installSource?: InstallSource;
+  // For internal edge-to-edge calls (service role auth)
+  userId?: string;
+  installMetadata?: {
+    installer?: 'diy' | 'licensed_pro' | 'builder';
+    knowledge_source?: 'permit' | 'receipt' | 'inspection' | 'memory';
+    client_request_id?: string;
+    user_acknowledged_unknown?: boolean;
+  };
+}
+
+// =============================================================================
+// CONFIDENCE SCORING (Inline - same as client module)
+// =============================================================================
+
+const BASE_SCORES: Record<InstallSource, number> = {
+  heuristic: 0.30,
+  owner_reported: 0.60,
+  inspection: 0.75,
+  permit_verified: 0.85,
+};
+
+function scoreInstallConfidence(source: InstallSource, hasMonth: boolean): { score: number; level: ConfidenceLevel } {
+  let score = BASE_SCORES[source];
+  if (hasMonth) score += 0.05;
+  score = Math.min(1.0, score);
+  
+  const level: ConfidenceLevel = score >= 0.80 ? 'high' : score >= 0.50 ? 'medium' : 'low';
+  return { score, level };
+}
+
+function formatInstalledLine(
+  installYear: number | null,
+  installSource: InstallSource,
+  replacementStatus: ReplacementStatus
+): string {
+  if (!installYear) return 'Install date unknown';
+  if (replacementStatus === 'original') return `Installed ${installYear} (original system)`;
+  
+  switch (installSource) {
+    case 'heuristic': return `Installed ~${installYear} (estimated)`;
+    case 'owner_reported': return `Installed ${installYear} (owner-reported)`;
+    case 'inspection': return `Installed ${installYear} (verified)`;
+    case 'permit_verified': return `Installed ${installYear} (permit-verified)`;
+    default: return `Installed ${installYear}`;
+  }
+}
+
+/**
+ * Pick the highest-authority record from duplicates
+ * Tiebreaking: authority -> confidence -> created_at (newest wins)
+ */
+function pickHighestAuthorityRecord(records: any[]): any {
+  const authorityOrder: Record<string, number> = {
+    'permit_verified': 4,
+    'inspection': 3,
+    'owner_reported': 2,
+    'heuristic': 1,
+  };
+  
+  return records.reduce((best, current) => {
+    const bestAuth = authorityOrder[best.install_source] || 0;
+    const currentAuth = authorityOrder[current.install_source] || 0;
+    
+    // 1. Higher authority wins
+    if (currentAuth > bestAuth) return current;
+    if (currentAuth < bestAuth) return best;
+    
+    // 2. Same authority: higher confidence wins
+    const bestConf = best.confidence || 0;
+    const currentConf = current.confidence || 0;
+    if (currentConf > bestConf) return current;
+    if (currentConf < bestConf) return best;
+    
+    // 3. Same authority + confidence: newer record wins
+    const bestDate = new Date(best.created_at || 0).getTime();
+    const currentDate = new Date(current.created_at || 0).getTime();
+    return currentDate > bestDate ? current : best;
+  });
+}
+
+// =============================================================================
+// MAIN HANDLER
+// =============================================================================
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // Parse request
+    const body: UpdateRequest = await req.json();
+    const { homeId, systemKey, replacementStatus, installYear, installMonth, installSource, installMetadata, userId: bodyUserId } = body;
+
+    // Validate required fields
+    if (!homeId || !systemKey || !replacementStatus) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: homeId, systemKey, replacementStatus' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate replacementStatus
+    if (!['original', 'replaced', 'unknown'].includes(replacementStatus)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid replacementStatus. Must be: original, replaced, or unknown' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get auth header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Determine if this is an internal service-to-service call
+    // Internal calls use service role key and pass userId in the body
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    
+    // Extract the token from Bearer header for comparison
+    const tokenFromHeader = authHeader.startsWith('Bearer ') 
+      ? authHeader.replace('Bearer ', '').trim() 
+      : authHeader;
+    
+    // Service role check: compare extracted token with service role key
+    const isServiceRoleCall = serviceRoleKey && tokenFromHeader === serviceRoleKey;
+    
+    console.log('[update-system-install] Auth check:', {
+      hasServiceRoleKey: !!serviceRoleKey,
+      isServiceRoleCall,
+      hasBodyUserId: !!bodyUserId,
+    });
+    
+    let userId: string;
+    
+    if (isServiceRoleCall && bodyUserId) {
+      // Internal call from another edge function (e.g., ai-home-assistant)
+      // Trust the userId passed in the body
+      console.log('[update-system-install] Internal service call, using provided userId:', bodyUserId);
+      userId = bodyUserId;
+    } else {
+      // External call - verify user from JWT
+      // CRITICAL FIX: Must extract token and pass explicitly to getUser()
+      if (!authHeader.startsWith('Bearer ')) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authorization header format' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const token = authHeader.replace('Bearer ', '').trim();
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: 'Missing authentication token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      // CRITICAL: Pass token explicitly - getUser() without token doesn't work in Edge Functions
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError) {
+        console.error('[update-system-install] Auth error:', authError.message);
+        return new Response(
+          JSON.stringify({ error: 'Authentication failed', details: authError.message }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!user) {
+        console.error('[update-system-install] No user found in token');
+        return new Response(
+          JSON.stringify({ error: 'Invalid user session' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
+      console.log('[update-system-install] External call, user authenticated:', userId);
+    }
+
+    // Create service client for database operations
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
+    // Verify user owns the home
+    const { data: home, error: homeError } = await supabaseAdmin
+      .from('homes')
+      .select('id, user_id, year_built')
+      .eq('id', homeId)
+      .single();
+
+    if (homeError || !home) {
+      return new Response(
+        JSON.stringify({ error: 'Home not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (home.user_id !== userId) {
+      return new Response(
+        JSON.stringify({ error: 'Access denied to this home' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Normalize kind to lowercase for consistent storage
+    const normalizedKind = systemKey.toLowerCase();
+
+    // Case-insensitive lookup - find all variants
+    const { data: existingSystems, error: systemError } = await supabaseAdmin
+      .from('systems')
+      .select('*')
+      .eq('home_id', homeId)
+      .ilike('kind', normalizedKind);
+
+    // Pick highest-authority record if multiple exist
+    const existingSystem = existingSystems && existingSystems.length > 0
+      ? pickHighestAuthorityRecord(existingSystems)
+      : null;
+
+    // Log if duplicates found (shouldn't happen after cleanup)
+    if (existingSystems && existingSystems.length > 1) {
+      console.warn(`[update-system-install] Found ${existingSystems.length} duplicate records for ${normalizedKind}`);
+    }
+
+    if (systemError) {
+      console.error('Error fetching system:', systemError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch system record' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Store previous values for audit
+    const prevInstallYear = existingSystem?.install_year ?? null;
+    const prevInstallSource = existingSystem?.install_source ?? null;
+    const prevReplacementStatus = existingSystem?.replacement_status ?? 'unknown';
+
+    // HARDENING FIX #5: Prevent duplicate writes
+    const isIdenticalWrite = 
+      existingSystem &&
+      existingSystem.install_year === installYear &&
+      existingSystem.replacement_status === replacementStatus &&
+      existingSystem.install_source === 'owner_reported';
+
+    if (isIdenticalWrite) {
+      console.log(`[update-system-install] Skipping duplicate write for ${systemKey}`);
+      return new Response(
+        JSON.stringify({
+          alreadyRecorded: true,
+          system: existingSystem,
+          confidenceLevel: scoreInstallConfidence(existingSystem.install_source as InstallSource, !!existingSystem.install_month).level,
+          installedLine: formatInstalledLine(existingSystem.install_year, existingSystem.install_source as InstallSource, existingSystem.replacement_status as ReplacementStatus),
+          message: 'This information is already on record.',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Build update payload based on rules
+    let newInstallYear = existingSystem?.install_year;
+    let newInstallSource: InstallSource = (existingSystem?.install_source as InstallSource) || 'heuristic';
+    let newInstallMonth = existingSystem?.install_month;
+    let newMetadata = existingSystem?.install_metadata || {};
+
+    // Apply rules based on replacement status
+    if (replacementStatus === 'unknown') {
+      // Rule: Do NOT overwrite existing data, just acknowledge uncertainty
+      newMetadata = {
+        ...newMetadata,
+        ...installMetadata,
+        user_acknowledged_unknown: true,
+      };
+    } else if (replacementStatus === 'replaced') {
+      // HARDENING FIX #2: Clarify behavior when no year provided
+      // Rule: Write replacement_status, only update year if explicitly provided
+      // Do NOT infer a year. Just record the replacement fact.
+      if (installYear) {
+        newInstallYear = installYear;
+        newInstallSource = installSource || 'owner_reported';
+        newInstallMonth = installMonth ?? null;
+      } else {
+        // No year provided — mark as replaced but preserve existing year (if any)
+        // This is valid: user confirmed replacement but doesn't recall when.
+        console.log(`[update-system-install] Replaced + no year: recording status only`);
+        newInstallSource = installSource || 'owner_reported';
+      }
+      newMetadata = {
+        ...newMetadata,
+        ...installMetadata,
+        replaced_without_year: !installYear, // Explicit audit flag
+      };
+    } else if (replacementStatus === 'original') {
+      // Rule: Set year to year_built, source to owner_reported (user confirmed)
+      newInstallYear = home.year_built ?? installYear;
+      newInstallSource = 'owner_reported';
+      newMetadata = {
+        ...newMetadata,
+        ...installMetadata,
+        is_original_system: true,
+      };
+    }
+
+    // Calculate new confidence
+    const { score: confidenceScore, level: confidenceLevel } = scoreInstallConfidence(
+      newInstallSource,
+      !!newInstallMonth
+    );
+
+    // Format installed line
+    const installedLine = formatInstalledLine(newInstallYear, newInstallSource, replacementStatus);
+
+    // Upsert system record
+    const systemPayload = {
+      home_id: homeId,
+      user_id: userId,
+      kind: normalizedKind, // Always lowercase
+      install_year: newInstallYear,
+      install_month: newInstallMonth,
+      install_source: newInstallSource,
+      replacement_status: replacementStatus,
+      install_metadata: newMetadata,
+      confidence: confidenceScore,
+      updated_at: new Date().toISOString(),
+    };
+
+    let updatedSystem;
+    if (existingSystem) {
+      // Update existing
+      const { data, error: updateError } = await supabaseAdmin
+        .from('systems')
+        .update(systemPayload)
+        .eq('id', existingSystem.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error updating system:', updateError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to update system' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      updatedSystem = data;
+
+      // Defensive cleanup: delete any remaining duplicates
+      if (existingSystems && existingSystems.length > 1) {
+        const duplicateIds = existingSystems
+          .filter(s => s.id !== existingSystem.id)
+          .map(s => s.id);
+          
+        console.warn('[update-system-install] Cleaning up duplicates:', duplicateIds);
+        await supabaseAdmin
+          .from('systems')
+          .delete()
+          .in('id', duplicateIds);
+      }
+    } else {
+      // Insert new
+      const { data, error: insertError } = await supabaseAdmin
+        .from('systems')
+        .insert(systemPayload)
+        .select()
+        .single();
+
+      // Handle race condition if unique constraint fires
+      if (insertError) {
+        if (insertError.code === '23505') { // Unique constraint violation
+          console.warn('[update-system-install] Duplicate detected during insert, retrying update...');
+          
+          // Another process created the record between our check and insert
+          const { data: retrySystem } = await supabaseAdmin
+            .from('systems')
+            .select('*')
+            .eq('home_id', homeId)
+            .ilike('kind', normalizedKind)
+            .single();
+            
+          if (retrySystem) {
+            const { data: retryData } = await supabaseAdmin
+              .from('systems')
+              .update(systemPayload)
+              .eq('id', retrySystem.id)
+              .select()
+              .single();
+              
+            updatedSystem = retryData;
+          } else {
+            console.error('Error inserting system (race retry failed):', insertError);
+            return new Response(
+              JSON.stringify({ error: 'Failed to create system' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
+          console.error('Error inserting system:', insertError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to create system' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
+        updatedSystem = data;
+      }
+    }
+
+    // Write audit event
+    const auditPayload = {
+      system_id: updatedSystem.id,
+      home_id: homeId,
+      user_id: userId,
+      prev_install_year: prevInstallYear,
+      new_install_year: newInstallYear,
+      prev_install_source: prevInstallSource,
+      new_install_source: newInstallSource,
+      prev_replacement_status: prevReplacementStatus,
+      new_replacement_status: replacementStatus,
+      metadata: {
+        client_request_id: installMetadata?.client_request_id,
+        action: existingSystem ? 'update' : 'create',
+      },
+    };
+
+    const { error: auditError } = await supabaseAdmin
+      .from('system_install_events')
+      .insert(auditPayload);
+
+    if (auditError) {
+      // Log but don't fail the request
+      console.error('Error writing audit event:', auditError);
+    }
+
+    // Return Strategy A response: full payload for immediate UI update
+    const response = {
+      system: updatedSystem,
+      confidenceLevel,
+      confidenceScore,
+      installedLine,
+      replacementStatus,
+      message: getSuccessMessage(replacementStatus, newInstallYear),
+    };
+
+    console.log(`[update-system-install] Updated ${systemKey} for home ${homeId}:`, {
+      prevYear: prevInstallYear,
+      newYear: newInstallYear,
+      prevSource: prevInstallSource,
+      newSource: newInstallSource,
+      confidenceLevel,
+    });
+
+    return new Response(
+      JSON.stringify(response),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error in update-system-install:', error);
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
+
+function getSuccessMessage(status: ReplacementStatus, year: number | null): string {
+  switch (status) {
+    case 'original':
+      return 'Marked as original system. Your forecasts have been updated.';
+    case 'replaced':
+      return year 
+        ? `Install date updated to ${year}. Your forecasts have been updated.`
+        : 'System updated. Your forecasts have been updated.';
+    case 'unknown':
+      return 'Thanks for letting us know. We\'ll continue using our estimate.';
+    default:
+      return 'System updated.';
+  }
+}

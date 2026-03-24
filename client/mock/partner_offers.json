@@ -1,0 +1,62 @@
+[
+  {
+    "id": "utility-rebate-1",
+    "partner": "Local Utility",
+    "type": "energy_rebate",
+    "trigger": "energy_score_improved",
+    "title": "$200 Smart Thermostat Rebate",
+    "description": "Your energy improvements qualify you for utility rebates",
+    "value": 200,
+    "unit": "usd",
+    "expiry": "2025-12-31",
+    "qualified": true
+  },
+  {
+    "id": "furniture-discount",
+    "partner": "Patio Plus",
+    "type": "home_improvement", 
+    "trigger": "outdoor_ready",
+    "title": "15% off Spring Patio Furniture",
+    "description": "Systems ready - outdoor space optimized for entertaining",
+    "value": 15,
+    "unit": "percent",
+    "expiry": "2025-05-31",
+    "qualified": true
+  },
+  {
+    "id": "kitchen-financing",
+    "partner": "HomeReno Financial",
+    "type": "financing",
+    "trigger": "savings_qualified",
+    "title": "Kitchen Renovation Financing",
+    "description": "Your maintenance savings qualify you for preferred rates",
+    "value": 0,
+    "unit": "rate",
+    "expiry": "2025-08-31",
+    "qualified": true
+  },
+  {
+    "id": "security-discount",
+    "partner": "SmartHome Pro",
+    "type": "smart_home",
+    "trigger": "electrical_optimized",
+    "title": "Smart Security System Discount",
+    "description": "Electrical systems optimized for smart home integration", 
+    "value": 25,
+    "unit": "percent",
+    "expiry": "2025-06-30",
+    "qualified": false
+  },
+  {
+    "id": "solar-consultation",
+    "partner": "SolarTech Solutions",
+    "type": "energy_efficiency",
+    "trigger": "energy_score_high",
+    "title": "Free Solar Panel Consultation",
+    "description": "High energy efficiency rating qualifies for solar assessment",
+    "value": 0,
+    "unit": "consultation",
+    "expiry": "2025-09-30",
+    "qualified": true
+  }
+]

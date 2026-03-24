@@ -1,0 +1,699 @@
+/**
+ * ChatConsole — The Entire Middle Column
+ * 
+ * AUTHORITY MODEL (LOCKED):
+ * - Chat console owns 100% of the middle column
+ * - Baseline Surface is the FIRST artifact inside the chat (pinned)
+ * - Messages appear BELOW the baseline
+ * - No standalone cards, no dashboard narration outside chat
+ * 
+ * BASELINE VS ARTIFACT DISTINCTION:
+ * 
+ * BaselineSurface (the summary strip):
+ * - MAY appear based on chat state/mode
+ * - Is part of the chat context UI
+ * - Is NOT an artifact
+ * 
+ * Aging Profile Artifact:
+ * - NEVER appears at page load
+ * - ONLY appears after justification message
+ * - Is rendered inline with messages
+ * - Is dismissible and ephemeral
+ * 
+ * Visual Grammar:
+ * - Pure white background
+ * - Rounded corners on all four sides
+ * - No shadows implying elevation
+ * - Baseline is NOT styled as a message bubble
+ * - No chat bubbles with tails
+ */
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Camera } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+// Dialog import kept for potential future use
+import { cn } from "@/lib/utils";
+import { useAIHomeAssistant } from "@/hooks/useAIHomeAssistant";
+import { useFocusState } from "@/contexts/FocusStateContext";
+import { BaselineSurface, type BaselineSystem } from "./BaselineSurface";
+import { ChatPhotoUpload } from "./ChatPhotoUpload";
+import { ChatMessageContent } from "@/components/chat";
+import { InlineArtifact } from "./artifacts/InlineArtifact";
+import { createSystemValidationEvidenceArtifact } from "@/lib/artifactSummoner";
+import type { SystemValidationEvidenceData } from "./artifacts/SystemValidationEvidenceArtifact";
+import { applySystemUpdate, buildNoSystemDetectedSummary, buildAnalysisFailedSummary } from "@/lib/systemUpdates";
+import { track } from "@/lib/analytics";
+import type { AdvisorState, RiskLevel, AdvisorOpeningMessage } from "@/types/advisorState";
+import type { TodaysFocus } from "@/lib/todaysFocusCopy";
+import type { ChatMode, BaselineSource } from "@/types/chatMode";
+import habittaChatIcon from "@/assets/habitta-chat-icon.png";
+import type { SystemState } from "@/types/systemState";
+import { getChatPlaceholder } from "@/lib/todaysFocusCopy";
+import { 
+  getPromptsForMode, 
+  getEmptyStateForMode, 
+  getOpeningMessage, 
+  formatOpeningMessage,
+  wasBaselineOpeningShown,
+  markBaselineOpeningShown,
+  clearBaselineOpeningShown,
+  getModeBehavior,
+  formatProvenanceOpeningMessage,
+  getWhyStateLabel,
+  isFirstVisit,
+  markFirstVisitComplete,
+} from "@/lib/chatModeCopy";
+import { generateHabittaBlurb, buildGreetingContext, calculateDaysSince, GREETING_ENGINE_VERSION, hasSeenOnboardingGreeting, markOnboardingGreetingShown, type HabittaGreetingResult } from "@/lib/chatGreetings";
+import { getChatModeLabel } from "@/lib/chatModeSelector";
+
+const GREETING_VERSION_KEY = 'habitta_greeting_engine_version';
+
+// ============================================
+// Conversation Starters
+// ============================================
+
+interface ConversationStartersProps {
+  starters: string[];
+  onStarterClick: (message: string) => void;
+}
+
+function ConversationStarters({ starters, onStarterClick }: ConversationStartersProps) {
+  if (!starters || starters.length === 0) return null;
+  
+  return (
+    <div className="flex flex-wrap gap-2 mt-3 ml-6 animate-fade-in">
+      {starters.map((starter) => (
+        <button 
+          key={starter}
+          onClick={() => onStarterClick(starter)}
+          className="px-3 py-1.5 bg-card border border-border text-foreground rounded-lg text-xs font-medium hover:bg-muted hover:border-border/80 transition-colors"
+        >
+          {starter}
+        </button>
+      ))}
+    </div>
+  );
+}
+// ============================================
+// Types
+// ============================================
+
+interface ChatConsoleProps {
+  propertyId: string;
+  /** Baseline systems for evidence layer */
+  baselineSystems: BaselineSystem[];
+  /** Year the home was built (for home context) */
+  yearBuilt?: number;
+  /** Overall confidence level */
+  confidenceLevel: 'Unknown' | 'Early' | 'Moderate' | 'High';
+  /** Chat mode for epistemic-aware behavior */
+  chatMode?: ChatMode;
+  /** Baseline source for provenance-aware messaging */
+  baselineSource?: BaselineSource;
+  /** System keys with low confidence (for baseline mode) */
+  systemsWithLowConfidence?: string[];
+  /** Callback when "Why?" is clicked on a system - now injects message into chat */
+  onWhyClick: (systemKey: string) => void;
+  /** Callback when system is updated via photo analysis */
+  onSystemUpdated?: () => void;
+  /** Today's focus for context-aware placeholder */
+  todaysFocus?: TodaysFocus;
+  // Legacy advisor props (for compatibility)
+  advisorState?: AdvisorState;
+  focusContext?: { systemKey: string; trigger: string };
+  hasAgentMessage?: boolean;
+  openingMessage?: AdvisorOpeningMessage | null;
+  confidence?: number;
+  risk?: RiskLevel;
+  onUserReply?: () => void;
+  // NEW: Verification context for honest chat messaging
+  /** Number of systems verified by permit records */
+  verifiedSystemCount?: number;
+  /** Total number of systems being tracked */
+  totalSystemCount?: number;
+  /** Auto-send message: fires sendMessage() once on mount when set */
+  autoSendMessage?: string;
+  // NEW: Enriched greeting context
+  /** Home profile record strength score (0-100) */
+  strengthScore?: number;
+  /** Next best action to improve record strength */
+  nextGain?: { action: string; delta: number; systemKey?: string } | null;
+  /** Last user interaction timestamp for dormancy detection */
+  lastTouchAt?: Date | null;
+}
+
+// ============================================
+// Component
+// ============================================
+
+export function ChatConsole({
+  propertyId,
+  baselineSystems,
+  yearBuilt,
+  confidenceLevel,
+  chatMode = 'silent_steward',
+  baselineSource = 'inferred',
+  systemsWithLowConfidence = [],
+  onWhyClick,
+  onSystemUpdated,
+  todaysFocus,
+  advisorState = 'PASSIVE',
+  focusContext,
+  hasAgentMessage = false,
+  openingMessage,
+  confidence = 0.5,
+  risk = 'LOW',
+  onUserReply,
+  // NEW: Verification context
+  verifiedSystemCount = 0,
+  totalSystemCount,
+  // Auto-send
+  autoSendMessage,
+  // NEW: Enriched greeting context
+  strengthScore,
+  nextGain,
+  lastTouchAt,
+}: ChatConsoleProps) {
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [hasShownOpening, setHasShownOpening] = useState(false);
+  // Initialize to false; useEffect will set based on property-specific storage
+  const [hasShownBaselineOpening, setHasShownBaselineOpening] = useState(false);
+  
+  // Check property-specific storage when propertyId becomes available
+  useEffect(() => {
+    if (!propertyId) return;
+    
+    // Check property-specific flag — database restoration handles message presence
+    const flagSet = wasBaselineOpeningShown(propertyId);
+    setHasShownBaselineOpening(flagSet);
+  }, [propertyId]);
+  const [isFirstUserVisit] = useState(() => isFirstVisit());
+  // Artifact controls (BaselineSurface removed — lives in right column only)
+  // Map baselineSystems to VisibleBaselineSystem format for AI context
+  const visibleBaseline = baselineSystems.map(s => ({
+    key: s.key,
+    displayName: s.displayName,
+    state: s.state,
+  }));
+
+  // Import focus state hook (single call, used for both continuity and focus setting)
+  const { focus: currentFocus, setFocus, isUserLocked, setFocusData } = useFocusState();
+
+  const { messages, loading, sendMessage, injectMessage, injectMessageWithArtifact, isRestoring, clearConversation } = useAIHomeAssistant(propertyId, {
+    advisorState,
+    confidence,
+    risk,
+    focusSystem: focusContext?.systemKey,
+    chatMode,
+    // Epistemic coherence: pass baseline context to AI
+    baselineSource,
+    visibleBaseline,
+    // Focus continuity: pass current right-column focus to edge function
+    activeFocus: currentFocus,
+    // Onboarding vitals for AI personalization
+    strengthScore,
+    nextGain,
+    // Onboarding contract gate: pass lastTouchAt to distinguish new vs returning users
+    lastTouchAt,
+  });
+
+  // Auto-send message guard (single-fire per unique message value)
+  const hasSentAutoMessage = useRef<string | null>(null);
+
+  // Auto-send: fire once when autoSendMessage is set and restoration is complete
+  useEffect(() => {
+    if (!autoSendMessage || isRestoring) return;
+    if (hasSentAutoMessage.current === autoSendMessage) return;
+    hasSentAutoMessage.current = autoSendMessage;
+    sendMessage(autoSendMessage);
+  }, [autoSendMessage, isRestoring, sendMessage]);
+
+  // Get mode-specific behavior
+  const modeBehavior = getModeBehavior(chatMode);
+  const modeLabel = getChatModeLabel(chatMode);
+
+  // Inject opening message when advisor auto-opens chat
+  useEffect(() => {
+    if (hasAgentMessage && openingMessage && !hasShownOpening) {
+      const formattedMessage = `${openingMessage.observation}\n\n${openingMessage.implication}\n\n${openingMessage.optionsPreview}`;
+      injectMessage(formattedMessage);
+      setHasShownOpening(true);
+    }
+  }, [hasAgentMessage, openingMessage, hasShownOpening, injectMessage]);
+
+  // Inject context-aware greeting via Habitta Greeting Engine
+  // Wait for restoration to complete before deciding to show opening
+  const [greetingResult, setGreetingResult] = useState<HabittaGreetingResult | null>(null);
+  const versionCheckedRef = useRef(false);
+  
+  // Version check: clear stale sessions when greeting engine is upgraded
+  useEffect(() => {
+    if (isRestoring || versionCheckedRef.current) return;
+    versionCheckedRef.current = true;
+    
+    const storedVersion = parseInt(localStorage.getItem(GREETING_VERSION_KEY) || '0', 10);
+    if (storedVersion < GREETING_ENGINE_VERSION) {
+      console.log(`[ChatConsole] Greeting engine upgraded (v${storedVersion} → v${GREETING_ENGINE_VERSION}). Clearing stale session.`);
+      localStorage.setItem(GREETING_VERSION_KEY, String(GREETING_ENGINE_VERSION));
+      clearConversation();
+      clearBaselineOpeningShown(propertyId);
+      setHasShownBaselineOpening(false);
+    }
+  }, [isRestoring, clearConversation, propertyId]);
+  
+  useEffect(() => {
+    if (isRestoring) return;
+    
+    // greetingReady guard: don't select strategy until we have context
+    const greetingReady = strengthScore !== undefined || lastTouchAt !== undefined || baselineSystems.length > 0;
+    if (!greetingReady) return;
+    if (baselineSystems.length === 0) return;
+    
+    if (messages.length === 0 && !hasShownBaselineOpening) {
+      const context = buildGreetingContext({
+        baselineSystems,
+        isFirstVisit: isFirstUserVisit,
+        strengthScore,
+        nextGain,
+        daysSinceLastTouch: calculateDaysSince(lastTouchAt),
+        hasSeenOnboardingGreeting: hasSeenOnboardingGreeting(),
+      });
+      
+      const result = generateHabittaBlurb(context);
+      setGreetingResult(result);
+      
+      injectMessage(result.text);
+      markBaselineOpeningShown(propertyId);
+      setHasShownBaselineOpening(true);
+      
+      localStorage.setItem(GREETING_VERSION_KEY, String(GREETING_ENGINE_VERSION));
+      
+      // Mark onboarding greeting as shown if that strategy was selected
+      if (result.strategy === 'onboarding') {
+        markOnboardingGreetingShown();
+      }
+      
+      if (isFirstUserVisit) {
+        markFirstVisitComplete();
+      }
+    }
+  }, [isRestoring, messages.length, hasShownBaselineOpening, injectMessage, baselineSystems, isFirstUserVisit, propertyId, strengthScore, nextGain, lastTouchAt]);
+
+  // Reset opening state when focus or opening message changes
+  useEffect(() => {
+    setHasShownOpening(false);
+  }, [focusContext?.systemKey, openingMessage]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // Handle send
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+    const message = input;
+    setInput("");
+    
+    // Notify parent of user reply (triggers state transition to DECISION)
+    onUserReply?.();
+    
+    const response = await sendMessage(message);
+    
+    // If response contains focus metadata, update focus state (unless user has active lock)
+    if (response?.focus && !isUserLocked) {
+      // Extract and attach contractor data if present
+      if (response.focus.type === 'contractor_list' && response.functionResult) {
+        try {
+          const result = JSON.parse(response.functionResult);
+          const contractors = result.items || result.contractors;
+          if (result.type === 'contractor_recommendations' && Array.isArray(contractors) && contractors.length > 0) {
+            // Set contractor data in focus context
+            setFocusData?.({
+              contractorList: {
+                contractors,
+                disclaimer: result.disclaimer || "We found these contractors in your area. These are not endorsements — compare quotes, check reviews, and ask questions before hiring.",
+              },
+            });
+            // Push contractor_list focus to right column
+            setFocus(response.focus, { push: true });
+          }
+        } catch {
+          // Not JSON, proceed with focus only
+          setFocus(response.focus);
+        }
+      } else {
+        setFocus(response.focus);
+      }
+    }
+    
+    // HARDENING FIX #4: Check response envelope for system updates, not tool name
+    if (response?.functionResult) {
+      try {
+        const result = JSON.parse(response.functionResult);
+        if (result.type === 'system_update' && result.success && !result.alreadyRecorded) {
+          console.log('[ChatConsole] System updated via chat:', result.systemKey);
+          onSystemUpdated?.();
+        }
+      } catch {
+        // Not JSON or no system update — that's fine
+      }
+    }
+  };
+
+  /**
+   * Handle "Why?" click - VALIDATION FIRST pattern
+   * 
+   * DOCTRINE: Show the gauge before you explain the diagnosis.
+   * 1. Build system validation evidence artifact with real data
+   * 2. Inject artifact FIRST (deterministic, not model-driven)
+   * 3. Then send question to AI (which will reference "what you're seeing above")
+   */
+  const handleWhyClick = useCallback((systemKey: string) => {
+    const system = baselineSystems.find(s => s.key === systemKey);
+    if (!system) return;
+    
+    track('baseline_why_clicked', { system_key: systemKey }, { surface: 'dashboard' });
+    
+    // 1. Build evidence artifact with real system data
+    // Map 'baseline_incomplete' state to 'stable' for display purposes (with low confidence)
+    const displayState = system.state === 'baseline_incomplete' ? 'stable' : system.state;
+    
+    const evidenceData: SystemValidationEvidenceData = {
+      systemKey: system.key,
+      displayName: system.displayName,
+      state: displayState as 'stable' | 'planning_window' | 'elevated',
+      position: calculateTimelinePosition(system),
+      ageYears: system.ageYears,
+      expectedLifespan: system.expectedLifespan,
+      monthsRemaining: system.monthsRemaining,
+      // Lower confidence for baseline_incomplete systems
+      confidence: system.state === 'baseline_incomplete' ? Math.min(system.confidence, 0.3) : system.confidence,
+      baselineSource: baselineSource,
+      // costData: Only include if real cost data exists (no placeholders)
+    };
+    
+    // 2. Create artifact with a message ID
+    const evidenceMessageId = `evidence-${systemKey}-${Date.now()}`;
+    const artifact = createSystemValidationEvidenceArtifact(evidenceMessageId, evidenceData);
+    
+    // 3. Inject evidence artifact FIRST (empty content - artifact speaks for itself)
+    injectMessageWithArtifact('', artifact);
+    
+    // 4. Then send the question to AI (which will reference "what you're seeing above")
+    const stateLabel = getWhyStateLabel(system.state);
+    sendMessage(`Why is my ${system.displayName.toLowerCase()} showing as "${stateLabel}"?`);
+  }, [baselineSystems, sendMessage, injectMessageWithArtifact, baselineSource]);
+
+  /**
+   * Calculate timeline position (0-100 scale based on elapsed lifespan)
+   */
+  function calculateTimelinePosition(system: BaselineSystem): number {
+    if (!system.expectedLifespan || system.expectedLifespan === 0) return 50;
+    const lifespanMonths = system.expectedLifespan * 12;
+    const remaining = system.monthsRemaining ?? lifespanMonths * 0.5;
+    const elapsed = lifespanMonths - remaining;
+    return Math.min(100, Math.max(0, (elapsed / lifespanMonths) * 100));
+  }
+
+  // Handle key press
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  /**
+   * Handle photo analysis through System Update Contract
+   * 
+   * CANONICAL CONSISTENCY CONTRACT:
+   * Photo analysis now syncs to both home_systems AND systems tables,
+   * ensuring the AI and capital timeline see the updated data.
+   */
+  const handlePhotoAnalysis = useCallback(async (photoUrl: string) => {
+    console.log('[ChatConsole] handlePhotoAnalysis called with URL:', photoUrl.substring(0, 50));
+    
+    try {
+      console.log('[ChatConsole] Calling analyze-device-photo edge function...');
+      const response = await fetch(
+        `https://vbcsuoubxyhjhxcgrqco.supabase.co/functions/v1/analyze-device-photo`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiY3N1b3VieHloamh4Y2dycWNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTQ1MTAsImV4cCI6MjA2NzQ5MDUxMH0.cJbuzANuv6IVQHPAl6UvLJ8SYMw4zFlrE1R2xq9yyjs',
+          },
+          body: JSON.stringify({ image_url: photoUrl }),
+        }
+      );
+
+      console.log('[ChatConsole] analyze-device-photo response status:', response.status);
+
+      if (!response.ok) {
+        console.error('[ChatConsole] Photo analysis failed:', response.status);
+        sendMessage(buildAnalysisFailedSummary());
+        return;
+      }
+
+      const data = await response.json();
+      console.log('[ChatConsole] analyze-device-photo response:', JSON.stringify(data).substring(0, 200));
+      const analysis = data?.analysis;
+
+      if (!analysis || !analysis.system_type) {
+        console.log('[ChatConsole] No system detected in photo');
+        sendMessage(buildNoSystemDetectedSummary());
+        return;
+      }
+
+      console.log('[ChatConsole] Detected system:', analysis.system_type, 'brand:', analysis.brand);
+
+      const result = await applySystemUpdate({
+        home_id: propertyId,
+        system_key: analysis.system_type,
+        source: 'photo_analysis',
+        extracted_data: {
+          brand: analysis.brand,
+          model: analysis.model,
+          serial: analysis.serial,
+          manufacture_year: analysis.manufacture_year,
+          capacity_rating: analysis.capacity_rating,
+          fuel_type: analysis.fuel_type,
+          system_type: analysis.system_type,
+        },
+        confidence_signal: {
+          visual_certainty: analysis.visual_certainty ?? 0.5,
+          source_reliability: 0.7,
+        },
+        image_url: photoUrl,
+      });
+
+      console.log('[ChatConsole] applySystemUpdate result:', {
+        applied: result.update_applied,
+        shouldRecompute: result.should_trigger_mode_recompute,
+        fieldsUpdated: result.fields_updated,
+      });
+
+      sendMessage(result.chat_summary);
+
+      if (result.update_applied && result.should_trigger_mode_recompute) {
+        onSystemUpdated?.();
+      }
+    } catch (err) {
+      console.error('[ChatConsole] Photo analysis error:', err);
+      sendMessage(buildAnalysisFailedSummary());
+    }
+  }, [propertyId, sendMessage, onSystemUpdated]);
+
+  // Context-aware placeholder
+  const placeholder = todaysFocus 
+    ? getChatPlaceholder(todaysFocus)
+    : "Ask about your home...";
+
+  // Check if we should show silence (silent_steward with no messages)
+  const isSilentSteward = chatMode === 'silent_steward' && messages.length === 0;
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-card rounded-2xl border border-border/30 overflow-hidden">
+      {/* Scrollable content area */}
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          {/* BaselineSurface removed — System Outlook lives exclusively in the right column */}
+
+          {/* Chat messages appear BELOW baseline */}
+          <div className="space-y-4 pt-2">
+            {/* 
+              * CANONICAL ARCHITECTURE LOCK:
+              * Silent Steward intentionally renders no messages.
+              * Silence is a product feature, not an empty state.
+              * Do not add fallback copy here.
+              */}
+
+            {/* Mode-specific empty state (non-silent modes) */}
+            {!isSilentSteward && messages.length === 0 && (
+              <div className="text-center py-6 text-muted-foreground">
+                <p className="text-sm">
+                  {getEmptyStateForMode(chatMode)}
+                </p>
+              </div>
+            )}
+            
+            {/* Messages - no bubbles with tails, with inline artifacts */}
+            {messages.map((message, index) => (
+              <div key={message.id}>
+                {/* Only render message bubble if there's content */}
+                {message.content && (
+                  <div
+                    className={cn(
+                      "flex gap-3",
+                      message.role === "user" ? "justify-end" : "justify-start items-start"
+                    )}
+                  >
+                    {/* AI Avatar for assistant messages */}
+                    {message.role === "assistant" && (
+                      <div className="shrink-0 mt-1">
+                        <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center ring-1 ring-teal-100 overflow-hidden">
+                          <img src={habittaChatIcon} alt="Habitta" className="w-6 h-6 object-contain" />
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        "rounded-lg px-4 py-2.5 max-w-[85%] text-sm leading-relaxed",
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted/40 text-foreground"
+                      )}
+                    >
+                      {message.role === "assistant" ? (
+                        <ChatMessageContent content={message.content} />
+                      ) : (
+                        <span className="whitespace-pre-wrap">{message.content}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Conversation Starters - show after first AI message only */}
+                {message.role === "assistant" && index === 0 && messages.length === 1 && greetingResult && (
+                  <ConversationStarters
+                    starters={greetingResult.starters}
+                    onStarterClick={(prompt) => {
+                      sendMessage(prompt);
+                    }}
+                  />
+                )}
+                
+                {/* Attached artifact (if chat earned it) */}
+                {message.attachedArtifact && (
+                  <InlineArtifact
+                    artifact={message.attachedArtifact}
+                    anchorMessageId={message.id}
+                    onCollapse={(id) => {
+                      // Track artifact collapse
+                      track('artifact_collapsed', { artifact_id: id }, { surface: 'chat' });
+                    }}
+                    onDismiss={(id) => {
+                      // Track artifact dismiss
+                      track('artifact_dismissed', { artifact_id: id }, { surface: 'chat' });
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            
+            {/* Loading indicator */}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-muted/40 rounded-lg px-4 py-2.5">
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="h-2 w-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="h-2 w-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Mode-specific suggested prompts (only when no messages yet - before AI blurb) */}
+      {/* Hide when ConversationStarters would show (after first AI message) */}
+      {messages.length === 0 && !isSilentSteward && (
+        <div className="px-4 pb-2 space-y-2 shrink-0 border-t border-border/20 pt-3">
+          <div className="flex flex-wrap gap-2">
+            {getPromptsForMode(chatMode).map((suggestion) => (
+              <Button
+                key={suggestion}
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setInput(suggestion)}
+              >
+                {suggestion}
+              </Button>
+            ))}
+          </div>
+          
+          {/* Upload affordance - baseline mode only */}
+          {modeBehavior.showUploadAffordance && (
+            <div className="flex items-center justify-center gap-4 pt-2 text-xs text-muted-foreground">
+              <button 
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+                onClick={() => inputRef.current?.focus()}
+              >
+                <Camera className="h-3 w-3" />
+                <span>Improve accuracy with a photo</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Input - anchored bottom, always visible */}
+      <div className="p-4 border-t border-border/30 shrink-0 bg-white dark:bg-card">
+        <div className="flex gap-2">
+          <ChatPhotoUpload
+            homeId={propertyId}
+            onPhotoReady={handlePhotoAnalysis}
+            disabled={loading}
+          />
+          <Input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder={placeholder}
+            disabled={loading}
+            className="flex-1 bg-muted/20 border-border/40"
+          />
+          <Button 
+            size="icon" 
+            onClick={handleSend}
+            disabled={!input.trim() || loading}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {/* Subtle mode indicator */}
+        {modeLabel && (
+          <div className="text-center mt-2">
+            <span className="text-[10px] text-muted-foreground/50">{modeLabel}</span>
+          </div>
+        )}
+      </div>
+      
+      {/* BaselineSurface expanded modal removed — System Outlook lives in right column */}
+    </div>
+  );
+}

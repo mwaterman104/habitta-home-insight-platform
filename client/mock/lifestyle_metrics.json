@@ -1,0 +1,24 @@
+{
+  "energyWellness": {
+    "score": 87,
+    "neighborhoodAverage": 73,
+    "monthlySavings": 195,
+    "trend": "improving"
+  },
+  "comfortIndex": {
+    "rating": "Excellent",
+    "temperatureStability": "±2°F",
+    "airQuality": "Good",
+    "summary": "Perfect for home office"
+  },
+  "outdoorReadiness": {
+    "status": "Ready",
+    "systems": ["roof", "gutters", "irrigation"],
+    "seasonalNote": "All systems optimized"
+  },
+  "safetyConfidence": {
+    "score": 95,
+    "status": "High",
+    "summary": "Full confidence"
+  }
+}

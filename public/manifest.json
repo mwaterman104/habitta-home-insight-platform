@@ -1,0 +1,79 @@
+{
+  "name": "Habitta - Home Intelligence Platform",
+  "short_name": "Habitta",
+  "description": "AI-powered home maintenance and intelligence platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0C3629",
+  "theme_color": "#0C3629",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities", "lifestyle"],
+  "lang": "en-US",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512.png", 
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshot-desktop.png", 
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "features": [
+    "AI-powered home maintenance recommendations",
+    "Smart task management",
+    "Property intelligence insights",
+    "Energy optimization",
+    "Predictive cost analysis"
+  ],
+  "shortcuts": [
+    {
+      "name": "Home Pulse",
+      "short_name": "Home",
+      "description": "View your home intelligence dashboard",
+      "url": "/dashboard",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "48x48"
+        }
+      ]
+    },
+    {
+      "name": "HVAC Health",
+      "short_name": "HVAC",
+      "description": "Check your HVAC system status",
+      "url": "/system/hvac",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "48x48"
+        }
+      ]
+    }
+  ]
+}
